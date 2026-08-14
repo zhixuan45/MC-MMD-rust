@@ -54,6 +54,16 @@ public abstract class BaseModelInstance implements ModelInstance {
     private boolean physicsStateInitialized = false;
     private boolean physicsEnabled = true;
     private final FirstPersonPoseState firstPersonPoseState = new FirstPersonPoseState();
+    /** 全局 Alpha 调制因子（例如直播防走光虚化透明度，默认 1.0） */
+    protected float globalAlpha = 1.0f;
+
+    public void setGlobalAlpha(float alpha) {
+        this.globalAlpha = Math.max(0.0f, Math.min(1.0f, alpha));
+    }
+
+    public float getGlobalAlpha() {
+        return globalAlpha;
+    }
 
     public void setVrActive(boolean active) { this.vrActive = active; }
 
@@ -319,13 +329,13 @@ public abstract class BaseModelInstance implements ModelInstance {
 
     protected float getEffectiveMaterialAlpha(int materialIndex, float baseAlpha) {
         if (materialMorphResultsByteBuffer == null || materialIndex < 0 || materialIndex >= materialMorphResultCount)
-            return baseAlpha;
+            return baseAlpha * globalAlpha;
         int mulOffset = materialIndex * MATERIAL_MORPH_STRIDE_FLOATS + MATERIAL_MORPH_MUL_ALPHA_OFFSET;
         int addOffset = materialIndex * MATERIAL_MORPH_STRIDE_FLOATS + MATERIAL_MORPH_ADD_ALPHA_OFFSET;
         int capacity = materialMorphResultsByteBuffer.capacity() / 4;
         float mulAlpha = (mulOffset < capacity) ? materialMorphResultsByteBuffer.getFloat(mulOffset * 4) : 1.0f;
         float addAlpha = (addOffset < capacity) ? materialMorphResultsByteBuffer.getFloat(addOffset * 4) : 0.0f;
-        return baseAlpha * mulAlpha + addAlpha;
+        return (baseAlpha * mulAlpha + addAlpha) * globalAlpha;
     }
 
     protected float getModelScale() {

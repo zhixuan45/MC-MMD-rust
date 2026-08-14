@@ -78,6 +78,25 @@ final class PlayerModelRenderCoordinator {
                 && TaczGunDetector.isGun(player.getMainHandItem())
                 && model instanceof BaseModelInstance;
 
+        // 防走光与游泳状态判定（针对本地玩家）
+        AntiPeekEvaluator.Result antiPeek = AntiPeekEvaluator.evaluate(
+                player,
+                selection.isLocalPlayer(),
+                firstPersonView,
+                inventoryRender,
+                shadowPass);
+
+        if (antiPeek.fullyHidden()) {
+            if (needsPostRenderSync) {
+                FirstPersonManager.postRender(modelHandle, player, tickDelta);
+            }
+            return PlayerRenderAction.CANCEL;
+        }
+
+        if (model instanceof BaseModelInstance baseModel) {
+            baseModel.setGlobalAlpha(antiPeek.alpha());
+        }
+
         matrixStack.pushPose();
         try {
             if (inventoryRender) {

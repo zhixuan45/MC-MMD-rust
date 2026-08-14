@@ -1,9 +1,8 @@
 package com.shiroha.mmdskin.config;
 
 /**
- * 配置提供者基类（DRY 原则）
+ * MMD 皮肤配置抽象基类。
  */
-
 public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProvider {
     protected ConfigData data;
 
@@ -14,6 +13,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isOpenGLLightingEnabled() { return data.openGLEnableLighting; }
     @Override public int getModelPoolMaxCount() { return data.modelPoolMaxCount; }
     @Override public boolean isMMDShaderEnabled() { return data.mmdShaderEnabled; }
+
     @Override public boolean isGpuSkinningEnabled() { return data.gpuSkinningEnabled; }
     @Override public boolean isGpuMorphEnabled() { return data.gpuMorphEnabled; }
     @Override public int getMaxBones() { return data.maxBones; }
@@ -27,8 +27,6 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
 
     @Override public boolean isToonRenderingEnabled() { return data.toonRenderingEnabled; }
     @Override public int getToonLevels() { return data.toonLevels; }
-    @Override public boolean isToonOutlineEnabled() { return data.toonOutlineEnabled; }
-    @Override public float getToonOutlineWidth() { return data.toonOutlineWidth; }
     @Override public float getToonRimPower() { return data.toonRimPower; }
     @Override public float getToonRimIntensity() { return data.toonRimIntensity; }
     @Override public float getToonShadowR() { return data.toonShadowR; }
@@ -36,6 +34,8 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonShadowB() { return data.toonShadowB; }
     @Override public float getToonSpecularPower() { return data.toonSpecularPower; }
     @Override public float getToonSpecularIntensity() { return data.toonSpecularIntensity; }
+    @Override public boolean isToonOutlineEnabled() { return data.toonOutlineEnabled; }
+    @Override public float getToonOutlineWidth() { return data.toonOutlineWidth; }
     @Override public float getToonOutlineR() { return data.toonOutlineR; }
     @Override public float getToonOutlineG() { return data.toonOutlineG; }
     @Override public float getToonOutlineB() { return data.toonOutlineB; }
@@ -59,6 +59,9 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isFirstPersonModelEnabled() { return data.firstPersonModelEnabled; }
     @Override public float getFirstPersonCameraForwardOffset() { return data.firstPersonCameraForwardOffset; }
     @Override public float getFirstPersonCameraVerticalOffset() { return data.firstPersonCameraVerticalOffset; }
+    @Override public boolean isAntiPeekModeEnabled() { return data.antiPeekModeEnabled; }
+    @Override public float getAntiPeekThresholdAngle() { return data.antiPeekThresholdAngle; }
+    @Override public float getAntiPeekHideAngle() { return data.antiPeekHideAngle; }
     @Override public boolean isDebugHudEnabled() { return data.debugHudEnabled; }
     @Override public int getTextureCacheBudgetMB() { return data.textureCacheBudgetMB; }
     @Override public String getMobModelReplacement(String entityTypeId) {

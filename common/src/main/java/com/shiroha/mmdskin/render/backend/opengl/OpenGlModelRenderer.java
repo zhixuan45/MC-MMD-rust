@@ -181,7 +181,8 @@ final class OpenGlModelRenderer {
                                        LightingHelper.LightData light, PoseStack deliverStack) {
         boolean irisActive = IrisCompat.isIrisShaderActive();
         float colorFactor = irisActive ? 1.0f : light.intensity();
-        RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, 1.0f);
+        float alphaFactor = target.getGlobalAlpha();
+        RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, alphaFactor);
 
         if (!bindActiveShader(target, deliverStack)) {
             RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);

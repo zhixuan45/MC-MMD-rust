@@ -6,7 +6,6 @@ import org.apache.logging.log4j.Logger;
 /**
  * 统一配置管理器
  */
-
 public class ConfigManager {
     private static final Logger logger = LogManager.getLogger();
     private static volatile IConfigProvider provider;
@@ -191,6 +190,18 @@ public class ConfigManager {
 
     public static float getFirstPersonCameraVerticalOffset() {
         return provider != null ? provider.getFirstPersonCameraVerticalOffset() : 0.0f;
+    }
+
+    public static boolean isAntiPeekModeEnabled() {
+        return provider != null ? provider.isAntiPeekModeEnabled() : false;
+    }
+
+    public static float getAntiPeekThresholdAngle() {
+        return provider != null ? provider.getAntiPeekThresholdAngle() : 25.0f;
+    }
+
+    public static float getAntiPeekHideAngle() {
+        return provider != null ? provider.getAntiPeekHideAngle() : 10.0f;
     }
 
     public static int getTextureCacheBudgetMB() {

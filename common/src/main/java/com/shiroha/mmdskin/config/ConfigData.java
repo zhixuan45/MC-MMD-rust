@@ -16,7 +16,6 @@ import java.util.Map;
 /**
  * 统一配置数据类
  */
-
 public class ConfigData {
     private static final Logger logger = LogManager.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -74,6 +73,13 @@ public class ConfigData {
     public float firstPersonCameraForwardOffset = 0.0f;
     public float firstPersonCameraVerticalOffset = 0.0f;
 
+    /** 直播防走光模式：在第三人称低机位仰角可能走光时，虚化并隐藏角色 */
+    public boolean antiPeekModeEnabled = false;
+    /** 防走光起始虚化角度阈值（度）：当相机视线与竖直向上夹角小于等于该值时开始虚化 */
+    public float antiPeekThresholdAngle = 25.0f;
+    /** 防走光完全隐藏角度阈值（度）：当夹角小于等于该值时彻底隐藏 */
+    public float antiPeekHideAngle = 10.0f;
+
     public int textureCacheBudgetMB = 256;
 
     public boolean debugHudEnabled = false;
@@ -108,7 +114,6 @@ public class ConfigData {
 
     public void save(Path configPath) {
         try {
-
             if (!Files.exists(configPath)) {
                 Files.createDirectories(configPath);
             }
@@ -150,6 +155,8 @@ public class ConfigData {
         toonOutlineB = clamp(toonOutlineB, 0.0f, 1.0f);
         maxPhysicsModelsPerFrame = Math.max(1, maxPhysicsModelsPerFrame);
         physicsLodMaxDistance = Math.max(0.0f, physicsLodMaxDistance);
+        antiPeekThresholdAngle = clamp(antiPeekThresholdAngle, 5.0f, 60.0f);
+        antiPeekHideAngle = clamp(antiPeekHideAngle, 0.0f, antiPeekThresholdAngle);
     }
 
     private static float clamp(float value, float min, float max) {

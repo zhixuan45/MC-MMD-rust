@@ -17,4 +17,8 @@ public final class RuntimeConfigPortHolder {
         }
         port = newPort;
     }
+
+    public static void reset() {
+        port = RuntimeConfigPort.defaults();
+    }
 }

@@ -86,6 +86,37 @@ public class ModConfigScreen {
             .setSaveConsumer(value -> data.firstPersonCameraVerticalOffset = value.intValue() / 1000.0F)
             .build());
 
+        renderCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.anti_peek_mode"),
+                data.antiPeekModeEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.anti_peek_mode.tooltip"))
+            .setSaveConsumer(value -> data.antiPeekModeEnabled = value)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.anti_peek_threshold_angle"),
+                Math.round(data.antiPeekThresholdAngle),
+                5, 60)
+            .setDefaultValue(25)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.anti_peek_threshold_angle.tooltip"))
+            .setTextGetter(value -> Component.literal(value + "°"))
+            .setSaveConsumer(value -> data.antiPeekThresholdAngle = value.floatValue())
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.anti_peek_hide_angle"),
+                Math.round(data.antiPeekHideAngle),
+                0, 25)
+            .setDefaultValue(10)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.anti_peek_hide_angle.tooltip"))
+            .setTextGetter(value -> Component.literal(value + "°"))
+            .setSaveConsumer(value -> data.antiPeekHideAngle = value.floatValue())
+            .build());
+
         ConfigCategory performanceCategory = builder.getOrCreateCategory(
             Component.translatable("gui.mmdskin.mod_settings.category.performance"));
 

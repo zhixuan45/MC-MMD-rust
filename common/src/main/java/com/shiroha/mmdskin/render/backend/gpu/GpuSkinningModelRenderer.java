@@ -270,7 +270,8 @@ final class GpuSkinningModelRenderer {
 
         boolean irisActive = IrisCompat.isIrisShaderActive();
         float colorFactor = irisActive ? 1.0f : lightIntensity;
-        RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, 1.0f);
+        float alphaFactor = target.getGlobalAlpha();
+        RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, alphaFactor);
 
         target.setUniforms(shader, target.currentDeliverStack);
         shader.apply();

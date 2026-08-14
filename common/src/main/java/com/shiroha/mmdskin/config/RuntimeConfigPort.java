@@ -34,6 +34,21 @@ public interface RuntimeConfigPort {
         }
 
         @Override
+        public boolean isAntiPeekModeEnabled() {
+            return false;
+        }
+
+        @Override
+        public float getAntiPeekThresholdAngle() {
+            return 25.0f;
+        }
+
+        @Override
+        public float getAntiPeekHideAngle() {
+            return 10.0f;
+        }
+
+        @Override
         public boolean isVrEnabled() {
             return false;
         }
@@ -81,6 +96,21 @@ public interface RuntimeConfigPort {
             }
 
             @Override
+            public boolean isAntiPeekModeEnabled() {
+                return ConfigManager.isAntiPeekModeEnabled();
+            }
+
+            @Override
+            public float getAntiPeekThresholdAngle() {
+                return ConfigManager.getAntiPeekThresholdAngle();
+            }
+
+            @Override
+            public float getAntiPeekHideAngle() {
+                return ConfigManager.getAntiPeekHideAngle();
+            }
+
+            @Override
             public boolean isVrEnabled() {
                 return ConfigManager.isVREnabled();
             }
@@ -103,6 +133,12 @@ public interface RuntimeConfigPort {
     float getFirstPersonCameraForwardOffset();
 
     float getFirstPersonCameraVerticalOffset();
+
+    boolean isAntiPeekModeEnabled();
+
+    float getAntiPeekThresholdAngle();
+
+    float getAntiPeekHideAngle();
 
     boolean isVrEnabled();
 

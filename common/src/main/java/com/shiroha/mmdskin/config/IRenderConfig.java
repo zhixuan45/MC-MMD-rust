@@ -38,4 +38,10 @@ public interface IRenderConfig {
     default boolean isDebugHudEnabled() { return false; }
 
     default int getTextureCacheBudgetMB() { return 256; }
+
+    default boolean isAntiPeekModeEnabled() { return false; }
+
+    default float getAntiPeekThresholdAngle() { return 25.0f; }
+
+    default float getAntiPeekHideAngle() { return 10.0f; }
 }
