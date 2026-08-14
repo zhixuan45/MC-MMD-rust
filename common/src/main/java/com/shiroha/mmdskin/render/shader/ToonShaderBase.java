@@ -35,6 +35,7 @@ public abstract class ToonShaderBase {
     protected int specularIntensityLocation = -1;
     protected int lightDirLocation = -1;
     protected int alphaCutoffLocation = -1;
+    protected int globalAlphaLocation = -1;
 
     protected int outlineProjMatLocation = -1;
     protected int outlineModelViewMatLocation = -1;
@@ -42,6 +43,7 @@ public abstract class ToonShaderBase {
     protected int outlineColorLocation = -1;
     protected int outlineSampler0Location = -1;
     protected int outlineAlphaCutoffLocation = -1;
+    protected int outlineGlobalAlphaLocation = -1;
 
     protected int positionLocation = -1;
     protected int normalLocation = -1;
@@ -104,6 +106,7 @@ public abstract class ToonShaderBase {
         specularIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "SpecularIntensity");
         lightDirLocation = GL46C.glGetUniformLocation(mainProgram, "LightDir");
         alphaCutoffLocation = GL46C.glGetUniformLocation(mainProgram, "AlphaCutoff");
+        globalAlphaLocation = GL46C.glGetUniformLocation(mainProgram, "GlobalAlpha");
 
         outlineProjMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ProjMat");
         outlineModelViewMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ModelViewMat");
@@ -111,6 +114,7 @@ public abstract class ToonShaderBase {
         outlineColorLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineColor");
         outlineSampler0Location = GL46C.glGetUniformLocation(outlineProgram, "Sampler0");
         outlineAlphaCutoffLocation = GL46C.glGetUniformLocation(outlineProgram, "AlphaCutoff");
+        outlineGlobalAlphaLocation = GL46C.glGetUniformLocation(outlineProgram, "GlobalAlpha");
     }
 
     private void initCommonAttributes() {
@@ -243,6 +247,18 @@ public abstract class ToonShaderBase {
     public void setOutlineAlphaCutoff(float cutoff) {
         if (outlineAlphaCutoffLocation >= 0) {
             GL46C.glUniform1f(outlineAlphaCutoffLocation, cutoff);
+        }
+    }
+
+    public void setGlobalAlpha(float alpha) {
+        if (globalAlphaLocation >= 0) {
+            GL46C.glUniform1f(globalAlphaLocation, alpha);
+        }
+    }
+
+    public void setOutlineGlobalAlpha(float alpha) {
+        if (outlineGlobalAlphaLocation >= 0) {
+            GL46C.glUniform1f(outlineGlobalAlphaLocation, alpha);
         }
     }
 

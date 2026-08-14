@@ -582,7 +582,7 @@ final class OpenGlModelRenderer {
 
         OpenGlModelInstance.toonShaderCpu.setOutlineProjectionMatrix(target.projMatBuff);
         OpenGlModelInstance.toonShaderCpu.setOutlineModelViewMatrix(target.modelViewMatBuff);
-        ToonRenderHelper.setupOutlineUniforms(OpenGlModelInstance.toonShaderCpu);
+        ToonRenderHelper.setupOutlineUniforms(OpenGlModelInstance.toonShaderCpu, target.getGlobalAlpha());
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
@@ -629,7 +629,7 @@ final class OpenGlModelRenderer {
 
         OpenGlModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
         OpenGlModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
-        ToonRenderHelper.setupToonUniforms(OpenGlModelInstance.toonShaderCpu, lightIntensity, target.light0Direction);
+        ToonRenderHelper.setupToonUniforms(OpenGlModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
 
         drawSubMeshes(target, minecraft);
 

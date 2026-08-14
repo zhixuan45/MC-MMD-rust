@@ -18,6 +18,10 @@ public class ToonRenderHelper {
     private static final float ALPHA_CUTOFF = 0.1f;
 
     public static void setupToonUniforms(ToonShaderBase shader, float lightIntensity, Vector3f lightDirection) {
+        setupToonUniforms(shader, lightIntensity, lightDirection, 1.0f);
+    }
+
+    public static void setupToonUniforms(ToonShaderBase shader, float lightIntensity, Vector3f lightDirection, float globalAlpha) {
         float lightX = 0.35f;
         float lightY = 0.85f;
         float lightZ = -0.4f;
@@ -45,9 +49,14 @@ public class ToonRenderHelper {
         shader.setSpecular(toonConfig.getSpecularPower(), toonConfig.getSpecularIntensity());
         shader.setLightDirection(lightX, lightY, lightZ);
         shader.setAlphaCutoff(ALPHA_CUTOFF);
+        shader.setGlobalAlpha(globalAlpha);
     }
 
     public static void setupOutlineUniforms(ToonShaderBase shader) {
+        setupOutlineUniforms(shader, 1.0f);
+    }
+
+    public static void setupOutlineUniforms(ToonShaderBase shader, float globalAlpha) {
         shader.setOutlineSampler0(0);
         shader.setOutlineAlphaCutoff(ALPHA_CUTOFF);
         shader.setOutlineWidth(toonConfig.getOutlineWidth());
@@ -56,6 +65,7 @@ public class ToonRenderHelper {
             toonConfig.getOutlineColorG(),
             toonConfig.getOutlineColorB()
         );
+        shader.setOutlineGlobalAlpha(globalAlpha);
     }
 
     public static void prepareRenderState(int vao) {

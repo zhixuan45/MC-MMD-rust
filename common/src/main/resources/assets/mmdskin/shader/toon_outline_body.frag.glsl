@@ -7,6 +7,7 @@ in vec3 viewPos;
 uniform sampler2D Sampler0;
 uniform vec3 OutlineColor;
 uniform float AlphaCutoff;
+uniform float GlobalAlpha;
 
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragData1;
@@ -33,7 +34,12 @@ void main() {
     float texLum = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
     vec3 finalOutline = OutlineColor * mix(1.0, texLum, 0.4);
 
-    fragColor = vec4(finalOutline, texColor.a * edge);
+    float finalAlpha = texColor.a * edge * clamp(GlobalAlpha, 0.0, 1.0);
+    if (finalAlpha < 0.001) {
+        discard;
+    }
+
+    fragColor = vec4(finalOutline, finalAlpha);
     fragData1 = vec4(normal * 0.5 + 0.5, 1.0);
     fragData2 = vec4(0.0, 0.0, 0.0, 1.0);
     fragData3 = vec4(0.0, 0.0, 0.0, 1.0);

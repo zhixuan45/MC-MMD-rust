@@ -48,6 +48,12 @@ public abstract class ItemInHandRendererMixin {
             return;
         }
 
+        // 入水/游泳状态判定：在使用 MMD 皮肤时，第一人称入水游泳彻底隐藏手部渲染，防止原版手臂穿插
+        if ((player.isSwimming() || player.isVisuallySwimming()) && isMmdActive && !isVanilaMmdModel) {
+            ci.cancel();
+            return;
+        }
+
         // TaCZ 必须继续执行原生第一人称枪模流程，才能使用每把枪和瞄具的数据驱动 ADS 节点。
         boolean taczMainHand = TaczGunDetector.isGun(player.getMainHandItem());
         if (FirstPersonManager.shouldRenderFirstPerson() && isMmdActive && !isVanilaMmdModel
@@ -84,10 +90,17 @@ public abstract class ItemInHandRendererMixin {
             return;
         }
         LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
-        if (player != null && FirstPersonManager.shouldRenderFirstPerson()
-                && TaczGunDetector.isGun(player.getMainHandItem())) {
-            // 保留 TaCZ 枪模，但隐藏原版手臂，手臂由 MMD 第一人称模型负责。
-            ci.cancel();
+        if (player != null) {
+            String selectedModel = PlayerModelSyncService.getPlayerModel(player.getUUID(), player.getName().getString(), true);
+            boolean isMmdActive = selectedModel != null && !selectedModel.isEmpty() && !selectedModel.equals("默认 (原版渲染)");
+            boolean isVanilaMmdModel = isMmdActive && (selectedModel.equals("VanilaModel") || selectedModel.equalsIgnoreCase("vanila"));
+            if (isMmdActive && !isVanilaMmdModel) {
+                if (player.isSwimming() || player.isVisuallySwimming()
+                        || (FirstPersonManager.shouldRenderFirstPerson() && TaczGunDetector.isGun(player.getMainHandItem()))) {
+                    // 游泳入水时或 TaCZ 枪模下隐藏原版手臂
+                    ci.cancel();
+                }
+            }
         }
     }
 }

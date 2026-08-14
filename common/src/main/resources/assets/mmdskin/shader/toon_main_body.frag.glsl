@@ -14,6 +14,7 @@ uniform vec3 ShadowColor;
 uniform float SpecularPower;
 uniform float SpecularIntensity;
 uniform float AlphaCutoff;
+uniform float GlobalAlpha;
 
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragData1;
@@ -76,9 +77,12 @@ void main() {
     float rim = pow(fresnel, max(RimPower, 1.0));
     float rimEdge = smoothstep(0.7, 0.9, rim);
     float rimMask = 1.0 - toonRamp;
-    finalColor += albedo * rimEdge * RimIntensity * rimMask * 0.35;
+    float finalAlpha = texColor.a * clamp(GlobalAlpha, 0.0, 1.0);
+    if (finalAlpha < 0.001) {
+        discard;
+    }
 
-    fragColor = vec4(finalColor, texColor.a);
+    fragColor = vec4(finalColor, finalAlpha);
     fragData1 = vec4(normal * 0.5 + 0.5, 1.0);
     fragData2 = vec4(0.0, 0.0, 0.0, 1.0);
     fragData3 = vec4(0.0, 0.0, 0.0, 1.0);

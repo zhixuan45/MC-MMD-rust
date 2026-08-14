@@ -396,7 +396,7 @@ final class GpuSkinningModelRenderer {
 
         GpuSkinningModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
         GpuSkinningModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
-        ToonRenderHelper.setupToonUniforms(GpuSkinningModelInstance.toonShaderCpu, lightIntensity, target.light0Direction);
+        ToonRenderHelper.setupToonUniforms(GpuSkinningModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
 
         drawAllSubMeshes(target, minecraft);
 
@@ -437,7 +437,7 @@ final class GpuSkinningModelRenderer {
 
         GpuSkinningModelInstance.toonShaderCpu.setOutlineProjectionMatrix(target.projMatBuff);
         GpuSkinningModelInstance.toonShaderCpu.setOutlineModelViewMatrix(target.modelViewMatBuff);
-        ToonRenderHelper.setupOutlineUniforms(GpuSkinningModelInstance.toonShaderCpu);
+        ToonRenderHelper.setupOutlineUniforms(GpuSkinningModelInstance.toonShaderCpu, target.getGlobalAlpha());
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
