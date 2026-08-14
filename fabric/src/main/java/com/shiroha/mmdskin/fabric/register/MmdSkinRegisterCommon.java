@@ -22,8 +22,8 @@ import java.util.UUID;
 public class MmdSkinRegisterCommon {
     private static final Logger logger = LogManager.getLogger();
 
-    public static ResourceLocation SKIN_C2S = new ResourceLocation("3d-skin", "network_c2s");
-    public static ResourceLocation SKIN_S2C = new ResourceLocation("3d-skin", "network_s2c");
+    public static ResourceLocation SKIN_C2S = ResourceLocation.fromNamespaceAndPath("3d-skin", "network_c2s");
+    public static ResourceLocation SKIN_S2C = ResourceLocation.fromNamespaceAndPath("3d-skin", "network_s2c");
 
     public static void Register() {
         ServerPlayNetworking.registerGlobalReceiver(SKIN_C2S, (server, player, handler, buf, responseSender) -> {

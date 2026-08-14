@@ -1,0 +1,36 @@
+# NeoForge 1.21.1 mods.toml 配置文件
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mixins]]
+config = "mmdskin-neoforge.mixins.json"
+
+[[mods]]
+modId = "mmdskin"
+version = "${mod_version}"
+displayName = "${mod_name}"
+authors = "${mod_authors}"
+description = '''${mod_description}'''
+logoFile = "icon.png"
+
+[[dependencies.mmdskin]]
+modId = "neoforge"
+type = "required"
+versionRange = "${neoforge_version_range}"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.mmdskin]]
+modId = "minecraft"
+type = "required"
+versionRange = "${minecraft_version_range}"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.mmdskin]]
+modId = "cloth_config"
+type = "required"
+versionRange = "*"
+ordering = "NONE"
+side = "CLIENT"

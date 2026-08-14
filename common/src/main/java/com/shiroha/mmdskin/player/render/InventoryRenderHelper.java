@@ -29,7 +29,7 @@ public class InventoryRenderHelper {
         Minecraft mc = Minecraft.getInstance();
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        PoseStack modelViewStack = RenderSystem.getModelViewStack();
+        PoseStack modelViewStack = new PoseStack();
         modelViewStack.pushPose();
 
         int posX, posY;

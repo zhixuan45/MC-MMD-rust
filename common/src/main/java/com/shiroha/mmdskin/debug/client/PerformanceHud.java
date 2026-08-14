@@ -61,7 +61,7 @@ public class PerformanceHud {
         RenderPerformanceProfiler.get().markPresentedFrame();
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.options.hideGui || minecraft.options.renderDebug) {
+        if (minecraft.options.hideGui || (minecraft.gui != null && minecraft.gui.getDebugOverlay().showDebugScreen())) {
             return;
         }
 

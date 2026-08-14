@@ -1,5 +1,5 @@
 architectury {
-    common("fabric", "forge")
+    common("neoforge")
 }
 
 def nativeResourcesDir = layout.buildDirectory.dir("generated/native-resources")
@@ -126,7 +126,7 @@ tasks.register("prepareNativeResources", Copy) {
 }
 
 dependencies {
-    modImplementation("dev.architectury:architectury:9.2.14")
+    modImplementation("dev.architectury:architectury:${project.architectury_version}")
     compileOnly("net.fabricmc:fabric-loader:${project.loader_version}")
 
     compileOnly("javazoom:jlayer:1.0.1") { transitive = false }

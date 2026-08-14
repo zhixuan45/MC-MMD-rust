@@ -1,0 +1,76 @@
+package com.shiroha.mmdskin.neoforge.maid;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.shiroha.mmdskin.compat.maid.render.MaidMMDRenderer;
+import com.shiroha.mmdskin.compat.maid.runtime.MaidMMDModelManager;
+import net.minecraft.world.entity.LivingEntity;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.api.distmarker.OnlyIn;
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.client.event.RenderLivingEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * NeoForge 女仆渲染事件处理器，用于接管 TouhouLittleMaid 女仆的 MMD 渲染。
+ */
+@OnlyIn(Dist.CLIENT)
+public class MaidRenderEventHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(MaidRenderEventHandler.class);
+    private static boolean touhouLittleMaidLoaded = false;
+
+    static {
+        try {
+            Class.forName("com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid");
+            touhouLittleMaidLoaded = true;
+        } catch (ClassNotFoundException e) {
+            touhouLittleMaidLoaded = false;
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public void onRenderLivingPre(RenderLivingEvent.Pre<?, ?> event) {
+        if (!touhouLittleMaidLoaded) {
+            return;
+        }
+
+        LivingEntity entity = event.getEntity();
+        String className = entity.getClass().getName();
+
+        if (!className.contains("EntityMaid") && !className.contains("touhoulittlemaid")) {
+            return;
+        }
+
+        if (!MaidMMDModelManager.hasMMDModel(entity.getUUID())) {
+            return;
+        }
+
+        PoseStack poseStack = event.getPoseStack();
+        float partialTicks = event.getPartialTick();
+        int packedLight = event.getPackedLight();
+
+        poseStack.pushPose();
+        poseStack.translate(0, 0.01, 0);
+
+        boolean rendered = MaidMMDRenderer.render(
+            entity,
+            entity.getUUID(),
+            entity.getYRot(),
+            partialTicks,
+            poseStack,
+            packedLight
+        );
+
+        poseStack.popPose();
+
+        if (rendered) {
+            event.setCanceled(true);
+        }
+    }
+
+    public static boolean isTouhouLittleMaidLoaded() {
+        return touhouLittleMaidLoaded;
+    }
+}

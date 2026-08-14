@@ -19,6 +19,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.lwjgl.system.MemoryUtil;
@@ -43,6 +44,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     protected long lastUpdateTime = -1;
 
     protected final Quaternionf tempQuat = new Quaternionf();
+    private final Matrix4f composedModelViewMatrix = new Matrix4f();
 
     protected ByteBuffer materialMorphResultsByteBuffer;
     protected int materialMorphResultCount = 0;
@@ -116,6 +118,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     public void applyModelRootTransform(PoseStack stack, float entityYaw, float entityPitch,
                                         Vector3f entityTranslation) {
         float degreesToRadians = (float) Math.PI / 180.0f;
+        // MMD 根坐标系与 Minecraft 实体 yaw 的旋转方向相反。
         stack.mulPose(new Quaternionf().rotateY(-entityYaw * degreesToRadians));
         stack.mulPose(new Quaternionf().rotateX(entityPitch * degreesToRadians));
         stack.translate(entityTranslation.x, entityTranslation.y, entityTranslation.z);
@@ -363,14 +366,17 @@ public abstract class BaseModelInstance implements ModelInstance {
         }
     }
 
-    protected static void setupShaderUniforms(ShaderInstance shader, PoseStack deliverStack,
-                                               Vector3f light0Dir, Vector3f light1Dir, int lightMapTex) {
+    /** 1.21.1 将镜头视图与实体局部 PoseStack 分开维护，上传前必须重新组合。 */
+    public final Matrix4f composeModelViewMatrix(PoseStack deliverStack) {
+        return RenderSystem.getModelViewMatrix().mul(deliverStack.last().pose(), composedModelViewMatrix);
+    }
+
+    protected void setupShaderUniforms(ShaderInstance shader, PoseStack deliverStack,
+                                       Vector3f light0Dir, Vector3f light1Dir, int lightMapTex) {
         if (shader.MODEL_VIEW_MATRIX != null)
-            shader.MODEL_VIEW_MATRIX.set(deliverStack.last().pose());
+            shader.MODEL_VIEW_MATRIX.set(composeModelViewMatrix(deliverStack));
         if (shader.PROJECTION_MATRIX != null)
             shader.PROJECTION_MATRIX.set(RenderSystem.getProjectionMatrix());
-        if (shader.INVERSE_VIEW_ROTATION_MATRIX != null)
-            shader.INVERSE_VIEW_ROTATION_MATRIX.set(RenderSystem.getInverseViewRotationMatrix());
         if (shader.COLOR_MODULATOR != null)
             shader.COLOR_MODULATOR.set(RenderSystem.getShaderColor());
         if (shader.LIGHT0_DIRECTION != null)

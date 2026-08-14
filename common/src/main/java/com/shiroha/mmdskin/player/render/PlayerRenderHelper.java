@@ -5,6 +5,7 @@ import com.shiroha.mmdskin.model.runtime.ModelRenderProperties;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
 import com.shiroha.mmdskin.render.scene.MutableRenderPose;
 import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.util.Mth;
 
 /** 文件职责：集中计算玩家模型渲染姿态与模型属性读取。 */
 public final class PlayerRenderHelper {
@@ -15,7 +16,8 @@ public final class PlayerRenderHelper {
         MutableRenderPose params = new MutableRenderPose();
         ModelRenderProperties renderProperties = modelData.renderProperties();
         float vrBodyYaw = FirstPersonManager.vrRuntime().getBodyYawDegrees(player, tickDelta);
-        float fallbackYaw = Float.isFinite(vrBodyYaw) ? vrBodyYaw : player.yBodyRot;
+        // 使用 rotLerp 对身体朝向进行平滑插值，保证与原版平滑插值位置保持同帧同步
+        float fallbackYaw = Float.isFinite(vrBodyYaw) ? vrBodyYaw : Mth.rotLerp(tickDelta, player.yBodyRotO, player.yBodyRot);
         params.bodyYaw = FirstPersonManager.resolveFirstPersonModelYaw(player, tickDelta, fallbackYaw);
         params.bodyPitch = 0.0f;
         params.translation.zero();

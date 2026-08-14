@@ -203,7 +203,7 @@ public final class TaczFirstPersonPostRenderer {
         }
 
         Matrix4f cameraToModel = rootToCamera.invert(new Matrix4f());
-        boolean slimArms = "slim".equals(draw.player.getModelName());
+        boolean slimArms = draw.player.getSkin().model() == net.minecraft.client.resources.PlayerSkin.Model.SLIM;
         float[] matrices = new float[32];
         int mask = 0;
         Optional<TaczFirstPersonFrameSnapshot.HandMatrices> left = snapshot.consume(

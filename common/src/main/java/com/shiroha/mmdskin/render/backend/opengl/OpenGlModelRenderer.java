@@ -44,6 +44,7 @@ final class OpenGlModelRenderer {
 
         target.light0Direction.set(1.0f, 0.75f, 0.0f).normalize();
         target.light1Direction.set(-1.0f, 0.75f, 0.0f).normalize();
+        // 光照方向使用实体世界 yaw，与模型根的逆向坐标变换配对。
         float yawRad = entityYaw * ((float) Math.PI / 180F);
         target.light0Direction.rotate(workingQuat.identity().rotateY(yawRad));
         target.light1Direction.rotate(workingQuat.identity().rotateY(yawRad));
@@ -97,7 +98,8 @@ final class OpenGlModelRenderer {
         }
         // 传入的矩阵与随后 shader 使用的矩阵完全相同，避免重新推导实体/相机坐标。
         target.firstPersonMatrixFloatBuffer.position(0);
-        deliverStack.last().pose().get(target.firstPersonMatrixFloatBuffer);
+        // 裁剪计算必须与最终着色器使用同一套相机视图矩阵。
+        target.composeModelViewMatrix(deliverStack).get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonMatrixFloatBuffer.position(16);
         RenderSystem.getProjectionMatrix().get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonIndexBuffer.clear();
@@ -294,15 +296,21 @@ final class OpenGlModelRenderer {
     private static void uploadMatrixUniforms(OpenGlModelInstance target, PoseStack deliverStack) {
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
-        deliverStack.last().pose().get(target.modelViewMatBuff);
+        target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
         RenderSystem.getProjectionMatrix().get(target.projMatBuff);
 
-        if (ClientRenderRuntime.get().renderBackendRegistry().shaderPipelineMode() != 1) {
-            return;
+        if (target.modelViewLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.modelViewLocation, false, target.modelViewMatBuff);
         }
-
-        RenderSystem.glUniformMatrix4(target.modelViewLocation, false, target.modelViewMatBuff);
-        RenderSystem.glUniformMatrix4(target.projMatLocation, false, target.projMatBuff);
+        if (target.projMatLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.projMatLocation, false, target.projMatBuff);
+        }
+        if (target.K_modelViewLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.K_modelViewLocation, false, target.modelViewMatBuff);
+        }
+        if (target.K_projMatLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.K_projMatLocation, false, target.projMatBuff);
+        }
 
         if (target.light0Location != -1) {
             target.light0Buff.clear();
@@ -540,7 +548,7 @@ final class OpenGlModelRenderer {
 
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
-        deliverStack.last().pose().get(target.modelViewMatBuff);
+        target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
         RenderSystem.getProjectionMatrix().get(target.projMatBuff);
         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
 

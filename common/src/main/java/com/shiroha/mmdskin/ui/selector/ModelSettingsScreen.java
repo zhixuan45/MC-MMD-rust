@@ -168,8 +168,8 @@ public class ModelSettingsScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        return layout.panel.contains(mouseX, mouseY) || super.mouseScrolled(mouseX, mouseY, delta);
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        return layout.panel.contains(mouseX, mouseY) || super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override

@@ -1,100 +1,173 @@
-// 根项目配置 - 多模块项目
 plugins {
-	id 'architectury-plugin' version '3.4.162'
-	id 'dev.architectury.loom' version '1.9.436' apply false
+	id 'java'
+	id 'net.neoforged.moddev' version '2.0.143'
 }
 
-architectury {
-	minecraft = '1.20.1'
+repositories {
+	mavenCentral()
+	maven {
+		name = 'Shedaniel'
+		url = 'https://maven.shedaniel.me/'
+	}
+	maven {
+		name = 'NeoForged'
+		url = 'https://maven.neoforged.net/releases'
+	}
+	maven {
+		name = 'CurseMaven'
+		url = 'https://cursemaven.com'
+	}
+	maven {
+		name = 'Modrinth'
+		url = 'https://api.modrinth.com/maven'
+	}
 }
 
-allprojects {
-	apply plugin: 'java'
-	apply plugin: 'architectury-plugin'
-	
-	group = maven_group
-	version = '1.0.5-1.20.1'
-	
-			repositories {
-			// Loom 会把本地生产环境 Mod 重映射为开发环境坐标，必须优先从本地缓存解析。
-			maven {
-				url = rootProject.file('.gradle/loom-cache/remapped_mods')
-				content {
-					includeGroupByRegex 'loom_mappings_.*'
-				}
-			}
-			maven { url = 'https://maven.architectury.dev/' }
-			maven { url = 'https://maven.fabricmc.net/' }
-			maven { url = 'https://maven.minecraftforge.net/' }
-			maven { url = 'https://maven.shedaniel.me/' }
-			maven { url = 'https://maven.terraformersmc.com/' }
-			maven { url = 'https://redirector.kotlinlang.org/maven/compose-dev' }
-			// Cardinal Components API (Touhou Little Maid Fabric 移植版依赖)
-			maven { url = 'https://maven.ladysnake.org/releases' }
-        // curseforge与modrinth平台仓库
-        exclusiveContent {
-            forRepository {
-                maven {
-                    name = 'CurseMaven'
-                    url = 'https://cursemaven.com'
-                }
-            }
-            filter {
-                includeGroup 'curse.maven'
-            }
-        }
-        exclusiveContent {
-            forRepository {
-                maven {
-                    name = 'Modrinth'
-                    url = 'https://api.modrinth.com/maven'
-                }
-            }
-            filter {
-                includeGroup 'maven.modrinth'
-            }
-        }
-		mavenCentral()
+group = maven_group
+version = '1.0.5-1.21.1'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
 	}
-	
-	tasks.withType(JavaCompile).configureEach {
-		options.encoding = 'UTF-8'
-		options.release = 17
+	withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+	options.release = 21
+}
+
+// 原生 JNI 动态链接库打包逻辑
+def nativeResourcesDir = layout.buildDirectory.dir("generated/native-resources")
+def currentOs = System.getProperty("os.name").toLowerCase()
+def currentArch = System.getProperty("os.arch").toLowerCase()
+def isWindows = currentOs.contains("windows")
+def isMacOS = currentOs.contains("mac")
+def isLinux = currentOs.contains("linux")
+def isArm64 = currentArch.contains("aarch64") || currentArch.contains("arm64")
+def isLoongArch64 = currentArch.contains("loongarch64") || currentArch.contains("loong64")
+def isRiscv64 = currentArch.contains("riscv64")
+
+def nativeOutputFile
+def nativeOutputDir
+
+if (isWindows) {
+	nativeOutputDir = isArm64 ? "windows-arm64" : "windows-x64"
+	nativeOutputFile = file("rust_engine/target/release/mmd_engine.dll")
+} else if (isMacOS) {
+	nativeOutputDir = isArm64 ? "macos-arm64" : "macos-x64"
+	nativeOutputFile = file("rust_engine/target/release/libmmd_engine.dylib")
+} else if (isLinux) {
+	if (isArm64) {
+		nativeOutputDir = "linux-arm64"
+	} else if (isLoongArch64) {
+		nativeOutputDir = "linux-loongarch64"
+	} else if (isRiscv64) {
+		nativeOutputDir = "linux-riscv64"
+	} else {
+		nativeOutputDir = "linux-x64"
 	}
-	
-	java {
-		toolchain {
-			languageVersion = JavaLanguageVersion.of(17)
+	nativeOutputFile = file("rust_engine/target/release/libmmd_engine.so")
+} else {
+	nativeOutputDir = null
+	nativeOutputFile = null
+}
+
+def prepareNativeResources = tasks.register("prepareNativeResources", Copy) {
+	group = "build"
+	description = "Copy the current platform native library into generated resources."
+	if (nativeOutputFile != null && nativeOutputFile.exists() && nativeOutputDir != null) {
+		from(nativeOutputFile)
+		into(nativeResourcesDir.map { it.dir("natives/${nativeOutputDir}") })
+	} else {
+		enabled = false
+	}
+}
+
+sourceSets {
+	main {
+		java {
+			srcDirs = ['common/src/main/java', 'neoforge/src/main/java']
 		}
-		withSourcesJar()
-	}
-	
-	// 关键：Gradle toolchain 默认只影响编译任务；runClient/Transformer 属于 JavaExec，
-	// 若系统默认 JDK 为 21 可能触发 Architectury Transformer 的已知崩溃。
-	// 这里强制所有 JavaExec 使用 Java 17 launcher，保证开发运行环境一致。
-	tasks.withType(JavaExec).configureEach {
-		javaLauncher = javaToolchains.launcherFor {
-			languageVersion = JavaLanguageVersion.of(17)
+		resources {
+			srcDirs = [
+				'common/src/main/resources',
+				'neoforge/src/main/resources',
+				nativeResourcesDir
+			]
 		}
-		// 设置运行游戏时的玩家名称
-		systemProperty 'minecraft.username', rootProject.properties.getOrDefault('minecraft_username', 'Player')
 	}
 }
 
-subprojects {
-	apply plugin: 'dev.architectury.loom'
-	
-	base {
-		archivesName = "mmdskin-${project.name}"
+neoForge {
+	version = project.neoforge_version
+
+	runs {
+		client {
+			client()
+			systemProperty 'neoforge.enabledGameTestNamespaces', 'mmdskin'
+			programArguments.addAll '--username', 'Developer'
+		}
+		server {
+			server()
+			programArgument '--nogui'
+			systemProperty 'neoforge.enabledGameTestNamespaces', 'mmdskin'
+		}
 	}
-	
-	loom {
-		silentMojangMappingsLicense()
+
+	mods {
+		mmdskin {
+			sourceSet sourceSets.main
+		}
 	}
-	
-	dependencies {
-		minecraft "com.mojang:minecraft:1.20.1"
-		mappings loom.officialMojangMappings()
+}
+
+dependencies {
+	// Cloth Config API - 配置界面
+	implementation "me.shedaniel.cloth:cloth-config-neoforge:${project.cloth_config_version}"
+
+	// MP3 播放支持
+	implementation "javazoom:jlayer:1.0.1"
+}
+
+tasks.named('processResources', ProcessResources).configure {
+	dependsOn prepareNativeResources
+
+	def replaceProperties = [
+		minecraft_version: '1.21.1',
+		minecraft_version_range: '[1.21.1,1.22)',
+		neoforge_version: project.neoforge_version,
+		neoforge_version_range: '[21.1.240,)',
+		loader_version_range: '[4,)',
+		mod_id: 'mmdskin',
+		mod_name: '3D Skin Layers',
+		mod_version: project.version,
+		mod_authors: 'shiroha233, kjkjkAIStudio(原作者), asuka-mio, Gengorou-C',
+		mod_description: 'A mod that replaces Minecraft entity rendering with MMD models'
+	]
+
+	inputs.properties replaceProperties
+
+	filesMatching(['META-INF/neoforge.mods.toml']) {
+		expand replaceProperties
 	}
-	
+}
+
+tasks.named('sourcesJar', Jar).configure {
+	dependsOn prepareNativeResources
+}
+
+jar {
+	manifest {
+		attributes([
+			'Specification-Title'     : 'MMD Skin NeoForge',
+			'Specification-Vendor'    : 'shiroha233',
+			'Specification-Version'   : '1',
+			'Implementation-Title'    : project.name,
+			'Implementation-Version'  : project.version,
+			'Implementation-Vendor'   : 'shiroha233',
+			'MixinConfigs'            : 'mmdskin-neoforge.mixins.json'
+		])
+	}
 }

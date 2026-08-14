@@ -97,33 +97,15 @@ dependencies {
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	
 	// Architectury API - 内嵌到模组中
-	modImplementation("dev.architectury:architectury-fabric:9.2.14") {
+	modImplementation("dev.architectury:architectury-fabric:${project.architectury_version}") {
 		exclude group: "net.fabricmc.fabric-api"
 	}
-	include("dev.architectury:architectury-fabric:9.2.14")
+	include("dev.architectury:architectury-fabric:${project.architectury_version}")
 	
 	// Cloth Config API - 配置界面
-	modApi("me.shedaniel.cloth:cloth-config-fabric:11.1.136") {
+	modApi("me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}") {
 		exclude(group: "net.fabricmc.fabric-api")
 	}
-	
-	// Cardinal Components API - Touhou Little Maid Fabric 移植版的必需传递依赖
-	// Modrinth Maven 不提供传递依赖，需要手动添加
-	modCompileOnly "dev.onyxstudios.cardinal-components-api:cardinal-components-base:${rootProject.cardinal_components_version}"
-	modCompileOnly "dev.onyxstudios.cardinal-components-api:cardinal-components-entity:${rootProject.cardinal_components_version}"
-	modLocalRuntime "dev.onyxstudios.cardinal-components-api:cardinal-components-base:${rootProject.cardinal_components_version}"
-	modLocalRuntime "dev.onyxstudios.cardinal-components-api:cardinal-components-entity:${rootProject.cardinal_components_version}"
-	
-	// Reach Entity Attributes - Touhou Little Maid 的传递依赖
-	modLocalRuntime "com.jamieswhiteshirt:reach-entity-attributes:2.4.0"
-	
-	// Nashorn 脚本引擎 - Java 17 不再内置，Touhou Little Maid JS 动画需要
-	runtimeOnly "org.openjdk.nashorn:nashorn-core:15.4"
-	
-	// TouhouLittleMaid Orihime (Fabric 移植版) - 可选依赖，用于联动
-	modCompileOnly "maven.modrinth:touhoulittlemaid-orihime:${rootProject.touhou_little_maid_fabric_version}"
-	modLocalRuntime "maven.modrinth:touhoulittlemaid-orihime:${rootProject.touhou_little_maid_fabric_version}"
-	modLocalRuntime "maven.modrinth:forge-config-api-port:${rootProject.forge_config_api_port_version}"
 }
 
 processResources {

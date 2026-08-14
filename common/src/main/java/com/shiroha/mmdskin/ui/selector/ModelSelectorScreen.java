@@ -111,9 +111,10 @@ public class ModelSelectorScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        double delta = scrollY != 0 ? scrollY : scrollX;
         if (!layout.listBox.contains(mouseX, mouseY)) {
-            return super.mouseScrolled(mouseX, mouseY, delta);
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         }
         float step = 12.0f;
         targetScroll -= (float) delta * step;

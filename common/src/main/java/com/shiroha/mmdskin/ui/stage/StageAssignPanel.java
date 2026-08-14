@@ -142,10 +142,11 @@ final class StageAssignPanel {
         return false;
     }
 
-    boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (!contains(mouseX, mouseY)) {
             return false;
         }
+        double delta = scrollY != 0 ? scrollY : scrollX;
         float step = (float) ((LIST_ROW_HEIGHT + ROW_GAP) * 2.5);
         if (mouseY >= listTop && mouseY <= listBottom) {
             memberScroll = Mth.clamp(memberScroll - (float) delta * step, 0.0f, maxMemberScroll());

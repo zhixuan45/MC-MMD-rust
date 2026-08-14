@@ -109,7 +109,6 @@ final class PlayerModelRenderCoordinator {
                     needsPostRenderSync = false;
                 } else {
                     TaczFirstPersonPostRenderer.clearDeferredDraw();
-                    matrixStack.scale(size[0], size[0], size[0]);
                     RenderSystem.setShader(GameRenderer::getRendertypeEntityTranslucentShader);
                     RenderScene context = firstPersonView ? RenderScene.FIRST_PERSON : RenderScene.WORLD;
                     model.render(player, params.bodyYaw, params.bodyPitch, params.translation, tickDelta, matrixStack, packedLight, context);

@@ -52,6 +52,8 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
 
     int skinnedPositionsBuffer;
     int skinnedNormalsBuffer;
+    int modelViewLocation = -1;
+    int projMatLocation = -1;
 
     int boneMatrixSSBO;
 
@@ -576,6 +578,8 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
         uv1Location = GlStateManager._glGetAttribLocation(program, "UV1");
         uv2Location = GlStateManager._glGetAttribLocation(program, "UV2");
         colorLocation = GlStateManager._glGetAttribLocation(program, "Color");
+        modelViewLocation = GlStateManager._glGetUniformLocation(program, "ModelViewMat");
+        projMatLocation = GlStateManager._glGetUniformLocation(program, "ProjMat");
 
         I_positionLocation = GlStateManager._glGetAttribLocation(program, "iris_Position");
         I_normalLocation = GlStateManager._glGetAttribLocation(program, "iris_Normal");

@@ -29,11 +29,11 @@ public abstract class AbstractWheelScreen extends Screen {
 
     public record WheelEntry(String primaryText, String secondaryText) {}
 
-    private static final int TEXT_PRIMARY = TranslucentTrayChrome.TITLE_TEXT;
-    private static final int TEXT_SECONDARY = TranslucentTrayChrome.BODY_TEXT;
-    private static final int TEXT_MUTED = TranslucentTrayChrome.SUBTITLE_TEXT;
-    private static final int OUTLINE_DIM = 0x26FFFFFF;
-    private static final int BACKDROP_DIM = TranslucentTrayChrome.OVERLAY;
+    private static final int TEXT_PRIMARY = 0xFFFFFFFF;
+    private static final int TEXT_SECONDARY = 0xFFE2E8F0;
+    private static final int TEXT_MUTED = 0xFF94A3B8;
+    private static final int OUTLINE_DIM = 0x66FFFFFF;
+    private static final int BACKDROP_DIM = 0x78000000;
     private static final float SEGMENT_GAP_DEGREES = 1.8f;
     private static final float CENTER_BUBBLE_SCALE = 0.74f;
 
@@ -56,16 +56,26 @@ public abstract class AbstractWheelScreen extends Screen {
         this.style = style;
     }
 
+    @Override
+    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // 覆盖 1.21.1 原版的菜单背景与高斯模糊着色器，防止游戏画面被全局虚化
+    }
+
+    @Override
+    public void renderMenuBackground(GuiGraphics guiGraphics) {
+        // 覆盖菜单背景
+    }
+
     protected static WheelStyle createTranslucentWheelStyle(float screenRatio, float innerRatio) {
         return new WheelStyle(
                 screenRatio,
                 innerRatio,
-                0xFFF2F5F8,
-                0xB8D5DCE3,
-                0x30FFFFFF,
-                0xFF20262D,
-                0xFFDDE3E9,
-                0xD0000000
+                0xFFFFFFFF,
+                0xFFCBD5E1,
+                0x60FFFFFF,
+                0xFF13171F,
+                0xFF3B82F6,
+                0xFF000000
         );
     }
 
@@ -119,12 +129,13 @@ public abstract class AbstractWheelScreen extends Screen {
     protected void renderCenterBubble(GuiGraphics guiGraphics, String text, int textColor) {
         float bubbleScale = 0.98f + centerPop * 0.06f;
         int bubbleRadius = Math.max(30, Math.round(innerRadius * CENTER_BUBBLE_SCALE * bubbleScale));
-        fillCircle(guiGraphics, centerX, centerY, bubbleRadius + 2, withAlpha(style.centerBorder(), 72));
-        drawCircleOutline(guiGraphics, centerX, centerY, bubbleRadius + 1, withAlpha(0xFFFFFF, 16));
+        fillCircle(guiGraphics, centerX, centerY, bubbleRadius + 2, 0xEE11161D);
+        drawCircleOutline(guiGraphics, centerX, centerY, bubbleRadius + 2, withAlpha(style.centerBorder(), selectedSlot >= 0 ? 255 : 180));
+        drawCircleOutline(guiGraphics, centerX, centerY, bubbleRadius + 1, withAlpha(0xFFFFFF, selectedSlot >= 0 ? 80 : 30));
 
         String display = fitText(text, Math.max(88, Math.round(innerRadius * 1.4f)));
         int textWidth = this.font.width(display);
-        guiGraphics.drawString(this.font, display, centerX - textWidth / 2 + 1, centerY - 4, style.textShadow(), false);
+        guiGraphics.drawString(this.font, display, centerX - textWidth / 2 + 1, centerY - 4, 0xFF000000, false);
         guiGraphics.drawString(this.font, display, centerX - textWidth / 2, centerY - 5, textColor, false);
     }
 
@@ -133,8 +144,8 @@ public abstract class AbstractWheelScreen extends Screen {
         int height = 36;
         int x = centerX - width / 2;
         int y = centerY + outerRadius / 2 + 18;
-        fillRoundedRect(guiGraphics, x, y, width, height, 12, withAlpha(style.centerBorder(), 228));
-        fillRoundedRect(guiGraphics, x + 1, y + 1, width - 2, height - 2, 11, withAlpha(style.centerBg(), 196));
+        fillRoundedRect(guiGraphics, x, y, width, height, 12, 0xEE1E293B);
+        fillRoundedRect(guiGraphics, x + 1, y + 1, width - 2, height - 2, 11, 0xF00F172A);
         guiGraphics.drawCenteredString(this.font, hint, centerX, y + 13, TEXT_PRIMARY);
     }
 
@@ -145,9 +156,6 @@ public abstract class AbstractWheelScreen extends Screen {
     }
 
     private void renderBackdrop(GuiGraphics guiGraphics) {
-        if (this.minecraft == null || this.minecraft.level == null) {
-            this.renderBackground(guiGraphics);
-        }
         guiGraphics.fill(0, 0, this.width, this.height, BACKDROP_DIM);
     }
 
@@ -168,16 +176,17 @@ public abstract class AbstractWheelScreen extends Screen {
             float expandedOuter = ringOuter + pop * 5.0f + openProgress * 2.5f;
             float expandedInner = Math.max(12.0f, ringInner - pop * 2.0f);
 
+            // 扇区深色磨砂背景与高亮色
             int fillColor = i == selectedSlot
-                    ? blendColors(withAlpha(style.centerBg(), 106), withAlpha(0xFFFFFF, 24), 0.12f + pop * 0.16f)
-                    : blendColors(withAlpha(style.centerBg(), 92), withAlpha(style.lineColorDim(), 28), 0.06f + openProgress * 0.08f);
+                    ? 0xF01E3A5F
+                    : 0xD8131820;
             int edgeColor = i == selectedSlot
-                    ? blendColors(withAlpha(style.centerBorder(), 138), withAlpha(0xFFFFFF, 92), pop * 0.20f)
-                    : withAlpha(style.lineColorDim(), 88);
+                    ? 0xFFFFFFFF
+                    : 0x77E2E8F0;
 
             drawAnnularSegment(guiGraphics, centerX, centerY, expandedInner, expandedOuter, start, sweep, fillColor);
-            drawAnnularSegmentOutline(guiGraphics, centerX, centerY, expandedInner, expandedOuter, start, sweep, edgeColor, 1.8f);
-            drawSeparator(guiGraphics, centerX, centerY, expandedInner + 4.0f, expandedOuter - 4.0f, start, withAlpha(0xFFFFFF, 34));
+            drawAnnularSegmentOutline(guiGraphics, centerX, centerY, expandedInner, expandedOuter, start, sweep, edgeColor, i == selectedSlot ? 2.2f : 1.8f);
+            drawSeparator(guiGraphics, centerX, centerY, expandedInner + 4.0f, expandedOuter - 4.0f, start, withAlpha(0xFFFFFF, 50));
 
             double angle = Math.toRadians(i * segmentAngle + segmentAngle / 2.0 - 90.0);
             float cos = (float) Math.cos(angle);
@@ -198,26 +207,26 @@ public abstract class AbstractWheelScreen extends Screen {
 
     private void renderCenterDecor(GuiGraphics guiGraphics) {
         int haloRadius = Math.max(18, Math.round(innerRadius * 0.86f + openProgress * 4.0f));
-        drawCircleOutline(guiGraphics, centerX, centerY, haloRadius, withAlpha(style.lineColorDim(), 42));
-        drawCircleOutline(guiGraphics, centerX, centerY, Math.max(12, haloRadius - 6), withAlpha(0xFFFFFF, 10));
+        drawCircleOutline(guiGraphics, centerX, centerY, haloRadius, withAlpha(style.lineColorDim(), 70));
+        drawCircleOutline(guiGraphics, centerX, centerY, Math.max(12, haloRadius - 6), withAlpha(0xFFFFFF, 25));
     }
 
     private void renderSingleEntry(GuiGraphics guiGraphics, String text, int centerTextX, int centerTextY, float pop, int maxWidth) {
         String display = fitText(text, Math.max(62, maxWidth));
         int width = this.font.width(display);
-        int color = blendColors(TEXT_MUTED, TEXT_PRIMARY, 0.36f + pop * 0.64f);
-        guiGraphics.drawString(this.font, display, centerTextX - width / 2 + 1, centerTextY - 4, style.textShadow(), false);
+        int color = blendColors(TEXT_SECONDARY, TEXT_PRIMARY, 0.40f + pop * 0.60f);
+        guiGraphics.drawString(this.font, display, centerTextX - width / 2 + 1, centerTextY - 4, 0xFF000000, false);
         guiGraphics.drawString(this.font, display, centerTextX - width / 2, centerTextY - 5, color, false);
     }
 
     private void renderDualEntry(GuiGraphics guiGraphics, String icon, String label, int centerTextX, int centerTextY, float pop, int maxWidth) {
         String displayIcon = icon == null ? "" : icon;
         int iconWidth = this.font.width(displayIcon);
-        int iconColor = blendColors(TEXT_MUTED, TEXT_PRIMARY, 0.42f + pop * 0.58f);
+        int iconColor = blendColors(TEXT_SECONDARY, TEXT_PRIMARY, 0.45f + pop * 0.55f);
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(centerTextX, centerTextY - 10.0f, 0.0f);
         guiGraphics.pose().scale(1.0f + pop * 0.08f, 1.0f + pop * 0.08f, 1.0f);
-        guiGraphics.drawString(this.font, displayIcon, -iconWidth / 2 + 1, 0, style.textShadow(), false);
+        guiGraphics.drawString(this.font, displayIcon, -iconWidth / 2 + 1, 0, 0xFF000000, false);
         guiGraphics.drawString(this.font, displayIcon, -iconWidth / 2, -1, iconColor, false);
         guiGraphics.pose().popPose();
 
@@ -227,7 +236,7 @@ public abstract class AbstractWheelScreen extends Screen {
         guiGraphics.pose().pushPose();
         guiGraphics.pose().translate(centerTextX, centerTextY + 4.0f, 0.0f);
         guiGraphics.pose().scale(0.90f + pop * 0.02f, 0.90f + pop * 0.02f, 1.0f);
-        guiGraphics.drawString(this.font, displayLabel, -labelWidth / 2 + 1, 0, style.textShadow(), false);
+        guiGraphics.drawString(this.font, displayLabel, -labelWidth / 2 + 1, 0, 0xFF000000, false);
         guiGraphics.drawString(this.font, displayLabel, -labelWidth / 2, -1, labelColor, false);
         guiGraphics.pose().popPose();
     }
@@ -366,8 +375,7 @@ public abstract class AbstractWheelScreen extends Screen {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         PoseStack.Pose pose = guiGraphics.pose().last();
         Matrix4f matrix = pose.pose();
-        BufferBuilder builder = Tesselator.getInstance().getBuilder();
-        builder.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+        BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
         for (int i = 0; i <= segments; i++) {
             float angle = startRad + stepRad * i;
             float cos = Mth.cos(angle);
@@ -375,7 +383,7 @@ public abstract class AbstractWheelScreen extends Screen {
             addVertex(builder, matrix, cx + cos * outer, cy + sin * outer, color);
             addVertex(builder, matrix, cx + cos * inner, cy + sin * inner, color);
         }
-        BufferUploader.drawWithShader(builder.end());
+        BufferUploader.drawWithShader(builder.buildOrThrow());
     }
 
     private void drawQuad(GuiGraphics guiGraphics,
@@ -389,19 +397,17 @@ public abstract class AbstractWheelScreen extends Screen {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         PoseStack.Pose pose = guiGraphics.pose().last();
         Matrix4f matrix = pose.pose();
-        BufferBuilder builder = Tesselator.getInstance().getBuilder();
-        builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         addVertex(builder, matrix, ax, ay, color);
         addVertex(builder, matrix, bx, by, color);
         addVertex(builder, matrix, cx, cy, color);
         addVertex(builder, matrix, dx, dy, color);
-        BufferUploader.drawWithShader(builder.end());
+        BufferUploader.drawWithShader(builder.buildOrThrow());
     }
 
     private void addVertex(BufferBuilder builder, Matrix4f matrix, float x, float y, int color) {
-        builder.vertex(matrix, x, y, 0.0f)
-                .color(red(color), green(color), blue(color), alpha(color))
-                .endVertex();
+        builder.addVertex(matrix, x, y, 0.0f)
+                .setColor(red(color), green(color), blue(color), alpha(color));
     }
 
     private int roundedInset(int radius, int row) {

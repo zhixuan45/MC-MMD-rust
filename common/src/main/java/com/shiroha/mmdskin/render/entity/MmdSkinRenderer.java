@@ -27,7 +27,7 @@ import org.joml.Vector3f;
 public class MmdSkinRenderer<T extends Entity> extends EntityRenderer<T> {
 
     private static final ResourceLocation PLACEHOLDER_TEXTURE =
-            new ResourceLocation(MmdSkin.MOD_ID, "textures/entity/placeholder.png");
+            ResourceLocation.fromNamespaceAndPath(MmdSkin.MOD_ID, "textures/entity/placeholder.png");
 
     protected final String modelName;
 
@@ -79,7 +79,7 @@ public class MmdSkinRenderer<T extends Entity> extends EntityRenderer<T> {
         if (mc.screen == null) return;
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        PoseStack modelViewStack = RenderSystem.getModelViewStack();
+        PoseStack modelViewStack = new PoseStack();
 
         int posX = (mc.screen.width - 176) / 2;
         int posY = (mc.screen.height - 166) / 2;

@@ -51,6 +51,7 @@ final class GpuSkinningModelRenderer {
 
         target.light0Direction.set(1.0f, 0.75f, 0.0f).normalize();
         target.light1Direction.set(-1.0f, 0.75f, 0.0f).normalize();
+        // 光照方向使用实体世界 yaw，与模型根的逆向坐标变换配对。
         float yawRad = entityYaw * ((float) Math.PI / 180F);
         target.light0Direction.rotate(workingQuat.identity().rotateY(yawRad));
         target.light1Direction.rotate(workingQuat.identity().rotateY(yawRad));
@@ -74,7 +75,7 @@ final class GpuSkinningModelRenderer {
 
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
-        deliverStack.last().pose().get(target.modelViewMatBuff);
+        target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
         RenderSystem.getProjectionMatrix().get(target.projMatBuff);
 
         // EBO 与子网格范围必须同时切换，避免异常帧沿用不匹配的索引偏移。
@@ -121,7 +122,8 @@ final class GpuSkinningModelRenderer {
         }
         // Rust 只局部蒙皮预计算的头颈候选，避免 GPU readback。
         target.firstPersonMatrixFloatBuffer.position(0);
-        deliverStack.last().pose().get(target.firstPersonMatrixFloatBuffer);
+        // 裁剪计算必须与最终着色器使用同一套相机视图矩阵。
+        target.composeModelViewMatrix(deliverStack).get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonMatrixFloatBuffer.position(16);
         RenderSystem.getProjectionMatrix().get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonIndexBuffer.clear();
@@ -278,6 +280,13 @@ final class GpuSkinningModelRenderer {
 
         GL46C.glUseProgram(target.shaderProgram);
         target.updateLocation(target.shaderProgram);
+
+        if (target.modelViewLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.modelViewLocation, false, target.modelViewMatBuff);
+        }
+        if (target.projMatLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.projMatLocation, false, target.projMatBuff);
+        }
 
         int blockBrightness = LightingHelper.computeBlockBrightness(blockLight);
         int skyBrightness = LightingHelper.computeSkyBrightness(skyLight, skyDarken, irisActive);

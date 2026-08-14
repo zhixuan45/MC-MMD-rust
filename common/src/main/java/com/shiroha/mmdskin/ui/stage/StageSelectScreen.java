@@ -236,13 +236,14 @@ public class StageSelectScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        if (assignPanel != null && assignPanel.mouseScrolled(mouseX, mouseY, delta)) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (assignPanel != null && assignPanel.mouseScrolled(mouseX, mouseY, scrollX, scrollY)) {
             return true;
         }
         if (!containsLeftPanel(mouseX, mouseY)) {
-            return super.mouseScrolled(mouseX, mouseY, delta);
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         }
+        double delta = scrollY != 0 ? scrollY : scrollX;
         float step = (float) ((LIST_ROW_HEIGHT + ROW_GAP) * 2.5);
         if (mouseY >= packListTop && mouseY <= packListBottom) {
             packScroll = Mth.clamp(packScroll - (float) delta * step, 0.0f, maxPackScroll());
@@ -252,7 +253,7 @@ public class StageSelectScreen extends Screen {
             motionScroll = Mth.clamp(motionScroll - (float) delta * step, 0.0f, maxMotionScroll());
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, delta);
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override
