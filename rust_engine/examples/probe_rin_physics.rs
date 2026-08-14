@@ -123,7 +123,7 @@ fn run_case(
         .collect();
 
     if !model.init_physics() {
-        return Err("physics initialization failed".to_owned());
+        return Err("init_physics failed".to_owned());
     }
 
     println!(

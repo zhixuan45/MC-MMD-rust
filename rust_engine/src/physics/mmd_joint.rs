@@ -14,6 +14,8 @@ use super::mmd_rigid_body::mmd_physics_rotation;
 
 /// 沿用既有 MMD Bullet 实现的限位纠偏比例，避免混入未经验证的参数实验。
 const JOINT_STOP_ERP: f32 = 0.475;
+/// 动态父刚体与动态子刚体之间的硬锁零范围关节 ERP（提高刚度以消除长链连接处的松弛）
+const DYNAMIC_LOCKED_JOINT_STOP_ERP: f32 = 0.8;
 /// 宽松零弹簧裙根的兼容阈值；正常模型通常远小于该范围并自带恢复弹簧。
 const WIDE_SKIRT_ROOT_ANGLE: f32 = std::f32::consts::FRAC_PI_3;
 /// Rin 一类异常裙根直接采用与正常模型接近的 ±16° 旋转范围。
@@ -98,8 +100,27 @@ impl MmdJointData {
 
         // 配置约束参数（仅在创建成功时）
         if let Some(ref c) = constraint {
-            for axis in 0..6 {
-                c.set_param(BT_CONSTRAINT_STOP_ERP, JOINT_STOP_ERP, axis);
+            for axis in 0..3 {
+                let erp = if pmx_rb_a.mode != RigidBodyMode::Static
+                    && pmx_rb_b.mode != RigidBodyMode::Static
+                    && parameters.linear[axis].lower == parameters.linear[axis].upper
+                {
+                    DYNAMIC_LOCKED_JOINT_STOP_ERP
+                } else {
+                    JOINT_STOP_ERP
+                };
+                c.set_param(BT_CONSTRAINT_STOP_ERP, erp, axis as i32);
+            }
+            for axis in 0..3 {
+                let erp = if pmx_rb_a.mode != RigidBodyMode::Static
+                    && pmx_rb_b.mode != RigidBodyMode::Static
+                    && parameters.angular[axis].lower == parameters.angular[axis].upper
+                {
+                    DYNAMIC_LOCKED_JOINT_STOP_ERP
+                } else {
+                    JOINT_STOP_ERP
+                };
+                c.set_param(BT_CONSTRAINT_STOP_ERP, erp, (axis + 3) as i32);
             }
 
             c.set_linear_lower_limit(
@@ -325,6 +346,12 @@ fn is_skirt_body(body: &PmxRigidBody) -> bool {
         "cape",
         "tail",
         "flap",
+        "衣帶",
+        "衣带",
+        "ribbon",
+        "belt",
+        "band",
+        "sash",
     ];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();

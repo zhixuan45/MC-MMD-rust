@@ -116,6 +116,8 @@ mod ffi {
         );
         pub fn bw_world_remove_constraint(world: *mut BW_World, c: *mut BW_Constraint);
         pub fn bw_world_set_kinematic_filter(world: *mut BW_World, enabled: bool);
+        pub fn bw_world_set_num_iterations(world: *mut BW_World, num_iterations: c_int);
+        pub fn bw_world_get_num_iterations(world: *mut BW_World) -> c_int;
         pub fn bw_world_get_contact_manifold_count(world: *mut BW_World) -> c_int;
         pub fn bw_world_copy_contact_manifolds(
             world: *mut BW_World,
@@ -339,6 +341,14 @@ impl BulletWorld {
 
     pub fn set_kinematic_filter(&self, enabled: bool) {
         unsafe { ffi::bw_world_set_kinematic_filter(self.ptr, enabled) }
+    }
+
+    pub fn set_num_iterations(&self, num_iterations: i32) {
+        unsafe { ffi::bw_world_set_num_iterations(self.ptr, num_iterations) }
+    }
+
+    pub fn get_num_iterations(&self) -> i32 {
+        unsafe { ffi::bw_world_get_num_iterations(self.ptr) }
     }
 }
 
@@ -964,5 +974,13 @@ mod tests {
         world.remove_rigid_body(&body_a);
         world.remove_rigid_body(&body_b);
         world.remove_rigid_body(&body_c);
+    }
+
+    #[test]
+    fn solver_num_iterations_can_be_configured() {
+        let world = BulletWorld::new(0.0, -9.8, 0.0).expect("应能创建 Bullet 测试世界");
+        assert_eq!(world.get_num_iterations(), 10);
+        world.set_num_iterations(30);
+        assert_eq!(world.get_num_iterations(), 30);
     }
 }

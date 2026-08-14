@@ -30,6 +30,10 @@ pub struct PhysicsConfig {
     pub collision_stability_mode: CollisionStabilityMode,
     /// 是否禁用所有运动学刚体与动态刚体之间的碰撞（实验性）
     pub kinematic_filter: bool,
+    /// Bullet 求解器迭代次数（默认 30 次，保障长链与硬锁关节数值收敛）
+    pub solver_iterations: i32,
+    /// 跟随骨骼的人体碰撞体缩放倍率（默认 1.0 恢复真实尺寸，避免走跑动穿模）
+    pub static_collider_scale: f32,
     /// 调试日志
     pub debug_log: bool,
 }
@@ -48,6 +52,8 @@ impl Default for PhysicsConfig {
             collision_enabled: true,
             collision_stability_mode: CollisionStabilityMode::Stable,
             kinematic_filter: false,
+            solver_iterations: 30,
+            static_collider_scale: 1.0,
             debug_log: false,
         }
     }
@@ -84,5 +90,6 @@ mod tests {
             super::CollisionStabilityMode::Stable
         );
         assert!(!config.kinematic_filter);
+        assert_eq!(config.solver_iterations, 30);
     }
 }

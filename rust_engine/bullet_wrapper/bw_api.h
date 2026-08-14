@@ -102,6 +102,8 @@ void bw_world_remove_rigid_body(BW_World* world, BW_RigidBody* rb);
 void bw_world_add_constraint(BW_World* world, BW_Constraint* c, bool disable_collision);
 void bw_world_remove_constraint(BW_World* world, BW_Constraint* c);
 void bw_world_set_kinematic_filter(BW_World* world, bool enabled);
+void bw_world_set_num_iterations(BW_World* world, int num_iterations);
+int bw_world_get_num_iterations(BW_World* world);
 int bw_world_get_contact_manifold_count(BW_World* world);
 int bw_world_copy_contact_manifolds(
     BW_World* world, BW_ContactManifold* output, int capacity);

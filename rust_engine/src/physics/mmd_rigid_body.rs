@@ -10,8 +10,8 @@ use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode, RigidBodySh
 
 use super::bullet_ffi::{BulletRigidBody, BulletShape, RigidBodyInfo};
 
-/// 跟随骨骼的人体碰撞壳厚度倍率。缩放不移动中心、中心轴或关节锚点。
-pub const STATIC_COLLISION_SHAPE_SCALE: f32 = 0.7;
+/// 跟随骨骼的人体碰撞壳厚度倍率。默认 1.0（恢复 PMX 原始真实尺寸，避免走跑动中穿模）。
+pub const STATIC_COLLISION_SHAPE_SCALE: f32 = 1.0;
 
 /// 返回实际传给 Bullet 和调试渲染器的碰撞形状尺寸。
 pub fn effective_collision_shape_size(pmx_rb: &PmxRigidBody) -> [f32; 3] {
@@ -42,6 +42,84 @@ pub fn effective_collision_shape_size_with_static_scale(
     }
 }
 
+/// 为模型中被异常隔离的腿部运动学碰撞体与下装布料刚体建立双向保底碰撞掩码。
+///
+/// 正常模型（如 Grass Wonder）原始掩码已经允许碰撞，不会产生任何改变；
+/// 对于作者在 PMX 中错误地将下装掩码锁死在自身组别（如 Rin 等）的模型，
+/// 该函数在构建阶段恢复腿部与下装的碰撞互通，使走跑动时能正常推开布料。
+/// 注意：严格限制在腿部摆动刚体（大腿、小腿、膝盖），明确排除腰胯盆骨刚体，
+/// 避免静态盆骨碰撞体在腰部裙根处将整条裙子向外撑成伞状。
+pub fn build_effective_collision_masks(
+    rigid_bodies: &[PmxRigidBody],
+    joints: &[PmxJoint],
+) -> Vec<u16> {
+    let mut masks: Vec<u16> = rigid_bodies
+        .iter()
+        .map(|rb| pmx_collision_mask(rb.un_collision_group_flag))
+        .collect();
+
+    let is_leg_collider: Vec<bool> = rigid_bodies
+        .iter()
+        .enumerate()
+        .map(|(index, body)| {
+            body.mode == RigidBodyMode::Static
+                && is_leg_motion_collider(body)
+                && !is_dynamic_chain_anchor(index, rigid_bodies, joints)
+        })
+        .collect();
+
+    let is_skirt_dynamic: Vec<bool> = rigid_bodies
+        .iter()
+        .map(|body| {
+            body.mode != RigidBodyMode::Static
+                && is_skirt_or_lower_garment(body)
+                && !is_tail_dynamic_part(body)
+        })
+        .collect();
+
+    // 收集所有下装动态刚体所属的碰撞组
+    let mut skirt_group_bits = 0u16;
+    for (skirt_idx, &is_skirt) in is_skirt_dynamic.iter().enumerate() {
+        if is_skirt {
+            let skirt_rb = &rigid_bodies[skirt_idx];
+            skirt_group_bits |= 1u16 << (skirt_rb.group.min(15));
+        }
+    }
+
+    // 1. 仅精准切断腰胯盆骨刚体（如 M-M-M-下半身）与下装裙摆组的冲突碰撞。
+    // 严格保证胸、背、肩、臂、手、首、头、发等全部上半身刚体 100% 保持原始碰撞掩码不变！
+    for (body_idx, body) in rigid_bodies.iter().enumerate() {
+        if body.mode == RigidBodyMode::Static
+            && is_pelvis_collider(body)
+            && !is_dynamic_chain_anchor(body_idx, rigid_bodies, joints)
+        {
+            masks[body_idx] &= !skirt_group_bits;
+        }
+    }
+
+    // 2. 建立腿部运动摆动刚体与动态下装刚体之间的双向互通保底
+    for (body_idx, &is_leg) in is_leg_collider.iter().enumerate() {
+        if !is_leg {
+            continue;
+        }
+        let leg_rb = &rigid_bodies[body_idx];
+        let leg_group_bit = 1u16 << (leg_rb.group.min(15));
+
+        for (skirt_idx, &is_skirt) in is_skirt_dynamic.iter().enumerate() {
+            if !is_skirt {
+                continue;
+            }
+            let skirt_rb = &rigid_bodies[skirt_idx];
+            let skirt_group_bit = 1u16 << (skirt_rb.group.min(15));
+
+            masks[body_idx] |= skirt_group_bit;
+            masks[skirt_idx] |= leg_group_bit;
+        }
+    }
+
+    masks
+}
+
 /// 按 PMX 的部位、碰撞组和关节用途识别需要收窄的人体碰撞体。
 pub fn body_collider_scale_flags(rigid_bodies: &[PmxRigidBody], joints: &[PmxJoint]) -> Vec<bool> {
     rigid_bodies
@@ -54,6 +132,36 @@ pub fn body_collider_scale_flags(rigid_bodies: &[PmxRigidBody], joints: &[PmxJoi
                 && !is_dynamic_chain_anchor(index, rigid_bodies, joints)
         })
         .collect()
+}
+
+/// 识别骨骼位于腰胯盆骨位置的静态刚体。
+/// 明确排除尾巴等独立外挂部位。
+pub(super) fn is_pelvis_collider(body: &PmxRigidBody) -> bool {
+    const PELVIS_NAMES: &[&str] = &[
+        "下半身", "腰", "pelvis", "waist", "hip",
+    ];
+    let local = body.local_name.to_lowercase();
+    let universal = body.universal_name.to_lowercase();
+    let is_tail = local.contains("tail") || universal.contains("tail");
+    !is_tail
+        && PELVIS_NAMES
+            .iter()
+            .any(|part| local.contains(part) || universal.contains(part))
+}
+
+/// 识别实际在走跑动作中摆动、需要将裙摆顶出的人体腿部运动学碰撞体。
+///
+/// 明确排除位于裙根腰胯位置的下半身/盆骨刚体，避免腰部巨型盆骨刚体在静止时将整条裙子向外撑成伞状。
+pub(super) fn is_leg_motion_collider(body: &PmxRigidBody) -> bool {
+    const LEG_NAMES: &[&str] = &[
+        "足", "ひざ", "膝", "腿", "thigh", "shin", "leg", "knee", "skirt_collider",
+    ];
+    let local = body.local_name.to_lowercase();
+    let universal = body.universal_name.to_lowercase();
+    !is_pelvis_collider(body)
+        && LEG_NAMES
+            .iter()
+            .any(|part| local.contains(part) || universal.contains(part))
 }
 
 fn is_lower_body_collider(body: &PmxRigidBody) -> bool {
@@ -108,6 +216,12 @@ pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
         "cloak",
         "cape",
         "flap",
+        "衣帶",
+        "衣带",
+        "ribbon",
+        "belt",
+        "band",
+        "sash",
     ];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
@@ -488,7 +602,11 @@ mod tests {
     fn static_capsule_only_shrinks_collision_radius() {
         let mut body = test_rigid_body(RigidBodyShape::Capsule, [1.0, 4.0, 0.0]);
         body.mode = RigidBodyMode::Static;
-        assert_eq!(effective_collision_shape_size(&body), [0.7, 4.0, 0.0]);
+        assert_eq!(effective_collision_shape_size(&body), [1.0, 4.0, 0.0]);
+        assert_eq!(
+            effective_collision_shape_size_with_static_scale(&body, 0.7, true),
+            [0.7, 4.0, 0.0]
+        );
     }
 
     #[test]
@@ -589,5 +707,58 @@ mod tests {
         assert!(data
             .compute_body_matrix(super::super::inv_z(runtime_pose))
             .abs_diff_eq(super::super::inv_z(runtime_pose) * expected_offset, 1e-6));
+    }
+
+    #[test]
+    fn effective_collision_masks_repairs_isolated_leg_skirt_pairs_without_harming_normal_models() {
+        // 场景 1：错误配置模型（如 Rin），腿在组 0，裙在组 7，但掩码被作者锁死在 0x0080
+        let mut leg = test_rigid_body(RigidBodyShape::Capsule, [1.0, 2.0, 0.0]);
+        leg.local_name = "左足".to_owned();
+        leg.mode = RigidBodyMode::Static;
+        leg.group = 0;
+        leg.un_collision_group_flag = 0xFFFF; // 原始 mask = 0x0000
+
+        let mut skirt = test_rigid_body(RigidBodyShape::Box, [1.0, 1.0, 0.2]);
+        skirt.local_name = "裙_0_0".to_owned();
+        skirt.mode = RigidBodyMode::Dynamic;
+        skirt.group = 7;
+        skirt.un_collision_group_flag = 0xFF7F; // 原始 mask = 0x0080 (仅组 7)
+
+        let masks = super::build_effective_collision_masks(&[leg.clone(), skirt.clone()], &[]);
+        assert_eq!(masks[0] & (1 << 7), 1 << 7, "腿部必须允许与裙摆组 7 碰撞");
+        assert_eq!(masks[1] & (1 << 0), 1 << 0, "裙摆必须允许与腿部组 0 碰撞");
+
+        // 场景 2：正常模型（如 Grass Wonder），掩码本来就允许碰撞，保底处理后保持原样
+        let mut normal_leg = test_rigid_body(RigidBodyShape::Capsule, [1.0, 2.0, 0.0]);
+        normal_leg.local_name = "left_thigh_skirt_collider".to_owned();
+        normal_leg.mode = RigidBodyMode::Static;
+        normal_leg.group = 2;
+        normal_leg.un_collision_group_flag = 0x0004; // 允许除了组 2 以外的全部组 (mask = 0xFFFB)
+
+        let mut normal_skirt = test_rigid_body(RigidBodyShape::Box, [1.0, 1.0, 0.2]);
+        normal_skirt.local_name = "Sp_Hi_MSkirt0_physics".to_owned();
+        normal_skirt.mode = RigidBodyMode::Dynamic;
+        normal_skirt.group = 4;
+        normal_skirt.un_collision_group_flag = 0x0010; // 允许除了组 4 以外的全部组 (mask = 0xFFEF)
+
+        let normal_masks =
+            super::build_effective_collision_masks(&[normal_leg.clone(), normal_skirt.clone()], &[]);
+        assert_eq!(normal_masks[0], 0xFFFB);
+        assert_eq!(normal_masks[1], 0xFFEF);
+
+        // 场景 3：下半身/腰部盆骨刚体即使原 PMX 中错误允许了裙摆组 7，也必须被强制剥离隔离，防止静止撑伞膨胀
+        let mut pelvis = test_rigid_body(RigidBodyShape::Capsule, [2.0, 1.0, 0.0]);
+        pelvis.local_name = "M-M-M-下半身".to_owned();
+        pelvis.mode = RigidBodyMode::Static;
+        pelvis.group = 0;
+        pelvis.un_collision_group_flag = 0xFF07; // 原始 mask = 0x00F8 (包含组 7!)
+
+        let pelvis_masks =
+            super::build_effective_collision_masks(&[pelvis.clone(), skirt.clone()], &[]);
+        assert_eq!(
+            pelvis_masks[0] & (1 << 7),
+            0,
+            "下半身/腰部盆骨刚体与裙摆的冲突掩码位必须被强制剥离清除，彻底防止静止撑伞"
+        );
     }
 }

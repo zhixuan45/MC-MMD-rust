@@ -18,9 +18,9 @@ use super::config::{get_config, PhysicsConfig};
 use super::kinematic_target_filter::KinematicTargetFilter;
 use super::mmd_joint::MmdJointData;
 use super::mmd_rigid_body::{
-    body_collider_scale_flags, effective_collision_shape_size_with_static_scale,
-    is_skirt_or_lower_garment, is_tail_dynamic_part, MmdRigidBodyData, PhysicsMode,
-    STATIC_COLLISION_SHAPE_SCALE,
+    body_collider_scale_flags, build_effective_collision_masks,
+    effective_collision_shape_size_with_static_scale, is_skirt_or_lower_garment,
+    is_tail_dynamic_part, MmdRigidBodyData, PhysicsMode,
 };
 use super::physics_diagnostics::{model_topology_signature, ContactWindow, JointLimitPeak};
 
@@ -94,12 +94,14 @@ impl MMDPhysics {
     pub fn new() -> Option<Self> {
         let config = get_config();
         let world = BulletWorld::new(0.0, config.gravity_y, 0.0)?;
+        world.set_num_iterations(config.solver_iterations);
 
         if config.debug_log {
             log::info!(
-                "[Bullet3] 物理世界创建: FPS={}, 重力Y={}",
+                "[Bullet3] 物理世界创建: FPS={}, 重力Y={}, 迭代次数={}",
                 config.physics_fps,
-                config.gravity_y
+                config.gravity_y,
+                config.solver_iterations
             );
         }
 
@@ -138,12 +140,14 @@ impl MMDPhysics {
         bone_transforms: &[Mat4],
     ) {
         let config = get_config();
+        self.world.set_num_iterations(config.solver_iterations);
         self.active_debug_config = ActivePhysicsDebugConfig::from_config(&config);
         self.collision_stability_mode = config.collision_stability_mode;
         self.model_topology_signature = model_topology_signature(pmx_rigid_bodies, pmx_joints);
 
         // 按整个模型的碰撞用途分类，避免把动态链的静态关节锚点误当成人体碰撞壳。
         let body_collider_flags = body_collider_scale_flags(pmx_rigid_bodies, pmx_joints);
+        let effective_masks = build_effective_collision_masks(pmx_rigid_bodies, pmx_joints);
 
         // 预分配容量
         self.rigid_bodies.reserve(pmx_rigid_bodies.len());
@@ -159,10 +163,11 @@ impl MMDPhysics {
 
             let shape_size = effective_collision_shape_size_with_static_scale(
                 pmx_rb,
-                STATIC_COLLISION_SHAPE_SCALE,
+                config.static_collider_scale,
                 body_collider_flags[body_index],
             );
             let mut rb_data = MmdRigidBodyData::from_pmx(pmx_rb, bone_transform, shape_size);
+            rb_data.collision_mask = effective_masks[body_index];
             let shape = MmdRigidBodyData::create_shape(pmx_rb, shape_size);
             let body = shape
                 .as_ref()

@@ -200,6 +200,16 @@ void bw_world_set_kinematic_filter(BW_World* w, bool enabled) {
     }
 }
 
+void bw_world_set_num_iterations(BW_World* w, int num_iterations) {
+    if (!w || !w->world) return;
+    w->world->getSolverInfo().m_numIterations = num_iterations;
+}
+
+int bw_world_get_num_iterations(BW_World* w) {
+    if (!w || !w->world) return 0;
+    return w->world->getSolverInfo().m_numIterations;
+}
+
 int bw_world_get_contact_manifold_count(BW_World* w) {
     if (!w || !w->dispatcher) return 0;
     int count = 0;

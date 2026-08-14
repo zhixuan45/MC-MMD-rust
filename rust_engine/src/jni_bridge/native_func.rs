@@ -3292,6 +3292,8 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
         collision_enabled: collision_enabled != 0,
         collision_stability_mode,
         kinematic_filter: kinematic_filter != 0,
+        solver_iterations: previous.solver_iterations,
+        static_collider_scale: previous.static_collider_scale,
         debug_log: debug_log != 0,
     };
 
@@ -3302,7 +3304,9 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
         || previous.joints_enabled != config.joints_enabled
         || previous.collision_enabled != config.collision_enabled
         || previous.collision_stability_mode != config.collision_stability_mode
-        || previous.kinematic_filter != config.kinematic_filter;
+        || previous.kinematic_filter != config.kinematic_filter
+        || previous.solver_iterations != config.solver_iterations
+        || previous.static_collider_scale != config.static_collider_scale;
 
     set_config(config);
 
