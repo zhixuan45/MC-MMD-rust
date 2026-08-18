@@ -19,6 +19,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import com.shiroha.mmdskin.player.render.InventoryRenderScope;
+import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
+
 /** Fabric 玩家渲染入口，委托共享玩家渲染逻辑。 */
 @Mixin(PlayerRenderer.class)
 public abstract class FabricPlayerRendererMixin extends LivingEntityRenderer<AbstractClientPlayer, PlayerModel<AbstractClientPlayer>> {
@@ -33,8 +36,10 @@ public abstract class FabricPlayerRendererMixin extends LivingEntityRenderer<Abs
         Minecraft minecraft = Minecraft.getInstance();
         boolean isLocalPlayer = minecraft.player != null && minecraft.player.getUUID().equals(player.getUUID());
         if (isLocalPlayer && minecraft.options.getCameraType().isFirstPerson()
-                && !FirstPersonManager.shouldRenderFirstPerson() && !VRArmHider.isLocalPlayerInVR()) {
+                && !FirstPersonManager.shouldRenderFirstPerson() && !VRArmHider.isLocalPlayerInVR()
+                && !InventoryRenderScope.isActive() && !PaperDollRenderScope.isActive()) {
             FirstPersonManager.reset();
+            ci.cancel();
             return;
         }
 

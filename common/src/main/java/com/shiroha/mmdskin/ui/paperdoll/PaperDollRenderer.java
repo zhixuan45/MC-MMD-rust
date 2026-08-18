@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.ui.paperdoll;
 
+import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.config.ConfigManager;
@@ -133,9 +134,11 @@ public final class PaperDollRenderer {
             return;
         }
 
-        ModelRequestKey requestKey = ModelRequestKey.player(player, modelName);
+        ModelRequestKey requestKey = ModelRequestKey.paperDoll(player, modelName);
         ManagedModel modelData = ClientRenderRuntime.get().modelRepository().acquire(requestKey);
         if (modelData == null || modelData.modelInstance() == null) {
+            // 模型未加载完成前回退到原版绘制
+            renderVanillaFallback(guiGraphics, player);
             return;
         }
 
@@ -170,34 +173,37 @@ public final class PaperDollRenderer {
             }
         }
 
-        PoseStack poseStack = guiGraphics.pose();
-        poseStack.pushPose();
-        poseStack.translate(posX, posY, 50.0f);
+        PoseStack modelViewStack = RenderSystem.getModelViewStack();
+        modelViewStack.pushPose();
+        modelViewStack.translate(posX, posY, 50.0f);
 
         float scale = ConfigManager.getPaperDollScale();
-        poseStack.scale(scale, scale, -scale);
+        modelViewStack.scale(scale, scale, -scale);
 
         Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
         if (ConfigManager.getPaperDollRotationMode() == PaperDollRotationMode.FIXED) {
-            // 经典微侧身 20 度
-            rotation.mul(new Quaternionf().rotateY(-20.0f * ((float) Math.PI / 180F)));
+            // 面对镜头，经典微侧身 20 度
+            rotation.mul(new Quaternionf().rotateY((180.0f + 20.0f) * ((float) Math.PI / 180F)));
             rotation.mul(new Quaternionf().rotateX(5.0f * ((float) Math.PI / 180F)));
         } else {
-            // 跟随玩家身体与视角转动
+            // 跟随玩家身体与视角转动（面对镜头为基准）
             float bodyYaw = Mth.rotLerp(tickDelta, player.yBodyRotO, player.yBodyRot);
             float pitch = -player.getXRot();
-            rotation.mul(new Quaternionf().rotateY(-bodyYaw * ((float) Math.PI / 180F)));
+            rotation.mul(new Quaternionf().rotateY((180.0f - bodyYaw) * ((float) Math.PI / 180F)));
             rotation.mul(new Quaternionf().rotateX(pitch * ((float) Math.PI / 180F)));
         }
-        poseStack.mulPose(rotation);
+        modelViewStack.mulPose(rotation);
+        RenderSystem.applyModelViewMatrix();
 
         PaperDollRenderScope.enter();
         Minecraft mc = Minecraft.getInstance();
         boolean lightLayerTurnedOn = false;
         try {
+            Lighting.setupForEntityInInventory();
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             RenderSystem.enableDepthTest();
+            RenderSystem.depthMask(true);
             RenderSystem.depthFunc(GL11.GL_LEQUAL);
             RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
             RenderSystem.setShader(GameRenderer::getRendertypeEntityTranslucentShader);
@@ -210,6 +216,7 @@ public final class PaperDollRenderer {
             int packedLight = 0xF000F0;
             float[] size = PlayerRenderHelper.getModelSize(modelData);
 
+            // 纸娃娃拥有独立的 ManagedModel 实例，在此独立推进自身的动画状态
             AnimationStateManager.updateAnimationState(player, modelData);
 
             modelData.modelInstance().render(
@@ -218,7 +225,7 @@ public final class PaperDollRenderer {
                     0.0f,
                     new Vector3f(0.0f),
                     tickDelta,
-                    poseStack,
+                    modelViewStack,
                     packedLight,
                     RenderScene.PAPERDOLL
             );
@@ -227,7 +234,7 @@ public final class PaperDollRenderer {
             ItemRenderHelper.renderItems(
                     player,
                     modelData,
-                    poseStack,
+                    modelViewStack,
                     guiGraphics.bufferSource(),
                     packedLight,
                     heldItemScale,
@@ -240,15 +247,17 @@ public final class PaperDollRenderer {
             if (lightLayerTurnedOn && mc.gameRenderer != null && mc.gameRenderer.lightTexture() != null) {
                 mc.gameRenderer.lightTexture().turnOffLightLayer();
             }
+            Lighting.setupFor3DItems();
             RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
             PaperDollRenderScope.exit();
             RenderSystem.disableDepthTest();
-            poseStack.popPose();
+            modelViewStack.popPose();
+            RenderSystem.applyModelViewMatrix();
         }
     }
 
     /**
-     * 当玩家未配置 MMD 模型时，回退到原版 3D 实体渲染。
+     * 当玩家未配置 MMD 模型或模型加载中时，回退到原版 3D 实体渲染。
      */
     private static void renderVanillaFallback(GuiGraphics guiGraphics, LocalPlayer player) {
         int screenWidth = guiGraphics.guiWidth();
@@ -284,21 +293,30 @@ public final class PaperDollRenderer {
 
         Quaternionf bodyPose = new Quaternionf().rotateZ((float) Math.PI);
         if (ConfigManager.getPaperDollRotationMode() == PaperDollRotationMode.FIXED) {
-            bodyPose.mul(new Quaternionf().rotateY(-20.0f * ((float) Math.PI / 180F)));
+            // 面对镜头，经典微侧身 20 度
+            bodyPose.mul(new Quaternionf().rotateY((180.0f + 20.0f) * ((float) Math.PI / 180F)));
+            bodyPose.mul(new Quaternionf().rotateX(5.0f * ((float) Math.PI / 180F)));
         } else {
-            bodyPose.mul(new Quaternionf().rotateY(-player.yBodyRot * ((float) Math.PI / 180F)));
+            // 跟随玩家身体与视角转动（面对镜头为基准）
+            float bodyYaw = Mth.rotLerp(1.0f, player.yBodyRotO, player.yBodyRot);
+            bodyPose.mul(new Quaternionf().rotateY((180.0f - bodyYaw) * ((float) Math.PI / 180F)));
         }
 
         Quaternionf cameraOrientation = new Quaternionf().rotateX(-player.getXRot() * ((float) Math.PI / 180F));
 
-        InventoryScreen.renderEntityInInventory(
-                guiGraphics,
-                posX,
-                posY,
-                (int) ConfigManager.getPaperDollScale(),
-                bodyPose,
-                cameraOrientation,
-                player
-        );
+        PaperDollRenderScope.enter();
+        try {
+            InventoryScreen.renderEntityInInventory(
+                    guiGraphics,
+                    posX,
+                    posY,
+                    (int) ConfigManager.getPaperDollScale(),
+                    bodyPose,
+                    cameraOrientation,
+                    player
+            );
+        } finally {
+            PaperDollRenderScope.exit();
+        }
     }
 }

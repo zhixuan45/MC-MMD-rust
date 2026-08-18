@@ -4,6 +4,7 @@ import com.shiroha.mmdskin.bridge.runtime.NativeScenePort;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 
 /** 文件职责：计算并同步模型头部朝向。 */
 public final class HeadAngleHelper {
@@ -22,15 +23,11 @@ public final class HeadAngleHelper {
                                        float tickDelta,
                                        RenderScene context) {
         float headAngleX = Mth.clamp(entity.getXRot(), -MAX_PITCH, MAX_PITCH);
-        float headYaw = Mth.lerp(tickDelta, entity.yHeadRotO, entity.yHeadRot);
-        float headAngleY = (entityYaw - headYaw) % 360.0f;
-
-        if (headAngleY < -180.0f) {
-            headAngleY += 360.0f;
-        } else if (headAngleY > 180.0f) {
-            headAngleY -= 360.0f;
-        }
-
+        float headYaw = Mth.rotLerp(tickDelta, entity.yHeadRotO, entity.yHeadRot);
+        float bodyYaw = entity instanceof Player player
+                ? Mth.rotLerp(tickDelta, player.yBodyRotO, player.yBodyRot)
+                : entityYaw;
+        float headAngleY = Mth.wrapDegrees(bodyYaw - headYaw);
         headAngleY = Mth.clamp(headAngleY, -MAX_YAW, MAX_YAW);
 
         float pitchRad = headAngleX * ((float) Math.PI / 180F);

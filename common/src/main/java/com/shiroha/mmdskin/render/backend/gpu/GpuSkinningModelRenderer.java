@@ -72,51 +72,24 @@ final class GpuSkinningModelRenderer {
         refreshSubMeshData(target, nativeBackend, modelHandle, firstPersonIndexReady);
 
         boolean useToon = initializeToonShaderIfNeeded();
-
-        BufferUploader.reset();
-        GL46C.glBindVertexArray(target.vertexArrayObject);
-        RenderSystem.enableBlend();
-        RenderSystem.enableDepthTest();
-        RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
-
+        target.currentDeliverStack = deliverStack;
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
         deliverStack.last().pose().get(target.modelViewMatBuff);
         RenderSystem.getProjectionMatrix().get(target.projMatBuff);
 
-        // EBO 与子网格范围必须同时切换，避免异常帧沿用不匹配的索引偏移。
-        int activeIndexBufferObject = firstPersonIndexReady
-                ? target.firstPersonIndexBufferObject
-                : target.indexBufferObject;
-        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, activeIndexBufferObject);
-        target.currentDeliverStack = deliverStack;
-
         long drawTimer = RenderPerformanceProfiler.get().startTimer();
         GpuTimerQueryPool.draw().begin();
         try {
             if (useToon && GpuSkinningModelInstance.toonShaderCpu != null && GpuSkinningModelInstance.toonShaderCpu.isInitialized()) {
-                renderToon(target, minecraft, light.intensity());
+                renderToon(target, minecraft, light.intensity(), firstPersonIndexReady);
             } else {
-                renderNormal(target, minecraft, light.intensity(), light.blockLight(), light.skyLight(), light.skyDarken());
+                renderNormal(target, minecraft, light, firstPersonIndexReady, deliverStack);
             }
         } finally {
             GpuTimerQueryPool.draw().end();
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
         }
-
-        cleanupVertexAttributes(target);
-        GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
-        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
-        GL46C.glBindVertexArray(0);
-        RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
-
-        ShaderInstance currentShader = RenderSystem.getShader();
-        if (currentShader != null) {
-            currentShader.clear();
-        }
-        BufferUploader.reset();
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private static boolean refreshFirstPersonIndices(GpuSkinningModelInstance target,
@@ -265,10 +238,9 @@ final class GpuSkinningModelRenderer {
 
     private static void renderNormal(GpuSkinningModelInstance target,
                                      Minecraft minecraft,
-                                     float lightIntensity,
-                                     int blockLight,
-                                     int skyLight,
-                                     float skyDarken) {
+                                     LightingHelper.LightData light,
+                                     boolean firstPersonIndexReady,
+                                     PoseStack deliverStack) {
         ShaderInstance shader = RenderSystem.getShader();
         if (shader == null) {
             logger.error("[GPU skinning] RenderSystem.getShader() returned null; skipping render");
@@ -277,20 +249,37 @@ final class GpuSkinningModelRenderer {
         target.shaderProgram = shader.getId();
 
         boolean irisActive = IrisCompat.isIrisShaderActive();
-        float colorFactor = irisActive ? 1.0f : lightIntensity;
+        float colorFactor = irisActive ? 1.0f : light.intensity();
         float alphaFactor = target.getGlobalAlpha();
         RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, alphaFactor);
 
-        target.setUniforms(shader, target.currentDeliverStack);
+        target.setUniforms(shader, deliverStack);
         shader.apply();
 
-        GL46C.glUseProgram(target.shaderProgram);
         target.updateLocation(target.shaderProgram);
 
-        int blockBrightness = LightingHelper.computeBlockBrightness(blockLight);
-        int skyBrightness = LightingHelper.computeSkyBrightness(skyLight, skyDarken, irisActive);
+        BufferUploader.reset();
+        GL46C.glBindVertexArray(target.vertexArrayObject);
+        RenderSystem.enableBlend();
+        RenderSystem.enableDepthTest();
+        RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
+        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+
+        int activeIndexBufferObject = firstPersonIndexReady
+                ? target.firstPersonIndexBufferObject
+                : target.indexBufferObject;
+        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, activeIndexBufferObject);
+
+        int blockBrightness = LightingHelper.computeBlockBrightness(light.blockLight());
+        int skyBrightness = LightingHelper.computeSkyBrightness(light.skyLight(), light.skyDarken(), irisActive);
         uploadLightBufferIfNeeded(target, blockBrightness, skyBrightness);
 
+        bindVertexAttributes(target);
+        drawAllSubMeshes(target, minecraft);
+        clearRenderState(target);
+    }
+
+    private static void bindVertexAttributes(GpuSkinningModelInstance target) {
         if (target.uv2Location != -1) {
             GL46C.glEnableVertexAttribArray(target.uv2Location);
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.uv2BufferObject);
@@ -347,8 +336,21 @@ final class GpuSkinningModelRenderer {
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, activeUvBuffer);
             GL46C.glVertexAttribPointer(target.I_uv0Location, 2, GL46C.GL_FLOAT, false, 0, 0);
         }
+    }
 
-        drawAllSubMeshes(target, minecraft);
+    private static void clearRenderState(GpuSkinningModelInstance target) {
+        cleanupVertexAttributes(target);
+        GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
+        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
+        GL46C.glBindVertexArray(0);
+        RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
+
+        ShaderInstance currentShader = RenderSystem.getShader();
+        if (currentShader != null) {
+            currentShader.clear();
+        }
+        BufferUploader.reset();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private static void uploadLightBufferIfNeeded(GpuSkinningModelInstance target, int blockBrightness, int skyBrightness) {
@@ -371,7 +373,10 @@ final class GpuSkinningModelRenderer {
         target.lastSkyBrightness = skyBrightness;
     }
 
-    private static void renderToon(GpuSkinningModelInstance target, Minecraft minecraft, float lightIntensity) {
+    private static void renderToon(GpuSkinningModelInstance target,
+                                   Minecraft minecraft,
+                                   float lightIntensity,
+                                   boolean firstPersonIndexReady) {
         if (IrisCompat.isIrisShaderActive()) {
             ShaderInstance irisShader = RenderSystem.getShader();
             if (irisShader != null) {
@@ -379,6 +384,18 @@ final class GpuSkinningModelRenderer {
                 irisShader.apply();
             }
         }
+
+        BufferUploader.reset();
+        GL46C.glBindVertexArray(target.vertexArrayObject);
+        RenderSystem.enableBlend();
+        RenderSystem.enableDepthTest();
+        RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
+        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+
+        int activeIndexBufferObject = firstPersonIndexReady
+                ? target.firstPersonIndexBufferObject
+                : target.indexBufferObject;
+        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, activeIndexBufferObject);
 
         GpuSkinningModelInstance.toonShaderCpu.useMain();
         int toonPosLoc = GpuSkinningModelInstance.toonShaderCpu.getPositionLocation();
@@ -417,6 +434,7 @@ final class GpuSkinningModelRenderer {
         }
 
         GL46C.glUseProgram(0);
+        clearRenderState(target);
     }
 
     private static void renderOutlinePass(GpuSkinningModelInstance target, Minecraft minecraft) {
