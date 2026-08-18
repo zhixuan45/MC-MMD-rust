@@ -139,6 +139,11 @@ public class MmdSkinRegisterClient {
         }
 
         @SubscribeEvent
+        public static void onRenderScreen(net.minecraftforge.client.event.ScreenEvent.Render.Post event) {
+            RUNTIME_HOOKS.onRenderScreen(event);
+        }
+
+        @SubscribeEvent
         public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
             RUNTIME_HOOKS.onPlayerRespawn(event);
         }

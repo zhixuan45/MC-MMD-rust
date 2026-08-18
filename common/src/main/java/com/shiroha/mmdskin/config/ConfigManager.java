@@ -212,6 +212,38 @@ public class ConfigManager {
         return provider != null ? provider.isDebugHudEnabled() : false;
     }
 
+    public static boolean isPaperDollEnabled() {
+        return provider != null ? provider.isPaperDollEnabled() : true;
+    }
+
+    public static PaperDollPosition getPaperDollPosition() {
+        return provider != null ? provider.getPaperDollPosition() : PaperDollPosition.TOP_LEFT;
+    }
+
+    public static int getPaperDollOffsetX() {
+        return provider != null ? provider.getPaperDollOffsetX() : 20;
+    }
+
+    public static int getPaperDollOffsetY() {
+        return provider != null ? provider.getPaperDollOffsetY() : 20;
+    }
+
+    public static float getPaperDollScale() {
+        return provider != null ? provider.getPaperDollScale() : 30.0f;
+    }
+
+    public static PaperDollDisplayMode getPaperDollDisplayMode() {
+        return provider != null ? provider.getPaperDollDisplayMode() : PaperDollDisplayMode.ALWAYS;
+    }
+
+    public static PaperDollRotationMode getPaperDollRotationMode() {
+        return provider != null ? provider.getPaperDollRotationMode() : PaperDollRotationMode.FIXED;
+    }
+
+    public static boolean isPaperDollShowInScreens() {
+        return provider != null ? provider.isPaperDollShowInScreens() : true;
+    }
+
     public static boolean isVREnabled() {
         return provider != null ? provider.isVREnabled() : false;
     }

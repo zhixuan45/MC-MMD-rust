@@ -15,6 +15,7 @@ public final class RenderScene {
     public static final RenderScene INVENTORY = new Builder().sceneType(SceneType.INVENTORY).mirror(true).build();
     public static final RenderScene FIRST_PERSON = new Builder().sceneType(SceneType.WORLD).firstPerson(true).build();
     public static final RenderScene ITEM = new Builder().sceneType(SceneType.ITEM).build();
+    public static final RenderScene PAPERDOLL = new Builder().sceneType(SceneType.GUI).mirror(false).firstPerson(false).build();
 
     private final SceneType sceneType;
     private final boolean firstPerson;
@@ -43,7 +44,11 @@ public final class RenderScene {
     }
 
     public boolean isInventoryScene() {
-        return sceneType == SceneType.INVENTORY;
+        return sceneType == SceneType.INVENTORY || sceneType == SceneType.GUI;
+    }
+
+    public boolean isPaperDoll() {
+        return this == PAPERDOLL;
     }
 
     public static final class Builder {

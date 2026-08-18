@@ -22,7 +22,8 @@
     "EntityMixin",
     "compat.tacz.TaczGunItemRendererWrapperMixin",
     "compat.tacz.TaczRightHandRenderMixin",
-    "compat.tacz.TaczLeftHandRenderMixin"
+    "compat.tacz.TaczLeftHandRenderMixin",
+    "FabricScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -62,6 +62,14 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isAntiPeekModeEnabled() { return data.antiPeekModeEnabled; }
     @Override public float getAntiPeekThresholdAngle() { return data.antiPeekThresholdAngle; }
     @Override public float getAntiPeekHideAngle() { return data.antiPeekHideAngle; }
+    @Override public boolean isPaperDollEnabled() { return data.paperDollEnabled; }
+    @Override public PaperDollPosition getPaperDollPosition() { return data.paperDollPosition; }
+    @Override public int getPaperDollOffsetX() { return data.paperDollOffsetX; }
+    @Override public int getPaperDollOffsetY() { return data.paperDollOffsetY; }
+    @Override public float getPaperDollScale() { return data.paperDollScale; }
+    @Override public PaperDollDisplayMode getPaperDollDisplayMode() { return data.paperDollDisplayMode; }
+    @Override public PaperDollRotationMode getPaperDollRotationMode() { return data.paperDollRotationMode; }
+    @Override public boolean isPaperDollShowInScreens() { return data.paperDollShowInScreens; }
     @Override public boolean isDebugHudEnabled() { return data.debugHudEnabled; }
     @Override public int getTextureCacheBudgetMB() { return data.textureCacheBudgetMB; }
     @Override public String getMobModelReplacement(String entityTypeId) {

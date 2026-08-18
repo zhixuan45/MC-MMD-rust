@@ -111,6 +111,11 @@ final class ForgeClientRuntimeHooks {
 
     void onRenderGui(RenderGuiEvent.Post event) {
         PerformanceHud.render(event.getGuiGraphics());
+        com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.renderHud(event.getGuiGraphics(), event.getPartialTick());
+    }
+
+    void onRenderScreen(net.minecraftforge.client.event.ScreenEvent.Render.Post event) {
+        com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.renderInScreen(event.getGuiGraphics(), event.getScreen(), event.getPartialTick());
     }
 
     void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
