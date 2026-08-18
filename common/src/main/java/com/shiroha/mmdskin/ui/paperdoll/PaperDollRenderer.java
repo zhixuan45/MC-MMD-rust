@@ -192,12 +192,20 @@ public final class PaperDollRenderer {
         poseStack.mulPose(rotation);
 
         PaperDollRenderScope.enter();
+        Minecraft mc = Minecraft.getInstance();
+        boolean lightLayerTurnedOn = false;
         try {
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
             RenderSystem.enableDepthTest();
             RenderSystem.depthFunc(GL11.GL_LEQUAL);
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
             RenderSystem.setShader(GameRenderer::getRendertypeEntityTranslucentShader);
+
+            if (mc.gameRenderer != null && mc.gameRenderer.lightTexture() != null) {
+                mc.gameRenderer.lightTexture().turnOnLightLayer();
+                lightLayerTurnedOn = true;
+            }
 
             int packedLight = 0xF000F0;
             float[] size = PlayerRenderHelper.getModelSize(modelData);
@@ -229,6 +237,10 @@ public final class PaperDollRenderer {
 
             guiGraphics.flush();
         } finally {
+            if (lightLayerTurnedOn && mc.gameRenderer != null && mc.gameRenderer.lightTexture() != null) {
+                mc.gameRenderer.lightTexture().turnOffLightLayer();
+            }
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
             PaperDollRenderScope.exit();
             RenderSystem.disableDepthTest();
             poseStack.popPose();

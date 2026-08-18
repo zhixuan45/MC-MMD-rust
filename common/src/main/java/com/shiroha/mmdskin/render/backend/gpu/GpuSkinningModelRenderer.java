@@ -44,16 +44,24 @@ final class GpuSkinningModelRenderer {
                        PoseStack deliverStack,
                        RenderScene context) {
         Minecraft minecraft = Minecraft.getInstance();
-        LightingHelper.LightData light = LightingHelper.sampleLight(entityIn, minecraft);
+        boolean isGuiScene = context != null && context.isInventoryScene();
+        LightingHelper.LightData light = isGuiScene
+                ? new LightingHelper.LightData(15, 15, 0, 1.0f)
+                : LightingHelper.sampleLight(entityIn, minecraft);
         var workingQuat = target.workingQuaternion();
         var nativeBackend = target.nativeBackendPort();
         long modelHandle = target.nativeModelHandle();
 
-        target.light0Direction.set(1.0f, 0.75f, 0.0f).normalize();
-        target.light1Direction.set(-1.0f, 0.75f, 0.0f).normalize();
-        float yawRad = entityYaw * ((float) Math.PI / 180F);
-        target.light0Direction.rotate(workingQuat.identity().rotateY(yawRad));
-        target.light1Direction.rotate(workingQuat.identity().rotateY(yawRad));
+        if (isGuiScene) {
+            target.light0Direction.set(0.2f, 0.5f, 1.0f).normalize();
+            target.light1Direction.set(-0.2f, 0.5f, 1.0f).normalize();
+        } else {
+            target.light0Direction.set(1.0f, 0.75f, 0.0f).normalize();
+            target.light1Direction.set(-1.0f, 0.75f, 0.0f).normalize();
+            float yawRad = entityYaw * ((float) Math.PI / 180F);
+            target.light0Direction.rotate(workingQuat.identity().rotateY(yawRad));
+            target.light1Direction.rotate(workingQuat.identity().rotateY(yawRad));
+        }
 
         target.applyModelRootTransform(deliverStack, entityYaw, entityPitch, entityTrans);
 
