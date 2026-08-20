@@ -107,10 +107,15 @@ pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
         "coat",
         "cloak",
         "cape",
+        "燕尾",
         "flap",
     ];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
+    // 尾巴具有独立动态特性，必须排除在裙摆下装分类之外
+    if is_tail_dynamic_part(body) {
+        return false;
+    }
     PART_NAMES
         .iter()
         .any(|part| local.contains(part) || universal.contains(part))
@@ -118,9 +123,12 @@ pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
 
 /// 尾巴是独立动态链，不能并入裙摆分类，否则跨部位碰撞无法单独诊断和过滤。
 pub(super) fn is_tail_dynamic_part(body: &PmxRigidBody) -> bool {
-    let local = body.local_name.to_ascii_lowercase();
-    let universal = body.universal_name.to_ascii_lowercase();
-    local.contains("tail") || universal.contains("tail")
+    const TAIL_NAMES: &[&str] = &["tail", "尻尾", "しっぽ", "尾巴", "尾"];
+    let local = body.local_name.to_lowercase();
+    let universal = body.universal_name.to_lowercase();
+    TAIL_NAMES
+        .iter()
+        .any(|part| local.contains(part) || universal.contains(part))
 }
 
 fn collision_pair_is_enabled(a: &PmxRigidBody, b: &PmxRigidBody) -> bool {
@@ -589,5 +597,22 @@ mod tests {
         assert!(data
             .compute_body_matrix(super::super::inv_z(runtime_pose))
             .abs_diff_eq(super::super::inv_z(runtime_pose) * expected_offset, 1e-6));
+    }
+
+    #[test]
+    fn tail_dynamic_part_is_detected_and_excluded_from_skirt() {
+        let tail_names = ["Tail_01", "尻尾01", "しっぽ1", "尾_02", "尾巴根部"];
+        for name in tail_names {
+            let mut body = test_rigid_body(RigidBodyShape::Capsule, [0.5, 1.0, 0.0]);
+            body.local_name = name.to_owned();
+            assert!(
+                super::is_tail_dynamic_part(&body),
+                "name={name} should be tail"
+            );
+            assert!(
+                !super::is_skirt_or_lower_garment(&body),
+                "name={name} must not be skirt"
+            );
+        }
     }
 }

@@ -10,7 +10,7 @@ use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
 use super::bullet_ffi::{BulletConstraint, BulletRigidBody, BT_CONSTRAINT_STOP_ERP};
 use super::joint_parameters::JointParameters;
-use super::mmd_rigid_body::mmd_physics_rotation;
+use super::mmd_rigid_body::{is_tail_dynamic_part, mmd_physics_rotation};
 
 /// 沿用既有 MMD Bullet 实现的限位纠偏比例，避免混入未经验证的参数实验。
 const JOINT_STOP_ERP: f32 = 0.475;
@@ -323,11 +323,15 @@ fn is_skirt_body(body: &PmxRigidBody) -> bool {
         "coat",
         "cloak",
         "cape",
-        "tail",
+        "燕尾",
         "flap",
     ];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
+    // 尾巴具有独立动态链与旋转空间，不得作为裙摆应用单向内翻锁零或裙根硬弹簧
+    if is_tail_dynamic_part(body) {
+        return false;
+    }
     PART_NAMES
         .iter()
         .any(|part| local.contains(part) || universal.contains(part))
@@ -838,5 +842,17 @@ mod tests {
             joint_anchor_position_error(body_a, frame_a, shifted_body_b, Mat4::IDENTITY);
         assert!((shifted_error - 0.5).abs() < 1e-6);
         assert_eq!(anchor_b - anchor_a, Vec3::new(0.5, 0.0, 0.0));
+    }
+
+    #[test]
+    fn tail_joint_is_not_treated_as_skirt_body() {
+        let tail_names = ["Tail_01", "尻尾01", "しっぽ1", "尾_02"];
+        for name in tail_names {
+            let body = test_pmx_body(name, RigidBodyMode::Dynamic);
+            assert!(
+                !super::is_skirt_body(&body),
+                "tail joint child body={name} must not be skirt"
+            );
+        }
     }
 }
