@@ -2,9 +2,11 @@
 
 use glam::{Mat4, Vec3};
 
+pub(crate) mod body_collider_synthesis;
 pub mod bullet_ffi;
 pub mod collision_topology;
 pub mod config;
+mod hair_parameters;
 mod initialization_diagnostics;
 mod joint_parameters;
 mod kinematic_target_filter;

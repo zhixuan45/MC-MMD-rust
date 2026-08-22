@@ -123,9 +123,25 @@ pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
 
 /// 尾巴是独立动态链，不能并入裙摆分类，否则跨部位碰撞无法单独诊断和过滤。
 pub(super) fn is_tail_dynamic_part(body: &PmxRigidBody) -> bool {
+    const NOT_TAIL_NAMES: &[&str] = &[
+        "馬尾",
+        "马尾",
+        "ツインテール",
+        "ポニーテール",
+        "twintail",
+        "ponytail",
+        "tail_hair",
+        "tailhair",
+    ];
     const TAIL_NAMES: &[&str] = &["tail", "尻尾", "しっぽ", "尾巴", "尾"];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
+    if NOT_TAIL_NAMES
+        .iter()
+        .any(|not_tail| local.contains(not_tail) || universal.contains(not_tail))
+    {
+        return false;
+    }
     TAIL_NAMES
         .iter()
         .any(|part| local.contains(part) || universal.contains(part))

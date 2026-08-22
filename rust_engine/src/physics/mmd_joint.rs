@@ -9,6 +9,9 @@ use mmd::pmx::joint::Joint as PmxJoint;
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
 use super::bullet_ffi::{BulletConstraint, BulletRigidBody, BT_CONSTRAINT_STOP_ERP};
+use super::hair_parameters::{
+    apply_back_hair_root_limit, apply_hair_chain_fallback, apply_wide_back_hair_root_fallback,
+};
 use super::joint_parameters::JointParameters;
 use super::mmd_rigid_body::{is_tail_dynamic_part, mmd_physics_rotation};
 
@@ -85,6 +88,21 @@ impl MmdJointData {
                 position,
                 rotation,
                 rb_b_initial_transform.w_axis.truncate(),
+            );
+        }
+
+        let clamped_wide_hair_root =
+            apply_wide_back_hair_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
+        apply_hair_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
+        if !clamped_wide_hair_root {
+            apply_back_hair_root_limit(
+                &mut parameters,
+                pmx_rb_a,
+                pmx_rb_b,
+                position,
+                rotation,
+                rb_b_initial_transform.w_axis.truncate(),
+                rb_a_initial_transform.w_axis.truncate(),
             );
         }
 
@@ -854,5 +872,52 @@ mod tests {
                 "tail joint child body={name} must not be skirt"
             );
         }
+    }
+
+    #[test]
+    fn back_hair_root_joint_from_pmx_gets_stabilized() {
+        let shape = BulletShape::sphere(0.25).expect("应能创建关节测试形状");
+        let body_a = test_body(&shape);
+        let body_b = test_body(&shape);
+        let joint = Joint {
+            local_name: "後髪根関節".to_owned(),
+            universal_name: "back_hair_root_joint".to_owned(),
+            type_: JointType::Spring6DOF,
+            rigid_body_a_index: 0,
+            rigid_body_b_index: 1,
+            position: [0.0, 10.0, -0.5],
+            rotation: [0.0; 3],
+            position_min: [0.0; 3],
+            position_max: [0.0; 3],
+            rotation_min: [-1.2; 3],
+            rotation_max: [1.2; 3],
+            position_spring: [0.0; 3],
+            rotation_spring: [0.0; 3],
+        };
+        let head = test_pmx_body("頭", RigidBodyMode::Static);
+        let back_hair = test_pmx_body("後髪_00", RigidBodyMode::Dynamic);
+
+        let data = MmdJointData::from_pmx(
+            &joint,
+            &body_a,
+            &body_b,
+            &head,
+            &back_hair,
+            Mat4::from_translation(Vec3::new(0.0, 10.0, 0.0)),
+            Mat4::from_translation(Vec3::new(0.0, 9.0, -1.0)),
+        );
+
+        let diagnostic = data
+            .constraint
+            .as_ref()
+            .and_then(|constraint| constraint.diagnostic())
+            .expect("应能回读后发关节配置");
+
+        // 后发根关节应自动补入旋转弹簧
+        assert_eq!(
+            diagnostic.spring_enabled,
+            [false, false, false, true, true, true]
+        );
+        assert_eq!(diagnostic.stiffness, [0.0, 0.0, 0.0, 16.0, 10.0, 14.0]);
     }
 }
