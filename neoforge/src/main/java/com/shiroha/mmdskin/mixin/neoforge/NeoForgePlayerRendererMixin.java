@@ -3,6 +3,8 @@ package com.shiroha.mmdskin.mixin.neoforge;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.compat.vr.VRArmHider;
 import com.shiroha.mmdskin.neoforge.YsmCompat;
+import com.shiroha.mmdskin.player.render.InventoryRenderScope;
+import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
 import com.shiroha.mmdskin.player.render.PlayerRenderAction;
 import com.shiroha.mmdskin.player.render.PlayerRenderEntrypoint;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
@@ -32,8 +34,10 @@ public abstract class NeoForgePlayerRendererMixin extends LivingEntityRenderer<A
         Minecraft minecraft = Minecraft.getInstance();
         boolean isLocalPlayer = minecraft.player != null && minecraft.player.getUUID().equals(player.getUUID());
         if (isLocalPlayer && minecraft.options.getCameraType().isFirstPerson()
-                && !FirstPersonManager.shouldRenderFirstPerson() && !VRArmHider.isLocalPlayerInVR()) {
+                && !FirstPersonManager.shouldRenderFirstPerson() && !VRArmHider.isLocalPlayerInVR()
+                && !InventoryRenderScope.isActive() && !PaperDollRenderScope.isActive()) {
             FirstPersonManager.reset();
+            ci.cancel();
             return;
         }
 

@@ -45,7 +45,7 @@ final class PlayerModelRenderCoordinator {
         boolean shadowPass = IrisCompat.isRenderingShadows();
         boolean inventoryRender = selection.isLocalPlayer()
                 && !shadowPass
-                && InventoryRenderScope.isActive();
+                && (InventoryRenderScope.isActive() || PaperDollRenderScope.isActive());
         syncVrState(modelData, player, tickDelta, isVr, vrRuntime);
 
         ModelConfigData modelConfig = ModelConfigManager.getConfig(selection.selectedModel());

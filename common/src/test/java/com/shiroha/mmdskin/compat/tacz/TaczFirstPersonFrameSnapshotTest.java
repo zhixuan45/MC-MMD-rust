@@ -1,9 +1,11 @@
 package com.shiroha.mmdskin.compat.tacz;
 
 import net.minecraft.SharedConstants;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.AfterEach;
@@ -17,9 +19,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TaczFirstPersonFrameSnapshotTest {
     @BeforeAll
     static void bootStrapMinecraftRegistries() {
-        // ItemStack 的真实物品类型比较依赖 Minecraft 内建注册表先完成初始化。
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        try {
+            SharedConstants.tryDetectVersion();
+            Class<?> loadingModListClass = Class.forName("net.neoforged.fml.loading.LoadingModList");
+            for (var ctor : loadingModListClass.getDeclaredConstructors()) {
+                ctor.setAccessible(true);
+                Object[] args = new Object[ctor.getParameterCount()];
+                for (int i = 0; i < args.length; i++) {
+                    if (ctor.getParameterTypes()[i].equals(java.util.List.class)) {
+                        args[i] = java.util.Collections.emptyList();
+                    }
+                }
+                var instance = ctor.newInstance(args);
+                var field = loadingModListClass.getDeclaredField("INSTANCE");
+                field.setAccessible(true);
+                field.set(null, instance);
+                break;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            Bootstrap.bootStrap();
+        } catch (Throwable ignored) {
+        }
     }
 
     @AfterEach
@@ -96,8 +118,8 @@ class TaczFirstPersonFrameSnapshotTest {
     void shouldMatchSameItemWhenFiringChangesDynamicTag() {
         ItemStack beforeFire = new ItemStack(Items.CROSSBOW);
         ItemStack afterFire = beforeFire.copy();
-        beforeFire.getOrCreateTag().putInt("Ammo", 30);
-        afterFire.getOrCreateTag().putInt("Ammo", 29);
+        CustomData.update(DataComponents.CUSTOM_DATA, beforeFire, tag -> tag.putInt("Ammo", 30));
+        CustomData.update(DataComponents.CUSTOM_DATA, afterFire, tag -> tag.putInt("Ammo", 29));
 
         assertTrue(TaczFirstPersonFrameSnapshot.matchesGunStack(beforeFire, afterFire));
         assertFalse(TaczFirstPersonFrameSnapshot.matchesGunStack(beforeFire, new ItemStack(Items.BOW)));
@@ -109,8 +131,8 @@ class TaczFirstPersonFrameSnapshotTest {
         Object player = new Object();
         ItemStack capturedStack = new ItemStack(Items.CROSSBOW);
         ItemStack firingStack = capturedStack.copy();
-        capturedStack.getOrCreateTag().putInt("Ammo", 30);
-        firingStack.getOrCreateTag().putInt("Ammo", 29);
+        CustomData.update(DataComponents.CUSTOM_DATA, capturedStack, tag -> tag.putInt("Ammo", 30));
+        CustomData.update(DataComponents.CUSTOM_DATA, firingStack, tag -> tag.putInt("Ammo", 29));
 
         TaczFirstPersonFrameSnapshot.beginFrame(player, capturedStack, new Matrix4f(), true);
         assertTrue(TaczFirstPersonFrameSnapshot.captureHand(player,

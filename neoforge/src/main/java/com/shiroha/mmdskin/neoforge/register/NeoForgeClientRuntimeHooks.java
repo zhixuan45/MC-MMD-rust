@@ -11,6 +11,7 @@ import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import com.shiroha.mmdskin.ui.QuickModelSwitcher;
 import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
 import com.shiroha.mmdskin.ui.network.NetworkOpCode;
+import com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer;
 import com.shiroha.mmdskin.ui.wheel.ConfigWheelScreen;
 import com.shiroha.mmdskin.ui.wheel.MaidConfigWheelScreen;
 import net.minecraft.client.KeyMapping;
@@ -110,6 +111,7 @@ final class NeoForgeClientRuntimeHooks {
     }
 
     void onRenderGui(RenderGuiEvent.Post event) {
+        PaperDollRenderer.renderHud(event.getGuiGraphics(), event.getPartialTick().getGameTimeDeltaPartialTick(false));
         PerformanceHud.render(event.getGuiGraphics());
     }
 

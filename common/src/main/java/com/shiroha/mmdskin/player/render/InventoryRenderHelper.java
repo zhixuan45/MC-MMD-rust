@@ -32,30 +32,43 @@ public class InventoryRenderHelper {
         PoseStack modelViewStack = new PoseStack();
         modelViewStack.pushPose();
 
-        int posX, posY;
-        if (mc.gameMode.getPlayerMode() != GameType.CREATIVE && mc.screen instanceof InventoryScreen) {
-            InventoryScreen invScreen = (InventoryScreen) mc.screen;
-            posX = invScreen.getRecipeBookComponent().updateScreenPosition(mc.screen.width, 176);
-            posY = (mc.screen.height - 166) / 2;
-            modelViewStack.translate(posX + 51, posY + 75, 50);
-            modelViewStack.scale(1.5f, 1.5f, 1.5f);
-        } else {
-            posX = (mc.screen.width - 121) / 2;
-            posY = (mc.screen.height - 195) / 2;
-            modelViewStack.translate(posX + 51, posY + 75, 50.0);
-        }
-
         float inventorySize = size[1];
-        modelViewStack.scale(inventorySize, inventorySize, inventorySize);
-        modelViewStack.scale(20.0f, 20.0f, -20.0f);
+        if (isInventoryScreen()) {
+            int posX, posY;
+            if (mc.gameMode.getPlayerMode() != GameType.CREATIVE && mc.screen instanceof InventoryScreen) {
+                InventoryScreen invScreen = (InventoryScreen) mc.screen;
+                posX = invScreen.getRecipeBookComponent().updateScreenPosition(mc.screen.width, 176);
+                posY = (mc.screen.height - 166) / 2;
+                modelViewStack.translate(posX + 51, posY + 75, 50);
+                modelViewStack.scale(1.5f, 1.5f, 1.5f);
+            } else {
+                posX = (mc.screen.width - 121) / 2;
+                posY = (mc.screen.height - 195) / 2;
+                modelViewStack.translate(posX + 51, posY + 75, 50.0);
+            }
 
-        Quaternionf rotation = calculateRotation(player);
-        modelViewStack.mulPose(rotation);
+            modelViewStack.scale(inventorySize, inventorySize, inventorySize);
+            modelViewStack.scale(20.0f, 20.0f, -20.0f);
 
-        RenderSystem.setShader(GameRenderer::getRendertypeEntityTranslucentShader);
-        // 原版在背包 Draw 前会临时写入由光标驱动的 yBodyRot/yHeadRot。
-        model.render(player, player.yBodyRot, 0.0f, new Vector3f(0.0f), tickDelta,
-                modelViewStack, packedLight, RenderScene.INVENTORY);
+            Quaternionf rotation = calculateRotation(player);
+            modelViewStack.mulPose(rotation);
+
+            RenderSystem.setShader(GameRenderer::getRendertypeEntityTranslucentShader);
+            // 原版在背包 Draw 前会临时写入由光标驱动的 yBodyRot/yHeadRot。
+            model.render(player, player.yBodyRot, 0.0f, new Vector3f(0.0f), tickDelta,
+                    modelViewStack, packedLight, RenderScene.INVENTORY);
+        } else {
+            // 非背包界面（如第三方纸娃娃模组或自定义 GUI 调用），直接在传入的 matrixStack 基础上渲染
+            matrixStack.scale(inventorySize, inventorySize, inventorySize);
+            matrixStack.scale(1.0f, 1.0f, -1.0f);
+
+            Quaternionf rotation = calculateRotation(player);
+            matrixStack.mulPose(rotation);
+
+            RenderSystem.setShader(GameRenderer::getRendertypeEntityTranslucentShader);
+            model.render(player, player.yBodyRot, 0.0f, new Vector3f(0.0f), tickDelta,
+                    matrixStack, packedLight, RenderScene.PAPERDOLL);
+        }
 
         modelViewStack.popPose();
 

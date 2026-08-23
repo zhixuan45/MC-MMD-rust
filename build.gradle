@@ -98,6 +98,11 @@ sourceSets {
 			]
 		}
 	}
+	test {
+		java {
+			srcDirs = ['common/src/test/java']
+		}
+	}
 }
 
 neoForge {
@@ -129,6 +134,15 @@ dependencies {
 
 	// MP3 播放支持
 	implementation "javazoom:jlayer:1.0.1"
+
+	testImplementation files(sourceSets.main.compileClasspath)
+	testRuntimeOnly files(sourceSets.main.runtimeClasspath)
+	testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+	useJUnitPlatform()
 }
 
 tasks.named('processResources', ProcessResources).configure {
