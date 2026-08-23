@@ -22,6 +22,10 @@ public record ModelRequestKey(ModelSubjectKind subjectKind, String subjectId, St
         return new ModelRequestKey(ModelSubjectKind.MOB, entitySubjectId(entity), modelName);
     }
 
+    public static ModelRequestKey paperDoll(Player player, String modelName) {
+        return new ModelRequestKey(ModelSubjectKind.PAPERDOLL, playerSubjectId(player), modelName);
+    }
+
     public static ModelRequestKey maid(UUID maidId, String modelName) {
         return new ModelRequestKey(ModelSubjectKind.MAID, maidId != null ? maidId.toString() : "unknown", modelName);
     }

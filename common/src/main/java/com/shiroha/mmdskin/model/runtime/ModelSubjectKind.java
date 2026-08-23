@@ -7,5 +7,6 @@ public enum ModelSubjectKind {
     MAID,
     SCENE,
     STAGE,
+    PAPERDOLL,
     OTHER
 }

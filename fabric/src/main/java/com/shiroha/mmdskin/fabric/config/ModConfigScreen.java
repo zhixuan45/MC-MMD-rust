@@ -3,6 +3,9 @@ package com.shiroha.mmdskin.fabric.config;
 
 import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
 import com.shiroha.mmdskin.config.ConfigData;
+import com.shiroha.mmdskin.config.PaperDollDisplayMode;
+import com.shiroha.mmdskin.config.PaperDollPosition;
+import com.shiroha.mmdskin.config.PaperDollRotationMode;
 import com.shiroha.mmdskin.config.PhysicsCollisionStabilityMode;
 import com.shiroha.mmdskin.config.PhysicsConfigSnapshot;
 import com.shiroha.mmdskin.config.UIConstants;
@@ -298,6 +301,90 @@ public class ModConfigScreen {
                 (int) (data.toonOutlineB * 100), 0, 100)
             .setDefaultValue(12)
             .setSaveConsumer(value -> data.toonOutlineB = value / 100.0f)
+            .build());
+
+        ConfigCategory paperDollCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.paper_doll"));
+
+        paperDollCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.enabled"),
+                data.paperDollEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.enabled.tooltip"))
+            .setSaveConsumer(value -> data.paperDollEnabled = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.position"),
+                PaperDollPosition.class,
+                data.paperDollPosition)
+            .setDefaultValue(PaperDollPosition.TOP_LEFT)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.position.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.position." + ((PaperDollPosition) e).name().toLowerCase()))
+            .setSaveConsumer(value -> data.paperDollPosition = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_x"),
+                data.paperDollOffsetX,
+                -200, 200)
+            .setDefaultValue(20)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_x.tooltip"))
+            .setSaveConsumer(value -> data.paperDollOffsetX = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_y"),
+                data.paperDollOffsetY,
+                -200, 200)
+            .setDefaultValue(20)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_y.tooltip"))
+            .setSaveConsumer(value -> data.paperDollOffsetY = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.scale"),
+                Math.round(data.paperDollScale),
+                10, 100)
+            .setDefaultValue(30)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.scale.tooltip"))
+            .setSaveConsumer(value -> data.paperDollScale = value.floatValue())
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.display_mode"),
+                PaperDollDisplayMode.class,
+                data.paperDollDisplayMode)
+            .setDefaultValue(PaperDollDisplayMode.ALWAYS)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.display_mode.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.display_mode." + ((PaperDollDisplayMode) e).name().toLowerCase()))
+            .setSaveConsumer(value -> data.paperDollDisplayMode = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode"),
+                PaperDollRotationMode.class,
+                data.paperDollRotationMode)
+            .setDefaultValue(PaperDollRotationMode.FIXED)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode." + ((PaperDollRotationMode) e).name().toLowerCase()))
+            .setSaveConsumer(value -> data.paperDollRotationMode = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.show_in_screens"),
+                data.paperDollShowInScreens)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.show_in_screens.tooltip"))
+            .setSaveConsumer(value -> data.paperDollShowInScreens = value)
             .build());
 
         ConfigCategory physicsCategory = builder.getOrCreateCategory(

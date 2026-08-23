@@ -47,7 +47,10 @@ final class FabricClientRuntimeHooks {
         ClientTickEvents.END_CLIENT_TICK.register(client -> onClientTick(minecraft));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> client.execute(() -> onJoin(client)));
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> onDisconnect());
-        HudRenderCallback.EVENT.register((graphics, tickDelta) -> PerformanceHud.render(graphics));
+        HudRenderCallback.EVENT.register((graphics, tickDelta) -> {
+            PerformanceHud.render(graphics);
+            com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.renderHud(graphics, tickDelta);
+        });
     }
 
     private void onClientTick(Minecraft minecraft) {

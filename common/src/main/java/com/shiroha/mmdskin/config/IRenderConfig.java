@@ -44,4 +44,20 @@ public interface IRenderConfig {
     default float getAntiPeekThresholdAngle() { return 25.0f; }
 
     default float getAntiPeekHideAngle() { return 10.0f; }
+
+    default boolean isPaperDollEnabled() { return true; }
+
+    default PaperDollPosition getPaperDollPosition() { return PaperDollPosition.TOP_LEFT; }
+
+    default int getPaperDollOffsetX() { return 20; }
+
+    default int getPaperDollOffsetY() { return 20; }
+
+    default float getPaperDollScale() { return 30.0f; }
+
+    default PaperDollDisplayMode getPaperDollDisplayMode() { return PaperDollDisplayMode.ALWAYS; }
+
+    default PaperDollRotationMode getPaperDollRotationMode() { return PaperDollRotationMode.FIXED; }
+
+    default boolean isPaperDollShowInScreens() { return true; }
 }

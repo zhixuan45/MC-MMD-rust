@@ -2587,12 +2587,35 @@ impl MmdModel {
             .map(|bone| Mat4::from_translation(bone.initial_position))
             .collect();
 
-        physics.build_physics(&self.rigid_bodies, &self.joints, &bind_bone_transforms);
+        // 自动合成缺失的上身跟骨碰撞体（如 Grass Wonder 等模型），提供真实的物理阻挡面
+        let bone_names: Vec<String> = self.bone_manager.links().map(|b| b.name.clone()).collect();
+        let bone_positions: Vec<[f32; 3]> = self
+            .bone_manager
+            .links()
+            .map(|b| b.initial_position.to_array())
+            .collect();
+        let synthesized =
+            crate::physics::body_collider_synthesis::synthesize_missing_body_colliders(
+                &self.rigid_bodies,
+                &bone_names,
+                &bone_positions,
+            );
+        let all_rigid_bodies: Vec<mmd::pmx::rigid_body::RigidBody> = if synthesized.is_empty() {
+            self.rigid_bodies.clone()
+        } else {
+            self.rigid_bodies
+                .iter()
+                .cloned()
+                .chain(synthesized)
+                .collect()
+        };
+
+        physics.build_physics(&all_rigid_bodies, &self.joints, &bind_bone_transforms);
         if crate::physics::config::get_config().debug_log {
             log::info!(
                 "[Bullet3][诊断][参数基准] offset_source=pmx_bind_pose runtime_pose_separate=true bones={} rigid_bodies={} joints={}",
                 bone_count,
-                self.rigid_bodies.len(),
+                all_rigid_bodies.len(),
                 self.joints.len(),
             );
         }

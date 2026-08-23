@@ -16,10 +16,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 
 @Pseudo
-@Mixin(targets = "com.tacz.guns.client.renderer.item.GunItemRendererWrapper", remap = false)
+@Mixin(targets = "com.tacz.guns.client.renderer.item.GunItemRendererWrapper")
 public abstract class TaczGunItemRendererWrapperMixin {
     // 每次进入均替换线程局部帧，避免 ifPresent 早退或上一帧异常留下的矩阵跨帧复用。
-    @Inject(method = "renderFirstPerson(Lnet/minecraft/client/player/LocalPlayer;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;IF)V", at = @At("HEAD"), remap = false)
+    @Inject(method = "renderFirstPerson", at = @At("HEAD"), require = 0)
     private void mmdskin$beginTaczFrame(LocalPlayer player, ItemStack stack, ItemDisplayContext context,
                                         PoseStack poseStack, MultiBufferSource buffers, int light, float partialTick,
                                         CallbackInfo ci) {
@@ -30,7 +30,7 @@ public abstract class TaczGunItemRendererWrapperMixin {
     }
 
     // TaCZ 枪械和 buffer 全部完成后才消费锚点，避免在功能节点内重入完整 MMD renderer。
-    @Inject(method = "renderFirstPerson(Lnet/minecraft/client/player/LocalPlayer;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;IF)V", at = @At("RETURN"), remap = false)
+    @Inject(method = "renderFirstPerson", at = @At("RETURN"), require = 0)
     private void mmdskin$finishTaczFrame(LocalPlayer player, ItemStack stack, ItemDisplayContext context,
                                          PoseStack poseStack, MultiBufferSource buffers, int light, float partialTick,
                                          CallbackInfo ci) {

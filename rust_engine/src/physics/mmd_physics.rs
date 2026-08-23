@@ -489,11 +489,11 @@ impl MMDPhysics {
             let rot_inv = Mat3::from_mat4(model_transform).transpose();
             let local_vel = rot_inv * world_vel;
 
-            // 模型局部空间惯性（Z-flip 坐标系中 Z 方向需取反）
+            // 模型局部空间惯性：所有轴向均产生与移动速度相反的反向拖拽力
             let inertia_vel = Vec3::new(
                 -local_vel.x * config.inertia_strength,
                 -local_vel.y * config.inertia_strength,
-                local_vel.z * config.inertia_strength,
+                -local_vel.z * config.inertia_strength,
             );
 
             // 最大加速度 = max_linear_velocity * physics_fps
@@ -805,6 +805,11 @@ impl MMDPhysics {
         current_bone_transforms: &[Mat4],
     ) -> &[(usize, Mat4)] {
         self.dynamic_bone_buf.clear();
+        let (spheres, capsules) = super::body_collider_synthesis::extract_body_colliders_from_data(
+            &self.rigid_bodies,
+            current_bone_transforms,
+        );
+
         for rb_data in &self.rigid_bodies {
             if rb_data.physics_mode == PhysicsMode::FollowBone {
                 continue;
@@ -828,8 +833,15 @@ impl MMDPhysics {
                     }
                     PhysicsMode::FollowBone => unreachable!(),
                 };
-                self.dynamic_bone_buf
-                    .push((bone_idx as usize, super::inv_z(new_bone_left)));
+                let mut bone_right = super::inv_z(new_bone_left);
+                if !spheres.is_empty() || !capsules.is_empty() {
+                    let world_pos = bone_right.w_axis.truncate();
+                    let pushed_pos = super::body_collider_synthesis::push_out_dynamic_bone_position(
+                        world_pos, &spheres, &capsules,
+                    );
+                    bone_right.w_axis = pushed_pos.extend(1.0);
+                }
+                self.dynamic_bone_buf.push((bone_idx as usize, bone_right));
             }
         }
         &self.dynamic_bone_buf

@@ -61,21 +61,23 @@ public final class LivingEntityModelStateHelper {
             EyeTrackingHelper.updateEyeTracking(scenePort, modelHandle, entity, entityYaw, tickDelta, modelName);
         }
 
-        Vec3 renderOrigin = entity instanceof Player player
+        Vec3 renderOrigin = context == RenderScene.PAPERDOLL
+                ? Vec3.ZERO
+                : entity instanceof Player player
                 ? resolveRenderOrigin(player, tickDelta)
                 : new Vec3(
                         Mth.lerp(tickDelta, entity.xo, entity.getX()),
                         Mth.lerp(tickDelta, entity.yo, entity.getY()),
                         Mth.lerp(tickDelta, entity.zo, entity.getZ())
                 );
-        if (entity instanceof Player player) {
+        if (context != RenderScene.PAPERDOLL && entity instanceof Player player) {
             renderOrigin = renderOrigin.add(FirstPersonManager.getLocalVrModelRootOffset(player));
         }
 
         float posX = (float) (renderOrigin.x * MODEL_SCALE);
         float posY = (float) (renderOrigin.y * MODEL_SCALE);
         float posZ = (float) (renderOrigin.z * MODEL_SCALE);
-        float bodyYaw = context.isInventoryScene()
+        float bodyYaw = context == RenderScene.PAPERDOLL
                 ? entityYaw * ((float) Math.PI / 180F)
                 : entity instanceof Player player
                 ? resolveBodyYaw(player, tickDelta)

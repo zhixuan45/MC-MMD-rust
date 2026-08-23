@@ -84,6 +84,23 @@ public class ConfigData {
 
     public boolean debugHudEnabled = false;
 
+    /** 屏幕角落纸娃娃渲染总开关 */
+    public boolean paperDollEnabled = true;
+    /** 纸娃娃在屏幕上的锚点位置 */
+    public PaperDollPosition paperDollPosition = PaperDollPosition.TOP_LEFT;
+    /** 纸娃娃水平边距偏移（像素） */
+    public int paperDollOffsetX = 20;
+    /** 纸娃娃垂直边距偏移（像素） */
+    public int paperDollOffsetY = 20;
+    /** 纸娃娃模型缩放比例 */
+    public float paperDollScale = 30.0f;
+    /** 纸娃娃显示触发模式：ALWAYS(常驻), DYNAMIC(动作触发) */
+    public PaperDollDisplayMode paperDollDisplayMode = PaperDollDisplayMode.ALWAYS;
+    /** 纸娃娃模型朝向模式：FIXED(固定微侧身), FOLLOW_PLAYER(跟随视角) */
+    public PaperDollRotationMode paperDollRotationMode = PaperDollRotationMode.FIXED;
+    /** 是否在游戏暂停菜单等常规屏幕中显示纸娃娃 */
+    public boolean paperDollShowInScreens = true;
+
     public boolean vrEnabled = false;
     public float vrArmIKStrength = 1.0f;
 
