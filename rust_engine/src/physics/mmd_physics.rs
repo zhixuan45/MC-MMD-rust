@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use glam::{Mat3, Mat4, Vec3};
 
 use mmd::pmx::joint::Joint as PmxJoint;
-use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
+use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
 use super::bullet_ffi::{self, BulletWorld};
 use super::collision_topology::{
@@ -19,8 +19,8 @@ use super::kinematic_target_filter::KinematicTargetFilter;
 use super::mmd_joint::MmdJointData;
 use super::mmd_rigid_body::{
     body_collider_scale_flags, effective_collision_shape_size_with_static_scale,
-    is_skirt_or_lower_garment, is_tail_dynamic_part, MmdRigidBodyData, PhysicsMode,
-    STATIC_COLLISION_SHAPE_SCALE,
+    is_pelvis_or_thigh_collider, is_skirt_or_lower_garment, is_tail_dynamic_part,
+    MmdRigidBodyData, PhysicsMode,
 };
 use super::physics_diagnostics::{model_topology_signature, ContactWindow, JointLimitPeak};
 
@@ -57,6 +57,8 @@ pub struct MMDPhysics {
 
     /// 上一帧模型世界位置（用于计算参考系速度）
     prev_model_position: Option<Vec3>,
+    /// 平滑后的模型世界速度，消除逐帧离散渲染跳步
+    smoothed_model_velocity: Vec3,
     /// 调试遥测按模拟时间聚合，避免开启日志后逐帧刷屏。
     debug_telemetry: PhysicsDebugTelemetry,
     /// 等待 Java Log4j 消费的诊断消息；每个聚合窗口只构造一次。
@@ -116,6 +118,7 @@ impl MMDPhysics {
             kinematic_target_filter: KinematicTargetFilter::default(),
             debug_body_pointer_indices: HashMap::new(),
             prev_model_position: None,
+            smoothed_model_velocity: Vec3::ZERO,
             debug_telemetry: PhysicsDebugTelemetry::default(),
             pending_debug_diagnostic: None,
             active_debug_config: ActivePhysicsDebugConfig::from_config(&config),
@@ -159,7 +162,7 @@ impl MMDPhysics {
 
             let shape_size = effective_collision_shape_size_with_static_scale(
                 pmx_rb,
-                STATIC_COLLISION_SHAPE_SCALE,
+                config.static_collider_scale,
                 body_collider_flags[body_index],
             );
             let mut rb_data = MmdRigidBodyData::from_pmx(pmx_rb, bone_transform, shape_size);
@@ -183,12 +186,32 @@ impl MMDPhysics {
 
         // 第二步：统一将已存储的刚体添加到世界
         // 此时所有权已在 self.rigid_bodies 中，panic 时 Drop 链会正确清理
-        for rb_data in &self.rigid_bodies {
+        for (i, rb_data) in self.rigid_bodies.iter().enumerate() {
             if let Some(ref body) = rb_data.bullet_body {
                 let group = 1i32 << (rb_data.group.min(15) as i32);
-                // 临时兼容模式只关闭接触碰撞，不影响重力、关节和骨骼回写。
-                let mask =
-                    effective_collision_mask(config.collision_enabled, rb_data.collision_mask);
+                let mut mask_u16 = rb_data.collision_mask;
+                // 确保骨盆和上大腿跟骨碰撞体与所有动态裙摆刚体始终能够双向碰撞，防止腿部和臀部穿透裙摆；
+                // 小腿/膝盖等保留 PMX 作者配置的掩码，避免跑跳摆腿时小腿撕裂长裙。
+                if rb_data.physics_mode == PhysicsMode::FollowBone
+                    && is_pelvis_or_thigh_collider(&pmx_rigid_bodies[i])
+                {
+                    for dynamic_rb in pmx_rigid_bodies.iter() {
+                        if dynamic_rb.mode != RigidBodyMode::Static
+                            && is_skirt_or_lower_garment(dynamic_rb)
+                        {
+                            mask_u16 |= 1u16 << dynamic_rb.group.min(15);
+                        }
+                    }
+                } else if is_skirt_or_lower_garment(&pmx_rigid_bodies[i]) {
+                    for static_rb in pmx_rigid_bodies.iter() {
+                        if static_rb.mode == RigidBodyMode::Static
+                            && is_pelvis_or_thigh_collider(static_rb)
+                        {
+                            mask_u16 |= 1u16 << static_rb.group.min(15);
+                        }
+                    }
+                }
+                let mask = effective_collision_mask(config.collision_enabled, mask_u16);
                 self.world.add_rigid_body(body, group, mask);
             }
         }
@@ -208,6 +231,7 @@ impl MMDPhysics {
                     is_dynamic: body.physics_mode != PhysicsMode::FollowBone,
                     is_skirt: is_skirt_or_lower_garment(pmx_body),
                     is_tail: is_tail_dynamic_part(pmx_body),
+                    is_hair: super::hair_parameters::is_hair_body(pmx_body),
                     is_active: body.bullet_body.is_some(),
                     initial_aabb: body.collision_half_extents.and_then(|extents| {
                         CollisionAabb::from_transform(body.initial_transform, extents)
@@ -460,13 +484,17 @@ impl MMDPhysics {
             return;
         }
 
-        // 计算模型世界速度
-        let model_velocity = if let Some(prev_pos) = self.prev_model_position {
+        // 计算模型世界速度，并使用低通滤波平滑以消除逐帧离散渲染跳步
+        let raw_velocity = if let Some(prev_pos) = self.prev_model_position {
             (curr_pos - prev_pos) / dt
         } else {
             Vec3::ZERO
         };
         self.prev_model_position = Some(curr_pos);
+
+        let smooth_factor = (dt / 0.08).clamp(0.0, 1.0);
+        self.smoothed_model_velocity = self.smoothed_model_velocity.lerp(raw_velocity, smooth_factor);
+        let model_velocity = self.smoothed_model_velocity;
 
         // 第一步：同步运动学刚体位置
         if config.debug_log {
@@ -475,10 +503,10 @@ impl MMDPhysics {
         self.sync_bodies(bone_transforms);
 
         // 第二步：给动态刚体施加惯性力
-        if config.inertia_strength > 0.0 && model_velocity.length_squared() > 1e-8 {
-            // 钳制世界速度（20 blocks/s 覆盖疾跑和速度药水，超出视为传送）
+        if config.inertia_strength > 0.0 && model_velocity.length_squared() > 1e-6 {
+            // 钳制世界速度（20 blocks/s = 200 MMD units/s 覆盖疾跑和速度药水，超出视为传送）
             let speed_sq = model_velocity.length_squared();
-            let max_speed = 20.0_f32;
+            let max_speed = 200.0_f32;
             let world_vel = if speed_sq > max_speed * max_speed {
                 model_velocity * (max_speed / speed_sq.sqrt())
             } else {
@@ -489,18 +517,20 @@ impl MMDPhysics {
             let rot_inv = Mat3::from_mat4(model_transform).transpose();
             let local_vel = rot_inv * world_vel;
 
-            // 模型局部空间惯性：所有轴向均产生与移动速度相反的反向拖拽力
-            let inertia_vel = Vec3::new(
+            // 在 MMD Bullet 物理空间中：+X 为右侧，+Y 为上方，+Z 为后方（尾巴方向），-Z 为前方。
+            // 当角色向前移动 (local_vel.z > 0) 时，惯性拖拽力应将头发和尾巴向后拉拽 (+Z 方向)；
+            // 当角色向右侧移 (local_vel.x > 0) 时，惯性力向左拉拽 (-X 方向)；
+            // 当角色向上跳跃 (local_vel.y > 0) 时，惯性力向下压 (-Y 方向)。
+            let inertia_accel = Vec3::new(
                 -local_vel.x * config.inertia_strength,
                 -local_vel.y * config.inertia_strength,
-                -local_vel.z * config.inertia_strength,
+                local_vel.z * config.inertia_strength,
             );
 
             // 最大加速度 = max_linear_velocity * physics_fps
-            // 确保单个物理子步内速度增量不超过 max_linear_velocity
             let max_accel = config.max_linear_velocity * self.fps;
 
-            // F = m * v / dt，再钳制力大小防止衣服拉伸。
+            // F = m * a_drag（空气阻力与平滑加速度，不除以 dt，避免帧率抖动和过度爆炸）
             for rb_data in &self.rigid_bodies {
                 if rb_data.physics_mode == PhysicsMode::FollowBone {
                     continue;
@@ -508,8 +538,29 @@ impl MMDPhysics {
                 if let Some(ref body) = rb_data.bullet_body {
                     let mass = body.get_mass();
                     if mass > 0.0 {
-                        let mut force = inertia_vel * mass / dt;
-                        // 钳制力：限制加速度上限
+                        let is_skirt = is_skirt_body_name(&rb_data.name);
+                        let is_tail = is_tail_body_name(&rb_data.name);
+
+                        let accel = if is_tail {
+                            // 尾巴作为柔性长摆锤，在跑动时需要明显的阻尼滞后（Damped Tracking）和迎风向后扬起效果。
+                            // 线性风阻 + 迎风动压阻力 + 空气升力，使尾巴在疾跑时自然向后上方扬起（~45°），并在停步时平滑摆回。
+                            let forward_speed = local_vel.z.max(0.0);
+                            let quad_drag = 0.025 * forward_speed * forward_speed * config.inertia_strength;
+                            let lift_accel = 0.012 * forward_speed * forward_speed * config.inertia_strength;
+                            Vec3::new(
+                                -local_vel.x * (2.8 * config.inertia_strength),
+                                -local_vel.y * (1.8 * config.inertia_strength) + lift_accel,
+                                (local_vel.z * 2.8 + quad_drag) * config.inertia_strength,
+                            )
+                        } else if is_skirt {
+                            // 裙摆是环绕身体的环状结构，惯性响应系数降低为 0.15，保持裙摆优雅形态，防止跑动时向上翻起
+                            inertia_accel * 0.15
+                        } else {
+                            // 头发与饰品等常规动态部位
+                            inertia_accel
+                        };
+
+                        let mut force = accel * mass;
                         let max_force = max_accel * mass;
                         let force_sq = force.length_squared();
                         if force_sq > max_force * max_force {
@@ -743,6 +794,7 @@ impl MMDPhysics {
     /// 清除模型参考系运动历史，防止暂停、传送或重置后产生虚假惯性。
     pub fn reset_motion_history(&mut self) {
         self.prev_model_position = None;
+        self.smoothed_model_velocity = Vec3::ZERO;
         // 重同步后的首帧没有连续目标历史，避免诊断把姿态切换误报为静止跳变。
         self.debug_kinematic_target_transforms.fill(None);
         self.debug_telemetry = PhysicsDebugTelemetry::default();
@@ -805,10 +857,6 @@ impl MMDPhysics {
         current_bone_transforms: &[Mat4],
     ) -> &[(usize, Mat4)] {
         self.dynamic_bone_buf.clear();
-        let (spheres, capsules) = super::body_collider_synthesis::extract_body_colliders_from_data(
-            &self.rigid_bodies,
-            current_bone_transforms,
-        );
 
         for rb_data in &self.rigid_bodies {
             if rb_data.physics_mode == PhysicsMode::FollowBone {
@@ -833,14 +881,7 @@ impl MMDPhysics {
                     }
                     PhysicsMode::FollowBone => unreachable!(),
                 };
-                let mut bone_right = super::inv_z(new_bone_left);
-                if !spheres.is_empty() || !capsules.is_empty() {
-                    let world_pos = bone_right.w_axis.truncate();
-                    let pushed_pos = super::body_collider_synthesis::push_out_dynamic_bone_position(
-                        world_pos, &spheres, &capsules,
-                    );
-                    bone_right.w_axis = pushed_pos.extend(1.0);
-                }
+                let bone_right = super::inv_z(new_bone_left);
                 self.dynamic_bone_buf.push((bone_idx as usize, bone_right));
             }
         }
@@ -860,12 +901,13 @@ impl MMDPhysics {
     /// 构造当前聚合窗口中的峰值刚体信息，便于定位接触导致的高频振荡。
     fn build_debug_diagnostic(&self) -> String {
         let mut lines = vec![format!(
-            "[Bullet3][诊断][窗口] model_signature={} cfg(collision={} joints={} kinematic_filter={} inertia={:.3} stability_mode={}) requested={} applied={} rejected={} largest_dynamic_component={} space=bullet_left steps={} max_dt={:.5}s invalid={}",
+            "[Bullet3][诊断][窗口] model_signature={} cfg(collision={} joints={} kinematic_filter={} inertia={:.3} static_scale={:.3} stability_mode={}) requested={} applied={} rejected={} largest_dynamic_component={} space=bullet_left steps={} max_dt={:.5}s invalid={}",
             self.model_topology_signature,
             self.active_debug_config.collision_enabled,
             self.active_debug_config.joints_enabled,
             self.active_debug_config.kinematic_filter,
             self.active_debug_config.inertia_strength,
+            self.active_debug_config.static_collider_scale,
             self.collision_stability_mode.as_str(),
             self.collision_filter_plan.pairs.len(),
             self.collision_filter_applied_pairs,
@@ -1061,6 +1103,7 @@ struct ActivePhysicsDebugConfig {
     joints_enabled: bool,
     kinematic_filter: bool,
     inertia_strength: f32,
+    static_collider_scale: f32,
 }
 
 impl ActivePhysicsDebugConfig {
@@ -1070,6 +1113,7 @@ impl ActivePhysicsDebugConfig {
             joints_enabled: config.joints_enabled,
             kinematic_filter: config.kinematic_filter,
             inertia_strength: config.inertia_strength,
+            static_collider_scale: config.static_collider_scale,
         }
     }
 }
@@ -1262,8 +1306,23 @@ fn format_vec3(value: Vec3) -> String {
 }
 
 fn is_skirt_body_name(name: &str) -> bool {
+    const SKIRT_PARTS: &[&str] = &[
+        "裙", "スカート", "skirt", "petticoat", "下装", "下衣", "裾", "摆", "衣摆", "后摆", "下摆", "cloak", "cape",
+    ];
     let lower = name.to_ascii_lowercase();
-    lower.contains("skirt") || name.contains('裙')
+    SKIRT_PARTS.iter().any(|p| lower.contains(p))
+}
+
+fn is_tail_body_name(name: &str) -> bool {
+    const NOT_TAIL_NAMES: &[&str] = &[
+        "馬尾", "马尾", "ツインテール", "ポニーテール", "twintail", "ponytail", "tail_hair", "tailhair",
+    ];
+    const TAIL_NAMES: &[&str] = &["tail", "尻尾", "しっぽ", "尾巴", "尾"];
+    let lower = name.to_ascii_lowercase();
+    if NOT_TAIL_NAMES.iter().any(|not_tail| lower.contains(not_tail)) {
+        return false;
+    }
+    TAIL_NAMES.iter().any(|part| lower.contains(part))
 }
 
 /// 根据实验性总开关选择 Bullet 的允许碰撞掩码。

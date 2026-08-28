@@ -19,7 +19,8 @@ use super::{
     register_animation, register_model, register_texture, ANIMATIONS, FBX_CACHE, MODELS, TEXTURES,
 };
 
-const VERSION: &str = "v1.0.5";
+// JNI 原生引擎版本号
+const VERSION: &str = "v1.10alpha";
 const BONE_OVERRIDE_TRANSFORM_STRIDE: usize = 7;
 
 fn make_override_rotation(qx: f32, qy: f32, qz: f32, qw: f32) -> Option<glam::Quat> {
@@ -3272,6 +3273,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
     kinematic_filter: jboolean,
     collision_enabled: jboolean,
     collision_stability_mode: jint,
+    static_collider_scale: jfloat,
     debug_log: jboolean,
 ) {
     use crate::physics::config::{get_config, set_config, PhysicsConfig};
@@ -3280,6 +3282,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
     let previous = get_config();
     // Java 之外的旧调用方若传入未知值，也统一回退到默认 Stable。
     let collision_stability_mode = CollisionStabilityMode::from_i32(collision_stability_mode);
+    let clamped_scale = static_collider_scale.clamp(0.1, 1.5);
     let config = PhysicsConfig {
         enabled: enabled != 0,
         gravity_y,
@@ -3292,6 +3295,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
         collision_enabled: collision_enabled != 0,
         collision_stability_mode,
         kinematic_filter: kinematic_filter != 0,
+        static_collider_scale: clamped_scale,
         debug_log: debug_log != 0,
     };
 
@@ -3302,7 +3306,8 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
         || previous.joints_enabled != config.joints_enabled
         || previous.collision_enabled != config.collision_enabled
         || previous.collision_stability_mode != config.collision_stability_mode
-        || previous.kinematic_filter != config.kinematic_filter;
+        || previous.kinematic_filter != config.kinematic_filter
+        || (previous.static_collider_scale - config.static_collider_scale).abs() > 1e-4;
 
     set_config(config);
 
@@ -3316,11 +3321,12 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
 
     if debug_log != 0 {
         log::info!(
-            "[Bullet3 物理配置] 重力={}, FPS={}, 惯性={}, 碰撞稳定模式={}",
+            "[Bullet3 物理配置] 重力={}, FPS={}, 惯性={}, 碰撞稳定模式={}, 身体碰撞体缩放={}",
             gravity_y,
             physics_fps,
             inertia_strength,
-            collision_stability_mode.as_str()
+            collision_stability_mode.as_str(),
+            clamped_scale
         );
     }
 }

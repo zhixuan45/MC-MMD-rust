@@ -95,7 +95,7 @@ final class NeoForgeClientRuntimeHooks {
         if (selectedModel != null && !selectedModel.isEmpty() && !selectedModel.equals(UIConstants.DEFAULT_MODEL_NAME)) {
             PlayerModelSyncService.broadcastLocalModelSelection(minecraft.player.getUUID(), selectedModel);
         }
-        PacketDistributor.sendToServer(
+        NeoForgeClientNetworkBindings.safeSendToServer(
                 new MmdSkinNetworkPack(NetworkOpCode.REQUEST_ALL_MODELS, minecraft.player.getUUID(), ""));
     }
 

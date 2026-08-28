@@ -131,6 +131,9 @@ final class OpenGlModelRenderer {
     private static void diagnoseFirstPersonIndices(
             com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort nativeBackend,
             long modelHandle, int firstPersonIndexCount) {
+        if (!ConfigManager.isPhysicsDebugLog()) {
+            return;
+        }
         long now = System.nanoTime();
         if (now - lastFirstPersonDiagnosticNanos < FIRST_PERSON_DIAGNOSTIC_INTERVAL_NANOS) {
             return;

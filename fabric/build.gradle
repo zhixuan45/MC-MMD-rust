@@ -1,6 +1,6 @@
-// 负责 Fabric 平台的依赖装配、阴影打包与重映射发布。
+// Fabric 平台构建脚本 - 负责 Fabric 平台的依赖装配、阴影打包与重映射
 plugins {
-	id 'com.gradleup.shadow' version '8.3.6'
+	id 'com.gradleup.shadow'
 }
 
 architectury {
@@ -10,6 +10,7 @@ architectury {
 
 loom {
 	mixin {
+		useLegacyMixinAp = true
 		defaultRefmapName = "mmdskin-fabric-refmap.json"
 	}
 	runs {
@@ -17,119 +18,80 @@ loom {
 			client()
 			name "Fabric Client"
 			runDir "run/client"
-			programArgs "--username", "Player1"
-			vmArgs "-Xmx2G", "-Xms1G"
-		}
-		client2 {
-			client()
-			name "Fabric Client 2"
-			runDir "run/client2"
-			programArgs "--username", "Player2"
-			vmArgs "-Xmx2G", "-Xms1G"
+			programArgs "--username", "Developer"
 		}
 		server {
 			server()
 			name "Fabric Server"
 			runDir "run/server"
+			programArgs "--nogui"
 		}
 	}
 }
 
 configurations {
 	common
-	shadowCommon // Don't use shadow from the shadow plugin since it conflicts with Loom.
+	shadowCommon
 	shadowBundle
 	compileClasspath.extendsFrom common
 	runtimeClasspath.extendsFrom common
 	developmentFabric.extendsFrom common
 }
 
-repositories {
-	maven {
-		url = "https://api.modrinth.com/maven"
-	}
-	maven {
-		url "https://maven.shedaniel.me/"
-		name "Shedaniel Maven"
-	}
-	// Sodium 和 Iris 的 Maven 仓库
-	maven {
-		url "https://maven.terraformersmc.com/releases/"
-		name "TerraformersMC"
-	}
-	// Iris Maven
-	maven {
-		url "https://maven.irisshaders.dev"
-		name "Iris Shaders"
-	}
-	// Cardinal Components API (Ladysnake)
-	maven {
-		url "https://maven.ladysnake.org/releases"
-		name "Ladysnake"
-	}
-	// Reach Entity Attributes (JamiesWhiteShirt)
-	maven {
-		url "https://maven.jamieswhiteshirt.com/libs-release/"
-		name "JamiesWhiteShirt"
-		content {
-			includeGroup "com.jamieswhiteshirt"
-		}
-	}
-}
-
 dependencies {
-	implementation project(":common")
-	common(project(path: ":common", configuration: "namedElements")) { transitive = false }
-	shadowCommon(project(path: ":common", configuration: "transformProductionFabric")) { transitive = false }
-	
-	// JLayer 运行时由平台包私有化，避免与其他模组的 JPMS 模块导出冲突。
-	common("javazoom:jlayer:1.0.1") { transitive = false }
-	shadowBundle("javazoom:jlayer:1.0.1") { transitive = false }
+	// Fabric 核心平台与 API
+	modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_version}"
 
-	// Skiko / Skia（轮盘 UI 平滑渲染）
-
-	// ImGui workbench（开发/本地运行）
-	
-	// Fabric Loader
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	
-	// Fabric API
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	
-	// Architectury API - 内嵌到模组中
-	modImplementation("dev.architectury:architectury-fabric:${project.architectury_version}") {
+	// Architectury API
+	modImplementation("dev.architectury:architectury-fabric:${rootProject.architectury_version}") {
 		exclude group: "net.fabricmc.fabric-api"
 	}
-	include("dev.architectury:architectury-fabric:${project.architectury_version}")
-	
-	// Cloth Config API - 配置界面
-	modApi("me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}") {
-		exclude(group: "net.fabricmc.fabric-api")
+
+	// Cloth Config API
+	modApi("me.shedaniel.cloth:cloth-config-fabric:${rootProject.cloth_config_version}") {
+		exclude group: "net.fabricmc.fabric-api"
 	}
+
+	// ModMenu 编译期支持（可选运行）
+	modCompileOnly "com.terraformersmc:modmenu:11.0.1"
+
+	// Common 模块依赖与阴影打包
+	common(project(path: ":common", configuration: "namedElements")) { transitive false }
+	shadowCommon(project(path: ":common", configuration: "transformProductionFabric")) { transitive false }
+
+	// MP3 解码依赖私有化重定位
+	common("javazoom:jlayer:1.0.1") { transitive = false }
+	shadowBundle("javazoom:jlayer:1.0.1") { transitive = false }
 }
 
 processResources {
-	inputs.property "version", project.version
+	def replaceProperties = [
+		minecraft_version: rootProject.minecraft_version,
+		mod_id: rootProject.mod_id,
+		mod_name: rootProject.mod_name,
+		mod_version: rootProject.mod_version,
+		mod_authors: rootProject.mod_authors,
+		mod_description: rootProject.mod_description
+	]
+
+	inputs.properties replaceProperties
 
 	filesMatching("fabric.mod.json") {
-		expand "version": project.version
+		expand replaceProperties
 	}
 }
 
 shadowJar {
-    exclude "architectury.common.json"
-    configurations = [project.configurations.shadowCommon, project.configurations.shadowBundle]
-    archiveClassifier.set("dev-shadow")
-    relocate "javazoom", "com.shiroha.mmdskin.shadow.javazoom"
-    
-    // 排除不需要的文件
-    exclude 'META-INF/versions/**'
-    
-    // 强制更新 META-INF/services 里的类名
-    mergeServiceFiles()
-    
-    // 排除 module-info.class 避免 JPMS 冲突
-    exclude 'module-info.class'
+	exclude "architectury.common.json"
+	configurations = [project.configurations.shadowCommon, project.configurations.shadowBundle]
+	archiveClassifier.set("dev-shadow")
+	relocate "javazoom", "com.shiroha.mmdskin.shadow.javazoom"
+
+	exclude 'META-INF/versions/**'
+	exclude 'module-info.class'
+
+	mergeServiceFiles()
 }
 
 remapJar {
@@ -140,32 +102,25 @@ remapJar {
 
 jar {
 	archiveClassifier.set("dev")
-	from("${rootProject.projectDir}/LICENSE") {
-		rename { "${it}_${base.archivesName.get()}"}
-	}
 }
+
 sourcesJar {
-    // Avoid duplicate entries when merging common sources
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    def commonSources = project(':common').sourcesJar
-    dependsOn commonSources
-    from commonSources.archiveFile.map { zipTree(it) }
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	def commonSources = project(':common').sourcesJar
+	dependsOn commonSources
+	from commonSources.archiveFile.map { zipTree(it) }
 }
 
 components.java {
-    withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
-        skip()
-    }
+	withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
+		skip()
+	}
 }
 
 sourceSets {
-    main {
-        java {
-            // Avoid JPMS split-package with shaded common (network package) in dev runtime
-        }
-        resources {
-            exclude 'assets/mmdskin/lang/*.json'
-            exclude 'pack.mcmeta'
-        }
-    }
+	main {
+		resources {
+			exclude 'assets/mmdskin/lang/*.json'
+		}
+	}
 }

@@ -1675,14 +1675,16 @@ impl MmdModel {
     }
 
     /// 设置模型位置和朝向（用于惯性计算）
+    /// x, y, z: Minecraft 世界坐标（方块/米），自动按 1 方块 = 10 MMD 局部单位换算速度与惯性
     pub fn set_model_position_and_yaw(&mut self, x: f32, y: f32, z: f32, yaw: f32) {
         let cos_y = yaw.cos();
         let sin_y = yaw.sin();
+        let mmd_scale = 10.0_f32;
         self.model_transform = Mat4::from_cols(
             Vec4::new(cos_y, 0.0, sin_y, 0.0),
             Vec4::new(0.0, 1.0, 0.0, 0.0),
             Vec4::new(-sin_y, 0.0, cos_y, 0.0),
-            Vec4::new(x, y, z, 1.0),
+            Vec4::new(x * mmd_scale, y * mmd_scale, z * mmd_scale, 1.0),
         );
     }
 
@@ -2594,29 +2596,45 @@ impl MmdModel {
             .links()
             .map(|b| b.initial_position.to_array())
             .collect();
-        let synthesized =
+        let synthesized_colliders =
             crate::physics::body_collider_synthesis::synthesize_missing_body_colliders(
                 &self.rigid_bodies,
                 &bone_names,
                 &bone_positions,
             );
-        let all_rigid_bodies: Vec<mmd::pmx::rigid_body::RigidBody> = if synthesized.is_empty() {
+        let all_rigid_bodies: Vec<mmd::pmx::rigid_body::RigidBody> = if synthesized_colliders.is_empty() {
             self.rigid_bodies.clone()
         } else {
             self.rigid_bodies
                 .iter()
                 .cloned()
-                .chain(synthesized)
+                .chain(synthesized_colliders)
                 .collect()
         };
 
-        physics.build_physics(&all_rigid_bodies, &self.joints, &bind_bone_transforms);
+        // 自动合成裙摆缺失的横向环形保形弹簧关节（方案 B）
+        let synthesized_cross_joints =
+            crate::physics::skirt_cross_joints::synthesize_missing_skirt_cross_joints(
+                &all_rigid_bodies,
+                &self.joints,
+            );
+        let all_joints: Vec<mmd::pmx::joint::Joint> = if synthesized_cross_joints.is_empty() {
+            self.joints.clone()
+        } else {
+            self.joints
+                .iter()
+                .cloned()
+                .chain(synthesized_cross_joints)
+                .collect()
+        };
+
+        physics.build_physics(&all_rigid_bodies, &all_joints, &bind_bone_transforms);
         if crate::physics::config::get_config().debug_log {
             log::info!(
                 "[Bullet3][诊断][参数基准] offset_source=pmx_bind_pose runtime_pose_separate=true bones={} rigid_bodies={} joints={}",
                 bone_count,
                 all_rigid_bodies.len(),
-                self.joints.len(),
+                all_joints.len(),
             );
         }
         physics.initialize(&self.physics_bone_transforms_buf);

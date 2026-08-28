@@ -189,6 +189,22 @@ fn main() -> ExitCode {
     };
 
     println!("模型: {}", model.name);
+    println!("顶点总数: {}", model.vertices.len());
+    let mut min_pos = Vec3::splat(f32::MAX);
+    let mut max_pos = Vec3::splat(f32::MIN);
+    for v in &model.vertices {
+        min_pos = min_pos.min(v.position);
+        max_pos = max_pos.max(v.position);
+    }
+    println!("顶点包围盒: min={:?}, max={:?}, 大小={:?}, 高度={:.3}", min_pos, max_pos, max_pos - min_pos, max_pos.y - min_pos.y);
+    println!("骨骼总数: {}", model.bone_manager.bone_count());
+    for i in 0..model.bone_manager.bone_count() {
+        if let Some(bone) = model.bone_manager.get_bone(i) {
+            if i < 20 || bone.name.contains("頭") || bone.name.contains("head") || bone.name.contains("目") || bone.name.contains("センター") || bone.name.contains("全ての親") {
+                println!("  骨骼 #{i}: {} pos={:?}", bone.name, bone.initial_position);
+            }
+        }
+    }
     println!("刚体总数: {}", model.rigid_bodies.len());
     println!("关节总数: {}", model.joints.len());
 
@@ -249,77 +265,71 @@ fn main() -> ExitCode {
         }
     }
 
-    let mut selected_indices = Vec::new();
     for (index, body) in model.rigid_bodies.iter().enumerate() {
-        if is_target(&body.local_name)
-            || (print_all_static && body.mode == mmd::pmx::rigid_body::RigidBodyMode::Static)
-        {
-            selected_indices.push(index);
-            println!("\n刚体 #{index}: {}", body.local_name);
-            let bone_name = usize::try_from(body.bone_index)
-                .ok()
-                .and_then(|bone_index| model.bone_manager.get_bone(bone_index))
-                .map_or("<无绑定骨骼>", |bone| bone.name.as_str());
-            println!("  bone_index={} bone={}", body.bone_index, bone_name);
-            println!(
-                "  group={} excluded=0x{:04X}",
-                body.group, body.un_collision_group_flag
-            );
-            println!("  shape={:?} size={:?}", body.shape, body.size);
-            println!(
-                "  position={:?} rotation={:?}",
-                body.position, body.rotation
-            );
-            println!(
-                "  mass={} move_damping={} rotation_damping={} restitution={} friction={} mode={:?}",
-                body.mass,
-                body.move_attenuation,
-                body.rotation_attenuation,
-                body.repulsion,
-                body.friction,
-                body.mode
-            );
-        }
+        println!("刚体 #{index}: {}", body.local_name);
+        let bone_name = usize::try_from(body.bone_index)
+            .ok()
+            .and_then(|bone_index| model.bone_manager.get_bone(bone_index))
+            .map_or("<无绑定骨骼>", |bone| bone.name.as_str());
+        println!("  bone_index={} bone={}", body.bone_index, bone_name);
+        println!(
+            "  group={} excluded=0x{:04X}",
+            body.group, body.un_collision_group_flag
+        );
+        println!("  shape={:?} size={:?}", body.shape, body.size);
+        println!(
+            "  position={:?} rotation={:?}",
+            body.position, body.rotation
+        );
+        println!(
+            "  mass={} move_damping={} rotation_damping={} restitution={} friction={} mode={:?}",
+            body.mass,
+            body.move_attenuation,
+            body.rotation_attenuation,
+            body.repulsion,
+            body.friction,
+            body.mode
+        );
     }
 
-    println!("\n关联关节:");
+    println!("\n所有关节:");
     for (index, joint) in model.joints.iter().enumerate() {
         let body_a = joint.rigid_body_a_index as usize;
         let body_b = joint.rigid_body_b_index as usize;
-        if selected_indices.contains(&body_a) || selected_indices.contains(&body_b) {
-            println!("\n关节 #{index}: {}", joint.local_name);
-            println!(
-                "  type={:?} rigid_body_a={} ({}) rigid_body_b={} ({})",
-                joint.type_,
-                joint.rigid_body_a_index,
-                model
-                    .rigid_bodies
-                    .get(body_a)
-                    .map_or("<invalid>", |body| body.local_name.as_str()),
-                joint.rigid_body_b_index,
-                model
-                    .rigid_bodies
-                    .get(body_b)
-                    .map_or("<invalid>", |body| body.local_name.as_str())
-            );
-            println!(
-                "  position={:?} rotation={:?}",
-                joint.position, joint.rotation
-            );
-            println!(
-                "  position_min={:?} position_max={:?}",
-                joint.position_min, joint.position_max
-            );
-            println!(
-                "  rotation_min={:?} rotation_max={:?}",
-                joint.rotation_min, joint.rotation_max
-            );
-            println!(
-                "  position_spring={:?} rotation_spring={:?}",
-                joint.position_spring, joint.rotation_spring
-            );
-        }
+        println!("\n关节 #{index}: {}", joint.local_name);
+        println!(
+            "  type={:?} rigid_body_a={} ({}) rigid_body_b={} ({})",
+            joint.type_,
+            joint.rigid_body_a_index,
+            model
+                .rigid_bodies
+                .get(body_a)
+                .map_or("<invalid>", |body| body.local_name.as_str()),
+            joint.rigid_body_b_index,
+            model
+                .rigid_bodies
+                .get(body_b)
+                .map_or("<invalid>", |body| body.local_name.as_str())
+        );
+        println!(
+            "  position={:?} rotation={:?}",
+            joint.position, joint.rotation
+        );
+        println!(
+            "  position_min={:?} position_max={:?}",
+            joint.position_min, joint.position_max
+        );
+        println!(
+            "  rotation_min={:?} rotation_max={:?}",
+            joint.rotation_min, joint.rotation_max
+        );
+        println!(
+            "  position_spring={:?} rotation_spring={:?}",
+            joint.position_spring, joint.rotation_spring
+        );
     }
+
+
 
     println!("\n衣物动态链根关节:");
     for (index, joint) in model.joints.iter().enumerate() {

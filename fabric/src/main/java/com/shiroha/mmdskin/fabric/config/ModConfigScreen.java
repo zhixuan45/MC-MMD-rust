@@ -495,6 +495,16 @@ public class ModConfigScreen {
             .build());
 
         physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_static_collider_scale"),
+                (int) (data.physicsStaticColliderScale * 100), 10, 150)
+            .setDefaultValue(80)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.2fx", value / 100.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_static_collider_scale.tooltip"))
+            .setSaveConsumer(value -> data.physicsStaticColliderScale = value / 100.0f)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
             .startBooleanToggle(
                 Component.translatable("gui.mmdskin.mod_settings.physics_debug_log"),
                 data.physicsDebugLog)

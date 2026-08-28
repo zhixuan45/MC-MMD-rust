@@ -30,6 +30,9 @@ public interface IPhysicsConfig {
         return PhysicsCollisionStabilityMode.STABLE;
     }
 
+    /** 跟随骨骼的人体/下半身碰撞体厚度缩放倍率（默认 0.8f） */
+    default float getPhysicsStaticColliderScale() { return 0.8f; }
+
     default boolean isPhysicsDebugLog() { return false; }
 
     default int getMaxPhysicsModelsPerFrame() { return 10; }

@@ -110,7 +110,7 @@ public class MobReplacementModelPickerScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(GuiGraphics guiGraphics) {
+    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
     }
 
     @Override
@@ -138,9 +138,10 @@ public class MobReplacementModelPickerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        double delta = scrollY != 0 ? scrollY : scrollX;
         if (!layout.listBox.contains(mouseX, mouseY)) {
-            return super.mouseScrolled(mouseX, mouseY, delta);
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
         }
         targetScroll = Mth.clamp(targetScroll - (float) delta * 12.0f, 0.0f, maxScroll());
         return true;

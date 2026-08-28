@@ -35,7 +35,7 @@ impl ViewerPersistedState {
                 .get("static_collider_scale")
                 .and_then(Value::as_f64)
                 .map(|value| value as f32)
-                .unwrap_or(0.75)
+                .unwrap_or(0.8)
                 .clamp(0.1, 1.0),
         })
     }

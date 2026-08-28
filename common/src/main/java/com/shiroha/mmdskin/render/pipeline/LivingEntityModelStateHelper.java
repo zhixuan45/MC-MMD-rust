@@ -74,9 +74,10 @@ public final class LivingEntityModelStateHelper {
             renderOrigin = renderOrigin.add(FirstPersonManager.getLocalVrModelRootOffset(player));
         }
 
-        float posX = (float) (renderOrigin.x * MODEL_SCALE);
-        float posY = (float) (renderOrigin.y * MODEL_SCALE);
-        float posZ = (float) (renderOrigin.z * MODEL_SCALE);
+        // 传入 Minecraft 真实世界坐标（单位：方块/米），供物理引擎按物理比例换算惯性与空气阻力
+        float posX = (float) renderOrigin.x;
+        float posY = (float) renderOrigin.y;
+        float posZ = (float) renderOrigin.z;
         float bodyYaw = context == RenderScene.PAPERDOLL
                 ? entityYaw * ((float) Math.PI / 180F)
                 : entity instanceof Player player

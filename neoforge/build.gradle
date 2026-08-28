@@ -1,79 +1,98 @@
-// 负责 NeoForge 平台的依赖装配、阴影打包与重映射发布。
+// NeoForge 平台构建脚本 - 负责 NeoForge 平台的依赖装配、阴影打包与重映射
 plugins {
-	id 'com.gradleup.shadow' version '8.3.6'
+	id 'com.gradleup.shadow'
 }
 
 architectury {
-    platformSetupLoomIde()
-    neoForge()
+	platformSetupLoomIde()
+	neoForge()
 }
 
 loom {
-    // 启用 mixin refmap 生成
-    mixin {
-        defaultRefmapName = "mmdskin-neoforge-refmap.json"
-    }
-    runs {
-        client {
-            client()
-            name "NeoForge Client"
-            runDir "run/client"
-            programArgs "--username", "Player1"
-        }
-        client2 {
-            client()
-            name "NeoForge Client 2"
-            runDir "run/client2"
-            programArgs "--username", "Player2"
-        }
-        server {
-            server()
-            name "NeoForge Server"
-            runDir "run/server"
-        }
-    }
+	mixin {
+		useLegacyMixinAp = true
+		defaultRefmapName = "mmdskin-neoforge-refmap.json"
+	}
+	runs {
+		client {
+			client()
+			name "NeoForge Client"
+			runDir "run/client"
+			programArgs "--username", "Developer"
+		}
+		server {
+			server()
+			name "NeoForge Server"
+			runDir "run/server"
+			programArgs "--nogui"
+		}
+	}
 }
 
 configurations {
-    common
-    shadowCommon // Don't use shadow from the shadow plugin since it conflicts with Loom.
-    shadowBundle
-    compileClasspath.extendsFrom common
-    runtimeClasspath.extendsFrom common
-    developmentNeoForge.extendsFrom common
+	common
+	shadowCommon
+	shadowBundle
+	compileClasspath.extendsFrom common
+	runtimeClasspath.extendsFrom common
+	developmentNeoForge.extendsFrom common
+}
+
+dependencies {
+	neoForge "net.neoforged:neoforge:${rootProject.neoforge_version}"
+	modApi "dev.architectury:architectury-neoforge:${rootProject.architectury_version}"
+	modApi "me.shedaniel.cloth:cloth-config-neoforge:${rootProject.cloth_config_version}"
+
+	common(project(path: ":common", configuration: "namedElements")) { transitive false }
+	shadowCommon(project(path: ":common", configuration: "transformProductionNeoForge")) { transitive false }
+
+	common("javazoom:jlayer:1.0.1") { transitive = false }
+	shadowBundle("javazoom:jlayer:1.0.1") { transitive = false }
+}
+
+processResources {
+	def replaceProperties = [
+		minecraft_version: rootProject.minecraft_version,
+		minecraft_version_range: '[1.21.1,1.22)',
+		neoforge_version: rootProject.neoforge_version,
+		neoforge_version_range: '[21.1.240,)',
+		loader_version_range: '[4,)',
+		mod_id: rootProject.mod_id,
+		mod_name: rootProject.mod_name,
+		mod_version: rootProject.mod_version,
+		mod_authors: rootProject.mod_authors,
+		mod_description: rootProject.mod_description
+	]
+
+	inputs.properties replaceProperties
+
+	filesMatching(['META-INF/neoforge.mods.toml']) {
+		expand replaceProperties
+	}
 }
 
 shadowJar {
-    exclude "architectury.common.json"
-    exclude "fabric.mod.json"
-    configurations = [project.configurations.shadowCommon, project.configurations.shadowBundle]
-    archiveClassifier.set("dev-shadow")
-    relocate "javazoom", "com.shiroha.mmdskin.shadow.javazoom"
-    
-    // 包含 common 模块的资源（原生库、默认动画等）
-    from(project(":common").sourceSets.main.resources)
-    
-    // 排除不需要的文件
-    exclude 'META-INF/versions/**'
-    
-    // 强制更新 META-INF/services 里的类名
-    mergeServiceFiles()
-    
-    // 排除 module-info.class 避免 JPMS 冲突
-    exclude 'module-info.class'
+	exclude "architectury.common.json"
+	exclude "fabric.mod.json"
+	configurations = [project.configurations.shadowCommon, project.configurations.shadowBundle]
+	archiveClassifier.set("dev-shadow")
+	relocate "javazoom", "com.shiroha.mmdskin.shadow.javazoom"
+
+	// 排除不需要的文件
+	exclude 'META-INF/versions/**'
+	exclude 'module-info.class'
+
+	mergeServiceFiles()
 }
 
 remapJar {
 	inputFile.set shadowJar.archiveFile
 	dependsOn shadowJar
+	archiveClassifier.set(null)
 }
 
 jar {
 	archiveClassifier.set("dev")
-	from("${rootProject.projectDir}/LICENSE") {
-		rename { "${it}_${base.archivesName.get()}"}
-	}
-	
 	manifest {
 		attributes([
 			'Specification-Title'     : 'MMD Skin NeoForge',
@@ -81,70 +100,30 @@ jar {
 			'Specification-Version'   : '1',
 			'Implementation-Title'    : project.name,
 			'Implementation-Version'  : project.version,
-			'Implementation-Vendor'   : 'shiroha233'
+			'Implementation-Vendor'   : 'shiroha233',
+			'MixinConfigs'            : 'mmdskin-neoforge.mixins.json'
 		])
 	}
 }
 
-tasks.named('processResources', ProcessResources).configure {
-    def replaceProperties = [
-        minecraft_version: '1.21.1',
-        minecraft_version_range: '[1.21.1,1.22)',
-        neoforge_version: project.neoforge_version,
-        neoforge_version_range: '[21.1.240,)',
-        loader_version_range: '[4,)',
-        mod_id: 'mmdskin',
-        mod_name: '3D Skin Layers',
-        mod_version: project.version,
-        mod_authors: 'shiroha233, kjkjkAIStudio(原作者), asuka-mio, Gengorou-C',
-        mod_description: 'A mod that replaces Minecraft entity rendering with MMD models'
-    ]
-
-    inputs.properties replaceProperties
-
-    filesMatching(['META-INF/neoforge.mods.toml']) {
-        expand replaceProperties
-    }
-}
-
-dependencies {
-    // Common 模块 - 添加源代码到编译路径
-    common(project(path: ":common", configuration: "namedElements")) { transitive false }
-    shadowCommon(project(path: ":common", configuration: "transformProductionNeoForge")) { transitive false }
-
-    // JLayer 在 dev 运行时保持可见，但发布物改为私有化阴影打包。
-    common("javazoom:jlayer:1.0.1") { transitive = false }
-    shadowBundle("javazoom:jlayer:1.0.1") { transitive = false }
-
-    // NeoForge 平台
-    forge "net.neoforged:neoforge:${project.neoforge_version}"
-
-    // Architectury API - 使用 Jar-in-Jar 内嵌
-    modApi("dev.architectury:architectury-neoforge:${project.architectury_version}")
-    
-    // Cloth Config API - 配置界面
-    modApi("me.shedaniel.cloth:cloth-config-neoforge:${project.cloth_config_version}")
-}
-
-// Source JAR 组装（合并 common 源码）
 sourcesJar {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    exclude 'META-INF/neoforge.mods.toml'
-    def commonSources = project(":common").sourcesJar
-    dependsOn commonSources
-    from commonSources.archiveFile.map { zipTree(it) }
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	exclude 'META-INF/neoforge.mods.toml'
+	def commonSources = project(":common").sourcesJar
+	dependsOn commonSources
+	from commonSources.archiveFile.map { zipTree(it) }
 }
 
 components.java {
-    withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
-        skip()
-    }
+	withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
+		skip()
+	}
 }
 
 sourceSets {
-    main {
-        resources {
-            exclude 'assets/mmdskin/lang/*.json'
-        }
-    }
+	main {
+		resources {
+			exclude 'assets/mmdskin/lang/*.json'
+		}
+	}
 }

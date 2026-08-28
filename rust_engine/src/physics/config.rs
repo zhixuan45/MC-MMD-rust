@@ -30,6 +30,8 @@ pub struct PhysicsConfig {
     pub collision_stability_mode: CollisionStabilityMode,
     /// 是否禁用所有运动学刚体与动态刚体之间的碰撞（实验性）
     pub kinematic_filter: bool,
+    /// 身体/跟骨碰撞体厚度缩小倍率（默认 0.8，范围 0.1~1.5）
+    pub static_collider_scale: f32,
     /// 调试日志
     pub debug_log: bool,
 }
@@ -48,6 +50,7 @@ impl Default for PhysicsConfig {
             collision_enabled: true,
             collision_stability_mode: CollisionStabilityMode::Stable,
             kinematic_filter: false,
+            static_collider_scale: super::mmd_rigid_body::STATIC_COLLISION_SHAPE_SCALE,
             debug_log: false,
         }
     }
@@ -84,5 +87,6 @@ mod tests {
             super::CollisionStabilityMode::Stable
         );
         assert!(!config.kinematic_filter);
+        assert!((config.static_collider_scale - crate::physics::mmd_rigid_body::STATIC_COLLISION_SHAPE_SCALE).abs() < 1e-6);
     }
 }

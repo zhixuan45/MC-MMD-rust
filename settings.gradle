@@ -2,6 +2,14 @@ pluginManagement {
 	repositories {
 		gradlePluginPortal()
 		maven {
+			name = 'Architectury'
+			url = 'https://maven.architectury.dev/'
+		}
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		maven {
 			name = 'NeoForged'
 			url = 'https://maven.neoforged.net/releases'
 		}
@@ -10,17 +18,30 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-	repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
 	repositories {
 		mavenCentral()
 		maven {
 			name = 'NeoForged'
 			url = 'https://maven.neoforged.net/releases'
 		}
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		maven {
+			name = 'Architectury'
+			url = 'https://maven.architectury.dev/'
+		}
 		maven { url = 'https://maven.shedaniel.me/' }
+		maven { url = 'https://maven.terraformersmc.com/releases/' }
 		maven { url = 'https://api.modrinth.com/maven' }
 		maven { url = 'https://cursemaven.com' }
 	}
 }
 
 rootProject.name = 'mmdskin'
+
+// 包含三个核心子模块
+include 'common'
+include 'fabric'
+include 'neoforge'

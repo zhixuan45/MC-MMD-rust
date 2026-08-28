@@ -65,6 +65,8 @@ public class ConfigData {
     /** 默认忽略关节图距离不超过 2 的内部碰撞，减少接触与关节约束竞争。 */
     public PhysicsCollisionStabilityMode physicsCollisionStabilityMode =
             PhysicsCollisionStabilityMode.STABLE;
+    /** 跟随骨骼的人体/下半身碰撞体厚度缩放倍率（默认 0.8f，范围 0.1f~1.0f） */
+    public float physicsStaticColliderScale = 0.8f;
     public boolean physicsDebugLog = false;
     public int maxPhysicsModelsPerFrame = 10;
     public float physicsLodMaxDistance = 24.0f;
@@ -172,6 +174,8 @@ public class ConfigData {
         toonOutlineB = clamp(toonOutlineB, 0.0f, 1.0f);
         maxPhysicsModelsPerFrame = Math.max(1, maxPhysicsModelsPerFrame);
         physicsLodMaxDistance = Math.max(0.0f, physicsLodMaxDistance);
+        // 身体/下半身碰撞体缩放倍率，范围 0.1x ~ 1.5x
+        physicsStaticColliderScale = clamp(physicsStaticColliderScale, 0.1f, 1.5f);
         antiPeekThresholdAngle = clamp(antiPeekThresholdAngle, 5.0f, 60.0f);
         antiPeekHideAngle = clamp(antiPeekHideAngle, 0.0f, antiPeekThresholdAngle);
     }

@@ -17,6 +17,20 @@ import net.neoforged.neoforge.network.PacketDistributor;
 final class NeoForgeClientNetworkBindings {
     private boolean registered;
 
+    /**
+     * 安全向服务端发送数据包；若当前连接无服务端支持或已断开，则捕获并吞掉异常以确保客户端稳定性。
+     */
+    public static void safeSendToServer(MmdSkinNetworkPack pack) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.getConnection() == null) {
+            return;
+        }
+        try {
+            PacketDistributor.sendToServer(pack);
+        } catch (Throwable ignored) {
+        }
+    }
+
     void register() {
         if (registered) {
             return;
@@ -38,7 +52,7 @@ final class NeoForgeClientNetworkBindings {
                     }
                     resolvedPlayerUuid = player.getUUID();
                 }
-                PacketDistributor.sendToServer(
+                safeSendToServer(
                         new MmdSkinNetworkPack(MmdSkinNetworkPack.toOpCode(messageType), resolvedPlayerUuid, payload));
             }
 
@@ -48,7 +62,7 @@ final class NeoForgeClientNetworkBindings {
                 if (player == null) {
                     return;
                 }
-                PacketDistributor.sendToServer(
+                safeSendToServer(
                         new MmdSkinNetworkPack(MmdSkinNetworkPack.toOpCode(messageType), player.getUUID(), payload));
             }
 
@@ -58,7 +72,7 @@ final class NeoForgeClientNetworkBindings {
                 if (player == null) {
                     return;
                 }
-                PacketDistributor.sendToServer(
+                safeSendToServer(
                         new MmdSkinNetworkPack(MmdSkinNetworkPack.toOpCode(messageType), player.getUUID(), payload));
             }
         });
@@ -66,7 +80,7 @@ final class NeoForgeClientNetworkBindings {
         MaidModelNetworkHandler.getInstance().setNetworkSender((entityId, modelName) -> {
             LocalPlayer player = minecraft.player;
             if (player != null) {
-                PacketDistributor.sendToServer(
+                safeSendToServer(
                         new MmdSkinNetworkPack(com.shiroha.mmdskin.ui.network.NetworkOpCode.MAID_MODEL, player.getUUID(), entityId, modelName));
             }
         });
@@ -74,7 +88,7 @@ final class NeoForgeClientNetworkBindings {
         MaidActionNetworkHandler.getInstance().setNetworkSender((entityId, animId) -> {
             LocalPlayer player = minecraft.player;
             if (player != null) {
-                PacketDistributor.sendToServer(
+                safeSendToServer(
                         new MmdSkinNetworkPack(com.shiroha.mmdskin.ui.network.NetworkOpCode.MAID_ACTION, player.getUUID(), entityId, animId));
             }
         });

@@ -296,7 +296,13 @@ public abstract class BaseModelInstance implements ModelInstance {
                 case "ERROR" -> logger.error("{}", formatted);
                 case "WARN" -> logger.warn("{}", formatted);
                 case "DEBUG", "TRACE" -> logger.debug("{}", formatted);
-                default -> logger.info("{}", formatted);
+                default -> {
+                    if (ConfigManager.isPhysicsDebugLog()) {
+                        logger.info("{}", formatted);
+                    } else {
+                        logger.debug("{}", formatted);
+                    }
+                }
             }
         });
     }

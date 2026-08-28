@@ -1,0 +1,1109 @@
+﻿模型: サイレンススズカ
+顶点总数: 11114
+顶点包围盒: min=Vec3(-6.475203, -6.430394e-7, -3.94919), max=Vec3(6.475152, 20.60508, 1.724072), 大小=Vec3(12.950356, 20.60508, 5.6732616), 高度=20.605
+骨骼总数: 250
+  骨骼 #0: 全ての親 pos=Vec3(-0.0, 0.0, 0.0)
+  骨骼 #1: センター pos=Vec3(-0.0, 0.0, 0.0)
+  骨骼 #2: グルーブ pos=Vec3(-0.0, 11.369006, -0.43112263)
+  骨骼 #3: 腰 pos=Vec3(-0.0, 11.369006, -0.43112263)
+  骨骼 #4: 下半身 pos=Vec3(-0.0, 11.369006, -0.43112263)
+  骨骼 #5: Sp_Hi_MSkirt0_B_00 pos=Vec3(-6.016175e-17, 13.212325, -1.3444859)
+  骨骼 #6: Sp_Hi_MSkirt0_B_01 pos=Vec3(3.5083025e-16, 11.662554, -1.878934)
+  骨骼 #7: Sp_Hi_MSkirt0_B_02 pos=Vec3(2.8656048e-16, 10.3930025, -2.298014)
+  骨骼 #8: Sp_Hi_MSkirt0_B_03 pos=Vec3(2.8856911e-15, 9.209332, -2.665624)
+  骨骼 #9: Sp_Hi_MSkirt0_BL_00 pos=Vec3(0.7940477, 13.19398, -1.1223483)
+  骨骼 #10: Sp_Hi_MSkirt0_BL_01 pos=Vec3(1.1477896, 11.646572, -1.532014)
+  骨骼 #11: Sp_Hi_MSkirt0_BL_02 pos=Vec3(1.4244272, 10.378891, -1.854259)
+  骨骼 #12: Sp_Hi_MSkirt0_BL_03 pos=Vec3(1.6798675, 9.121833, -2.1546276)
+  骨骼 #13: Sp_Hi_MSkirt0_BR_00 pos=Vec3(-0.79551387, 13.194719, -1.1238136)
+  骨骼 #14: Sp_Hi_MSkirt0_BR_01 pos=Vec3(-1.1524875, 11.648754, -1.5367178)
+  骨骼 #15: Sp_Hi_MSkirt0_BR_02 pos=Vec3(-1.4288408, 10.380945, -1.8586774)
+  骨骼 #16: Sp_Hi_MSkirt0_BR_03 pos=Vec3(-1.6780071, 9.121274, -2.1527586)
+  骨骼 #17: Sp_Hi_MSkirt0_F_00 pos=Vec3(0.0054030544, 13.125856, 0.71305907)
+  骨骼 #18: Sp_Hi_MSkirt0_F_01 pos=Vec3(-0.0039607408, 11.581019, 1.1472154)
+  骨骼 #19: Sp_Hi_MSkirt0_F_02 pos=Vec3(-0.011780933, 10.313917, 1.4840393)
+  骨骼 #61: 頭 pos=Vec3(1.0399062e-15, 17.112137, -0.6551462)
+  骨骼 #79: 左目 pos=Vec3(0.54694813, 17.960205, 0.41126278)
+  骨骼 #82: 右目 pos=Vec3(-0.54694813, 17.960205, 0.41126278)
+  骨骼 #241: 両目 pos=Vec3(1.0399062e-15, 17.112137, -0.6551462)
+刚体总数: 91
+关节总数: 66
+
+将应用人体碰撞体缩放的刚体:
+  #87 left_thigh_skirt_collider group=5 shape=Capsule size=[0.16312501, 4.090729, 0.0]
+  #88 left_shin_skirt_collider group=5 shape=Capsule size=[0.3065625, 4.4205794, 0.0]
+  #89 right_thigh_skirt_collider group=5 shape=Capsule size=[0.16312501, 4.090729, 0.0]
+  #90 right_shin_skirt_collider group=5 shape=Capsule size=[0.3065625, 4.4205794, 0.0]
+
+人体缩放候选 -> 绑定姿态重叠裙摆刚体:
+  #87 left_thigh_skirt_collider overlap_count=0 []
+  #88 left_shin_skirt_collider overlap_count=0 []
+  #89 right_thigh_skirt_collider overlap_count=0 []
+  #90 right_shin_skirt_collider overlap_count=0 []
+
+旋转绝对值超过 2π 的刚体:
+刚体 #0: Sp_He_Hair0_C_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.103125, 0.0, 0.0]
+  position=[-2.9399914e-15, 19.214766, -0.7984466] rotation=[-0.09378497, 3.1415925, 3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #1: Sp_He_Hair0_C_00_physics
+  bone_index=162 bone=Sp_He_Hair0_C_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.1375, 0.6193786, 0.0]
+  position=[-2.1587234e-15, 18.768854, -0.8403891] rotation=[-0.09378497, 3.1415925, 3.1415925]
+  mass=0.8 move_damping=0.68 rotation_damping=0.76 restitution=0 friction=0 mode=Dynamic
+刚体 #2: Sp_He_Hair0_C_01_physics
+  bone_index=163 bone=Sp_He_Hair0_C_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.1375, 0.26245275, 0.0]
+  position=[-9.086939e-16, 18.0554, -0.9074973] rotation=[-0.09378497, 3.1415925, 3.1415925]
+  mass=0.25 move_damping=0.88 rotation_damping=0.92 restitution=0 friction=0 mode=Dynamic
+刚体 #3: Sp_He_Hair2_L_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.196875, 0.0, 0.0]
+  position=[1.0860038, 17.908768, 0.035360713] rotation=[-0.061258473, 2.9572124, -3.0964503]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #4: Sp_He_Hair2_L_00_physics
+  bone_index=164 bone=Sp_He_Hair2_L_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.2347088, 0.36882815, 0.0]
+  position=[1.0720886, 17.490215, 0.006650864] rotation=[-0.061258473, 2.9572124, -3.0964503]
+  mass=0.8 move_damping=0.68 rotation_damping=0.76 restitution=0 friction=0 mode=Dynamic
+刚体 #5: Sp_He_Hair2_L_01_physics
+  bone_index=165 bone=Sp_He_Hair2_L_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.2486164, 0.39068288, 0.0]
+  position=[1.1004527, 16.638407, -0.11265073] rotation=[-0.22223862, 2.9087317, 3.0960732]
+  mass=0.6625 move_damping=0.73 rotation_damping=0.8 restitution=0 friction=0 mode=Dynamic
+刚体 #6: Sp_He_Hair2_L_02_physics
+  bone_index=166 bone=Sp_He_Hair2_L_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.2722352, 0.42779815, 0.0]
+  position=[1.2140287, 15.743072, -0.33907783] rotation=[-0.31191257, 2.8987925, 3.0664566]
+  mass=0.525 move_damping=0.78 rotation_damping=0.84000003 restitution=0 friction=0 mode=Dynamic
+刚体 #7: Sp_He_Hair2_L_03_physics
+  bone_index=167 bone=Sp_He_Hair2_L_03
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.24620646, 0.38689587, 0.0]
+  position=[1.2770003, 14.841821, -0.5057748] rotation=[-0.061680935, 2.8474915, -3.1031713]
+  mass=0.3875 move_damping=0.83 rotation_damping=0.88 restitution=0 friction=0 mode=Dynamic
+刚体 #8: Sp_He_Hair2_L_04_physics
+  bone_index=168 bone=Sp_He_Hair2_L_04
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.1690868, 0.19022267, 0.0]
+  position=[1.2636797, 14.139151, -0.5551521] rotation=[-0.06168076, 2.8474915, -3.1031713]
+  mass=0.25 move_damping=0.88 rotation_damping=0.92 restitution=0 friction=0 mode=Dynamic
+刚体 #9: Sp_He_Hair2_R_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.196875, 0.0, 0.0]
+  position=[-1.0860038, 17.908768, 0.035360713] rotation=[-0.061258245, -2.95721, 3.0964503]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #10: Sp_He_Hair2_R_00_physics
+  bone_index=169 bone=Sp_He_Hair2_R_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.23470888, 0.3688282, 0.0]
+  position=[-1.0720886, 17.490215, 0.006650864] rotation=[-0.061258245, -2.95721, 3.0964503]
+  mass=0.8 move_damping=0.68 rotation_damping=0.76 restitution=0 friction=0 mode=Dynamic
+刚体 #11: Sp_He_Hair2_R_01_physics
+  bone_index=170 bone=Sp_He_Hair2_R_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.24861647, 0.39068303, 0.0]
+  position=[-1.1004527, 16.638407, -0.11265073] rotation=[-0.22224692, -2.9085488, -3.0961134]
+  mass=0.6625 move_damping=0.73 rotation_damping=0.8 restitution=0 friction=0 mode=Dynamic
+刚体 #12: Sp_He_Hair2_R_02_physics
+  bone_index=171 bone=Sp_He_Hair2_R_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.27223527, 0.42779827, 0.0]
+  position=[-1.2140287, 15.743072, -0.33907804] rotation=[-0.3119192, -2.8987024, -3.0664842]
+  mass=0.525 move_damping=0.78 rotation_damping=0.84000003 restitution=0 friction=0 mode=Dynamic
+刚体 #13: Sp_He_Hair2_R_03_physics
+  bone_index=172 bone=Sp_He_Hair2_R_03
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.24620646, 0.38689587, 0.0]
+  position=[-1.2770003, 14.841819, -0.5057745] rotation=[-0.061683465, -2.847538, 3.1031744]
+  mass=0.3875 move_damping=0.83 rotation_damping=0.88 restitution=0 friction=0 mode=Dynamic
+刚体 #14: Sp_He_Hair2_R_04_physics
+  bone_index=173 bone=Sp_He_Hair2_R_04
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.1690868, 0.19022267, 0.0]
+  position=[-1.2636799, 14.139151, -0.55515206] rotation=[-0.061683115, -2.847538, 3.1031744]
+  mass=0.25 move_damping=0.88 rotation_damping=0.92 restitution=0 friction=0 mode=Dynamic
+刚体 #15: Sp_He_Hair4_L_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.40312505, 0.0, 0.0]
+  position=[1.0889378, 18.299145, 1.3769381] rotation=[-0.1353145, -0.06936918, 3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #16: Sp_He_Hair4_L_00_physics
+  bone_index=178 bone=Sp_He_Hair4_L_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.5375, 0.8992999, 0.0]
+  position=[1.0796932, 17.319513, 1.5099908] rotation=[-0.1353145, -0.06936918, 3.1415925]
+  mass=0.8 move_damping=0.68 rotation_damping=0.76 restitution=0 friction=0 mode=Dynamic
+刚体 #17: Sp_He_Hair4_L_01_physics
+  bone_index=179 bone=Sp_He_Hair4_L_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.56250006, 1.0207318, 0.0]
+  position=[1.1902345, 15.30684, 1.9133214] rotation=[-0.2787267, 0.4171803, 3.1415925]
+  mass=0.6166667 move_damping=0.74666667 rotation_damping=0.81333333 restitution=0 friction=0 mode=Dynamic
+刚体 #18: Sp_He_Hair4_L_02_physics
+  bone_index=180 bone=Sp_He_Hair4_L_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.56250006, 1.1774963, 0.0]
+  position=[1.4735737, 13.152862, 2.398551] rotation=[-0.23645137, 0.6504319, 3.1415925]
+  mass=0.43333334 move_damping=0.81333333 rotation_damping=0.8666667 restitution=0 friction=0 mode=Dynamic
+刚体 #19: Sp_He_Hair4_L_03_physics
+  bone_index=181 bone=Sp_He_Hair4_L_03
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.44275853, 0.49810335, 0.0]
+  position=[1.7352587, 11.359365, 2.7424715] rotation=[-0.23645137, 0.650432, 3.1415925]
+  mass=0.25 move_damping=0.88 rotation_damping=0.92 restitution=0 friction=0 mode=Dynamic
+刚体 #20: Sp_He_Hair4_R_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.40312505, 0.0, 0.0]
+  position=[-1.0889381, 18.299145, 1.3769374] rotation=[-0.13531467, 0.06937169, -3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #21: Sp_He_Hair4_R_00_physics
+  bone_index=182 bone=Sp_He_Hair4_R_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.5375, 0.89929974, 0.0]
+  position=[-1.0796932, 17.319513, 1.5099901] rotation=[-0.13531467, 0.06937169, -3.1415925]
+  mass=0.8 move_damping=0.68 rotation_damping=0.76 restitution=0 friction=0 mode=Dynamic
+刚体 #22: Sp_He_Hair4_R_01_physics
+  bone_index=183 bone=Sp_He_Hair4_R_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.56250006, 1.0207357, 0.0]
+  position=[-1.190233, 15.306837, 1.9133207] rotation=[-0.27872553, -0.41717672, -3.1415925]
+  mass=0.6166667 move_damping=0.74666667 rotation_damping=0.81333333 restitution=0 friction=0 mode=Dynamic
+刚体 #23: Sp_He_Hair4_R_02_physics
+  bone_index=184 bone=Sp_He_Hair4_R_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.56250006, 1.1774977, 0.0]
+  position=[-1.4735732, 13.152856, 2.3985496] rotation=[-0.23645307, -0.6504374, -3.1415925]
+  mass=0.43333334 move_damping=0.81333333 rotation_damping=0.8666667 restitution=0 friction=0 mode=Dynamic
+刚体 #24: Sp_He_Hair4_R_03_physics
+  bone_index=185 bone=Sp_He_Hair4_R_03
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.44275895, 0.49810383, 0.0]
+  position=[-1.7352617, 11.35936, 2.74247] rotation=[-0.23645268, -0.6504377, 3.1415925]
+  mass=0.25 move_damping=0.88 rotation_damping=0.92 restitution=0 friction=0 mode=Dynamic
+刚体 #25: Sp_He_Hair4_C_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.42187503, 0.0, 0.0]
+  position=[2.0636916e-15, 18.321056, 1.8270187] rotation=[-0.07028397, 1.224647e-16, 3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #26: Sp_He_Hair4_C_00_physics
+  bone_index=174 bone=Sp_He_Hair4_C_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.542624, 0.85269487, 0.0]
+  position=[1.945138e-15, 17.352993, 1.8951703] rotation=[-0.07028397, 1.224647e-16, 3.1415925]
+  mass=0.8 move_damping=0.68 rotation_damping=0.76 restitution=0 friction=0 mode=Dynamic
+刚体 #27: Sp_He_Hair4_C_01_physics
+  bone_index=175 bone=Sp_He_Hair4_C_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.56250006, 1.0397345, 0.0]
+  position=[1.8654291e-15, 15.342886, 2.262106] rotation=[-0.27923733, 2.8220697e-16, 3.1415925]
+  mass=0.6166667 move_damping=0.74666667 rotation_damping=0.81333333 restitution=0 friction=0 mode=Dynamic
+刚体 #28: Sp_He_Hair4_C_02_physics
+  bone_index=176 bone=Sp_He_Hair4_C_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.56250006, 1.3696783, 0.0]
+  position=[1.9429115e-15, 13.084361, 2.8451562] rotation=[-0.22956055, 2.7669088e-16, 3.1415925]
+  mass=0.43333334 move_damping=0.81333333 rotation_damping=0.8666667 restitution=0 friction=0 mode=Dynamic
+刚体 #29: Sp_He_Hair4_C_03_physics
+  bone_index=177 bone=Sp_He_Hair4_C_03
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.45000005, 0.50625, 0.0]
+  position=[2.0032956e-15, 11.183199, 3.2894187] rotation=[-0.22956024, 2.7669094e-16, 3.1415925]
+  mass=0.25 move_damping=0.88 rotation_damping=0.92 restitution=0 friction=0 mode=Dynamic
+刚体 #30: Sp_He_Acc0_R_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.09375, 0.0, 0.0]
+  position=[-1.4041333, 19.13821, 0.057287782] rotation=[0.9950616, -1.5411985, -2.474613]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #31: Sp_He_Acc0_R_00_physics
+  bone_index=149 bone=Sp_He_Acc0_R_00
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.125, 0.0, 0.0]
+  position=[-1.4041333, 19.13821, 0.057287782] rotation=[-0.9950616, 1.6003942, -0.6669797]
+  mass=0.25 move_damping=0.88 rotation_damping=0.92 restitution=0 friction=0 mode=Dynamic
+刚体 #32: Sp_He_Ear0_L_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.09375, 0.0, 0.0]
+  position=[0.871282, 19.572655, -0.025434667] rotation=[-0.53920555, 0.09312631, -0.33411115]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #33: Sp_He_Ear0_L_00_physics
+  bone_index=150 bone=Sp_He_Ear0_L_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.11900013, 0.1870002, 0.0]
+  position=[0.93117183, 19.745186, -0.13471144] rotation=[-0.53920555, 0.09312631, -0.33411115]
+  mass=0.65 move_damping=0.82 rotation_damping=0.88 restitution=0 friction=0 mode=Dynamic
+刚体 #34: Sp_He_Ear0_L_01_physics
+  bone_index=154 bone=Sp_He_Ear0_L_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.11900019, 0.1870003, 0.0]
+  position=[1.0509515, 20.090248, -0.3532649] rotation=[-0.53920555, 0.09312631, -0.33411115]
+  mass=0.475 move_damping=0.88 rotation_damping=0.91999996 restitution=0 friction=0 mode=Dynamic
+刚体 #35: Sp_He_Ear0_L_02_physics
+  bone_index=155 bone=Sp_He_Ear0_L_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.081725374, 0.09194105, 0.0]
+  position=[1.1467751, 20.366299, -0.52810794] rotation=[-0.53920555, 0.09312631, -0.33411115]
+  mass=0.3 move_damping=0.94 rotation_damping=0.96 restitution=0 friction=0 mode=Dynamic
+刚体 #36: Sp_He_Ear0_R_00_anchor
+  bone_index=61 bone=頭
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.09375, 0.0, 0.0]
+  position=[-0.8712823, 19.572655, -0.025435043] rotation=[-0.5391992, -0.093123324, 0.33410475]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #37: Sp_He_Ear0_R_00_physics
+  bone_index=156 bone=Sp_He_Ear0_R_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.11900091, 0.18700142, 0.0]
+  position=[-0.9311717, 19.74519, -0.13471164] rotation=[-0.5391992, -0.093123324, 0.33410475]
+  mass=0.65 move_damping=0.82 rotation_damping=0.88 restitution=0 friction=0 mode=Dynamic
+刚体 #38: Sp_He_Ear0_R_01_physics
+  bone_index=160 bone=Sp_He_Ear0_R_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.11899841, 0.18699749, 0.0]
+  position=[-1.0509511, 20.090248, -0.3532652] rotation=[-0.5391992, -0.093123324, 0.33410475]
+  mass=0.475 move_damping=0.88 rotation_damping=0.91999996 restitution=0 friction=0 mode=Dynamic
+刚体 #39: Sp_He_Ear0_R_02_physics
+  bone_index=161 bone=Sp_He_Ear0_R_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.08172429, 0.091939844, 0.0]
+  position=[-1.1467754, 20.366293, -0.5281086] rotation=[-0.5391992, -0.093123324, 0.33410475]
+  mass=0.3 move_damping=0.94 rotation_damping=0.96 restitution=0 friction=0 mode=Dynamic
+刚体 #40: Sp_Hi_Tail0_B_00_anchor
+  bone_index=3 bone=腰
+  group=3 excluded=0x0038
+  shape=Sphere size=[0.28125, 0.0, 0.0]
+  position=[1.1851103e-30, 12.324013, 1.8369632] rotation=[-0.5820499, -1.3877535e-14, 3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #41: Sp_Hi_Tail0_B_00_body_blocker
+  bone_index=3 bone=腰
+  group=2 excluded=0x0034
+  shape=Sphere size=[1.1370363, 0.0, 0.0]
+  position=[-0.0, 11.369006, 0.43112263] rotation=[-0.0, 0.0, -0.0]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0.5 mode=Static
+刚体 #42: Sp_Hi_Tail0_B_00_physics
+  bone_index=236 bone=Sp_Hi_Tail0_B_00
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.23248217, 0.36532912, 0.0]
+  position=[-4.905024e-15, 11.976691, 2.0655358] rotation=[-0.5820499, -1.3877535e-14, 3.1415925]
+  mass=0.9 move_damping=0.72 rotation_damping=0.72 restitution=0 friction=0 mode=Dynamic
+刚体 #43: Sp_Hi_Tail0_B_01_physics
+  bone_index=237 bone=Sp_Hi_Tail0_B_01
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.40614432, 0.6382268, 0.0]
+  position=[-1.598386e-14, 10.927749, 2.4821072] rotation=[-0.26179916, -8.554414e-15, 3.1415925]
+  mass=0.745 move_damping=0.755 rotation_damping=0.76 restitution=0 friction=0 mode=Dynamic
+刚体 #44: Sp_Hi_Tail0_B_02_physics
+  bone_index=238 bone=Sp_Hi_Tail0_B_02
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.56250006, 0.9348171, 0.0]
+  position=[-2.2272506e-14, 9.198561, 2.760006] rotation=[-0.087266184, 1.3317959e-16, 3.1415925]
+  mass=0.59 move_damping=0.79 rotation_damping=0.8 restitution=0 friction=0 mode=Dynamic
+刚体 #45: Sp_Hi_Tail0_B_03_physics
+  bone_index=239 bone=Sp_Hi_Tail0_B_03
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.5433052, 0.8537653, 0.0]
+  position=[-2.2516253e-14, 7.203013, 2.765219] rotation=[0.08726655, 1.1175021e-16, 3.1415925]
+  mass=0.435 move_damping=0.82500005 rotation_damping=0.84000003 restitution=0 friction=0 mode=Dynamic
+刚体 #46: Sp_Hi_Tail0_B_04_physics
+  bone_index=240 bone=Sp_Hi_Tail0_B_04
+  group=3 excluded=0x0038
+  shape=Capsule size=[0.3731249, 0.41976553, 0.0]
+  position=[-2.272252e-14, 5.6542416, 2.6297195] rotation=[0.08726638, 1.117496e-16, 3.1415925]
+  mass=0.28 move_damping=0.86 rotation_damping=0.88 restitution=0 friction=0 mode=Dynamic
+刚体 #47: Sp_Hi_MSkirt0_L_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.17500001, 0.0, 0.0]
+  position=[1.214061, 13.204105, 0.5071959] rotation=[0.3141611, -1.8294033, 3.0600293]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #48: Sp_Hi_MSkirt0_L_00_skirt_physics
+  bone_index=37 bone=Sp_Hi_MSkirt0_L_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.40618843, 0.7631011, 0.19250001]
+  position=[1.478314, 12.417868, 0.50719607] rotation=[0.3141611, -1.8294033, 3.0600293]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #49: Sp_Hi_MSkirt0_L_01_skirt_physics
+  bone_index=38 bone=Sp_Hi_MSkirt0_L_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.53994095, 0.6255827, 0.20000002]
+  position=[1.9498668, 10.984017, 0.5071964] rotation=[0.3011385, -1.815225, 3.0677488]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #50: Sp_Hi_MSkirt0_L_02_skirt_physics
+  bone_index=39 bone=Sp_Hi_MSkirt0_L_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.6539698, 0.623341, 0.20000002]
+  position=[2.3522463, 9.687552, 0.5071968] rotation=[0.28426367, -1.8088244, 3.0736525]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #51: Sp_Hi_MSkirt0_BL_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.16875, 0.0, 0.0]
+  position=[0.7940477, 13.19398, 1.1223483] rotation=[0.33578426, -2.49622, 3.1195188]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #52: Sp_Hi_MSkirt0_BL_00_skirt_physics
+  bone_index=9 bone=Sp_Hi_MSkirt0_BL_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.47428182, 0.7540958, 0.18562502]
+  position=[0.9709187, 12.420276, 1.3271812] rotation=[0.33578426, -2.49622, 3.1195188]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #53: Sp_Hi_MSkirt0_BL_01_skirt_physics
+  bone_index=10 bone=Sp_Hi_MSkirt0_BL_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.64918566, 0.61498857, 0.20000002]
+  position=[1.2861085, 11.012732, 1.6931365] rotation=[0.3231949, -2.4543617, 3.1345537]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #54: Sp_Hi_MSkirt0_BL_02_skirt_physics
+  bone_index=11 bone=Sp_Hi_MSkirt0_BL_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.7976336, 0.6060253, 0.20000002]
+  position=[1.5521474, 9.750362, 2.0044432] rotation=[0.30394435, -2.4316442, -3.1400335]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #55: Sp_Hi_MSkirt0_B_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.16875, 0.0, 0.0]
+  position=[-6.016175e-17, 13.212325, 1.3444859] rotation=[0.33208445, -3.1397479, -3.1409912]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #56: Sp_Hi_MSkirt0_B_00_skirt_physics
+  bone_index=5 bone=Sp_Hi_MSkirt0_B_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.48620784, 0.7540951, 0.18562502]
+  position=[1.4533426e-16, 12.437439, 1.61171] rotation=[0.33208445, -3.1397479, -3.1409912]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #57: Sp_Hi_MSkirt0_B_01_skirt_physics
+  bone_index=6 bone=Sp_Hi_MSkirt0_B_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.6466007, 0.6149887, 0.18562502]
+  position=[3.1869538e-16, 11.027779, 2.088474] rotation=[0.31883797, -3.139551, -3.1409528]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #58: Sp_Hi_MSkirt0_B_02_skirt_physics
+  bone_index=7 bone=Sp_Hi_MSkirt0_B_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.78005046, 0.57014287, 0.18562502]
+  position=[1.5861258e-15, 9.8011675, 2.481819] rotation=[0.3011236, -3.1411073, -3.1414487]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #59: Sp_Hi_MSkirt0_BR_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.16875, 0.0, 0.0]
+  position=[-0.79551387, 13.194719, 1.1238136] rotation=[0.3386483, 2.4979043, -3.1185749]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #60: Sp_Hi_MSkirt0_BR_00_skirt_physics
+  bone_index=13 bone=Sp_Hi_MSkirt0_BR_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.47557884, 0.7541654, 0.18562502]
+  position=[-0.97400063, 12.421737, 1.3302658] rotation=[0.3386483, 2.4979043, -3.1185749]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #61: Sp_Hi_MSkirt0_BR_01_skirt_physics
+  bone_index=14 bone=Sp_Hi_MSkirt0_BR_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.651108, 0.61498547, 0.20000002]
+  position=[-1.2906641, 11.01485, 1.6976975] rotation=[0.32286656, 2.4563348, -3.133957]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #62: Sp_Hi_MSkirt0_BR_02_skirt_physics
+  bone_index=15 bone=Sp_Hi_MSkirt0_BR_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.79817575, 0.60596883, 0.20000002]
+  position=[-1.5534239, 9.75111, 2.005718] rotation=[0.29693604, 2.4324238, 3.1397603]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #63: Sp_Hi_MSkirt0_R_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.17500001, 0.0, 0.0]
+  position=[-1.2160994, 13.204807, 0.5071959] rotation=[0.3169567, 1.8312309, -3.058725]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #64: Sp_Hi_MSkirt0_R_00_skirt_physics
+  bone_index=41 bone=Sp_Hi_MSkirt0_R_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.40621406, 0.7631457, 0.19250001]
+  position=[-1.4827412, 12.419326, 0.5071958] rotation=[0.3169567, 1.8312309, -3.058725]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #65: Sp_Hi_MSkirt0_R_01_skirt_physics
+  bone_index=42 bone=Sp_Hi_MSkirt0_R_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.5406211, 0.62558, 0.20000002]
+  position=[-1.9565244, 10.986183, 0.50719565] rotation=[0.30081385, 1.8164561, -3.06744]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #66: Sp_Hi_MSkirt0_R_02_skirt_physics
+  bone_index=43 bone=Sp_Hi_MSkirt0_R_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.6531987, 0.6232835, 0.20000002]
+  position=[-2.3541925, 9.688383, 0.5071956] rotation=[0.27735662, 1.8102413, -3.0748458]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #67: Sp_Hi_MSkirt0_FRR_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.15625, 0.0, 0.0]
+  position=[-1.1485435, 13.186002, -0.12205924] rotation=[0.31751823, 1.1082338, 3.108411]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #68: Sp_Hi_MSkirt0_FRR_00_skirt_physics
+  bone_index=33 bone=Sp_Hi_MSkirt0_FRR_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.35770324, 0.7518217, 0.17187501]
+  position=[-1.3888412, 12.410081, -0.2115875] rotation=[0.31751823, 1.1082338, 3.108411]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #69: Sp_Hi_MSkirt0_FRR_01_skirt_physics
+  bone_index=34 bone=Sp_Hi_MSkirt0_FRR_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.46143106, 0.63300186, 0.20000002]
+  position=[-1.8212974, 10.9771595, -0.3706289] rotation=[0.2980716, 1.0671484, 3.0952725]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #70: Sp_Hi_MSkirt0_FRR_02_skirt_physics
+  bone_index=35 bone=Sp_Hi_MSkirt0_FRR_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.54811496, 0.61974305, 0.20000002]
+  position=[-2.1883368, 9.672434, -0.50056833] rotation=[0.2732542, 1.0435404, 3.088462]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #71: Sp_Hi_MSkirt0_FR_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.14375, 0.0, 0.0]
+  position=[-0.7352744, 13.167155, -0.5784475] rotation=[0.27802384, 0.46690324, 3.1077523]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #72: Sp_Hi_MSkirt0_FR_00_skirt_physics
+  bone_index=29 bone=Sp_Hi_MSkirt0_FR_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.39417154, 0.74411935, 0.158125]
+  position=[-0.8595753, 12.389834, -0.764243] rotation=[0.27802384, 0.46690324, 3.1077523]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #73: Sp_Hi_MSkirt0_FR_01_skirt_physics
+  bone_index=30 bone=Sp_Hi_MSkirt0_FR_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.51152444, 0.6182435, 0.17875001]
+  position=[-1.0820931, 10.963518, -1.0940812] rotation=[0.26057616, 0.47652268, 3.1100342]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #74: Sp_Hi_MSkirt0_FR_02_skirt_physics
+  bone_index=31 bone=Sp_Hi_MSkirt0_FR_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.6118729, 0.62340915, 0.17875001]
+  position=[-1.2722905, 9.656055, -1.368993] rotation=[0.23640464, 0.4836478, 3.1112242]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #75: Sp_Hi_MSkirt0_F_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.15625, 0.0, 0.0]
+  position=[0.0054030544, 13.125856, -0.71305907] rotation=[0.27396807, -0.00034425705, 3.1356642]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #76: Sp_Hi_MSkirt0_F_00_skirt_physics
+  bone_index=17 bone=Sp_Hi_MSkirt0_F_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.41901353, 0.7381675, 0.17187501]
+  position=[0.0007211567, 12.353438, -0.9301372] rotation=[0.27396807, -0.00034425705, 3.1356642]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #77: Sp_Hi_MSkirt0_F_01_skirt_physics
+  bone_index=18 bone=Sp_Hi_MSkirt0_F_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.5285568, 0.6031195, 0.20000002]
+  position=[-0.007870836, 10.947469, -1.3156272] rotation=[0.2598064, -0.0012565281, 3.1353054]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #78: Sp_Hi_MSkirt0_F_02_skirt_physics
+  bone_index=19 bone=Sp_Hi_MSkirt0_F_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.6239269, 0.63271624, 0.17187501]
+  position=[-0.01599461, 9.646209, -1.648741] rotation=[0.24184401, 0.00078675576, 3.1356542]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #79: Sp_Hi_MSkirt0_FL_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.14375, 0.0, 0.0]
+  position=[0.7298287, 13.165444, -0.58069247] rotation=[0.27495483, -0.46781257, -3.1079633]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #80: Sp_Hi_MSkirt0_FL_00_skirt_physics
+  bone_index=21 bone=Sp_Hi_MSkirt0_FL_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.3918709, 0.7440486, 0.158125]
+  position=[0.853059, 12.387514, -0.7643054] rotation=[0.27495483, -0.46781257, -3.1079633]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #81: Sp_Hi_MSkirt0_FL_01_skirt_physics
+  bone_index=22 bone=Sp_Hi_MSkirt0_FL_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.5128655, 0.61824566, 0.17875001]
+  position=[1.0745926, 10.96064, -1.0921363] rotation=[0.2608048, -0.4742072, -3.1094425]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #82: Sp_Hi_MSkirt0_FL_02_skirt_physics
+  bone_index=23 bone=Sp_Hi_MSkirt0_FL_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.61800206, 0.6234703, 0.17875001]
+  position=[1.2669421, 9.6543, -1.371424] rotation=[0.24328502, -0.47678784, -3.1097577]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #83: Sp_Hi_MSkirt0_FLL_00_skirt_anchor
+  bone_index=3 bone=腰
+  group=4 excluded=0x001C
+  shape=Sphere size=[0.15625, 0.0, 0.0]
+  position=[1.1446589, 13.184245, -0.12622628] rotation=[0.314624, -1.1068029, -3.1078033]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #84: Sp_Hi_MSkirt0_FLL_00_skirt_physics
+  bone_index=25 bone=Sp_Hi_MSkirt0_FLL_00
+  group=4 excluded=0x001C
+  shape=Box size=[0.35807538, 0.7517997, 0.17187501]
+  position=[1.3830295, 12.407628, -0.21464425] rotation=[0.314624, -1.1068029, -3.1078033]
+  mass=0.7 move_damping=0.82 rotation_damping=0.86 restitution=0 friction=0 mode=Dynamic
+刚体 #85: Sp_Hi_MSkirt0_FLL_01_skirt_physics
+  bone_index=26 bone=Sp_Hi_MSkirt0_FLL_01
+  group=4 excluded=0x001C
+  shape=Box size=[0.4612712, 0.633007, 0.20000002]
+  position=[1.813731, 10.974066, -0.3726749] rotation=[0.29832527, -1.066105, -3.0949724]
+  mass=0.5 move_damping=0.87 rotation_damping=0.905 restitution=0 friction=0 mode=Dynamic
+刚体 #86: Sp_Hi_MSkirt0_FLL_02_skirt_physics
+  bone_index=27 bone=Sp_Hi_MSkirt0_FLL_02
+  group=4 excluded=0x001C
+  shape=Box size=[0.5492429, 0.6198036, 0.20000002]
+  position=[2.1849809, 9.670651, -0.5050326] rotation=[0.2803706, -1.0425119, -3.0881407]
+  mass=0.3 move_damping=0.92 rotation_damping=0.95 restitution=0 friction=0 mode=Dynamic
+刚体 #87: left_thigh_skirt_collider
+  bone_index=45 bone=左足
+  group=5 excluded=0x002C
+  shape=Capsule size=[0.16312501, 4.090729, 0.0]
+  position=[0.84264874, 8.823901, 0.42132437] rotation=[-0.0044366405, 3.1415925, -3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #88: left_shin_skirt_collider
+  bone_index=46 bone=左ひざ
+  group=5 excluded=0x002C
+  shape=Capsule size=[0.3065625, 4.4205794, 0.0]
+  position=[0.84264874, 4.1054754, 0.5976928] rotation=[0.07403564, 3.1415925, 3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #89: right_thigh_skirt_collider
+  bone_index=51 bone=右足
+  group=5 excluded=0x002C
+  shape=Capsule size=[0.16312501, 4.090729, 0.0]
+  position=[-0.84264874, 8.823901, 0.42132437] rotation=[-0.0044366405, 3.1415925, -3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+刚体 #90: right_shin_skirt_collider
+  bone_index=52 bone=右ひざ
+  group=5 excluded=0x002C
+  shape=Capsule size=[0.3065625, 4.4205794, 0.0]
+  position=[-0.84264874, 4.1054754, 0.5976928] rotation=[0.07403564, 3.1415925, 3.1415925]
+  mass=0 move_damping=1 rotation_damping=1 restitution=0 friction=0 mode=Static
+
+所有关节:
+
+关节 #0: Sp_He_Hair0_C_00_joint
+  type=Spring6DOF rigid_body_a=0 (Sp_He_Hair0_C_00_anchor) rigid_body_b=1 (Sp_He_Hair0_C_00_physics)
+  position=[-2.9399914e-15, 19.214766, -0.7984466] rotation=[-0.09378497, 3.1415925, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #1: Sp_He_Hair0_C_01_joint
+  type=Spring6DOF rigid_body_a=1 (Sp_He_Hair0_C_00_physics) rigid_body_b=2 (Sp_He_Hair0_C_01_physics)
+  position=[-1.3774548e-15, 18.322947, -0.8823318] rotation=[-0.09378497, 3.1415925, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #2: Sp_He_Hair2_L_00_joint
+  type=Spring6DOF rigid_body_a=3 (Sp_He_Hair2_L_00_anchor) rigid_body_b=4 (Sp_He_Hair2_L_00_physics)
+  position=[1.0860038, 17.908768, 0.035360713] rotation=[-0.061258473, 2.9572124, -3.0964503]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #3: Sp_He_Hair2_L_01_joint
+  type=Spring6DOF rigid_body_a=4 (Sp_He_Hair2_L_00_physics) rigid_body_b=5 (Sp_He_Hair2_L_01_physics)
+  position=[1.0581735, 17.071661, -0.022058891] rotation=[-0.22223862, 2.9087317, 3.0960732]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #4: Sp_He_Hair2_L_02_joint
+  type=Spring6DOF rigid_body_a=5 (Sp_He_Hair2_L_01_physics) rigid_body_b=6 (Sp_He_Hair2_L_02_physics)
+  position=[1.1427318, 16.205153, -0.20324276] rotation=[-0.31191257, 2.8987925, 3.0664566]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #5: Sp_He_Hair2_L_03_joint
+  type=Spring6DOF rigid_body_a=6 (Sp_He_Hair2_L_02_physics) rigid_body_b=7 (Sp_He_Hair2_L_03_physics)
+  position=[1.2853256, 15.280989, -0.47491348] rotation=[-0.061680935, 2.8474915, -3.1031713]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #6: Sp_He_Hair2_L_04_joint
+  type=Spring6DOF rigid_body_a=7 (Sp_He_Hair2_L_03_physics) rigid_body_b=8 (Sp_He_Hair2_L_04_physics)
+  position=[1.268675, 14.402652, -0.5366355] rotation=[-0.06168076, 2.8474915, -3.1031713]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #7: Sp_He_Hair2_R_00_joint
+  type=Spring6DOF rigid_body_a=9 (Sp_He_Hair2_R_00_anchor) rigid_body_b=10 (Sp_He_Hair2_R_00_physics)
+  position=[-1.0860038, 17.908768, 0.035360713] rotation=[-0.061258245, -2.95721, 3.0964503]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #8: Sp_He_Hair2_R_01_joint
+  type=Spring6DOF rigid_body_a=10 (Sp_He_Hair2_R_00_physics) rigid_body_b=11 (Sp_He_Hair2_R_01_physics)
+  position=[-1.0581735, 17.071661, -0.022058705] rotation=[-0.22224692, -2.9085488, -3.0961134]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #9: Sp_He_Hair2_R_02_joint
+  type=Spring6DOF rigid_body_a=11 (Sp_He_Hair2_R_01_physics) rigid_body_b=12 (Sp_He_Hair2_R_02_physics)
+  position=[-1.1427317, 16.205153, -0.20324267] rotation=[-0.3119192, -2.8987024, -3.0664842]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #10: Sp_He_Hair2_R_03_joint
+  type=Spring6DOF rigid_body_a=12 (Sp_He_Hair2_R_02_physics) rigid_body_b=13 (Sp_He_Hair2_R_03_physics)
+  position=[-1.2853255, 15.280989, -0.4749131] rotation=[-0.061683465, -2.847538, 3.1031744]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #11: Sp_He_Hair2_R_04_joint
+  type=Spring6DOF rigid_body_a=13 (Sp_He_Hair2_R_03_physics) rigid_body_b=14 (Sp_He_Hair2_R_04_physics)
+  position=[-1.268675, 14.402652, -0.53663534] rotation=[-0.061683115, -2.847538, 3.1031744]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #12: Sp_He_Hair4_L_00_joint
+  type=Spring6DOF rigid_body_a=15 (Sp_He_Hair4_L_00_anchor) rigid_body_b=16 (Sp_He_Hair4_L_00_physics)
+  position=[1.0889378, 18.299145, 1.3769381] rotation=[-0.1353145, -0.06936918, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #13: Sp_He_Hair4_L_01_joint
+  type=Spring6DOF rigid_body_a=16 (Sp_He_Hair4_L_00_physics) rigid_body_b=17 (Sp_He_Hair4_L_01_physics)
+  position=[1.0704486, 16.339886, 1.6430428] rotation=[-0.2787267, 0.4171803, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #14: Sp_He_Hair4_L_02_joint
+  type=Spring6DOF rigid_body_a=17 (Sp_He_Hair4_L_01_physics) rigid_body_b=18 (Sp_He_Hair4_L_02_physics)
+  position=[1.3100204, 14.273796, 2.1835992] rotation=[-0.23645137, 0.6504319, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #15: Sp_He_Hair4_L_03_joint
+  type=Spring6DOF rigid_body_a=18 (Sp_He_Hair4_L_02_physics) rigid_body_b=19 (Sp_He_Hair4_L_03_physics)
+  position=[1.6371267, 12.031926, 2.6135008] rotation=[-0.23645137, 0.650432, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #16: Sp_He_Hair4_R_00_joint
+  type=Spring6DOF rigid_body_a=20 (Sp_He_Hair4_R_00_anchor) rigid_body_b=21 (Sp_He_Hair4_R_00_physics)
+  position=[-1.0889381, 18.299145, 1.3769374] rotation=[-0.13531467, 0.06937169, -3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #17: Sp_He_Hair4_R_01_joint
+  type=Spring6DOF rigid_body_a=21 (Sp_He_Hair4_R_00_physics) rigid_body_b=22 (Sp_He_Hair4_R_01_physics)
+  position=[-1.0704483, 16.339886, 1.6430421] rotation=[-0.27872553, -0.41717672, -3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #18: Sp_He_Hair4_R_02_joint
+  type=Spring6DOF rigid_body_a=22 (Sp_He_Hair4_R_01_physics) rigid_body_b=23 (Sp_He_Hair4_R_02_physics)
+  position=[-1.3100176, 14.273791, 2.183597] rotation=[-0.23645307, -0.6504374, -3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #19: Sp_He_Hair4_R_03_joint
+  type=Spring6DOF rigid_body_a=23 (Sp_He_Hair4_R_02_physics) rigid_body_b=24 (Sp_He_Hair4_R_03_physics)
+  position=[-1.6371284, 12.03192, 2.6134994] rotation=[-0.23645268, -0.6504377, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #20: Sp_He_Hair4_C_00_joint
+  type=Spring6DOF rigid_body_a=25 (Sp_He_Hair4_C_00_anchor) rigid_body_b=26 (Sp_He_Hair4_C_00_physics)
+  position=[2.0636916e-15, 18.321056, 1.8270187] rotation=[-0.07028397, 1.224647e-16, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #21: Sp_He_Hair4_C_01_joint
+  type=Spring6DOF rigid_body_a=26 (Sp_He_Hair4_C_00_physics) rigid_body_b=27 (Sp_He_Hair4_C_01_physics)
+  position=[1.8265842e-15, 16.384928, 1.9633219] rotation=[-0.27923733, 2.8220697e-16, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #22: Sp_He_Hair4_C_02_joint
+  type=Spring6DOF rigid_body_a=27 (Sp_He_Hair4_C_01_physics) rigid_body_b=28 (Sp_He_Hair4_C_02_physics)
+  position=[1.904274e-15, 14.300844, 2.5608883] rotation=[-0.22956055, 2.7669088e-16, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #23: Sp_He_Hair4_C_03_joint
+  type=Spring6DOF rigid_body_a=28 (Sp_He_Hair4_C_02_physics) rigid_body_b=29 (Sp_He_Hair4_C_03_physics)
+  position=[1.9815489e-15, 11.867878, 3.1294231] rotation=[-0.22956024, 2.7669094e-16, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #24: Sp_He_Acc0_R_00_joint
+  type=Spring6DOF rigid_body_a=30 (Sp_He_Acc0_R_00_anchor) rigid_body_b=31 (Sp_He_Acc0_R_00_physics)
+  position=[-1.4041333, 19.13821, 0.057287782] rotation=[-0.9950616, 1.6003942, -0.6669797]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.31415927, -0.13962634, -0.31415927] rotation_max=[0.31415927, 0.13962634, 0.31415927]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 5.0, 12.0]
+
+关节 #25: Sp_He_Ear0_L_00_joint
+  type=Spring6DOF rigid_body_a=32 (Sp_He_Ear0_L_00_anchor) rigid_body_b=33 (Sp_He_Ear0_L_00_physics)
+  position=[0.871282, 19.572655, -0.025434667] rotation=[-0.53920555, 0.09312631, -0.33411115]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.15707964, -0.07853982, -0.15707964] rotation_max=[0.15707964, 0.07853982, 0.15707964]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[20.0, 9.0, 20.0]
+
+关节 #26: Sp_He_Ear0_L_01_joint
+  type=Spring6DOF rigid_body_a=33 (Sp_He_Ear0_L_00_physics) rigid_body_b=34 (Sp_He_Ear0_L_01_physics)
+  position=[0.9910616, 19.917719, -0.24398817] rotation=[-0.53920555, 0.09312631, -0.33411115]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.15707964, -0.07853982, -0.15707964] rotation_max=[0.15707964, 0.07853982, 0.15707964]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[20.0, 9.0, 20.0]
+
+关节 #27: Sp_He_Ear0_L_02_joint
+  type=Spring6DOF rigid_body_a=34 (Sp_He_Ear0_L_01_physics) rigid_body_b=35 (Sp_He_Ear0_L_02_physics)
+  position=[1.1108413, 20.26278, -0.46254182] rotation=[-0.53920555, 0.09312631, -0.33411115]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.15707964, -0.07853982, -0.15707964] rotation_max=[0.15707964, 0.07853982, 0.15707964]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[20.0, 9.0, 20.0]
+
+关节 #28: Sp_He_Ear0_R_00_joint
+  type=Spring6DOF rigid_body_a=36 (Sp_He_Ear0_R_00_anchor) rigid_body_b=37 (Sp_He_Ear0_R_00_physics)
+  position=[-0.8712823, 19.572655, -0.025435043] rotation=[-0.5391992, -0.093123324, 0.33410475]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.15707964, -0.07853982, -0.15707964] rotation_max=[0.15707964, 0.07853982, 0.15707964]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[20.0, 9.0, 20.0]
+
+关节 #29: Sp_He_Ear0_R_01_joint
+  type=Spring6DOF rigid_body_a=37 (Sp_He_Ear0_R_00_physics) rigid_body_b=38 (Sp_He_Ear0_R_01_physics)
+  position=[-0.99106115, 19.917723, -0.24398813] rotation=[-0.5391992, -0.093123324, 0.33410475]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.15707964, -0.07853982, -0.15707964] rotation_max=[0.15707964, 0.07853982, 0.15707964]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[20.0, 9.0, 20.0]
+
+关节 #30: Sp_He_Ear0_R_02_joint
+  type=Spring6DOF rigid_body_a=38 (Sp_He_Ear0_R_01_physics) rigid_body_b=39 (Sp_He_Ear0_R_02_physics)
+  position=[-1.1108413, 20.262777, -0.4625423] rotation=[-0.5391992, -0.093123324, 0.33410475]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.15707964, -0.07853982, -0.15707964] rotation_max=[0.15707964, 0.07853982, 0.15707964]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[20.0, 9.0, 20.0]
+
+关节 #31: Sp_Hi_Tail0_B_00_joint
+  type=Spring6DOF rigid_body_a=40 (Sp_Hi_Tail0_B_00_anchor) rigid_body_b=42 (Sp_Hi_Tail0_B_00_physics)
+  position=[1.1851103e-30, 12.324013, 1.8369632] rotation=[-0.5820499, -1.3877535e-14, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-1.3089969, -0.5235988, -1.3089969] rotation_max=[1.3089969, 0.5235988, 1.3089969]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[12.0, 4.0, 12.0]
+
+关节 #32: Sp_Hi_Tail0_B_01_joint
+  type=Spring6DOF rigid_body_a=42 (Sp_Hi_Tail0_B_00_physics) rigid_body_b=43 (Sp_Hi_Tail0_B_01_physics)
+  position=[-9.810048e-15, 11.629371, 2.2941084] rotation=[-0.26179916, -8.554414e-15, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-1.3089969, -0.5235988, -1.3089969] rotation_max=[1.3089969, 0.5235988, 1.3089969]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[10.0, 3.375, 10.0]
+
+关节 #33: Sp_Hi_Tail0_B_02_joint
+  type=Spring6DOF rigid_body_a=43 (Sp_Hi_Tail0_B_01_physics) rigid_body_b=44 (Sp_Hi_Tail0_B_02_physics)
+  position=[-2.2157675e-14, 10.226127, 2.6701064] rotation=[-0.087266184, 1.3317959e-16, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-1.3089969, -0.5235988, -1.3089969] rotation_max=[1.3089969, 0.5235988, 1.3089969]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[8.0, 2.75, 8.0]
+
+关节 #34: Sp_Hi_Tail0_B_03_joint
+  type=Spring6DOF rigid_body_a=44 (Sp_Hi_Tail0_B_02_physics) rigid_body_b=45 (Sp_Hi_Tail0_B_03_physics)
+  position=[-2.2387338e-14, 8.170995, 2.8499067] rotation=[0.08726655, 1.1175021e-16, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-1.3089969, -0.5235988, -1.3089969] rotation_max=[1.3089969, 0.5235988, 1.3089969]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[6.0, 2.125, 6.0]
+
+关节 #35: Sp_Hi_Tail0_B_04_joint
+  type=Spring6DOF rigid_body_a=45 (Sp_Hi_Tail0_B_03_physics) rigid_body_b=46 (Sp_Hi_Tail0_B_04_physics)
+  position=[-2.264517e-14, 6.2350307, 2.680532] rotation=[0.08726638, 1.117496e-16, 3.1415925]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-1.3089969, -0.5235988, -1.3089969] rotation_max=[1.3089969, 0.5235988, 1.3089969]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[4.0, 1.5, 4.0]
+
+关节 #36: Sp_Hi_MSkirt0_L_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=47 (Sp_Hi_MSkirt0_L_00_skirt_anchor) rigid_body_b=48 (Sp_Hi_MSkirt0_L_00_skirt_physics)
+  position=[1.214061, 13.204105, 0.5071959] rotation=[0.3141611, -1.8294033, 3.0600293]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #37: Sp_Hi_MSkirt0_L_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=48 (Sp_Hi_MSkirt0_L_00_skirt_physics) rigid_body_b=49 (Sp_Hi_MSkirt0_L_01_skirt_physics)
+  position=[1.742567, 11.631629, 0.50719625] rotation=[0.3011385, -1.815225, 3.0677488]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #38: Sp_Hi_MSkirt0_L_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=49 (Sp_Hi_MSkirt0_L_01_skirt_physics) rigid_body_b=50 (Sp_Hi_MSkirt0_L_02_skirt_physics)
+  position=[2.1571665, 10.336405, 0.5071966] rotation=[0.28426367, -1.8088244, 3.0736525]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #39: Sp_Hi_MSkirt0_BL_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=51 (Sp_Hi_MSkirt0_BL_00_skirt_anchor) rigid_body_b=52 (Sp_Hi_MSkirt0_BL_00_skirt_physics)
+  position=[0.7940477, 13.19398, 1.1223483] rotation=[0.33578426, -2.49622, 3.1195188]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #40: Sp_Hi_MSkirt0_BL_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=52 (Sp_Hi_MSkirt0_BL_00_skirt_physics) rigid_body_b=53 (Sp_Hi_MSkirt0_BL_01_skirt_physics)
+  position=[1.1477896, 11.646572, 1.532014] rotation=[0.3231949, -2.4543617, 3.1345537]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #41: Sp_Hi_MSkirt0_BL_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=53 (Sp_Hi_MSkirt0_BL_01_skirt_physics) rigid_body_b=54 (Sp_Hi_MSkirt0_BL_02_skirt_physics)
+  position=[1.4244272, 10.378891, 1.854259] rotation=[0.30394435, -2.4316442, -3.1400335]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #42: Sp_Hi_MSkirt0_B_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=55 (Sp_Hi_MSkirt0_B_00_skirt_anchor) rigid_body_b=56 (Sp_Hi_MSkirt0_B_00_skirt_physics)
+  position=[-6.016175e-17, 13.212325, 1.3444859] rotation=[0.33208445, -3.1397479, -3.1409912]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #43: Sp_Hi_MSkirt0_B_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=56 (Sp_Hi_MSkirt0_B_00_skirt_physics) rigid_body_b=57 (Sp_Hi_MSkirt0_B_01_skirt_physics)
+  position=[3.5083025e-16, 11.662554, 1.878934] rotation=[0.31883797, -3.139551, -3.1409528]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #44: Sp_Hi_MSkirt0_B_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=57 (Sp_Hi_MSkirt0_B_01_skirt_physics) rigid_body_b=58 (Sp_Hi_MSkirt0_B_02_skirt_physics)
+  position=[2.8656048e-16, 10.3930025, 2.298014] rotation=[0.3011236, -3.1411073, -3.1414487]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #45: Sp_Hi_MSkirt0_BR_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=59 (Sp_Hi_MSkirt0_BR_00_skirt_anchor) rigid_body_b=60 (Sp_Hi_MSkirt0_BR_00_skirt_physics)
+  position=[-0.79551387, 13.194719, 1.1238136] rotation=[0.3386483, 2.4979043, -3.1185749]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #46: Sp_Hi_MSkirt0_BR_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=60 (Sp_Hi_MSkirt0_BR_00_skirt_physics) rigid_body_b=61 (Sp_Hi_MSkirt0_BR_01_skirt_physics)
+  position=[-1.1524875, 11.648754, 1.5367178] rotation=[0.32286656, 2.4563348, -3.133957]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #47: Sp_Hi_MSkirt0_BR_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=61 (Sp_Hi_MSkirt0_BR_01_skirt_physics) rigid_body_b=62 (Sp_Hi_MSkirt0_BR_02_skirt_physics)
+  position=[-1.4288408, 10.380945, 1.8586774] rotation=[0.29693604, 2.4324238, 3.1397603]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #48: Sp_Hi_MSkirt0_R_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=63 (Sp_Hi_MSkirt0_R_00_skirt_anchor) rigid_body_b=64 (Sp_Hi_MSkirt0_R_00_skirt_physics)
+  position=[-1.2160994, 13.204807, 0.5071959] rotation=[0.3169567, 1.8312309, -3.058725]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #49: Sp_Hi_MSkirt0_R_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=64 (Sp_Hi_MSkirt0_R_00_skirt_physics) rigid_body_b=65 (Sp_Hi_MSkirt0_R_01_skirt_physics)
+  position=[-1.7493831, 11.633842, 0.50719565] rotation=[0.30081385, 1.8164561, -3.06744]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #50: Sp_Hi_MSkirt0_R_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=65 (Sp_Hi_MSkirt0_R_01_skirt_physics) rigid_body_b=66 (Sp_Hi_MSkirt0_R_02_skirt_physics)
+  position=[-2.1636655, 10.338524, 0.50719565] rotation=[0.27735662, 1.8102413, -3.0748458]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #51: Sp_Hi_MSkirt0_FRR_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=67 (Sp_Hi_MSkirt0_FRR_00_skirt_anchor) rigid_body_b=68 (Sp_Hi_MSkirt0_FRR_00_skirt_physics)
+  position=[-1.1485435, 13.186002, -0.12205924] rotation=[0.31751823, 1.1082338, 3.108411]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #52: Sp_Hi_MSkirt0_FRR_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=68 (Sp_Hi_MSkirt0_FRR_00_skirt_physics) rigid_body_b=69 (Sp_Hi_MSkirt0_FRR_01_skirt_physics)
+  position=[-1.6291388, 11.63416, -0.30111578] rotation=[0.2980716, 1.0671484, 3.0952725]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #53: Sp_Hi_MSkirt0_FRR_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=69 (Sp_Hi_MSkirt0_FRR_01_skirt_physics) rigid_body_b=70 (Sp_Hi_MSkirt0_FRR_02_skirt_physics)
+  position=[-2.0134563, 10.320159, -0.44014198] rotation=[0.2732542, 1.0435404, 3.088462]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #54: Sp_Hi_MSkirt0_FR_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=71 (Sp_Hi_MSkirt0_FR_00_skirt_anchor) rigid_body_b=72 (Sp_Hi_MSkirt0_FR_00_skirt_physics)
+  position=[-0.7352744, 13.167155, -0.5784475] rotation=[0.27802384, 0.46690324, 3.1077523]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #55: Sp_Hi_MSkirt0_FR_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=72 (Sp_Hi_MSkirt0_FR_00_skirt_physics) rigid_body_b=73 (Sp_Hi_MSkirt0_FR_01_skirt_physics)
+  position=[-0.9838761, 11.612514, -0.95003843] rotation=[0.26057616, 0.47652268, 3.1100342]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #56: Sp_Hi_MSkirt0_FR_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=73 (Sp_Hi_MSkirt0_FR_01_skirt_physics) rigid_body_b=74 (Sp_Hi_MSkirt0_FR_02_skirt_physics)
+  position=[-1.18031, 10.314524, -1.2381239] rotation=[0.23640464, 0.4836478, 3.1112242]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #57: Sp_Hi_MSkirt0_F_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=75 (Sp_Hi_MSkirt0_F_00_skirt_anchor) rigid_body_b=76 (Sp_Hi_MSkirt0_F_00_skirt_physics)
+  position=[0.0054030544, 13.125856, -0.71305907] rotation=[0.27396807, -0.00034425705, 3.1356642]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #58: Sp_Hi_MSkirt0_F_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=76 (Sp_Hi_MSkirt0_F_00_skirt_physics) rigid_body_b=77 (Sp_Hi_MSkirt0_F_01_skirt_physics)
+  position=[-0.0039607408, 11.581019, -1.1472154] rotation=[0.2598064, -0.0012565281, 3.1353054]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #59: Sp_Hi_MSkirt0_F_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=77 (Sp_Hi_MSkirt0_F_01_skirt_physics) rigid_body_b=78 (Sp_Hi_MSkirt0_F_02_skirt_physics)
+  position=[-0.011780933, 10.313917, -1.4840393] rotation=[0.24184401, 0.00078675576, 3.1356542]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #60: Sp_Hi_MSkirt0_FL_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=79 (Sp_Hi_MSkirt0_FL_00_skirt_anchor) rigid_body_b=80 (Sp_Hi_MSkirt0_FL_00_skirt_physics)
+  position=[0.7298287, 13.165444, -0.58069247] rotation=[0.27495483, -0.46781257, -3.1079633]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #61: Sp_Hi_MSkirt0_FL_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=80 (Sp_Hi_MSkirt0_FL_00_skirt_physics) rigid_body_b=81 (Sp_Hi_MSkirt0_FL_01_skirt_physics)
+  position=[0.9762893, 11.609585, -0.9479184] rotation=[0.2608048, -0.4742072, -3.1094425]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #62: Sp_Hi_MSkirt0_FL_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=81 (Sp_Hi_MSkirt0_FL_01_skirt_physics) rigid_body_b=82 (Sp_Hi_MSkirt0_FL_02_skirt_physics)
+  position=[1.1728959, 10.311695, -1.2363542] rotation=[0.24328502, -0.47678784, -3.1097577]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+关节 #63: Sp_Hi_MSkirt0_FLL_00_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=83 (Sp_Hi_MSkirt0_FLL_00_skirt_anchor) rigid_body_b=84 (Sp_Hi_MSkirt0_FLL_00_skirt_physics)
+  position=[1.1446589, 13.184245, -0.12622628] rotation=[0.314624, -1.1068029, -3.1078033]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[22.0, 9.0, 22.0]
+
+关节 #64: Sp_Hi_MSkirt0_FLL_01_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=84 (Sp_Hi_MSkirt0_FLL_00_skirt_physics) rigid_body_b=85 (Sp_Hi_MSkirt0_FLL_01_skirt_physics)
+  position=[1.6214, 11.631011, -0.3030622] rotation=[0.29832527, -1.066105, -3.0949724]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[16.5, 6.75, 16.5]
+
+关节 #65: Sp_Hi_MSkirt0_FLL_02_skirt_vertical_joint
+  type=Spring6DOF rigid_body_a=85 (Sp_Hi_MSkirt0_FLL_01_skirt_physics) rigid_body_b=86 (Sp_Hi_MSkirt0_FLL_02_skirt_physics)
+  position=[2.0060618, 10.317121, -0.44228762] rotation=[0.2803706, -1.0425119, -3.0881407]
+  position_min=[-0.0, 0.0, -0.0] position_max=[-0.0, 0.0, -0.0]
+  rotation_min=[-0.27925268, -0.10471976, -0.20943952] rotation_max=[0.27925268, 0.10471976, 0.20943952]
+  position_spring=[0.0, 0.0, 0.0] rotation_spring=[11.0, 4.5, 11.0]
+
+衣物动态链根关节:
+  #36 Sp_Hi_MSkirt0_L_00_skirt_vertical_joint: A=#47 Sp_Hi_MSkirt0_L_00_skirt_anchor B=#48 Sp_Hi_MSkirt0_L_00_skirt_physics joint_pos=[1.214061, 13.204105, 0.5071959] joint_rot=[0.3141611, -1.8294033, 3.0600293] body_pos=[1.478314, 12.417868, 0.50719607] body_rot=[0.3141611, -1.8294033, 3.0600293] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #39 Sp_Hi_MSkirt0_BL_00_skirt_vertical_joint: A=#51 Sp_Hi_MSkirt0_BL_00_skirt_anchor B=#52 Sp_Hi_MSkirt0_BL_00_skirt_physics joint_pos=[0.7940477, 13.19398, 1.1223483] joint_rot=[0.33578426, -2.49622, 3.1195188] body_pos=[0.9709187, 12.420276, 1.3271812] body_rot=[0.33578426, -2.49622, 3.1195188] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #42 Sp_Hi_MSkirt0_B_00_skirt_vertical_joint: A=#55 Sp_Hi_MSkirt0_B_00_skirt_anchor B=#56 Sp_Hi_MSkirt0_B_00_skirt_physics joint_pos=[-6.016175e-17, 13.212325, 1.3444859] joint_rot=[0.33208445, -3.1397479, -3.1409912] body_pos=[1.4533426e-16, 12.437439, 1.61171] body_rot=[0.33208445, -3.1397479, -3.1409912] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #45 Sp_Hi_MSkirt0_BR_00_skirt_vertical_joint: A=#59 Sp_Hi_MSkirt0_BR_00_skirt_anchor B=#60 Sp_Hi_MSkirt0_BR_00_skirt_physics joint_pos=[-0.79551387, 13.194719, 1.1238136] joint_rot=[0.3386483, 2.4979043, -3.1185749] body_pos=[-0.97400063, 12.421737, 1.3302658] body_rot=[0.3386483, 2.4979043, -3.1185749] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #48 Sp_Hi_MSkirt0_R_00_skirt_vertical_joint: A=#63 Sp_Hi_MSkirt0_R_00_skirt_anchor B=#64 Sp_Hi_MSkirt0_R_00_skirt_physics joint_pos=[-1.2160994, 13.204807, 0.5071959] joint_rot=[0.3169567, 1.8312309, -3.058725] body_pos=[-1.4827412, 12.419326, 0.5071958] body_rot=[0.3169567, 1.8312309, -3.058725] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #51 Sp_Hi_MSkirt0_FRR_00_skirt_vertical_joint: A=#67 Sp_Hi_MSkirt0_FRR_00_skirt_anchor B=#68 Sp_Hi_MSkirt0_FRR_00_skirt_physics joint_pos=[-1.1485435, 13.186002, -0.12205924] joint_rot=[0.31751823, 1.1082338, 3.108411] body_pos=[-1.3888412, 12.410081, -0.2115875] body_rot=[0.31751823, 1.1082338, 3.108411] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #54 Sp_Hi_MSkirt0_FR_00_skirt_vertical_joint: A=#71 Sp_Hi_MSkirt0_FR_00_skirt_anchor B=#72 Sp_Hi_MSkirt0_FR_00_skirt_physics joint_pos=[-0.7352744, 13.167155, -0.5784475] joint_rot=[0.27802384, 0.46690324, 3.1077523] body_pos=[-0.8595753, 12.389834, -0.764243] body_rot=[0.27802384, 0.46690324, 3.1077523] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #57 Sp_Hi_MSkirt0_F_00_skirt_vertical_joint: A=#75 Sp_Hi_MSkirt0_F_00_skirt_anchor B=#76 Sp_Hi_MSkirt0_F_00_skirt_physics joint_pos=[0.0054030544, 13.125856, -0.71305907] joint_rot=[0.27396807, -0.00034425705, 3.1356642] body_pos=[0.0007211567, 12.353438, -0.9301372] body_rot=[0.27396807, -0.00034425705, 3.1356642] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #60 Sp_Hi_MSkirt0_FL_00_skirt_vertical_joint: A=#79 Sp_Hi_MSkirt0_FL_00_skirt_anchor B=#80 Sp_Hi_MSkirt0_FL_00_skirt_physics joint_pos=[0.7298287, 13.165444, -0.58069247] joint_rot=[0.27495483, -0.46781257, -3.1079633] body_pos=[0.853059, 12.387514, -0.7643054] body_rot=[0.27495483, -0.46781257, -3.1079633] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+  #63 Sp_Hi_MSkirt0_FLL_00_skirt_vertical_joint: A=#83 Sp_Hi_MSkirt0_FLL_00_skirt_anchor B=#84 Sp_Hi_MSkirt0_FLL_00_skirt_physics joint_pos=[1.1446589, 13.184245, -0.12622628] joint_rot=[0.314624, -1.1068029, -3.1078033] body_pos=[1.3830295, 12.407628, -0.21464425] body_rot=[0.314624, -1.1068029, -3.1078033] rot_min=[-0.27925268, -0.10471976, -0.20943952] rot_max=[0.27925268, 0.10471976, 0.20943952]
+
+下装/衣带动态骨骼绑定:
+  body=#48 'Sp_Hi_MSkirt0_L_00_skirt_physics' bone=#37 'Sp_Hi_MSkirt0_L_00' parent='下半身' mode=Dynamic joints=2 vertices=109 weight_sum=65.6
+  body=#49 'Sp_Hi_MSkirt0_L_01_skirt_physics' bone=#38 'Sp_Hi_MSkirt0_L_01' parent='Sp_Hi_MSkirt0_L_00' mode=Dynamic joints=2 vertices=55 weight_sum=29.4
+  body=#50 'Sp_Hi_MSkirt0_L_02_skirt_physics' bone=#39 'Sp_Hi_MSkirt0_L_02' parent='Sp_Hi_MSkirt0_L_01' mode=Dynamic joints=1 vertices=131 weight_sum=71.9
+  body=#52 'Sp_Hi_MSkirt0_BL_00_skirt_physics' bone=#9 'Sp_Hi_MSkirt0_BL_00' parent='下半身' mode=Dynamic joints=2 vertices=126 weight_sum=74.6
+  body=#53 'Sp_Hi_MSkirt0_BL_01_skirt_physics' bone=#10 'Sp_Hi_MSkirt0_BL_01' parent='Sp_Hi_MSkirt0_BL_00' mode=Dynamic joints=2 vertices=78 weight_sum=37.8
+  body=#54 'Sp_Hi_MSkirt0_BL_02_skirt_physics' bone=#11 'Sp_Hi_MSkirt0_BL_02' parent='Sp_Hi_MSkirt0_BL_01' mode=Dynamic joints=1 vertices=176 weight_sum=96.1
+  body=#56 'Sp_Hi_MSkirt0_B_00_skirt_physics' bone=#5 'Sp_Hi_MSkirt0_B_00' parent='下半身' mode=Dynamic joints=2 vertices=135 weight_sum=85.6
+  body=#57 'Sp_Hi_MSkirt0_B_01_skirt_physics' bone=#6 'Sp_Hi_MSkirt0_B_01' parent='Sp_Hi_MSkirt0_B_00' mode=Dynamic joints=2 vertices=63 weight_sum=26.5
+  body=#58 'Sp_Hi_MSkirt0_B_02_skirt_physics' bone=#7 'Sp_Hi_MSkirt0_B_02' parent='Sp_Hi_MSkirt0_B_01' mode=Dynamic joints=1 vertices=168 weight_sum=73.2
+  body=#60 'Sp_Hi_MSkirt0_BR_00_skirt_physics' bone=#13 'Sp_Hi_MSkirt0_BR_00' parent='下半身' mode=Dynamic joints=2 vertices=111 weight_sum=72.1
+  body=#61 'Sp_Hi_MSkirt0_BR_01_skirt_physics' bone=#14 'Sp_Hi_MSkirt0_BR_01' parent='Sp_Hi_MSkirt0_BR_00' mode=Dynamic joints=2 vertices=54 weight_sum=35.2
+  body=#62 'Sp_Hi_MSkirt0_BR_02_skirt_physics' bone=#15 'Sp_Hi_MSkirt0_BR_02' parent='Sp_Hi_MSkirt0_BR_01' mode=Dynamic joints=1 vertices=157 weight_sum=91.2
+  body=#64 'Sp_Hi_MSkirt0_R_00_skirt_physics' bone=#41 'Sp_Hi_MSkirt0_R_00' parent='下半身' mode=Dynamic joints=2 vertices=112 weight_sum=62.8
+  body=#65 'Sp_Hi_MSkirt0_R_01_skirt_physics' bone=#42 'Sp_Hi_MSkirt0_R_01' parent='Sp_Hi_MSkirt0_R_00' mode=Dynamic joints=2 vertices=55 weight_sum=29.6
+  body=#66 'Sp_Hi_MSkirt0_R_02_skirt_physics' bone=#43 'Sp_Hi_MSkirt0_R_02' parent='Sp_Hi_MSkirt0_R_01' mode=Dynamic joints=1 vertices=140 weight_sum=73.8
+  body=#68 'Sp_Hi_MSkirt0_FRR_00_skirt_physics' bone=#33 'Sp_Hi_MSkirt0_FRR_00' parent='下半身' mode=Dynamic joints=2 vertices=117 weight_sum=57.4
+  body=#69 'Sp_Hi_MSkirt0_FRR_01_skirt_physics' bone=#34 'Sp_Hi_MSkirt0_FRR_01' parent='Sp_Hi_MSkirt0_FRR_00' mode=Dynamic joints=2 vertices=62 weight_sum=27.1
+  body=#70 'Sp_Hi_MSkirt0_FRR_02_skirt_physics' bone=#35 'Sp_Hi_MSkirt0_FRR_02' parent='Sp_Hi_MSkirt0_FRR_01' mode=Dynamic joints=1 vertices=136 weight_sum=64.8
+  body=#72 'Sp_Hi_MSkirt0_FR_00_skirt_physics' bone=#29 'Sp_Hi_MSkirt0_FR_00' parent='下半身' mode=Dynamic joints=2 vertices=123 weight_sum=56.0
+  body=#73 'Sp_Hi_MSkirt0_FR_01_skirt_physics' bone=#30 'Sp_Hi_MSkirt0_FR_01' parent='Sp_Hi_MSkirt0_FR_00' mode=Dynamic joints=2 vertices=54 weight_sum=26.5
+  body=#74 'Sp_Hi_MSkirt0_FR_02_skirt_physics' bone=#31 'Sp_Hi_MSkirt0_FR_02' parent='Sp_Hi_MSkirt0_FR_01' mode=Dynamic joints=1 vertices=137 weight_sum=71.2
+  body=#76 'Sp_Hi_MSkirt0_F_00_skirt_physics' bone=#17 'Sp_Hi_MSkirt0_F_00' parent='下半身' mode=Dynamic joints=2 vertices=199 weight_sum=113.5
+  body=#77 'Sp_Hi_MSkirt0_F_01_skirt_physics' bone=#18 'Sp_Hi_MSkirt0_F_01' parent='Sp_Hi_MSkirt0_F_00' mode=Dynamic joints=2 vertices=41 weight_sum=21.6
+  body=#78 'Sp_Hi_MSkirt0_F_02_skirt_physics' bone=#19 'Sp_Hi_MSkirt0_F_02' parent='Sp_Hi_MSkirt0_F_01' mode=Dynamic joints=1 vertices=121 weight_sum=58.7
+  body=#80 'Sp_Hi_MSkirt0_FL_00_skirt_physics' bone=#21 'Sp_Hi_MSkirt0_FL_00' parent='下半身' mode=Dynamic joints=2 vertices=123 weight_sum=61.8
+  body=#81 'Sp_Hi_MSkirt0_FL_01_skirt_physics' bone=#22 'Sp_Hi_MSkirt0_FL_01' parent='Sp_Hi_MSkirt0_FL_00' mode=Dynamic joints=2 vertices=58 weight_sum=29.9
+  body=#82 'Sp_Hi_MSkirt0_FL_02_skirt_physics' bone=#23 'Sp_Hi_MSkirt0_FL_02' parent='Sp_Hi_MSkirt0_FL_01' mode=Dynamic joints=1 vertices=137 weight_sum=77.8
+  body=#84 'Sp_Hi_MSkirt0_FLL_00_skirt_physics' bone=#25 'Sp_Hi_MSkirt0_FLL_00' parent='下半身' mode=Dynamic joints=2 vertices=110 weight_sum=55.4
+  body=#85 'Sp_Hi_MSkirt0_FLL_01_skirt_physics' bone=#26 'Sp_Hi_MSkirt0_FLL_01' parent='Sp_Hi_MSkirt0_FLL_00' mode=Dynamic joints=2 vertices=51 weight_sum=24.8
+  body=#86 'Sp_Hi_MSkirt0_FLL_02_skirt_physics' bone=#27 'Sp_Hi_MSkirt0_FLL_02' parent='Sp_Hi_MSkirt0_FLL_01' mode=Dynamic joints=1 vertices=120 weight_sum=58.1
+
+动态组 -> 可碰撞静态刚体:
+
+动态组 3:
+  #41 Sp_Hi_Tail0_B_00_body_blocker bone=腰 group=2 shape=Sphere size=[1.1370363, 0.0, 0.0]
+
+动态组 4:
+  #87 left_thigh_skirt_collider bone=左足 group=5 shape=Capsule size=[0.16312501, 4.090729, 0.0]
+  #88 left_shin_skirt_collider bone=左ひざ group=5 shape=Capsule size=[0.3065625, 4.4205794, 0.0]
+  #89 right_thigh_skirt_collider bone=右足 group=5 shape=Capsule size=[0.16312501, 4.090729, 0.0]
+  #90 right_shin_skirt_collider bone=右ひざ group=5 shape=Capsule size=[0.3065625, 4.4205794, 0.0]

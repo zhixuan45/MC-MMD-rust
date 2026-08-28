@@ -168,6 +168,10 @@ public class ConfigManager {
                 : PhysicsCollisionStabilityMode.STABLE;
     }
 
+    public static float getPhysicsStaticColliderScale() {
+        return provider != null ? provider.getPhysicsStaticColliderScale() : 0.8f;
+    }
+
     public static boolean isPhysicsDebugLog() {
         return provider != null ? provider.isPhysicsDebugLog() : false;
     }

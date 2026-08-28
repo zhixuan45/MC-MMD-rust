@@ -44,6 +44,7 @@ public final class NativeRuntimeBridge implements
                     physicsConfig.kinematicFilter(),
                     physicsConfig.collisionEnabled(),
                     physicsConfig.collisionStabilityMode().nativeValue(),
+                    physicsConfig.staticColliderScale(),
                     physicsConfig.debugLog());
         } catch (UnsatisfiedLinkError e) {
             logger.warn("物理配置 JNI 方法未找到，请重新编译 Rust 库");

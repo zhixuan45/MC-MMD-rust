@@ -129,6 +129,9 @@ final class GpuSkinningModelRenderer {
     /** 低频记录最终上传的第一人称几何量，用于区分网格为空与姿态离屏。 */
     private static void diagnoseFirstPersonIndices(NativeRenderBackendPort nativeBackend,
                                                    long modelHandle, int firstPersonIndexCount) {
+        if (!ConfigManager.isPhysicsDebugLog()) {
+            return;
+        }
         long now = System.nanoTime();
         if (now - lastFirstPersonDiagnosticNanos < FIRST_PERSON_DIAGNOSTIC_INTERVAL_NANOS) {
             return;

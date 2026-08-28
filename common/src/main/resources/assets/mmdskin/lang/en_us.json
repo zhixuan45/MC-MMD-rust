@@ -109,6 +109,8 @@
   "gui.mmdskin.mod_settings.physics_collision_stability.strict": "Strict (Original PMX)",
   "gui.mmdskin.mod_settings.physics_collision_stability.stable": "Stable (Recommended)",
   "gui.mmdskin.mod_settings.physics_collision_stability.relaxed": "Relaxed (Same Chain)",
+  "gui.mmdskin.mod_settings.physics_static_collider_scale": "Body Collider Scale",
+  "gui.mmdskin.mod_settings.physics_static_collider_scale.tooltip": "Scale multiplier for body/leg colliders that follow bones (default 0.80x). Higher values make skirts flare outward and reduce penetration; lower values make them fit tighter.",
   "gui.mmdskin.mod_settings.physics_debug_log": "Debug Log",
   "gui.mmdskin.mod_settings.physics_debug_log.tooltip": "Output physics system debug logs",
   "gui.mmdskin.mod_settings.max_physics_models": "Max Physics Models",

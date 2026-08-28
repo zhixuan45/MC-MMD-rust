@@ -16,7 +16,6 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.EntityType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -24,7 +23,7 @@ import org.lwjgl.glfw.GLFW;
 
 /**
  * Fabric 客户端注册入口
- * 保留平台入口、按键/渲染注册与接收端挂接
+ * 负责平台按键注册、实体渲染器接管与 1.21.1 客户端网络包监听
  */
 @Environment(EnvType.CLIENT)
 public class MmdSkinRegisterClient {
@@ -74,23 +73,29 @@ public class MmdSkinRegisterClient {
         File[] modelDirs = new File(MCinstance.gameDirectory, "3d-skin").listFiles();
         if (modelDirs != null) {
             for (File i : modelDirs) {
-                if (!i.getName().startsWith("EntityPlayer") && !i.getName().equals("DefaultAnim") && !i.getName().equals("Shader")) {
-                    String mcEntityName = i.getName().replace('.', ':');
+                String name = i.getName();
+                if (!name.startsWith("EntityPlayer") &&
+                        !name.equals("DefaultAnim") &&
+                        !name.equals("CustomAnim") &&
+                        !name.equals("StageAnim") &&
+                        !name.equals("SceneModel") &&
+                        !name.equals("DefaultMorph") &&
+                        !name.equals("CustomMorph") &&
+                        !name.equals("Shader")) {
+
+                    String mcEntityName = name.replace('.', ':');
                     if (EntityType.byString(mcEntityName).isPresent()) {
                         EntityRendererRegistry.register(EntityType.byString(mcEntityName).get(), new EntityRenderFactory<>(mcEntityName));
                     } else {
-                        logger.warn(mcEntityName + " 实体不存在，跳过渲染注册");
+                        logger.warn("{} 实体不存在，跳过渲染注册", mcEntityName);
                     }
                 }
             }
         }
 
-        ClientPlayNetworking.registerGlobalReceiver(MmdSkinRegisterCommon.SKIN_S2C, (client, handler, buf, responseSender) -> {
-            FriendlyByteBuf copiedBuf = new FriendlyByteBuf(buf.copy());
-            client.execute(() -> {
-                MmdSkinNetworkPack.doInClient(copiedBuf);
-                copiedBuf.release();
-            });
+        // Fabric 1.21.1 客户端载荷接收
+        ClientPlayNetworking.registerGlobalReceiver(MmdSkinNetworkPack.TYPE, (payload, context) -> {
+            context.client().execute(payload::doInClient);
         });
     }
 }

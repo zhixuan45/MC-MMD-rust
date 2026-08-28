@@ -321,7 +321,7 @@ impl ViewerGuiState {
                 let mut static_scale = snapshot.static_collider_scale;
                 if ui
                     .add(
-                        egui::Slider::new(&mut static_scale, 0.1..=1.0)
+                        egui::Slider::new(&mut static_scale, 0.1..=1.5)
                             .text("绿色人体碰撞体倍率")
                             .step_by(0.01),
                     )

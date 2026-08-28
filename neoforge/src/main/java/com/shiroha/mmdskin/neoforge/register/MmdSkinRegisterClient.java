@@ -97,6 +97,10 @@ public class MmdSkinRegisterClient {
                 if (!name.startsWith("EntityPlayer") &&
                         !name.equals("DefaultAnim") &&
                         !name.equals("CustomAnim") &&
+                        !name.equals("StageAnim") &&
+                        !name.equals("SceneModel") &&
+                        !name.equals("DefaultMorph") &&
+                        !name.equals("CustomMorph") &&
                         !name.equals("Shader")) {
 
                     String mcEntityName = name.replace('.', ':');

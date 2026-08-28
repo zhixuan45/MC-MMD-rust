@@ -15,6 +15,7 @@ public record PhysicsConfigSnapshot(
         boolean kinematicFilter,
         boolean collisionEnabled,
         PhysicsCollisionStabilityMode collisionStabilityMode,
+        float staticColliderScale,
         boolean debugLog) {
 
     public static PhysicsConfigSnapshot from(ConfigData data) {
@@ -33,6 +34,7 @@ public record PhysicsConfigSnapshot(
                 Objects.requireNonNullElse(
                         data.physicsCollisionStabilityMode,
                         PhysicsCollisionStabilityMode.STABLE),
+                data.physicsStaticColliderScale,
                 data.physicsDebugLog);
     }
 
@@ -50,6 +52,7 @@ public record PhysicsConfigSnapshot(
                 ConfigManager.isPhysicsKinematicFilter(),
                 ConfigManager.isPhysicsCollisionEnabled(),
                 ConfigManager.getPhysicsCollisionStabilityMode(),
+                ConfigManager.getPhysicsStaticColliderScale(),
                 ConfigManager.isPhysicsDebugLog());
     }
 }

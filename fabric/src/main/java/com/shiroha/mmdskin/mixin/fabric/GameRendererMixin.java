@@ -1,9 +1,9 @@
 package com.shiroha.mmdskin.mixin.fabric;
 
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
 import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.entity.Entity;
@@ -17,14 +17,13 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** 文件职责：舞台模式 FOV/Roll 覆盖，第一人称 reach 修正。 */
+/** 舞台模式 FOV/Roll 覆盖，第一人称 reach 修正 (Fabric 1.21.1)。 */
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
 
@@ -37,29 +36,10 @@ public abstract class GameRendererMixin {
     }
 
     @Inject(method = "renderLevel", at = @At("HEAD"))
-    private void mmdskin$prepareFirstPersonCameraFrame(
-            float partialTick, long finishTimeNano, PoseStack poseStack, CallbackInfo ci) {
+    private void mmdskin$prepareFirstPersonCameraFrame(DeltaTracker deltaTracker, CallbackInfo ci) {
         // 在 Camera.setup 前准备本帧第一人称双眼锚点。
+        float partialTick = deltaTracker.getGameTimeDeltaPartialTick(false);
         FirstPersonManager.prepareCameraFrame(partialTick);
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lcom/mojang/blaze3d/vertex/PoseStack;mulPose(Lorg/joml/Quaternionf;)V",
-                    ordinal = 1,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void onApplyCameraRoll(float partialTick, long finishTimeNano, PoseStack poseStack, CallbackInfo ci) {
-        MMDCameraController controller = MMDCameraController.getInstance();
-        if (controller.isActive()) {
-            float roll = controller.getCameraRoll();
-            if (roll != 0.0f) {
-                poseStack.mulPose(new Quaternionf().rotationZ(roll));
-            }
-        }
     }
 
     @Inject(method = "pick", at = @At("RETURN"), require = 0)
@@ -75,8 +55,8 @@ public abstract class GameRendererMixin {
         if (viewDir.lengthSqr() < 1.0E-6) return;
 
         Vec3 vanillaEyePos = FirstPersonManager.getVanillaEyePosition(player, partialTick);
-        double blockRange = mc.gameMode != null ? (double) mc.gameMode.getPickRange() : 4.5;
-        double entityRange = player.isCreative() ? 6.0 : 3.0;
+        double blockRange = player.blockInteractionRange();
+        double entityRange = player.entityInteractionRange();
         HitResult missHit = player.pick(0.0D, partialTick, false);
         HitResult blockHit = player.pick(blockRange, partialTick, false);
         HitResult vanillaRayBlockHit = mc.level.clip(
@@ -136,4 +116,3 @@ public abstract class GameRendererMixin {
         return cameraPos.distanceToSqr(hitResult.getLocation());
     }
 }
-

@@ -10,8 +10,8 @@ use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode, RigidBodySh
 
 use super::bullet_ffi::{BulletRigidBody, BulletShape, RigidBodyInfo};
 
-/// 跟随骨骼的人体碰撞壳厚度倍率。缩放不移动中心、中心轴或关节锚点。
-pub const STATIC_COLLISION_SHAPE_SCALE: f32 = 0.7;
+/// 跟随骨骼的人体碰撞壳厚度默认倍率。缩放不移动中心、中心轴或关节锚点。
+pub const STATIC_COLLISION_SHAPE_SCALE: f32 = 0.70;
 
 /// 返回实际传给 Bullet 和调试渲染器的碰撞形状尺寸。
 pub fn effective_collision_shape_size(pmx_rb: &PmxRigidBody) -> [f32; 3] {
@@ -28,18 +28,44 @@ pub fn effective_collision_shape_size_with_static_scale(
         return pmx_rb.size;
     }
 
-    let scale = static_scale.clamp(0.1, 1.0);
+    // 身体碰撞体缩放倍率，范围 0.1x ~ 1.5x
+    let scale = static_scale.clamp(0.1, 1.5);
+
+    // 对于异常偏细的大腿/腿部碰撞体（例如原模型仅配置半径 0.16 的骨架线），进行基准厚度归一化，
+    // 确保与视觉网格厚度相符并能被用户的滑动条有效缩放。
+    let base_radius = if is_under_sized_leg_collider(pmx_rb) {
+        pmx_rb.size[0].max(0.55)
+    } else {
+        pmx_rb.size[0]
+    };
+
     match pmx_rb.shape {
         // CySpring 将人体碰撞体半径与中心轴分开传入；这里同样只缩碰撞壳厚度。
-        RigidBodyShape::Sphere => [pmx_rb.size[0] * scale, pmx_rb.size[1], pmx_rb.size[2]],
-        RigidBodyShape::Capsule => [pmx_rb.size[0] * scale, pmx_rb.size[1], pmx_rb.size[2]],
+        RigidBodyShape::Sphere => [base_radius * scale, pmx_rb.size[1], pmx_rb.size[2]],
+        RigidBodyShape::Capsule => [base_radius * scale, pmx_rb.size[1], pmx_rb.size[2]],
         // PMX 箱体的局部 Y 是人体碰撞体高度，保留高度只收窄横截面。
         RigidBodyShape::Box => [
-            pmx_rb.size[0] * scale,
+            base_radius * scale,
             pmx_rb.size[1],
             pmx_rb.size[2] * scale,
         ],
     }
+}
+
+fn is_under_sized_leg_collider(body: &PmxRigidBody) -> bool {
+    const LEG_PARTS: &[&str] = &[
+        "足",
+        "ひざ",
+        "膝",
+        "腿",
+        "thigh",
+        "shin",
+        "leg",
+        "skirt_collider",
+    ];
+    let local = body.local_name.to_lowercase();
+    let universal = body.universal_name.to_lowercase();
+    body.size[0] < 0.45 && LEG_PARTS.iter().any(|p| local.contains(p) || universal.contains(p))
 }
 
 /// 按 PMX 的部位、碰撞组和关节用途识别需要收窄的人体碰撞体。
@@ -56,7 +82,7 @@ pub fn body_collider_scale_flags(rigid_bodies: &[PmxRigidBody], joints: &[PmxJoi
         .collect()
 }
 
-fn is_lower_body_collider(body: &PmxRigidBody) -> bool {
+pub(super) fn is_lower_body_collider(body: &PmxRigidBody) -> bool {
     const PART_NAMES: &[&str] = &[
         "下半身",
         "腰",
@@ -72,10 +98,60 @@ fn is_lower_body_collider(body: &PmxRigidBody) -> bool {
         "waist",
         "body_blocker",
         "skirt_collider",
+        "synthesized_pelvis",
+        "synthesized_glutes",
     ];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
     PART_NAMES
+        .iter()
+        .any(|part| local.contains(part) || universal.contains(part))
+}
+
+/// 识别骨盆和上大腿部位的静态碰撞体。
+///
+/// 裙摆仅与骨盆和上大腿强制开启 Broadphase 碰撞连通；
+/// 小腿、膝盖和脚部不强制连通，严格保留 PMX 作者配置的掩码，避免跑跳摆腿时小腿撕裂长裙。
+pub(super) fn is_pelvis_or_thigh_collider(body: &PmxRigidBody) -> bool {
+    const LOWER_NAMES: &[&str] = &[
+        "下半身",
+        "腰",
+        "腿",
+        "thigh",
+        "hip",
+        "pelvis",
+        "waist",
+        "synthesized_pelvis",
+        "synthesized_glutes",
+    ];
+    let local = body.local_name.to_lowercase();
+    let universal = body.universal_name.to_lowercase();
+    // 排除小腿、膝盖和脚部
+    if local.contains("shin")
+        || universal.contains("shin")
+        || local.contains("膝")
+        || universal.contains("膝")
+        || local.contains("ひざ")
+        || universal.contains("ひざ")
+        || local.contains("足首")
+        || universal.contains("足首")
+        || local.contains("つま先")
+        || universal.contains("つま先")
+    {
+        return false;
+    }
+    // 尾巴阻挡体（Tail Blocker）专门用于防止尾巴穿入臀部，绝不能作为裙摆碰撞体与后裙摆碰撞
+    if (local.contains("tail") || universal.contains("tail"))
+        && (local.contains("blocker") || universal.contains("blocker"))
+    {
+        return false;
+    }
+    if (local.contains("thigh") || universal.contains("thigh"))
+        || (local.contains("skirt_collider") && !local.contains("shin"))
+    {
+        return true;
+    }
+    LOWER_NAMES
         .iter()
         .any(|part| local.contains(part) || universal.contains(part))
 }
@@ -122,7 +198,14 @@ pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
 }
 
 /// 尾巴是独立动态链，不能并入裙摆分类，否则跨部位碰撞无法单独诊断和过滤。
+/// 静态跟骨刚体和身体阻挡体（blocker）不属于动态尾巴链。
 pub(super) fn is_tail_dynamic_part(body: &PmxRigidBody) -> bool {
+    if body.mode == RigidBodyMode::Static
+        || body.local_name.to_lowercase().contains("blocker")
+        || body.universal_name.to_lowercase().contains("blocker")
+    {
+        return false;
+    }
     const NOT_TAIL_NAMES: &[&str] = &[
         "馬尾",
         "马尾",
@@ -148,6 +231,12 @@ pub(super) fn is_tail_dynamic_part(body: &PmxRigidBody) -> bool {
 }
 
 fn collision_pair_is_enabled(a: &PmxRigidBody, b: &PmxRigidBody) -> bool {
+    // 静态骨盆与上大腿碰撞体与动态裙摆始终保持双向碰撞连接；小腿/膝盖等保留 PMX 作者配置的掩码
+    if (a.mode == RigidBodyMode::Static && is_pelvis_or_thigh_collider(a) && is_skirt_or_lower_garment(b))
+        || (b.mode == RigidBodyMode::Static && is_pelvis_or_thigh_collider(b) && is_skirt_or_lower_garment(a))
+    {
+        return true;
+    }
     let a_mask = pmx_collision_mask(a.un_collision_group_flag);
     let b_mask = pmx_collision_mask(b.un_collision_group_flag);
     (a_mask & (1u16 << b.group.min(15))) != 0 && (b_mask & (1u16 << a.group.min(15))) != 0
@@ -512,7 +601,24 @@ mod tests {
     fn static_capsule_only_shrinks_collision_radius() {
         let mut body = test_rigid_body(RigidBodyShape::Capsule, [1.0, 4.0, 0.0]);
         body.mode = RigidBodyMode::Static;
-        assert_eq!(effective_collision_shape_size(&body), [0.7, 4.0, 0.0]);
+        assert_eq!(
+            effective_collision_shape_size(&body),
+            [super::STATIC_COLLISION_SHAPE_SCALE, 4.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn under_sized_leg_collider_gets_normalized_base_radius() {
+        let mut body = test_rigid_body(RigidBodyShape::Capsule, [0.163, 4.0, 0.0]);
+        body.local_name = "left_thigh_skirt_collider".to_owned();
+        body.mode = RigidBodyMode::Static;
+        let res_10 = effective_collision_shape_size_with_static_scale(&body, 1.0, true);
+        assert!((res_10[0] - 0.55).abs() < 1e-6);
+        assert_eq!(res_10[1], 4.0);
+
+        let res_15 = effective_collision_shape_size_with_static_scale(&body, 1.5, true);
+        assert!((res_15[0] - 0.825).abs() < 1e-6);
+        assert_eq!(res_15[1], 4.0);
     }
 
     #[test]
@@ -535,7 +641,7 @@ mod tests {
         );
         assert_eq!(
             super::effective_collision_shape_size_with_static_scale(&body, 2.0, true),
-            body.size
+            [1.5, 0.0, 0.0]
         );
     }
 

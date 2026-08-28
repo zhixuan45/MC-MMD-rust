@@ -13,12 +13,14 @@ import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import com.shiroha.mmdskin.ui.QuickModelSwitcher;
 import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
 import com.shiroha.mmdskin.ui.network.NetworkOpCode;
+import com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer;
 import com.shiroha.mmdskin.ui.wheel.ConfigWheelScreen;
 import com.shiroha.mmdskin.ui.wheel.MaidConfigWheelScreen;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -49,7 +51,7 @@ final class FabricClientRuntimeHooks {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> onDisconnect());
         HudRenderCallback.EVENT.register((graphics, tickDelta) -> {
             PerformanceHud.render(graphics);
-            com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.renderHud(graphics, tickDelta);
+            PaperDollRenderer.renderHud(graphics, tickDelta.getGameTimeDeltaPartialTick(false));
         });
     }
 
@@ -110,7 +112,7 @@ final class FabricClientRuntimeHooks {
         if (selectedModel != null && !selectedModel.isEmpty() && !selectedModel.equals(UIConstants.DEFAULT_MODEL_NAME)) {
             PlayerModelSyncService.broadcastLocalModelSelection(player.getUUID(), selectedModel);
         }
-        MmdSkinNetworkPack.sendToServer(NetworkOpCode.REQUEST_ALL_MODELS, player.getUUID(), "");
+        ClientPlayNetworking.send(new MmdSkinNetworkPack(NetworkOpCode.REQUEST_ALL_MODELS, player.getUUID(), ""));
     }
 
     private void onDisconnect() {

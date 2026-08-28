@@ -6,10 +6,11 @@ import com.shiroha.mmdskin.fabric.network.MmdSkinNetworkPack;
 import com.shiroha.mmdskin.player.sync.ClientNetworkBindings;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 
-/** 文件职责：绑定 Fabric 客户端各类网络发送器。 */
+/** 文件职责：绑定 Fabric 客户端各类网络发送器（Minecraft 1.21.1 / CustomPacketPayload）。 */
 @Environment(EnvType.CLIENT)
 final class FabricClientNetworkBindings {
     void register(Minecraft minecraft) {
@@ -26,7 +27,7 @@ final class FabricClientNetworkBindings {
                     }
                     resolvedPlayerUuid = player.getUUID();
                 }
-                MmdSkinNetworkPack.sendToServer(MmdSkinNetworkPack.toOpCode(messageType), resolvedPlayerUuid, payload);
+                ClientPlayNetworking.send(new MmdSkinNetworkPack(MmdSkinNetworkPack.toOpCode(messageType), resolvedPlayerUuid, payload));
             }
 
             @Override
@@ -35,7 +36,7 @@ final class FabricClientNetworkBindings {
                 if (player == null) {
                     return;
                 }
-                MmdSkinNetworkPack.sendToServer(MmdSkinNetworkPack.toOpCode(messageType), player.getUUID(), payload);
+                ClientPlayNetworking.send(new MmdSkinNetworkPack(MmdSkinNetworkPack.toOpCode(messageType), player.getUUID(), payload));
             }
 
             @Override
@@ -44,29 +45,29 @@ final class FabricClientNetworkBindings {
                 if (player == null) {
                     return;
                 }
-                MmdSkinNetworkPack.sendBinaryToServer(MmdSkinNetworkPack.toOpCode(messageType), player.getUUID(), payload);
+                ClientPlayNetworking.send(new MmdSkinNetworkPack(MmdSkinNetworkPack.toOpCode(messageType), player.getUUID(), payload));
             }
         });
 
         MaidModelNetworkHandler.getInstance().setNetworkSender((entityId, modelName) -> {
             LocalPlayer player = minecraft.player;
             if (player != null) {
-                MmdSkinNetworkPack.sendToServer(
+                ClientPlayNetworking.send(new MmdSkinNetworkPack(
                         com.shiroha.mmdskin.ui.network.NetworkOpCode.MAID_MODEL,
                         player.getUUID(),
                         entityId,
-                        modelName);
+                        modelName));
             }
         });
 
         MaidActionNetworkHandler.getInstance().setNetworkSender((entityId, animId) -> {
             LocalPlayer player = minecraft.player;
             if (player != null) {
-                MmdSkinNetworkPack.sendToServer(
+                ClientPlayNetworking.send(new MmdSkinNetworkPack(
                         com.shiroha.mmdskin.ui.network.NetworkOpCode.MAID_ACTION,
                         player.getUUID(),
                         entityId,
-                        animId);
+                        animId));
             }
         });
     }
