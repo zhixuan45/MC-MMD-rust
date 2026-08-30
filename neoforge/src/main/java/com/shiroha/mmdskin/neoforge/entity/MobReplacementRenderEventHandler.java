@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.neoforge.entity;
 
 import com.shiroha.mmdskin.render.entity.MobReplacementRenderer;
+import com.shiroha.mmdskin.render.entity.MobReplacementService;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.api.distmarker.Dist;
@@ -17,6 +18,10 @@ public class MobReplacementRenderEventHandler {
 
     @SubscribeEvent(priority = EventPriority.HIGH)
     public void onRenderLivingPre(RenderLivingEvent.Pre<?, ?> event) {
+        if (!MobReplacementService.hasActiveReplacements()) {
+            return;
+        }
+
         LivingEntity entity = event.getEntity();
         if (entity instanceof AbstractClientPlayer) {
             return;

@@ -108,7 +108,7 @@ public class ModelSelectorConfig {
     public String getSelectedModel() {
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
         if (mc.player != null) {
-            return getPlayerModel(mc.player.getName().getString());
+            return getPlayerModelByUuidOrName(mc.player.getUUID(), mc.player.getName().getString());
         }
         return UIConstants.DEFAULT_MODEL_NAME;
     }
@@ -120,10 +120,38 @@ public class ModelSelectorConfig {
         return data.playerModels.getOrDefault(playerName, UIConstants.DEFAULT_MODEL_NAME);
     }
 
+    /**
+     * 按玩家 UUID（优先）或玩家名称查找本地配置的模型。
+     */
+    public String getPlayerModelByUuidOrName(java.util.UUID playerUuid, String playerName) {
+        if (data == null || data.playerModels == null) {
+            return UIConstants.DEFAULT_MODEL_NAME;
+        }
+        if (playerUuid != null) {
+            String uuidModel = data.playerModels.get(playerUuid.toString());
+            if (uuidModel != null && !uuidModel.isEmpty() && !UIConstants.DEFAULT_MODEL_NAME.equals(uuidModel)) {
+                return uuidModel;
+            }
+        }
+        if (playerName != null && !playerName.isEmpty()) {
+            String nameModel = data.playerModels.get(playerName);
+            if (nameModel != null && !nameModel.isEmpty() && !UIConstants.DEFAULT_MODEL_NAME.equals(nameModel)) {
+                return nameModel;
+            }
+        }
+        return UIConstants.DEFAULT_MODEL_NAME;
+    }
+
     public void setSelectedModel(String modelName) {
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
         if (mc.player != null) {
             setPlayerModel(mc.player.getName().getString(), modelName);
+        }
+    }
+
+    public void setPlayerModelByUuid(java.util.UUID playerUuid, String modelName) {
+        if (playerUuid != null) {
+            setPlayerModel(playerUuid.toString(), modelName);
         }
     }
 
@@ -146,8 +174,21 @@ public class ModelSelectorConfig {
         }
     }
 
+    public String getRawModel(String key) {
+        if (data == null || data.playerModels == null || key == null) {
+            return null;
+        }
+        return data.playerModels.get(key);
+    }
+
     public void removePlayerModel(String playerName) {
         if (data.playerModels.remove(playerName) != null) {
+            save();
+        }
+    }
+
+    public void removePlayerModelByUuid(java.util.UUID uuid) {
+        if (uuid != null && data.playerModels.remove(uuid.toString()) != null) {
             save();
         }
     }

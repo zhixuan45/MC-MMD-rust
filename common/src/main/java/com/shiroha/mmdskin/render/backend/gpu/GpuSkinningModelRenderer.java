@@ -354,16 +354,20 @@ final class GpuSkinningModelRenderer {
 
     private static void clearRenderState(GpuSkinningModelInstance target) {
         cleanupVertexAttributes(target);
+        // 先解绑 VAO，再解绑缓冲区，避免污染 VAO 内部的 EBO 绑定
+        GL46C.glBindVertexArray(0);
         GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
-        GL46C.glBindVertexArray(0);
         RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
 
-        ShaderInstance currentShader = RenderSystem.getShader();
-        if (currentShader != null) {
-            currentShader.clear();
-        }
-        BufferUploader.reset();
+        // 严格恢复 Blaze3D 的默认面剔除与混合状态，避免方块实体以双面无剔除或 Alpha 混合模式渲染
+        RenderSystem.enableCull();
+        GL46C.glCullFace(GL46C.GL_BACK);
+        RenderSystem.depthMask(true);
+        RenderSystem.enableDepthTest();
+        RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableBlend();
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 

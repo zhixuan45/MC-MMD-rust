@@ -11,9 +11,11 @@ import com.shiroha.mmdskin.config.PhysicsConfigSnapshot;
 import com.shiroha.mmdskin.config.UIConstants;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.entity.MobReplacementTargets;
+import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
 import me.shedaniel.clothconfig2.api.ConfigBuilder;
 import me.shedaniel.clothconfig2.api.ConfigCategory;
 import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -573,9 +575,103 @@ public class ModConfigScreen {
             ));
         }
 
+        ConfigCategory playerReplacementCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.player_replacement"));
+
+        playerReplacementCategory.addEntry(entryBuilder
+            .startTextDescription(Component.translatable("gui.mmdskin.mod_settings.player_replacement.description"))
+            .build());
+
+        playerReplacementCategory.addEntry(new AddCustomPlayerEntry(null));
+
+        buildPlayerReplacementEntries(playerReplacementCategory);
+
         builder.setSavingRunnable(() -> saveConfig(data));
 
         return builder.build();
+    }
+
+    static void buildPlayerReplacementEntries(ConfigCategory category) {
+        Minecraft mc = Minecraft.getInstance();
+        ModelSelectorConfig config = ModelSelectorConfig.getInstance();
+        java.util.Map<String, String> allConfigured = config.getAllPlayerModels();
+
+        record PlayerInfoHolder(java.util.UUID uuid, String name, boolean isOnline, boolean bindByUuid, String currentModel) {}
+        java.util.Map<String, PlayerInfoHolder> playerMap = new java.util.LinkedHashMap<>();
+
+        // 1. 扫描在线玩家
+        if (mc.getConnection() != null) {
+            for (net.minecraft.client.multiplayer.PlayerInfo info : mc.getConnection().getOnlinePlayers()) {
+                java.util.UUID uuid = info.getProfile().getId();
+                String name = info.getProfile().getName();
+                String uuidKey = uuid.toString();
+
+                String modelByUuid = allConfigured.get(uuidKey);
+                String modelByName = allConfigured.get(name);
+
+                boolean bindByUuid = (modelByUuid != null && !modelByUuid.isBlank() && !UIConstants.DEFAULT_MODEL_NAME.equals(modelByUuid));
+                String currentModel = bindByUuid ? modelByUuid : (modelByName != null ? modelByName : UIConstants.DEFAULT_MODEL_NAME);
+
+                playerMap.put(uuidKey, new PlayerInfoHolder(uuid, name, true, bindByUuid, currentModel));
+            }
+        }
+
+        // 确保本地玩家包含在内
+        if (mc.player != null) {
+            java.util.UUID localUuid = mc.player.getUUID();
+            String localName = mc.player.getName().getString();
+            String localKey = localUuid.toString();
+            if (!playerMap.containsKey(localKey)) {
+                String modelByUuid = allConfigured.get(localKey);
+                String modelByName = allConfigured.get(localName);
+                boolean bindByUuid = (modelByUuid != null && !modelByUuid.isBlank() && !UIConstants.DEFAULT_MODEL_NAME.equals(modelByUuid));
+                String currentModel = bindByUuid ? modelByUuid : (modelByName != null ? modelByName : UIConstants.DEFAULT_MODEL_NAME);
+                playerMap.put(localKey, new PlayerInfoHolder(localUuid, localName, true, bindByUuid, currentModel));
+            }
+        }
+
+        // 2. 扫描已配置但在当前不在线的玩家
+        for (java.util.Map.Entry<String, String> entry : allConfigured.entrySet()) {
+            String key = entry.getKey();
+            String model = entry.getValue();
+            if (model == null || model.isBlank() || UIConstants.DEFAULT_MODEL_NAME.equals(model)) {
+                continue;
+            }
+
+            java.util.UUID parsedUuid = null;
+            try {
+                parsedUuid = java.util.UUID.fromString(key);
+            } catch (IllegalArgumentException ignored) {}
+
+            if (parsedUuid != null) {
+                String uuidKey = parsedUuid.toString();
+                if (!playerMap.containsKey(uuidKey)) {
+                    playerMap.put(uuidKey, new PlayerInfoHolder(parsedUuid, null, false, true, model));
+                }
+            } else {
+                boolean foundInOnline = false;
+                for (PlayerInfoHolder holder : playerMap.values()) {
+                    if (key.equalsIgnoreCase(holder.name)) {
+                        foundInOnline = true;
+                        break;
+                    }
+                }
+                if (!foundInOnline && !playerMap.containsKey(key)) {
+                    playerMap.put(key, new PlayerInfoHolder(null, key, false, false, model));
+                }
+            }
+        }
+
+        // 3. 将所有收集到的条目添加到分类中
+        for (PlayerInfoHolder holder : playerMap.values()) {
+            category.addEntry(new PlayerReplacementListEntry(
+                holder.uuid,
+                holder.name,
+                holder.isOnline,
+                holder.bindByUuid,
+                holder.currentModel
+            ));
+        }
     }
 
     static void saveConfig(ConfigData data) {

@@ -256,11 +256,16 @@ public class ConfigManager {
         return provider != null ? provider.getVRArmIKStrength() : 1.0f;
     }
 
+    public static boolean hasMobModelReplacements() {
+        return provider != null ? provider.hasMobModelReplacements() : false;
+    }
+
     public static String getMobModelReplacement(String entityTypeId) {
         return provider != null ? provider.getMobModelReplacement(entityTypeId) : "";
     }
 
     public interface IConfigProvider extends IRenderConfig, IToonConfig, IPhysicsConfig, IVRConfig {
+        default boolean hasMobModelReplacements() { return false; }
         String getMobModelReplacement(String entityTypeId);
     }
 }

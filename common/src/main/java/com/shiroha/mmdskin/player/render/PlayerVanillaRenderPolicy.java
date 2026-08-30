@@ -13,7 +13,7 @@ final class PlayerVanillaRenderPolicy {
         boolean isLocalFirstPerson = request.localPlayer() && minecraft.options.getCameraType().isFirstPerson();
 
         if (isLocalFirstPerson && !FirstPersonManager.shouldRenderFirstPerson() && !FirstPersonManager.vrRuntime().isLocalPlayerInVr()) {
-            if (request.player() != null && (request.player().isSwimming() || request.player().isVisuallySwimming())) {
+            if (request.player() != null && (request.player().isSwimming() || request.player().isVisuallySwimming() || request.player().isPassenger())) {
                 return PlayerRenderAction.CANCEL;
             }
             return PlayerRenderAction.FALLTHROUGH;

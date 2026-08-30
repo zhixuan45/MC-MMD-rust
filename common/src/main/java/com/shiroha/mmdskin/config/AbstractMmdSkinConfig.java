@@ -72,6 +72,9 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isPaperDollShowInScreens() { return data.paperDollShowInScreens; }
     @Override public boolean isDebugHudEnabled() { return data.debugHudEnabled; }
     @Override public int getTextureCacheBudgetMB() { return data.textureCacheBudgetMB; }
+    @Override public boolean hasMobModelReplacements() {
+        return data != null && data.mobModelReplacements != null && !data.mobModelReplacements.isEmpty();
+    }
     @Override public String getMobModelReplacement(String entityTypeId) {
         return data.mobModelReplacements.getOrDefault(entityTypeId, "");
     }
