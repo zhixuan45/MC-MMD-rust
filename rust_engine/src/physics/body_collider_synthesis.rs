@@ -222,9 +222,13 @@ pub fn push_out_dynamic_bone_position(
         let offset = world_pos - sphere.center;
         let dist_sq = offset.length_squared();
         let r = sphere.radius;
-        if dist_sq < r * r && dist_sq > 1e-8 {
-            let dist = dist_sq.sqrt();
-            let normal = offset / dist;
+        if r > 0.0 && dist_sq < r * r {
+            let normal = if dist_sq > 1e-8 {
+                offset / dist_sq.sqrt()
+            } else {
+                // 位于球心时没有可用的推出方向；使用固定方向，避免骨骼永久卡在碰撞体内。
+                Vec3::Y
+            };
             world_pos = sphere.center + normal * r;
         }
     }
@@ -243,9 +247,18 @@ pub fn push_out_dynamic_bone_position(
         let offset = world_pos - closest;
         let dist_sq = offset.length_squared();
         let r = capsule.radius;
-        if dist_sq < r * r && dist_sq > 1e-8 {
-            let dist = dist_sq.sqrt();
-            let normal = offset / dist;
+        if r > 0.0 && dist_sq < r * r {
+            let normal = if dist_sq > 1e-8 {
+                offset / dist_sq.sqrt()
+            } else {
+                // 点恰好落在胶囊轴线上时，选择一个与轴线垂直的稳定方向。
+                let axis = segment.normalize_or_zero();
+                if axis == Vec3::ZERO {
+                    Vec3::Y
+                } else {
+                    axis.any_orthonormal_vector()
+                }
+            };
             world_pos = closest + normal * r;
         }
     }
@@ -349,5 +362,33 @@ mod tests {
         let pushed = push_out_dynamic_bone_position(inside, &spheres, &capsules);
 
         assert!((pushed - Vec3::new(0.0, 10.0, 1.0)).length() < 1e-5);
+    }
+
+    #[test]
+    fn push_out_moves_point_at_sphere_center_to_surface() {
+        let center = Vec3::new(1.0, 10.0, -2.0);
+        let spheres = vec![BodyColliderSphere {
+            center,
+            radius: 1.25,
+        }];
+
+        let pushed = push_out_dynamic_bone_position(center, &spheres, &[]);
+
+        assert!(((pushed - center).length() - 1.25).abs() < 1e-5);
+    }
+
+    #[test]
+    fn push_out_moves_point_on_capsule_axis_to_surface() {
+        let capsule = BodyColliderCapsule {
+            start: Vec3::new(0.0, 0.0, 0.0),
+            end: Vec3::new(0.0, 2.0, 0.0),
+            radius: 0.75,
+        };
+        let point_on_axis = Vec3::new(0.0, 1.0, 0.0);
+
+        let pushed = push_out_dynamic_bone_position(point_on_axis, &[], &[capsule]);
+
+        assert!((pushed.y - point_on_axis.y).abs() < 1e-5);
+        assert!(((pushed - point_on_axis).length() - capsule.radius).abs() < 1e-5);
     }
 }
