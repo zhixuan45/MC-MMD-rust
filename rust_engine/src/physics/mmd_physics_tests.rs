@@ -3,6 +3,30 @@ use crate::physics::config::PhysicsConfig;
 use glam::Vec3;
 
 #[test]
+fn movement_velocity_smooths_start_and_settles_after_stop() {
+    let mut physics = super::MMDPhysics::new().expect("Bullet world must initialize");
+    let dt = 1.0 / 60.0;
+    physics.sync_bodies_with_model_velocity(&[], dt, glam::Mat4::IDENTITY);
+    let moved = glam::Mat4::from_translation(Vec3::new(0.0, 0.0, 50.0 * dt));
+    physics.sync_bodies_with_model_velocity(&[], dt, moved);
+    assert!(physics.smoothed_model_velocity.z > 0.0);
+    assert!(physics.smoothed_model_velocity.z < 50.0);
+    for _ in 0..120 {
+        physics.sync_bodies_with_model_velocity(&[], dt, moved);
+    }
+    assert!(physics.smoothed_model_velocity.length() < 1e-5);
+}
+
+#[test]
+fn invalid_motion_sample_resets_smoothed_velocity() {
+    let mut physics = super::MMDPhysics::new().expect("Bullet world must initialize");
+    physics.smoothed_model_velocity = Vec3::ONE;
+    physics.sync_bodies_with_model_velocity(&[], f32::NAN, glam::Mat4::IDENTITY);
+    assert_eq!(physics.smoothed_model_velocity, Vec3::ZERO);
+    assert!(physics.prev_model_position.is_none());
+}
+
+#[test]
 fn collision_switch_disables_all_contact_pairs() {
     assert_eq!(effective_collision_mask(false, 0xFFFE), 0);
     assert_eq!(effective_collision_mask(true, 0xFFFE), 0xFFFE);

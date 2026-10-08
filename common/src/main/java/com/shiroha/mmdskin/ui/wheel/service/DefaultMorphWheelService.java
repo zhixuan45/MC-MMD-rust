@@ -122,7 +122,8 @@ public class DefaultMorphWheelService implements MorphWheelService {
             }
 
             String playerName = minecraft.player.getName().getString();
-            String selectedModel = ModelSelectorConfig.getInstance().getPlayerModel(playerName);
+            String selectedModel = ModelSelectorConfig.getInstance()
+                    .getPlayerModelByUuidOrName(minecraft.player.getUUID(), playerName);
             if (selectedModel == null || selectedModel.isEmpty() || UIConstants.DEFAULT_MODEL_NAME.equals(selectedModel)) {
                 logger.warn("Cannot apply morph while using default renderer");
                 return null;

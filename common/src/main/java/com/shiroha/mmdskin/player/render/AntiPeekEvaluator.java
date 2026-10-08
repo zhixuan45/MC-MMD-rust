@@ -45,9 +45,10 @@ public final class AntiPeekEvaluator {
         }
 
         boolean swimming = player.isSwimming() || player.isVisuallySwimming();
+        boolean passenger = player.isPassenger();
 
-        // 规则 1：只要处于第一人称且在游泳状态，必定隐藏第一人称角色模型
-        if (firstPersonView && swimming) {
+        // 规则 1：只要处于第一人称且在游泳或乘坐载具状态，必定隐藏第一人称角色模型
+        if (firstPersonView && (swimming || passenger)) {
             return Result.HIDDEN;
         }
 

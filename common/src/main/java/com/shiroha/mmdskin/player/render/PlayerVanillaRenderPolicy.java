@@ -10,16 +10,19 @@ final class PlayerVanillaRenderPolicy {
 
     static PlayerRenderAction resolveTerminalAction(PlayerRenderRequest request) {
         Minecraft minecraft = Minecraft.getInstance();
-        boolean isLocalFirstPerson = request.localPlayer() && minecraft.options.getCameraType().isFirstPerson();
+        boolean isLocalFirstPerson = request.localPlayer()
+                && minecraft.options.getCameraType().isFirstPerson()
+                && !InventoryRenderScope.isActive()
+                && !PaperDollRenderScope.isActive();
 
         if (isLocalFirstPerson && !FirstPersonManager.shouldRenderFirstPerson() && !FirstPersonManager.vrRuntime().isLocalPlayerInVr()) {
-            if (request.player() != null && (request.player().isSwimming() || request.player().isVisuallySwimming())) {
+            if (request.player() != null && (request.player().isSwimming() || request.player().isVisuallySwimming() || request.player().isPassenger())) {
                 return PlayerRenderAction.CANCEL;
             }
             return PlayerRenderAction.FALLTHROUGH;
         }
 
-        if (request.localPlayer() && FirstPersonManager.shouldRenderFirstPerson()) {
+        if (isLocalFirstPerson && FirstPersonManager.shouldRenderFirstPerson()) {
             if (request.ysmActive()) {
                 return PlayerRenderAction.CANCEL;
             }

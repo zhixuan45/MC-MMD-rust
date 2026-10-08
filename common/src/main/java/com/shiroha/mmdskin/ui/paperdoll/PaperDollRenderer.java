@@ -127,7 +127,7 @@ public final class PaperDollRenderer {
      * 核心渲染管线：构建变换矩阵与渲染状态并分发绘制。
      */
     private static void renderPaperDoll(GuiGraphics guiGraphics, LocalPlayer player, float tickDelta) {
-        String modelName = ModelSelectorConfig.getInstance().getPlayerModel(player.getName().getString());
+        String modelName = ModelSelectorConfig.getInstance().getPlayerModelByUuidOrName(player.getUUID(), player.getName().getString());
         if (modelName == null || modelName.isEmpty() || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) {
             // 如果未配置 MMD 模型，调用原版实体预览回退绘制
             renderVanillaFallback(guiGraphics, player);

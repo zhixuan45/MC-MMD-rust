@@ -106,7 +106,7 @@ final class FabricClientRuntimeHooks {
         if (player == null) {
             return;
         }
-        String selectedModel = ModelSelectorConfig.getInstance().getPlayerModel(player.getName().getString());
+        String selectedModel = ModelSelectorConfig.getInstance().getPlayerModelByUuidOrName(player.getUUID(), player.getName().getString());
         if (selectedModel != null && !selectedModel.isEmpty() && !selectedModel.equals(UIConstants.DEFAULT_MODEL_NAME)) {
             PlayerModelSyncService.broadcastLocalModelSelection(player.getUUID(), selectedModel);
         }

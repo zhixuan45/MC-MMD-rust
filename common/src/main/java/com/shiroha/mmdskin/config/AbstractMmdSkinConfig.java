@@ -52,6 +52,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public PhysicsCollisionStabilityMode getPhysicsCollisionStabilityMode() {
         return data.physicsCollisionStabilityMode;
     }
+    @Override public float getPhysicsStaticColliderScale() { return data.physicsStaticColliderScale; }
     @Override public boolean isPhysicsDebugLog() { return data.physicsDebugLog; }
     @Override public int getMaxPhysicsModelsPerFrame() { return data.maxPhysicsModelsPerFrame; }
     @Override public float getPhysicsLodMaxDistance() { return data.physicsLodMaxDistance; }
@@ -72,6 +73,9 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isPaperDollShowInScreens() { return data.paperDollShowInScreens; }
     @Override public boolean isDebugHudEnabled() { return data.debugHudEnabled; }
     @Override public int getTextureCacheBudgetMB() { return data.textureCacheBudgetMB; }
+    @Override public boolean hasMobModelReplacements() {
+        return data != null && data.mobModelReplacements != null && !data.mobModelReplacements.isEmpty();
+    }
     @Override public String getMobModelReplacement(String entityTypeId) {
         return data.mobModelReplacements.getOrDefault(entityTypeId, "");
     }

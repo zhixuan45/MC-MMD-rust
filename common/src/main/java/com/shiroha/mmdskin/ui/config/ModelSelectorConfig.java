@@ -19,8 +19,6 @@ public class ModelSelectorConfig {
 
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private ConfigData data;
-    private long lastSaveTime = 0;
-    private static final long SAVE_COOLDOWN = 1000;
 
     private ModelSelectorConfig() {
         load();
@@ -60,27 +58,21 @@ public class ModelSelectorConfig {
                     if (retryCount >= maxRetries) {
                         logger.error("配置加载失败，使用默认配置", e);
                         data = new ConfigData();
-                        saveInternal(true);
+                        saveInternal();
                     }
                 }
             }
         } else {
             data = new ConfigData();
-            saveInternal(true);
+            saveInternal();
         }
     }
 
     public synchronized void save() {
-        saveInternal(false);
+        saveInternal();
     }
 
-    private void saveInternal(boolean force) {
-
-        long currentTime = System.currentTimeMillis();
-        if (!force && currentTime - lastSaveTime < SAVE_COOLDOWN) {
-            return;
-        }
-
+    private void saveInternal() {
         File configFile = PathConstants.getModelSelectorConfigFile();
 
         PathConstants.ensureDirectoryExists(configFile.getParentFile());
@@ -91,7 +83,6 @@ public class ModelSelectorConfig {
         while (retryCount < maxRetries) {
             try (Writer writer = new OutputStreamWriter(new FileOutputStream(configFile), java.nio.charset.StandardCharsets.UTF_8)) {
                 gson.toJson(data, writer);
-                lastSaveTime = currentTime;
                 logger.debug("模型选择配置保存成功");
                 return;
             } catch (Exception e) {
@@ -108,7 +99,7 @@ public class ModelSelectorConfig {
     public String getSelectedModel() {
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
         if (mc.player != null) {
-            return getPlayerModel(mc.player.getName().getString());
+            return getPlayerModelByUuidOrName(mc.player.getUUID(), mc.player.getName().getString());
         }
         return UIConstants.DEFAULT_MODEL_NAME;
     }
@@ -120,10 +111,48 @@ public class ModelSelectorConfig {
         return data.playerModels.getOrDefault(playerName, UIConstants.DEFAULT_MODEL_NAME);
     }
 
+    /**
+     * 按玩家 UUID（优先）或玩家名称查找本地配置的模型。
+     */
+    public String getPlayerModelByUuidOrName(java.util.UUID playerUuid, String playerName) {
+        return resolvePlayerModel(data == null ? null : data.playerModels, playerUuid, playerName);
+    }
+
+    static String resolvePlayerModel(Map<String, String> playerModels, java.util.UUID playerUuid, String playerName) {
+        if (playerModels == null) {
+            return UIConstants.DEFAULT_MODEL_NAME;
+        }
+        if (playerUuid != null) {
+            String uuidModel = playerModels.get(playerUuid.toString());
+            if (uuidModel != null && !uuidModel.isBlank() && !UIConstants.DEFAULT_MODEL_NAME.equals(uuidModel)) {
+                return uuidModel;
+            }
+        }
+        if (playerName != null && !playerName.isEmpty()) {
+            String nameModel = playerModels.get(playerName);
+            if (nameModel != null && !nameModel.isBlank() && !UIConstants.DEFAULT_MODEL_NAME.equals(nameModel)) {
+                return nameModel;
+            }
+        }
+        return UIConstants.DEFAULT_MODEL_NAME;
+    }
+
     public void setSelectedModel(String modelName) {
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
         if (mc.player != null) {
-            setPlayerModel(mc.player.getName().getString(), modelName);
+            String playerName = mc.player.getName().getString();
+            if (getRawModel(mc.player.getUUID().toString()) != null) {
+                setPlayerModelByUuid(mc.player.getUUID(), modelName);
+                removePlayerModel(playerName);
+            } else {
+                setPlayerModel(playerName, modelName);
+            }
+        }
+    }
+
+    public void setPlayerModelByUuid(java.util.UUID playerUuid, String modelName) {
+        if (playerUuid != null) {
+            setPlayerModel(playerUuid.toString(), modelName);
         }
     }
 
@@ -140,15 +169,35 @@ public class ModelSelectorConfig {
         data.playerModels.put(playerName, modelName);
         save();
 
-        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-        if (mc.player != null && mc.player.getName().getString().equals(playerName)) {
-            PlayerModelSyncService.broadcastLocalModelSelection(mc.player.getUUID(), modelName);
+        broadcastLocalModelIfBound(playerName);
+    }
+
+    public String getRawModel(String key) {
+        if (data == null || data.playerModels == null || key == null) {
+            return null;
         }
+        return data.playerModels.get(key);
     }
 
     public void removePlayerModel(String playerName) {
         if (data.playerModels.remove(playerName) != null) {
             save();
+            broadcastLocalModelIfBound(playerName);
+        }
+    }
+
+    public void removePlayerModelByUuid(java.util.UUID uuid) {
+        if (uuid != null) {
+            removePlayerModel(uuid.toString());
+        }
+    }
+
+    private void broadcastLocalModelIfBound(String key) {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player != null && (mc.player.getName().getString().equals(key)
+                || mc.player.getUUID().toString().equals(key))) {
+            PlayerModelSyncService.broadcastLocalModelSelection(mc.player.getUUID(),
+                    getPlayerModelByUuidOrName(mc.player.getUUID(), mc.player.getName().getString()));
         }
     }
 

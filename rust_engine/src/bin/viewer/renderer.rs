@@ -147,7 +147,7 @@ impl Renderer {
     }
 
     pub fn set_static_collider_scale(&mut self, scale: f32) {
-        self.static_collider_scale = scale.clamp(0.1, 1.0);
+        self.static_collider_scale = scale.clamp(0.1, 1.5);
     }
 
     pub fn rigid_body_count(&self) -> usize {

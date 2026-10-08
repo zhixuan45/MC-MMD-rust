@@ -40,14 +40,17 @@ public final class PlayerModelSyncService {
 
     public static String getPlayerModel(UUID playerUUID, String playerName, boolean localPlayer) {
         if (localPlayer) {
-            return ModelSelectorConfig.getInstance().getPlayerModel(playerName);
+            return ModelSelectorConfig.getInstance().getPlayerModelByUuidOrName(playerUUID, playerName);
         }
 
+        // 远程玩家模型解析优先级：
+        // 1. 网络同步广播的模型
         String cachedModel = REMOTE_PLAYER_MODELS.get(playerUUID);
-        if (cachedModel != null) {
+        if (cachedModel != null && !cachedModel.isEmpty() && !com.shiroha.mmdskin.config.UIConstants.DEFAULT_MODEL_NAME.equals(cachedModel)) {
             return cachedModel;
         }
-        return ModelSelectorConfig.getInstance().getPlayerModel(playerName);
+        // 2. 本地按 UUID 或玩家名指定给该玩家的独立替换模型
+        return ModelSelectorConfig.getInstance().getPlayerModelByUuidOrName(playerUUID, playerName);
     }
 
     public static void onPlayerLeave(UUID playerUUID) {

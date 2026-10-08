@@ -13,7 +13,7 @@ allprojects {
 	apply plugin: 'architectury-plugin'
 	
 	group = maven_group
-	version = '1.0.5-1.20.1'
+	version = '1.0.6-1.20.1'
 	
 			repositories {
 			// Loom 会把本地生产环境 Mod 重映射为开发环境坐标，必须优先从本地缓存解析。

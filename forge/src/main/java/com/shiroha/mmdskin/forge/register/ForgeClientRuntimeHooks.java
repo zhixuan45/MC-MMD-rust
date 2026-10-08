@@ -90,7 +90,7 @@ final class ForgeClientRuntimeHooks {
         if (minecraft.player == null) {
             return;
         }
-        String selectedModel = ModelSelectorConfig.getInstance().getPlayerModel(minecraft.player.getName().getString());
+        String selectedModel = ModelSelectorConfig.getInstance().getPlayerModelByUuidOrName(minecraft.player.getUUID(), minecraft.player.getName().getString());
         if (selectedModel != null && !selectedModel.isEmpty() && !selectedModel.equals(UIConstants.DEFAULT_MODEL_NAME)) {
             PlayerModelSyncService.broadcastLocalModelSelection(minecraft.player.getUUID(), selectedModel);
         }
