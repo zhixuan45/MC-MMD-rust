@@ -100,7 +100,10 @@ mod ffi {
             max_substeps: c_int,
             fixed_dt: c_float,
         );
+        pub fn bw_world_get_render_time_offset(world: *mut BW_World) -> c_float;
+        pub fn bw_world_sync_render_states(world: *mut BW_World);
         pub fn bw_world_detect_collisions(world: *mut BW_World);
+        pub fn bw_world_refresh_body_collision_filter(world: *mut BW_World, rb: *mut BW_RigidBody);
         pub fn bw_world_set_gravity(world: *mut BW_World, x: c_float, y: c_float, z: c_float);
         pub fn bw_world_add_rigid_body(
             world: *mut BW_World,
@@ -133,6 +136,10 @@ mod ffi {
         pub fn bw_rigid_body_create(info: *const BW_RigidBodyInfo) -> *mut BW_RigidBody;
         pub fn bw_rigid_body_destroy(rb: *mut BW_RigidBody);
         pub fn bw_rigid_body_get_transform(rb: *mut BW_RigidBody, matrix4x4: *mut c_float);
+        pub fn bw_rigid_body_get_simulation_transform(
+            rb: *mut BW_RigidBody,
+            matrix4x4: *mut c_float,
+        );
         pub fn bw_rigid_body_set_transform(rb: *mut BW_RigidBody, matrix4x4: *const c_float);
         pub fn bw_rigid_body_set_kinematic_target(rb: *mut BW_RigidBody, matrix4x4: *const c_float);
         pub fn bw_rigid_body_get_position(
@@ -185,6 +192,15 @@ mod ffi {
             x: c_float,
             y: c_float,
             z: c_float,
+        );
+        pub fn bw_rigid_body_apply_force_at_point(
+            rb: *mut BW_RigidBody,
+            fx: c_float,
+            fy: c_float,
+            fz: c_float,
+            rel_x: c_float,
+            rel_y: c_float,
+            rel_z: c_float,
         );
         pub fn bw_rigid_body_set_ignore_collision_check(
             rb: *mut BW_RigidBody,
@@ -285,9 +301,24 @@ impl BulletWorld {
         unsafe { ffi::bw_world_step(self.ptr, dt, max_substeps, fixed_dt) }
     }
 
+    /// 获取固定步后尚未模拟的渲染时间余数。
+    pub fn render_time_offset(&self) -> f32 {
+        unsafe { ffi::bw_world_get_render_time_offset(self.ptr) }
+    }
+
+    /// 将动态刚体的渲染姿态更新到求解时刻后的物理余数。
+    pub fn sync_render_states(&self) {
+        unsafe { ffi::bw_world_sync_render_states(self.ptr) }
+    }
+
     /// 仅刷新碰撞检测结果，供初始化阶段读取首个求解步之前的接触。
     pub fn detect_collisions(&self) {
         unsafe { ffi::bw_world_detect_collisions(self.ptr) }
+    }
+
+    /// 禁碰变更后清除该刚体的旧接触；有效碰撞会在下次检测重新建立。
+    pub fn refresh_body_collision_filter(&self, body: &BulletRigidBody) {
+        unsafe { ffi::bw_world_refresh_body_collision_filter(self.ptr, body.ptr) }
     }
 
     /// 复制当前求解步中仍处于穿透状态的真实接触流形。
@@ -445,6 +476,13 @@ impl BulletRigidBody {
         col_major_to_mat4(m)
     }
 
+    /// 读取实际求解姿态，供接触、约束诊断使用。
+    pub fn get_simulation_transform(&self) -> Mat4 {
+        let mut m = [0.0f32; 16];
+        unsafe { ffi::bw_rigid_body_get_simulation_transform(self.ptr, m.as_mut_ptr()) }
+        col_major_to_mat4(m)
+    }
+
     /// 设置世界变换
     pub fn set_transform(&self, transform: Mat4) {
         let m = mat4_to_col_major(transform);
@@ -525,6 +563,25 @@ impl BulletRigidBody {
 
     pub fn apply_central_force(&self, x: f32, y: f32, z: f32) {
         unsafe { ffi::bw_rigid_body_apply_central_force(self.ptr, x, y, z) }
+    }
+
+    /// 在刚体局部偏移点施力，偏移会转换到世界坐标并产生 r×F 力矩。
+    pub fn apply_force_at_local_offset(&self, force: Vec3, local_offset: Vec3) {
+        if !force.is_finite() || !local_offset.is_finite() {
+            return;
+        }
+        let world_offset = self.get_transform().transform_vector3(local_offset);
+        unsafe {
+            ffi::bw_rigid_body_apply_force_at_point(
+                self.ptr,
+                force.x,
+                force.y,
+                force.z,
+                world_offset.x,
+                world_offset.y,
+                world_offset.z,
+            )
+        }
     }
 
     pub fn force_activation_state(&self, state: i32) {
@@ -750,219 +807,5 @@ impl From<ffi::BW_ConstraintDiagnostic> for ConstraintDiagnostic {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{BulletConstraint, BulletRigidBody, BulletShape, BulletWorld, RigidBodyInfo};
-    use glam::{Mat4, Quat, Vec3};
-
-    fn body(shape: &BulletShape, transform: Mat4) -> BulletRigidBody {
-        BulletRigidBody::new(
-            &RigidBodyInfo {
-                mass: 1.0,
-                linear_damping: 0.0,
-                angular_damping: 0.0,
-                friction: 0.5,
-                restitution: 0.0,
-                additional_damping: false,
-                is_kinematic: false,
-                disable_deactivation: true,
-                no_contact_response: false,
-                initial_transform: transform,
-            },
-            shape,
-        )
-        .expect("应能创建 Bullet 测试刚体")
-    }
-
-    fn kinematic_body(shape: &BulletShape, transform: Mat4) -> BulletRigidBody {
-        BulletRigidBody::new(
-            &RigidBodyInfo {
-                mass: 0.0,
-                linear_damping: 0.0,
-                angular_damping: 0.0,
-                friction: 0.5,
-                restitution: 0.0,
-                additional_damping: false,
-                is_kinematic: true,
-                disable_deactivation: true,
-                no_contact_response: false,
-                initial_transform: transform,
-            },
-            shape,
-        )
-        .expect("应能创建 Bullet 运动学测试刚体")
-    }
-
-    fn assert_vec3_close(actual: Vec3, expected: Vec3) {
-        assert!(
-            actual.abs_diff_eq(expected, 1e-5),
-            "actual={actual:?}, expected={expected:?}"
-        );
-    }
-
-    #[test]
-    fn six_dof_round_trip_preserves_frames_limits_and_defaults() {
-        let shape = BulletShape::sphere(0.25).expect("应能创建 Bullet 测试形状");
-        let transform_a = Mat4::from_rotation_translation(
-            Quat::from_euler(glam::EulerRot::XYZ, 0.21, -0.37, 0.44),
-            Vec3::new(1.2, -0.8, 2.4),
-        );
-        let transform_b = Mat4::from_rotation_translation(
-            Quat::from_euler(glam::EulerRot::XYZ, -0.18, 0.29, -0.51),
-            Vec3::new(-0.7, 1.6, 0.3),
-        );
-        let joint_transform = Mat4::from_rotation_translation(
-            Quat::from_rotation_z(0.63)
-                * Quat::from_rotation_y(-0.42)
-                * Quat::from_rotation_x(0.17),
-            Vec3::new(0.4, 0.9, -1.1),
-        );
-        let frame_a = transform_a.inverse() * joint_transform;
-        let frame_b = transform_b.inverse() * joint_transform;
-        let body_a = body(&shape, transform_a);
-        let body_b = body(&shape, transform_b);
-        let constraint =
-            BulletConstraint::new_6dof_spring(&body_a, &body_b, frame_a, frame_b, true)
-                .expect("应能创建 Bullet 测试约束");
-
-        let linear_lower = Vec3::new(-0.3, -0.2, -0.1);
-        let linear_upper = Vec3::new(0.4, 0.5, 0.6);
-        let angular_lower = Vec3::new(-0.7, -0.5, -0.3);
-        let angular_upper = Vec3::new(0.2, 0.4, 0.8);
-        constraint.set_linear_lower_limit(linear_lower.x, linear_lower.y, linear_lower.z);
-        constraint.set_linear_upper_limit(linear_upper.x, linear_upper.y, linear_upper.z);
-        constraint.set_angular_lower_limit(angular_lower.x, angular_lower.y, angular_lower.z);
-        constraint.set_angular_upper_limit(angular_upper.x, angular_upper.y, angular_upper.z);
-
-        let diagnostic = constraint.diagnostic().expect("应能回读约束状态");
-        assert!(diagnostic.frame_a.abs_diff_eq(frame_a, 1e-5));
-        assert!(diagnostic.frame_b.abs_diff_eq(frame_b, 1e-5));
-        assert_vec3_close(diagnostic.linear_position, Vec3::ZERO);
-        assert_vec3_close(diagnostic.angular_position, Vec3::ZERO);
-        assert_vec3_close(diagnostic.linear_lower, linear_lower);
-        assert_vec3_close(diagnostic.linear_upper, linear_upper);
-        assert_vec3_close(diagnostic.angular_lower, angular_lower);
-        assert_vec3_close(diagnostic.angular_upper, angular_upper);
-        assert_eq!(diagnostic.equilibrium, [0.0; 6]);
-        assert_eq!(diagnostic.damping, [1.0; 6]);
-        assert_eq!(diagnostic.spring_enabled, [false; 6]);
-        assert!(diagnostic.use_frame_offset);
-    }
-
-    #[test]
-    fn kinematic_target_preserves_motion_for_bullet_velocity_calculation() {
-        let shape = BulletShape::sphere(0.25).expect("应能创建 Bullet 测试形状");
-        let body = kinematic_body(&shape, Mat4::IDENTITY);
-        let world = BulletWorld::new(0.0, 0.0, 0.0).expect("应能创建 Bullet 测试世界");
-        world.add_rigid_body(&body, 1, -1);
-
-        let dt = 1.0 / 60.0;
-        body.set_kinematic_target(Mat4::from_translation(Vec3::X));
-        world.step(dt, 1, dt);
-
-        assert_vec3_close(body.get_transform().w_axis.truncate(), Vec3::X);
-        assert_vec3_close(body.get_linear_velocity(), Vec3::new(60.0, 0.0, 0.0));
-        world.remove_rigid_body(&body);
-    }
-
-    #[test]
-    fn kinematic_target_is_applied_before_constraint_solving() {
-        let shape = BulletShape::sphere(0.25).expect("应能创建 Bullet 测试形状");
-        let parent = kinematic_body(&shape, Mat4::IDENTITY);
-        let child = body(&shape, Mat4::IDENTITY);
-        let world = BulletWorld::new(0.0, 0.0, 0.0).expect("应能创建 Bullet 测试世界");
-        world.add_rigid_body(&parent, 1, -1);
-        world.add_rigid_body(&child, 1, -1);
-        let constraint = BulletConstraint::new_6dof_spring(
-            &parent,
-            &child,
-            Mat4::IDENTITY,
-            Mat4::IDENTITY,
-            true,
-        )
-        .expect("应能创建运动学父体约束");
-        constraint.set_linear_lower_limit(0.0, 0.0, 0.0);
-        constraint.set_linear_upper_limit(0.0, 0.0, 0.0);
-        world.add_constraint(&constraint, true);
-
-        parent.set_kinematic_target(Mat4::from_translation(Vec3::X));
-        let mut previous_violation = 1.0;
-        for _ in 0..6 {
-            world.step(1.0 / 60.0, 1, 1.0 / 60.0);
-
-            // Bullet 按 ERP 分步纠偏，锚点误差应持续收敛而不是首步归零。
-            let diagnostic = constraint.diagnostic().expect("应能回读约束状态");
-            let violation = diagnostic.linear_violation.max_element();
-            assert!(
-                violation < previous_violation,
-                "运动学父体的锚点误差未收敛: previous={previous_violation}, current={violation}"
-            );
-            previous_violation = violation;
-        }
-        assert!(
-            previous_violation < 0.1,
-            "6 个求解步后的锚点残差为 {previous_violation}"
-        );
-        assert_vec3_close(parent.get_transform().w_axis.truncate(), Vec3::X);
-        world.remove_constraint(&constraint);
-        world.remove_rigid_body(&child);
-        world.remove_rigid_body(&parent);
-    }
-
-    #[test]
-    fn hard_transform_reset_does_not_create_kinematic_velocity() {
-        let shape = BulletShape::sphere(0.25).expect("应能创建 Bullet 测试形状");
-        let body = kinematic_body(&shape, Mat4::IDENTITY);
-        let world = BulletWorld::new(0.0, 0.0, 0.0).expect("应能创建 Bullet 测试世界");
-        world.add_rigid_body(&body, 1, -1);
-
-        let reset_transform = Mat4::from_translation(Vec3::new(20.0, 0.0, 0.0));
-        body.set_transform(reset_transform);
-        body.set_linear_velocity(0.0, 0.0, 0.0);
-        body.set_angular_velocity(0.0, 0.0, 0.0);
-        body.clear_forces();
-        world.step(1.0 / 60.0, 1, 1.0 / 60.0);
-
-        assert_vec3_close(
-            body.get_transform().w_axis.truncate(),
-            Vec3::new(20.0, 0.0, 0.0),
-        );
-        assert_vec3_close(body.get_linear_velocity(), Vec3::ZERO);
-        assert_vec3_close(body.get_angular_velocity(), Vec3::ZERO);
-        world.remove_rigid_body(&body);
-    }
-
-    #[test]
-    fn ignored_pair_does_not_disable_other_collision_pairs() {
-        let shape = BulletShape::sphere(0.5).expect("应能创建 Bullet 测试形状");
-        let body_a = body(&shape, Mat4::IDENTITY);
-        let body_b = body(&shape, Mat4::from_translation(Vec3::new(0.25, 0.0, 0.0)));
-        let body_c = body(&shape, Mat4::from_translation(Vec3::new(-0.25, 0.0, 0.0)));
-        let world = BulletWorld::new(0.0, 0.0, 0.0).expect("应能创建 Bullet 测试世界");
-        world.add_rigid_body(&body_a, 1, -1);
-        world.add_rigid_body(&body_b, 1, -1);
-        world.add_rigid_body(&body_c, 1, -1);
-
-        // 局部过滤只能禁用指定刚体对，不能影响同组中的其他碰撞。
-        body_a.set_ignore_collision_check(&body_b, true);
-        assert!(!body_a.check_collide_with(&body_b));
-        assert!(!body_b.check_collide_with(&body_a));
-        assert!(body_a.check_collide_with(&body_c));
-
-        world.step(1.0 / 60.0, 1, 1.0 / 60.0);
-        let contacts = world.contact_manifolds();
-        assert!(contacts.iter().all(|contact| {
-            let pair = (contact.body_a, contact.body_b);
-            pair != (body_a.as_ptr() as usize, body_b.as_ptr() as usize)
-                && pair != (body_b.as_ptr() as usize, body_a.as_ptr() as usize)
-        }));
-        assert!(contacts.iter().any(|contact| {
-            let pair = (contact.body_a, contact.body_b);
-            pair == (body_a.as_ptr() as usize, body_c.as_ptr() as usize)
-                || pair == (body_c.as_ptr() as usize, body_a.as_ptr() as usize)
-        }));
-
-        world.remove_rigid_body(&body_a);
-        world.remove_rigid_body(&body_b);
-        world.remove_rigid_body(&body_c);
-    }
-}
+#[path = "bullet_ffi/tests.rs"]
+mod tests;

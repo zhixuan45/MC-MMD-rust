@@ -124,6 +124,10 @@ public class TextureRepository {
         }
     }
 
+    public static Texture createMaterialColorTexture(float[] color) {
+        return TextureGpuLoader.createColorTexture(color);
+    }
+
     public static void addRef(String filename) {
         Map<String, TextureSlot> localSlots = textureSlots;
         if (localSlots == null) return;

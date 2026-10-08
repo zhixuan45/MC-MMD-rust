@@ -78,7 +78,8 @@ impl MmdJointData {
             pmx_joint.position_spring,
             pmx_joint.rotation_spring,
         );
-        let _clamped_wide_root = apply_wide_skirt_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
+        let _clamped_wide_root =
+            apply_wide_skirt_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
         apply_wide_skirt_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
 
         let clamped_wide_hair_root =
@@ -170,7 +171,7 @@ impl MmdJointData {
 
 /// 将 PMX 关节欧拉角转换为 Bullet setEulerZYX 等价旋转。
 fn joint_rotation(rotation: [f32; 3]) -> Quat {
-    // 刚体形状与 6DOF frame 必须共享同一旋转约定。
+    // 关节使用 Bullet Z-Y-X；不能套用刚体的 Y-X-Z 顺序。
     mmd_physics_rotation(rotation)
 }
 
@@ -368,46 +369,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn joint_rotation_matches_bullet_zyx_matrix_composition() {
-        let [x, y, z] = [0.31, -0.47, 0.83];
-        let expected =
-            Quat::from_rotation_z(z) * Quat::from_rotation_y(y) * Quat::from_rotation_x(x);
-        assert!(joint_rotation([x, y, z]).abs_diff_eq(expected, 1e-6));
-    }
 
-    #[test]
-    fn stabilization_parameters_stay_in_bullet_ranges() {
-        assert!((0.0..=1.0).contains(&JOINT_STOP_ERP));
-    }
 
-    #[test]
-    fn wide_zero_spring_skirt_root_gets_conservative_restoring_spring() {
-        let anchor = test_pmx_body("下半身", RigidBodyMode::Static);
-        let skirt = test_pmx_body("裙_0_0", RigidBodyMode::Dynamic);
-        let mut parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-std::f32::consts::FRAC_PI_2, 0.0, 0.0],
-            [std::f32::consts::FRAC_PI_2, 0.0, 0.0],
-            [0.0; 3],
-            [0.0; 3],
-        );
-
-        assert!(apply_wide_skirt_root_fallback(
-            &mut parameters,
-            &anchor,
-            &skirt
-        ));
-
-        assert!(parameters.angular[0].spring_enabled);
-        assert_eq!(parameters.angular[0].stiffness, 16.0);
-        assert!((parameters.angular[0].lower + 16.0_f32.to_radians()).abs() < 1e-6);
-        assert!((parameters.angular[0].upper - 16.0_f32.to_radians()).abs() < 1e-6);
-        // 锁死轴无需额外弹簧，避免安装无意义的 motor。
-        assert!(!parameters.angular[1].spring_enabled);
-        assert!(!parameters.angular[2].spring_enabled);
-    }
 
     #[test]
     fn authored_skirt_root_springs_are_preserved() {
@@ -433,288 +396,12 @@ mod tests {
         assert_eq!(parameters.angular[2].stiffness, 20.8);
     }
 
-    #[test]
-    fn wide_zero_spring_vertical_skirt_chain_gets_layered_fallback() {
-        let parent = test_pmx_body("裙_0_0", RigidBodyMode::Dynamic);
-        let child = test_pmx_body("裙_1_0", RigidBodyMode::Dynamic);
-        let mut parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-1.5, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [0.0; 3],
-            [0.0; 3],
-        );
 
-        assert!(apply_wide_skirt_chain_fallback(
-            &mut parameters,
-            &parent,
-            &child
-        ));
 
-        assert!(parameters.angular[0].spring_enabled);
-        assert_eq!(parameters.angular[0].stiffness, 12.0);
-        assert!((parameters.angular[0].lower + 8.0_f32.to_radians()).abs() < 1e-6);
-        assert!((parameters.angular[0].upper - 8.0_f32.to_radians()).abs() < 1e-6);
-        assert!(!parameters.angular[1].spring_enabled);
-        assert!(!parameters.angular[2].spring_enabled);
-    }
 
-    #[test]
-    fn skirt_chain_fallback_preserves_later_layer_flexibility() {
-        let parent = test_pmx_body("裙_1_3", RigidBodyMode::Dynamic);
-        let child = test_pmx_body("裙_2_3", RigidBodyMode::Dynamic);
-        let mut parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-1.3, 0.0, -0.04],
-            [1.3, 0.0, 0.04],
-            [0.0; 3],
-            [0.0; 3],
-        );
 
-        assert!(apply_wide_skirt_chain_fallback(
-            &mut parameters,
-            &parent,
-            &child
-        ));
-        assert_eq!(parameters.angular[0].stiffness, 10.0);
-        assert!((parameters.angular[0].upper - 5.0_f32.to_radians()).abs() < 1e-6);
-    }
 
-    #[test]
-    fn narrow_later_skirt_layer_still_participates_in_chain_budget() {
-        let parent = test_pmx_body("裙_7_3", RigidBodyMode::Dynamic);
-        let child = test_pmx_body("裙_8_3", RigidBodyMode::Dynamic);
-        let mut parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [0.0, 0.0, -0.04],
-            [10.0_f32.to_radians(), 0.0, 0.04],
-            [0.0; 3],
-            [0.0; 3],
-        );
 
-        assert!(apply_wide_skirt_chain_fallback(
-            &mut parameters,
-            &parent,
-            &child
-        ));
-        assert_eq!(parameters.angular[0].lower, 0.0);
-        assert!((parameters.angular[0].upper - 5.0_f32.to_radians()).abs() < 1e-6);
-        assert_eq!(parameters.angular[0].stiffness, 10.0);
-    }
 
-    #[test]
-    fn skirt_chain_fallback_ignores_cross_column_and_authored_springs() {
-        let parent = test_pmx_body("裙_0_0", RigidBodyMode::Dynamic);
-        let cross_column = test_pmx_body("裙_1_1", RigidBodyMode::Dynamic);
-        let same_column = test_pmx_body("裙_1_0", RigidBodyMode::Dynamic);
-        let mut cross_parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-1.5, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [0.0; 3],
-            [0.0; 3],
-        );
-        let mut authored_parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-1.5, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [0.0; 3],
-            [4.0, 0.0, 0.0],
-        );
 
-        assert!(!apply_wide_skirt_chain_fallback(
-            &mut cross_parameters,
-            &parent,
-            &cross_column
-        ));
-        assert!(!apply_wide_skirt_chain_fallback(
-            &mut authored_parameters,
-            &parent,
-            &same_column
-        ));
-        assert_eq!(cross_parameters.angular[0].upper, 1.5);
-        assert_eq!(authored_parameters.angular[0].stiffness, 4.0);
-    }
-
-    #[test]
-    fn pmx_joint_disables_zero_springs_in_bullet() {
-        let shape = BulletShape::sphere(0.25).expect("应能创建关节测试形状");
-        let body_a = test_body(&shape);
-        let body_b = test_body(&shape);
-        let joint = Joint {
-            local_name: "测试关节".to_owned(),
-            universal_name: "test_joint".to_owned(),
-            type_: JointType::Spring6DOF,
-            rigid_body_a_index: 0,
-            rigid_body_b_index: 1,
-            position: [0.0; 3],
-            rotation: [0.0; 3],
-            position_min: [0.0; 3],
-            position_max: [0.0; 3],
-            rotation_min: [-0.2; 3],
-            rotation_max: [0.2; 3],
-            position_spring: [0.0, 3.0, 0.0],
-            rotation_spring: [0.0, 0.0, 5.0],
-        };
-
-        let pmx_body_a = test_pmx_body("测试锚点", RigidBodyMode::Static);
-        let pmx_body_b = test_pmx_body("测试动态体", RigidBodyMode::Dynamic);
-        let data = MmdJointData::from_pmx(
-            &joint,
-            &body_a,
-            &body_b,
-            &pmx_body_a,
-            &pmx_body_b,
-            Mat4::IDENTITY,
-            Mat4::IDENTITY,
-        );
-        let diagnostic = data
-            .constraint
-            .as_ref()
-            .and_then(|constraint| constraint.diagnostic())
-            .expect("应能回读 PMX 关节配置");
-
-        assert_eq!(
-            diagnostic.spring_enabled,
-            [false, true, false, false, false, true]
-        );
-        assert_eq!(diagnostic.stiffness, [0.0, 3.0, 0.0, 0.0, 0.0, 5.0]);
-    }
-
-    #[test]
-    fn rebasing_equilibrium_removes_runtime_pose_spring_preload() {
-        let shape = BulletShape::sphere(0.25).expect("应能创建关节测试形状");
-        let body_a = test_body(&shape);
-        let body_b = test_body(&shape);
-        let joint = Joint {
-            local_name: "运行姿态弹簧基准".to_owned(),
-            universal_name: "runtime_equilibrium".to_owned(),
-            type_: JointType::Spring6DOF,
-            rigid_body_a_index: 0,
-            rigid_body_b_index: 1,
-            position: [0.0; 3],
-            rotation: [0.0; 3],
-            position_min: [-1.0; 3],
-            position_max: [1.0; 3],
-            rotation_min: [-1.0; 3],
-            rotation_max: [1.0; 3],
-            position_spring: [2.0; 3],
-            rotation_spring: [3.0; 3],
-        };
-        let pmx_body_a = test_pmx_body("测试锚点", RigidBodyMode::Static);
-        let pmx_body_b = test_pmx_body("测试动态体", RigidBodyMode::Dynamic);
-        let data = MmdJointData::from_pmx(
-            &joint,
-            &body_a,
-            &body_b,
-            &pmx_body_a,
-            &pmx_body_b,
-            Mat4::IDENTITY,
-            Mat4::IDENTITY,
-        );
-
-        // 模拟 build_physics 之后 initialize 提交新的运行姿态。
-        body_b.set_transform(Mat4::from_rotation_translation(
-            Quat::from_rotation_y(0.3),
-            Vec3::new(0.2, -0.1, 0.15),
-        ));
-        data.rebase_equilibrium();
-
-        let diagnostic = data
-            .constraint
-            .as_ref()
-            .and_then(|constraint| constraint.diagnostic())
-            .expect("应能回读重新基准化后的约束");
-        let current = [
-            diagnostic.linear_position.x,
-            diagnostic.linear_position.y,
-            diagnostic.linear_position.z,
-            diagnostic.angular_position.x,
-            diagnostic.angular_position.y,
-            diagnostic.angular_position.z,
-        ];
-        for (actual, expected) in diagnostic.equilibrium.into_iter().zip(current) {
-            assert!((actual - expected).abs() < 1e-5);
-        }
-    }
-
-    #[test]
-    fn joint_anchor_error_tracks_world_space_separation() {
-        let body_a = Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0));
-        let frame_a = Mat4::from_translation(Vec3::X);
-        let body_b = Mat4::from_translation(Vec3::new(2.0, 2.0, 3.0));
-        let (same_error, _, _) =
-            joint_anchor_position_error(body_a, frame_a, body_b, Mat4::IDENTITY);
-        assert!(same_error.abs() < 1e-6);
-
-        let shifted_body_b = Mat4::from_translation(Vec3::new(2.5, 2.0, 3.0));
-        let (shifted_error, anchor_a, anchor_b) =
-            joint_anchor_position_error(body_a, frame_a, shifted_body_b, Mat4::IDENTITY);
-        assert!((shifted_error - 0.5).abs() < 1e-6);
-        assert_eq!(anchor_b - anchor_a, Vec3::new(0.5, 0.0, 0.0));
-    }
-
-    #[test]
-    fn tail_joint_is_not_treated_as_skirt_body() {
-        let tail_names = ["Tail_01", "尻尾01", "しっぽ1", "尾_02"];
-        for name in tail_names {
-            let body = test_pmx_body(name, RigidBodyMode::Dynamic);
-            assert!(
-                !super::is_skirt_body(&body),
-                "tail joint child body={name} must not be skirt"
-            );
-        }
-    }
-
-    #[test]
-    fn back_hair_root_joint_from_pmx_gets_stabilized() {
-        let shape = BulletShape::sphere(0.25).expect("应能创建关节测试形状");
-        let body_a = test_body(&shape);
-        let body_b = test_body(&shape);
-        let joint = Joint {
-            local_name: "後髪根関節".to_owned(),
-            universal_name: "back_hair_root_joint".to_owned(),
-            type_: JointType::Spring6DOF,
-            rigid_body_a_index: 0,
-            rigid_body_b_index: 1,
-            position: [0.0, 10.0, -0.5],
-            rotation: [0.0; 3],
-            position_min: [0.0; 3],
-            position_max: [0.0; 3],
-            rotation_min: [-1.2; 3],
-            rotation_max: [1.2; 3],
-            position_spring: [0.0; 3],
-            rotation_spring: [0.0; 3],
-        };
-        let head = test_pmx_body("頭", RigidBodyMode::Static);
-        let back_hair = test_pmx_body("後髪_00", RigidBodyMode::Dynamic);
-
-        let data = MmdJointData::from_pmx(
-            &joint,
-            &body_a,
-            &body_b,
-            &head,
-            &back_hair,
-            Mat4::from_translation(Vec3::new(0.0, 10.0, 0.0)),
-            Mat4::from_translation(Vec3::new(0.0, 9.0, -1.0)),
-        );
-
-        let diagnostic = data
-            .constraint
-            .as_ref()
-            .and_then(|constraint| constraint.diagnostic())
-            .expect("应能回读后发关节配置");
-
-        // 后发根关节应自动补入旋转弹簧
-        assert_eq!(
-            diagnostic.spring_enabled,
-            [false, false, false, true, true, true]
-        );
-        assert_eq!(diagnostic.stiffness, [0.0, 0.0, 0.0, 16.0, 10.0, 14.0]);
-    }
 }

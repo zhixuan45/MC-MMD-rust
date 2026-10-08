@@ -1,6 +1,9 @@
 package com.shiroha.mmdskin.render.backend;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
+import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
+import com.shiroha.mmdskin.player.render.InventoryRenderScope;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
@@ -19,6 +22,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.lwjgl.system.MemoryUtil;
@@ -43,6 +47,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     protected long lastUpdateTime = -1;
 
     protected final Quaternionf tempQuat = new Quaternionf();
+    private final Matrix4f composedModelViewMatrix = new Matrix4f();
 
     protected ByteBuffer materialMorphResultsByteBuffer;
     protected int materialMorphResultCount = 0;
@@ -116,6 +121,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     public void applyModelRootTransform(PoseStack stack, float entityYaw, float entityPitch,
                                         Vector3f entityTranslation) {
         float degreesToRadians = (float) Math.PI / 180.0f;
+        // MMD 根坐标系与 Minecraft 实体 yaw 的旋转方向相反。
         stack.mulPose(new Quaternionf().rotateY(-entityYaw * degreesToRadians));
         stack.mulPose(new Quaternionf().rotateX(entityPitch * degreesToRadians));
         stack.translate(entityTranslation.x, entityTranslation.y, entityTranslation.z);
@@ -369,10 +375,19 @@ public abstract class BaseModelInstance implements ModelInstance {
         }
     }
 
-    protected static void setupShaderUniforms(ShaderInstance shader, PoseStack deliverStack,
-                                               Vector3f light0Dir, Vector3f light1Dir, int lightMapTex) {
+    /** 1.20.1 的实体 PoseStack 已包含相机视图，上传时直接使用。 */
+    public final Matrix4f composeModelViewMatrix(PoseStack deliverStack) {
+        return composeModelViewMatrix(deliverStack.last().pose(), composedModelViewMatrix);
+    }
+
+    static Matrix4f composeModelViewMatrix(Matrix4f entityPose, Matrix4f destination) {
+        return destination.set(entityPose);
+    }
+
+    protected void setupShaderUniforms(ShaderInstance shader, PoseStack deliverStack,
+                                       Vector3f light0Dir, Vector3f light1Dir, int lightMapTex) {
         if (shader.MODEL_VIEW_MATRIX != null)
-            shader.MODEL_VIEW_MATRIX.set(deliverStack.last().pose());
+            shader.MODEL_VIEW_MATRIX.set(composeModelViewMatrix(deliverStack));
         if (shader.PROJECTION_MATRIX != null)
             shader.PROJECTION_MATRIX.set(RenderSystem.getProjectionMatrix());
         if (shader.INVERSE_VIEW_ROTATION_MATRIX != null)
@@ -402,11 +417,18 @@ public abstract class BaseModelInstance implements ModelInstance {
         if (shader.LINE_WIDTH != null)
             shader.LINE_WIDTH.set(RenderSystem.getShaderLineWidth());
 
-        shader.setSampler("Sampler1", lightMapTex);
-        shader.setSampler("Sampler2", lightMapTex);
-
-        RenderSystem.setShaderTexture(1, lightMapTex);
-        RenderSystem.setShaderTexture(2, lightMapTex);
+        boolean guiScene = PaperDollRenderScope.isActive() || InventoryRenderScope.isActive();
+        if (IrisCompat.isIrisProgram(shader) && !guiScene) {
+            // Iris 的 1/2 号纹理分别是覆盖色与游戏光照图。
+            var renderer = Minecraft.getInstance().gameRenderer;
+            renderer.overlayTexture().setupOverlayColor();
+            renderer.lightTexture().turnOnLightLayer();
+        } else {
+            shader.setSampler("Sampler1", lightMapTex);
+            shader.setSampler("Sampler2", lightMapTex);
+            RenderSystem.setShaderTexture(1, lightMapTex);
+            RenderSystem.setShaderTexture(2, lightMapTex);
+        }
     }
 
     protected abstract void doRenderModel(Entity entityIn, float entityYaw, float entityPitch,

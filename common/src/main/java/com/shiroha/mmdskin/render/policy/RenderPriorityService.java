@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.policy;
 
 import com.shiroha.mmdskin.config.UIConstants;
+import com.shiroha.mmdskin.compat.maid.runtime.MaidMMDModelManager;
 import com.shiroha.mmdskin.player.sync.PlayerModelSyncService;
 import com.shiroha.mmdskin.render.entity.MobReplacementService;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
@@ -162,7 +163,11 @@ public final class RenderPriorityService {
         for (Entity entity : minecraft.level.entitiesForRendering()) {
             if (entity instanceof LivingEntity living && !(entity instanceof AbstractClientPlayer)) {
                 String replacementModel = MobReplacementService.getReplacementModelName(living);
-                if (replacementModel != null) {
+                // 女仆模型由独立绑定管理器提供，不经过普通生物替换配置。
+                boolean maidModel = replacementModel == null
+                        && MobReplacementService.isMaidEntity(living)
+                        && MaidMMDModelManager.hasMMDModel(living.getUUID());
+                if (replacementModel != null || maidModel) {
                     candidates.add(new PrioritizedEntity(living, distanceSqToCamera(living, false), false));
                 }
             }

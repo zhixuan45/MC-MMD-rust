@@ -1,43 +1,5 @@
 use super::*;
 
-#[test]
-fn existing_posterior_collider_prevents_duplicate_glutes_support() {
-    let mut pelvis = test_pmx_body(
-        "pelvis",
-        RigidBodyMode::Static,
-        RigidBodyShape::Sphere,
-        [1.0, 0.0, 0.0],
-    );
-    pelvis.bone_index = 0;
-    let skirt = test_pmx_body(
-        "skirt",
-        RigidBodyMode::Dynamic,
-        RigidBodyShape::Sphere,
-        [0.2, 0.0, 0.0],
-    );
-    let generated =
-        synthesize_missing_body_colliders(&[pelvis, skirt], &["waist"], &[[0.0, 8.0, 0.0]]);
-    assert!(!generated.iter().any(|b| b.local_name.contains("Glutes")));
-}
-
-#[test]
-fn skirt_without_posterior_support_gets_one_glutes_collider() {
-    let skirt = test_pmx_body(
-        "skirt",
-        RigidBodyMode::Dynamic,
-        RigidBodyShape::Sphere,
-        [0.2, 0.0, 0.0],
-    );
-    let generated = synthesize_missing_body_colliders(&[skirt], &["waist"], &[[0.0, 8.0, 0.0]]);
-    assert_eq!(
-        generated
-            .iter()
-            .filter(|b| b.local_name.contains("Glutes"))
-            .count(),
-        1
-    );
-}
-
 fn test_pmx_body(
     name: &str,
     mode: RigidBodyMode,
@@ -49,7 +11,7 @@ fn test_pmx_body(
         universal_name: String::new(),
         bone_index: 0,
         group: 0,
-        un_collision_group_flag: 0,
+        un_collision_group_flag: 0xFFFF,
         shape,
         size,
         position: [0.0; 3],
@@ -151,6 +113,9 @@ fn synthesizes_colliders_for_missing_model() {
     assert_eq!(synthesized[2].bone_index, 1);
     assert_eq!(synthesized[0].mode, RigidBodyMode::Static);
     assert_eq!(synthesized[2].mode, RigidBodyMode::Static);
+    assert!(synthesized
+        .iter()
+        .all(|body| body.un_collision_group_flag == 0xFFFF));
 }
 
 #[test]

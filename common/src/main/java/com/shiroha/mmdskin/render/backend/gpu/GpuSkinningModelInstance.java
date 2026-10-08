@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.render.backend.BaseModelInstance;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
+import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.ShaderConstants;
 import com.shiroha.mmdskin.render.shader.SkinningComputeShader;
@@ -52,6 +53,8 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
 
     int skinnedPositionsBuffer;
     int skinnedNormalsBuffer;
+    int modelViewLocation = -1;
+    int projMatLocation = -1;
 
     int boneMatrixSSBO;
 
@@ -107,6 +110,7 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
     int I_positionLocation;
     int I_normalLocation;
     int I_uv0Location;
+    int I_uv1Location;
     int I_uv2Location;
     int I_colorLocation;
 
@@ -185,6 +189,7 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
         ByteBuffer firstPersonIndexBuffer = null;
         ByteBuffer firstPersonMatrixBuffer = null;
         ModelMaterial lightMapMaterial = null;
+        ModelMaterial[] mats = null;
         List<String> textureKeys = new ArrayList<>();
 
         try {
@@ -291,12 +296,14 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             }
             colorBuffer.flip();
 
-            ByteBuffer uv1Buffer = ByteBuffer.allocateDirect(vertexCount * 8);
+            ByteBuffer uv1Buffer = ByteBuffer.allocateDirect(vertexCount * 8 + 8);
             uv1Buffer.order(ByteOrder.LITTLE_ENDIAN);
             for (int i = 0; i < vertexCount; i++) {
                 uv1Buffer.putInt(15);
                 uv1Buffer.putInt(15);
             }
+            // Iris 独立使用尾部坐标，不改变原版/自定义 shader 的 UV1。
+            uv1Buffer.putInt(0).putInt(10);
             uv1Buffer.flip();
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, uv1Vbo);
             GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, uv1Buffer, GL46C.GL_STATIC_DRAW);
@@ -310,21 +317,10 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, uv2Vbo);
             GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, vertexCount * 8, GL46C.GL_DYNAMIC_DRAW);
 
-            ModelMaterial[] mats = new ModelMaterial[nativeBackend.getMaterialCount(model)];
+            mats = new ModelMaterial[nativeBackend.getMaterialCount(model)];
             for (int i = 0; i < mats.length; ++i) {
-                mats[i] = new ModelMaterial();
+                mats[i] = MaterialTextureLoader.loadMaterial(nativeBackend, model, i, textureKeys);
                 mats[i].name = nativeBackend.getMaterialName(model, i);
-                String texFilename = nativeBackend.getMaterialTexturePath(model, i);
-                mats[i].texturePath = texFilename != null ? texFilename : "";
-                if (texFilename != null && !texFilename.isEmpty()) {
-                    TextureRepository.Texture managerTexture = TextureRepository.GetTexture(texFilename);
-                    if (managerTexture != null) {
-                        mats[i].tex = managerTexture.tex;
-                        mats[i].hasAlpha = managerTexture.hasAlpha;
-                        TextureRepository.addRef(texFilename);
-                        textureKeys.add(texFilename);
-                    }
-                }
             }
 
             lightMapMaterial = new ModelMaterial();
@@ -509,6 +505,7 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             if (lightMapMaterial != null && lightMapMaterial.ownsTexture && lightMapMaterial.tex > 0) {
                 GL46C.glDeleteTextures(lightMapMaterial.tex);
             }
+            MaterialTextureLoader.releaseOwnedTextures(mats);
 
             if (boneMatricesBuffer != null) MemoryUtil.memFree(boneMatricesBuffer);
             if (boneMatricesByteBuffer != null) MemoryUtil.memFree(boneMatricesByteBuffer);
@@ -576,10 +573,13 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
         uv1Location = GlStateManager._glGetAttribLocation(program, "UV1");
         uv2Location = GlStateManager._glGetAttribLocation(program, "UV2");
         colorLocation = GlStateManager._glGetAttribLocation(program, "Color");
+        modelViewLocation = GlStateManager._glGetUniformLocation(program, "ModelViewMat");
+        projMatLocation = GlStateManager._glGetUniformLocation(program, "ProjMat");
 
         I_positionLocation = GlStateManager._glGetAttribLocation(program, "iris_Position");
         I_normalLocation = GlStateManager._glGetAttribLocation(program, "iris_Normal");
         I_uv0Location = GlStateManager._glGetAttribLocation(program, "iris_UV0");
+        I_uv1Location = GlStateManager._glGetAttribLocation(program, "iris_UV1");
         I_uv2Location = GlStateManager._glGetAttribLocation(program, "iris_UV2");
         I_colorLocation = GlStateManager._glGetAttribLocation(program, "iris_Color");
     }

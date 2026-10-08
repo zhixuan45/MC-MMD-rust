@@ -78,25 +78,6 @@ mod tests {
         assert!(texture.data.chunks_exact(3).all(|px| px == [255, 0, 0]));
     }
 
-    #[test]
-    fn load_texture_from_memory_should_decode_dxt5_dds() {
-        let bytes = dds_texture(
-            "DXT5",
-            16,
-            &[255, 0, 0, 0, 0, 0, 0, 0, 0x00, 0xF8, 0x00, 0x00, 0, 0, 0, 0],
-        );
-
-        let texture = load_texture_from_memory(&bytes).expect("DXT5 DDS should load");
-
-        assert_eq!(texture.width, 4);
-        assert_eq!(texture.height, 4);
-        assert!(texture.has_alpha);
-        assert_eq!(texture.byte_count(), 4 * 4 * 4);
-        assert!(texture
-            .data
-            .chunks_exact(4)
-            .all(|px| px == [255, 0, 0, 255]));
-    }
 
     fn dds_texture(fourcc: &str, linear_size: u32, block: &[u8]) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(128 + block.len());

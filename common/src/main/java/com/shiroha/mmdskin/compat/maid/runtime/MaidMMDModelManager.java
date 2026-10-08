@@ -6,6 +6,9 @@ import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
+import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
+import com.shiroha.mmdskin.compat.iris.IrisCompat;
 import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
@@ -18,13 +21,17 @@ public class MaidMMDModelManager {
 
     private static final Map<UUID, String> maidModelBindings = new ConcurrentHashMap<>();
     private static final Map<UUID, ManagedModel> loadedModels = new ConcurrentHashMap<>();
+    private static final Map<UUID, String> unavailableModels = new ConcurrentHashMap<>();
 
     public static void init() {
     }
 
     public static void bindModel(UUID maidUUID, String modelName) {
+        if (maidUUID == null) return;
         if (modelName == null || modelName.isEmpty() || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) {
-            unbindModel(maidUUID);
+            maidModelBindings.remove(maidUUID);
+            loadedModels.remove(maidUUID);
+            unavailableModels.remove(maidUUID);
             return;
         }
 
@@ -35,24 +42,37 @@ public class MaidMMDModelManager {
 
         loadedModels.remove(maidUUID);
         maidModelBindings.put(maidUUID, modelName);
+        unavailableModels.remove(maidUUID);
+    }
+
+    /** 本地选择先强制落盘，再让查询路径自然解析到该偏好。 */
+    public static void selectLocalModel(UUID maidUUID, String modelName) {
+        ModelSelectorConfig.getInstance().setMaidModelPreference(maidUUID, modelName);
+        loadedModels.remove(maidUUID);
+        unavailableModels.remove(maidUUID);
     }
 
     public static void unbindModel(UUID maidUUID) {
+        if (maidUUID == null) return;
         maidModelBindings.remove(maidUUID);
         loadedModels.remove(maidUUID);
+        unavailableModels.remove(maidUUID);
     }
 
     public static String getBindingModelName(UUID maidUUID) {
-        return maidModelBindings.get(maidUUID);
+        if (maidUUID == null) return UIConstants.DEFAULT_MODEL_NAME;
+        String localPreference = ModelSelectorConfig.getInstance().getMaidModelPreference(maidUUID);
+        return MaidModelBindingResolver.resolve(localPreference, maidModelBindings.get(maidUUID));
     }
 
     public static boolean hasMMDModel(UUID maidUUID) {
-        return maidModelBindings.containsKey(maidUUID);
+        String modelName = getBindingModelName(maidUUID);
+        return !UIConstants.DEFAULT_MODEL_NAME.equals(modelName) && isModelAvailable(maidUUID, modelName);
     }
 
     public static ManagedModel getModel(UUID maidUUID) {
-        String modelName = maidModelBindings.get(maidUUID);
-        if (modelName == null) {
+        String modelName = getBindingModelName(maidUUID);
+        if (maidUUID == null || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) {
             return null;
         }
 
@@ -65,11 +85,25 @@ public class MaidMMDModelManager {
             logger.warn("Maid model handle became invalid: {}", maidUUID);
         }
 
-        model = ClientRenderRuntime.get().modelRepository().acquire(ModelRequestKey.maid(maidUUID, modelName));
+        if (!isModelAvailable(maidUUID, modelName)) return null;
+        // 阴影绘制阶段仓库会主动跳过模型请求，不把这类空结果当成加载失败。
+        if (IrisCompat.isRenderingShadows()) return null;
+
+        ModelRequestKey requestKey = ModelRequestKey.maid(maidUUID, modelName);
+        model = ClientRenderRuntime.get().modelRepository().acquire(requestKey);
         if (model != null) {
             loadedModels.put(maidUUID, model);
         }
         return model;
+    }
+
+    private static boolean isModelAvailable(UUID maidUUID, String modelName) {
+        if (modelName == null || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) return false;
+        if (modelName.equals(unavailableModels.get(maidUUID))) return false;
+        boolean present = ModelCatalogEntry.scanModels().stream()
+                .anyMatch(entry -> modelName.equals(entry.getDisplayName()));
+        if (!present) unavailableModels.put(maidUUID, modelName);
+        return present;
     }
 
     public static void playAnimation(UUID maidUUID, String animId) {
@@ -93,15 +127,30 @@ public class MaidMMDModelManager {
             return;
         }
         loadedModels.entrySet().removeIf(entry -> entry.getValue() == disposedModel);
+        if (disposedModel.requestKey().subjectKind() == com.shiroha.mmdskin.model.runtime.ModelSubjectKind.MAID) {
+            try {
+                unavailableModels.remove(UUID.fromString(disposedModel.requestKey().subjectId()));
+            } catch (IllegalArgumentException ignored) {
+                // 非 UUID 的异常缓存键不影响其他女仆恢复。
+            }
+        }
     }
 
     public static void invalidateLoadedModels() {
         loadedModels.clear();
+        unavailableModels.clear();
+    }
+
+    /** 模型目录显式刷新后解除暂缺抑制，允许下一次渲染重新交给仓库加载。 */
+    public static void onModelCatalogRefreshed() {
+        unavailableModels.clear();
     }
 
     public static void clearAll() {
+        // 断开连接只丢弃会话远端绑定与加载引用；本地偏好保存在 ModelSelectorConfig。
         maidModelBindings.clear();
         loadedModels.clear();
+        unavailableModels.clear();
     }
 
     public static int getBindingCount() {

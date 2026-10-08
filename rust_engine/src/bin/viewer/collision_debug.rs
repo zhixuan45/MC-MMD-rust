@@ -41,9 +41,9 @@ pub fn build_collision_lines(model: &MmdModel, static_collider_scale: f32) -> Ve
 fn body_render_transform(model: &MmdModel, body: &RigidBody) -> Mat4 {
     let rotation = normalized_rotation(body.rotation);
     let initial_left = Mat4::from_rotation_translation(
-        Quat::from_rotation_z(rotation[2])
-            * Quat::from_rotation_y(rotation[1])
-            * Quat::from_rotation_x(rotation[0]),
+        Quat::from_rotation_y(rotation[1])
+            * Quat::from_rotation_x(rotation[0])
+            * Quat::from_rotation_z(rotation[2]),
         Vec3::from_array(body.position),
     );
 

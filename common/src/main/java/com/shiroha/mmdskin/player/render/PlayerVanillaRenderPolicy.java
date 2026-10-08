@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.player.render;
 
+import com.shiroha.mmdskin.compat.iris.IrisCompat;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
 import net.minecraft.client.Minecraft;
 
@@ -10,7 +11,9 @@ final class PlayerVanillaRenderPolicy {
 
     static PlayerRenderAction resolveTerminalAction(PlayerRenderRequest request) {
         Minecraft minecraft = Minecraft.getInstance();
+        boolean shadowPass = IrisCompat.isRenderingShadows(); // 阴影 pass 保留玩家提交。
         boolean isLocalFirstPerson = request.localPlayer()
+                && !shadowPass
                 && minecraft.options.getCameraType().isFirstPerson()
                 && !InventoryRenderScope.isActive()
                 && !PaperDollRenderScope.isActive();

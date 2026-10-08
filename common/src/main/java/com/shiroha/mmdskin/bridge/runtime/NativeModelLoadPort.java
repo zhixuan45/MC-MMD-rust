@@ -10,4 +10,8 @@ public interface NativeModelLoadPort {
     long loadVrmModel(String modelFilePath, String modelDir, long layerCount);
 
     String getMaterialTexturePath(long modelHandle, int materialIndex);
+
+    default float[] getMaterialDiffuseColor(long modelHandle, int materialIndex) {
+        return new float[] {1.0f, 1.0f, 1.0f, 1.0f};
+    }
 }

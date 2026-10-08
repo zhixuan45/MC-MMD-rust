@@ -14,6 +14,7 @@ use mmd::pmx::joint::{Joint as PmxJoint, JointType};
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
 use super::body_collider_synthesis::has_skirt_rigid_bodies;
+use super::mmd_rigid_body::is_skirt_or_lower_garment;
 
 /// 裙摆横向连接允许的相对位移容差（单位：MMD 局部单位）。
 pub const SKIRT_CROSS_LINEAR_LIMIT: [f32; 3] = [-0.06, -0.06, -0.06];
@@ -42,13 +43,9 @@ pub fn synthesize_missing_skirt_cross_joints(
     let mut is_skirt = vec![false; rigid_bodies.len()];
     let mut skirt_count = 0;
     for (i, rb) in rigid_bodies.iter().enumerate() {
-        if rb.mode != RigidBodyMode::Static {
-            let lower = rb.local_name.to_lowercase();
-            let universal = rb.universal_name.to_lowercase();
-            if is_skirt_name(&lower) || is_skirt_name(&universal) {
-                is_skirt[i] = true;
-                skirt_count += 1;
-            }
+        if rb.mode != RigidBodyMode::Static && is_skirt_or_lower_garment(rb) {
+            is_skirt[i] = true;
+            skirt_count += 1;
         }
     }
 
@@ -199,27 +196,6 @@ pub fn synthesize_missing_skirt_cross_joints(
     }
 
     synthesized
-}
-
-fn is_skirt_name(name: &str) -> bool {
-    const SKIRT_PARTS: &[&str] = &[
-        "裙",
-        "スカート",
-        "skirt",
-        "petticoat",
-        "下装",
-        "下衣",
-        "裾",
-        "摆",
-        "衣摆",
-        "后摆",
-        "下摆",
-        "cloak",
-        "cape",
-        "coat",
-        "コート",
-    ];
-    SKIRT_PARTS.iter().any(|part| name.contains(part))
 }
 
 #[cfg(test)]

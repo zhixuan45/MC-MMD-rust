@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.render.backend.opengl;
 
+import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
 import org.lwjgl.opengl.GL46C;
 import org.lwjgl.system.MemoryUtil;
 
@@ -10,6 +11,7 @@ final class OpenGlModelLifecycle {
 
     static void dispose(OpenGlModelInstance target) {
         target.releaseBaseResources();
+        MaterialTextureLoader.releaseOwnedTextures(target.mats);
 
         if (target.posBuffer != null) {
             MemoryUtil.memFree(target.posBuffer);
@@ -92,6 +94,10 @@ final class OpenGlModelLifecycle {
         total += (long) target.vertexCount * 12 * 2;
         total += (long) target.vertexCount * 16;
         total += (long) target.vertexCount * 8 * 3;
+        // 每个无主贴图材质持有一个 1×1 RGBA 默认纹理。
+        for (var material : target.mats) {
+            if (material != null && material.ownsTexture && material.tex > 0) total += 4;
+        }
         return total;
     }
 

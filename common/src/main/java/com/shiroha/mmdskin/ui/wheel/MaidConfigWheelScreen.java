@@ -37,13 +37,13 @@ public class MaidConfigWheelScreen extends AbstractWheelScreen {
 
     private void initConfigSlots() {
         configSlots.add(new ConfigSlot("model",
-                Component.translatable("gui.mmdskin.maid.model_switch").getString(),
+                Component.translatable("gui.mmdskin.maid.model_switch"),
                 "model", this::openMaidModelSelector));
         configSlots.add(new ConfigSlot("action",
-                Component.translatable("gui.mmdskin.maid.action_select").getString(),
+                Component.translatable("gui.mmdskin.maid.action_select"),
                 "action", this::openMaidActionWheel));
         configSlots.add(new ConfigSlot("material",
-                Component.translatable("gui.mmdskin.maid.material_control").getString(),
+                Component.translatable("gui.mmdskin.maid.material_control"),
                 "mat", this::openMaidMaterialVisibility));
     }
 
@@ -62,10 +62,11 @@ public class MaidConfigWheelScreen extends AbstractWheelScreen {
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         renderWheelBase(guiGraphics, mouseX, mouseY, partialTick, buildEntries());
 
-        String centerText = selectedSlot >= 0 ? configSlots.get(selectedSlot).name : maidName;
+        Component centerText = selectedSlot >= 0 ? configSlots.get(selectedSlot).name : Component.literal(maidName);
         renderCenterBubble(guiGraphics, centerText, style.lineColor());
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderWheelTooltip(guiGraphics, mouseX, mouseY);
     }
 
     @Override
@@ -129,11 +130,11 @@ public class MaidConfigWheelScreen extends AbstractWheelScreen {
     @SuppressWarnings("unused")
     private static class ConfigSlot {
         final String id;
-        final String name;
+        final Component name;
         final String icon;
         final Runnable action;
 
-        ConfigSlot(String id, String name, String icon, Runnable action) {
+        ConfigSlot(String id, Component name, String icon, Runnable action) {
             this.id = id;
             this.name = name;
             this.icon = icon;

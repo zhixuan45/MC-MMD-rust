@@ -597,7 +597,7 @@ impl CameraMotionTrack {
     }
 
     /// 从 CameraKeyframe 计算相机世界位置与完整欧拉角（pitch/yaw/roll）
-    /// 方向向量法提取 pitch/yaw 保证朝向 look_at，旋转矩阵法提取 roll 保留倾斜
+    /// 从旋转基提取姿态，距离跨零或目标点精度不改变朝向。
     fn compute_camera_transform(
         look_at: Vec3,
         angle: Vec3,
@@ -625,27 +625,22 @@ impl CameraMotionTrack {
 
         // MMD → MC 坐标转换（Z 取反）
         let position_mc = Vec3::new(position_mmd.x, position_mmd.y, -position_mmd.z);
-        let look_at_mc = Vec3::new(look_at.x, look_at.y, -look_at.z);
-
-        // 方向向量法提取 pitch/yaw（保证相机朝向 look_at）
-        let dir = (look_at_mc - position_mc).normalize_or_zero();
-        let mc_pitch = (-dir.y).asin();
+        // 朝向只取旋转基向量，避免 distance/look_at 改变导致 180° 翻转。
+        let cam_world = view_orientation.inverse();
+        let mmd_forward = cam_world * Vec3::Z;
+        let dir = Vec3::new(mmd_forward.x, mmd_forward.y, -mmd_forward.z).normalize_or_zero();
+        let mc_pitch = (-dir.y).atan2(dir.x.hypot(dir.z));
         let mc_yaw = (-dir.x).atan2(dir.z);
 
         // 从旋转矩阵提取 roll：比较实际 up 与无 roll 时的 up
-        let cam_world = view_orientation.inverse();
         let r = Mat3::from_quat(cam_world);
         // 实际 up 向量（旋转矩阵的 Y 列），Z 取反转 MC 坐标
         let actual_up = Vec3::new(r.y_axis.x, r.y_axis.y, -r.y_axis.z);
-        // 无 roll 时的 up：从 forward 和 world_up 推导
-        let world_up = Vec3::Y;
-        let right = dir.cross(world_up).normalize_or_zero();
-        let no_roll_up = if right.length_squared() > 1e-6 {
-            right.cross(dir).normalize()
-        } else {
-            // forward 接近垂直时退化，roll 无意义
-            Vec3::Y
-        };
+        // 与 pitch/yaw 定义一致的无 roll 基准，避免接近竖直时参考轴跳变。
+        let (sin_pitch, cos_pitch) = mc_pitch.sin_cos();
+        let (sin_yaw, cos_yaw) = mc_yaw.sin_cos();
+        let no_roll_up =
+            Vec3::new(-sin_yaw * sin_pitch, cos_pitch, cos_yaw * sin_pitch).normalize_or_zero();
         // roll = actual_up 相对 no_roll_up 绕 forward 轴的旋转角
         let mc_roll = no_roll_up
             .cross(actual_up)

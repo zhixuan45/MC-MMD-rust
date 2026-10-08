@@ -9,6 +9,7 @@ pub mod physics;
 pub mod skeleton;
 pub mod skinning;
 pub mod texture;
+pub mod vmd_smoothing;
 pub mod vr;
 pub mod vrm_runtime;
 

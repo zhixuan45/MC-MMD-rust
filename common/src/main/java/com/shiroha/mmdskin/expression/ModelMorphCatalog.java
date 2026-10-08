@@ -41,10 +41,6 @@ public final class ModelMorphCatalog {
         ModelMorphCatalog.modelQueryPort = modelQueryPort != null ? modelQueryPort : NativeModelQueryPort.noop();
     }
 
-    static ModelMorphCatalog forTesting(List<MorphEntry> entries) {
-        return new ModelMorphCatalog(-1L, List.copyOf(entries));
-    }
-
     private static ModelMorphCatalog load(long modelHandle) {
         NativeModelQueryPort nativeBridge = modelQueryPort;
         int morphCount = nativeBridge.getMorphCount(modelHandle);

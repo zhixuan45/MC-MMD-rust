@@ -73,6 +73,7 @@ glium::implement_vertex!(LineVertex, position, color);
 pub struct Renderer {
     model: Option<MmdModel>,
     animation: Option<Arc<VmdAnimation>>,
+    loaded_fbx: bool,
     mesh_program: glium::Program,
     line_program: glium::Program,
     show_mesh: bool,
@@ -103,6 +104,7 @@ impl Renderer {
         Self {
             model: None,
             animation: None,
+            loaded_fbx: false,
             mesh_program,
             line_program,
             show_mesh: true,
@@ -128,6 +130,10 @@ impl Renderer {
 
     pub fn has_animation(&self) -> bool {
         self.animation.is_some()
+    }
+
+    pub fn loaded_fbx(&self) -> bool {
+        self.loaded_fbx
     }
 
     pub fn is_playing(&self) -> bool {
@@ -163,6 +169,7 @@ impl Renderer {
         self.model_dir = Path::new(path).parent().map(Path::to_path_buf);
         self.model = Some(model);
         self.animation = None;
+        self.loaded_fbx = false;
         self.current_frame = 0.0;
         self.textures.clear();
         self.load_textures(display);
@@ -206,14 +213,40 @@ impl Renderer {
         }
 
         self.animation = Some(animation);
+        self.loaded_fbx = Self::is_fbx_file(path);
         self.current_frame = 0.0;
         println!("动作加载成功，最大帧数: {}", max_frame);
 
         Ok(())
     }
 
+    // 在主线程替换动画层，同时保留播放位置与暂停状态。
+    pub fn replace_vmd_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let animation =
+            Arc::new(VmdAnimation::load_from_bytes(bytes).map_err(|error| error.to_string())?);
+        let max_frame = animation.max_frame() as f32;
+        self.current_frame = self.current_frame.min(max_frame);
+        if let Some(model) = self.model.as_mut() {
+            model.set_layer_animation(PRIMARY_ANIMATION_LAYER, Some(animation.clone()));
+            model.set_layer_loop(PRIMARY_ANIMATION_LAYER, true);
+            model.seek_layer(PRIMARY_ANIMATION_LAYER, self.current_frame);
+            if self.playing {
+                model.play_layer(PRIMARY_ANIMATION_LAYER);
+            } else {
+                model.pause_layer(PRIMARY_ANIMATION_LAYER);
+            }
+            model.tick_animation(0.0);
+        } else {
+            return Err("请先加载模型再预览动作".to_string());
+        }
+        self.animation = Some(animation);
+        self.loaded_fbx = false;
+        Ok(())
+    }
+
     pub fn clear_animation(&mut self) {
         self.animation = None;
+        self.loaded_fbx = false;
         self.current_frame = 0.0;
 
         if let Some(model) = self.model.as_mut() {

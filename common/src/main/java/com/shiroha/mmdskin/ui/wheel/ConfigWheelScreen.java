@@ -24,6 +24,7 @@ public class ConfigWheelScreen extends AbstractWheelScreen {
     private final List<ConfigSlot> configSlots;
     private final KeyMapping monitoredKey;
     private static Supplier<Screen> modSettingsScreenFactory;
+    private static Supplier<Screen> maidManagerScreenFactory;
 
     public ConfigWheelScreen(KeyMapping keyMapping) {
         super(Component.translatable("gui.mmdskin.config_wheel"), STYLE);
@@ -36,28 +37,38 @@ public class ConfigWheelScreen extends AbstractWheelScreen {
         modSettingsScreenFactory = factory;
     }
 
+    /** 由平台兼容层注入女仆管理界面，未注入时不显示对应槽位。 */
+    public static void setMaidManagerScreenFactory(Supplier<Screen> factory) {
+        maidManagerScreenFactory = factory;
+    }
+
     private void initConfigSlots() {
         configSlots.add(new ConfigSlot("model",
-                Component.translatable("gui.mmdskin.config.model_switch").getString(),
+                Component.translatable("gui.mmdskin.config.model_switch"),
                 "model", this::openModelSelector));
         configSlots.add(new ConfigSlot("action",
-                Component.translatable("gui.mmdskin.config.action_select").getString(),
+                Component.translatable("gui.mmdskin.config.action_select"),
                 "action", this::openActionWheel));
         configSlots.add(new ConfigSlot("morph",
-                Component.translatable("gui.mmdskin.config.morph_select").getString(),
+                Component.translatable("gui.mmdskin.config.morph_select"),
                 "morph", this::openMorphWheel));
         configSlots.add(new ConfigSlot("material",
-                Component.translatable("gui.mmdskin.config.material_control").getString(),
+                Component.translatable("gui.mmdskin.config.material_control"),
                 "mat", this::openMaterialVisibility));
         configSlots.add(new ConfigSlot("scene",
-                Component.translatable("gui.mmdskin.config.scene_mode").getString(),
+                Component.translatable("gui.mmdskin.config.scene_mode"),
                 "scene", this::openSceneSelector));
         configSlots.add(new ConfigSlot("stage",
-                Component.translatable("gui.mmdskin.config.stage_mode").getString(),
+                Component.translatable("gui.mmdskin.config.stage_mode"),
                 "stage", this::openStageSelect));
         configSlots.add(new ConfigSlot("settings",
-                Component.translatable("gui.mmdskin.config.mod_settings").getString(),
+                Component.translatable("gui.mmdskin.config.mod_settings"),
                 "cfg", this::openModSettings));
+        if (maidManagerScreenFactory != null) {
+            configSlots.add(new ConfigSlot("maid_manager",
+                    Component.translatable("gui.mmdskin.config.maid_manager"),
+                    "maid", this::openMaidManager));
+        }
     }
 
     @Override
@@ -75,10 +86,11 @@ public class ConfigWheelScreen extends AbstractWheelScreen {
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         renderWheelBase(guiGraphics, mouseX, mouseY, partialTick, buildEntries());
 
-        String centerText = selectedSlot >= 0 ? configSlots.get(selectedSlot).name : "MMD Skin";
+        Component centerText = selectedSlot >= 0 ? configSlots.get(selectedSlot).name : Component.literal("MMD Skin");
         renderCenterBubble(guiGraphics, centerText, style.lineColor());
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderWheelTooltip(guiGraphics, mouseX, mouseY);
     }
 
     @Override
@@ -163,14 +175,20 @@ public class ConfigWheelScreen extends AbstractWheelScreen {
                 Component.translatable("message.mmdskin.mod_settings.not_initialized"));
     }
 
+    private void openMaidManager() {
+        if (maidManagerScreenFactory == null) return;
+        Screen screen = maidManagerScreenFactory.get();
+        if (screen != null) Minecraft.getInstance().setScreen(screen);
+    }
+
     private static class ConfigSlot {
         @SuppressWarnings("unused")
         final String id;
-        final String name;
+        final Component name;
         final String icon;
         final Runnable action;
 
-        ConfigSlot(String id, String name, String icon, Runnable action) {
+        ConfigSlot(String id, Component name, String icon, Runnable action) {
             this.id = id;
             this.name = name;
             this.icon = icon;

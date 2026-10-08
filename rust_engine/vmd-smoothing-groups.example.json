@@ -1,0 +1,31 @@
+{
+  "groups": [
+    {
+      "name": "全部轨道基础平滑",
+      "enabled": true,
+      "strength": 0.35,
+      "radius": 2,
+      "looped": true,
+      "selection": "all",
+      "names": []
+    },
+    {
+      "name": "足部 IK",
+      "enabled": true,
+      "strength": 0.85,
+      "radius": 5,
+      "looped": true,
+      "selection": "named",
+      "names": ["左足ＩＫ", "右足ＩＫ", "左つま先ＩＫ", "右つま先ＩＫ"]
+    },
+    {
+      "name": "手肘",
+      "enabled": true,
+      "strength": 0.85,
+      "radius": 5,
+      "looped": true,
+      "selection": "named",
+      "names": ["左ひじ", "右ひじ"]
+    }
+  ]
+}

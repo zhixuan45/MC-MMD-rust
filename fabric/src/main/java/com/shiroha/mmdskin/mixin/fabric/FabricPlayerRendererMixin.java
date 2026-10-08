@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.mixin.fabric;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.shiroha.mmdskin.compat.iris.IrisCompat;
 import com.shiroha.mmdskin.compat.vr.VRArmHider;
 import com.shiroha.mmdskin.fabric.YsmCompat;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
@@ -35,7 +36,7 @@ public abstract class FabricPlayerRendererMixin extends LivingEntityRenderer<Abs
                          MultiBufferSource vertexConsumers, int packedLight, CallbackInfo ci) {
         Minecraft minecraft = Minecraft.getInstance();
         boolean isLocalPlayer = minecraft.player != null && minecraft.player.getUUID().equals(player.getUUID());
-        if (isLocalPlayer && minecraft.options.getCameraType().isFirstPerson()
+        if (isLocalPlayer && !IrisCompat.isRenderingShadows() && minecraft.options.getCameraType().isFirstPerson()
                 && !FirstPersonManager.shouldRenderFirstPerson() && !VRArmHider.isLocalPlayerInVR()
                 && !InventoryRenderScope.isActive() && !PaperDollRenderScope.isActive()) {
             FirstPersonManager.reset();

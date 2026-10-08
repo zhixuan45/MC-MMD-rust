@@ -2,6 +2,7 @@ package com.shiroha.mmdskin.model.runtime;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeModelLoadPort;
 import com.shiroha.mmdskin.bridge.runtime.NativeModelPort;
+import com.shiroha.mmdskin.bridge.runtime.NativeScenePort;
 import com.shiroha.mmdskin.compat.iris.IrisCompat;
 import com.shiroha.mmdskin.model.port.ModelRuntimeAccessPort;
 import com.shiroha.mmdskin.render.backend.RenderBackendRegistry;
@@ -88,5 +89,12 @@ public final class DefaultModelRuntimeAccessPort implements ModelRuntimeAccessPo
     @Override
     public void deleteModel(long modelHandle) {
         nativeModelPort.deleteModel(modelHandle);
+    }
+
+    @Override
+    public void setTailPhysicsOptions(long modelHandle, boolean idleLift, boolean movementBoost) {
+        if (nativeModelPort instanceof NativeScenePort scenePort) {
+            scenePort.setTailPhysicsOptions(modelHandle, idleLift, movementBoost);
+        }
     }
 }

@@ -35,7 +35,8 @@ public abstract class ForgePlayerRendererMixin extends LivingEntityRenderer<Abst
                          MultiBufferSource vertexConsumers, int packedLight, CallbackInfo ci) {
         Minecraft minecraft = Minecraft.getInstance();
         boolean isLocalPlayer = minecraft.player != null && minecraft.player.getUUID().equals(player.getUUID());
-        if (isLocalPlayer && minecraft.options.getCameraType().isFirstPerson()
+        if (isLocalPlayer && !com.shiroha.mmdskin.compat.iris.IrisCompat.isRenderingShadows()
+                && minecraft.options.getCameraType().isFirstPerson()
                 && !FirstPersonManager.shouldRenderFirstPerson() && !VRArmHider.isLocalPlayerInVR()
                 && !InventoryRenderScope.isActive() && !PaperDollRenderScope.isActive()) {
             FirstPersonManager.reset();

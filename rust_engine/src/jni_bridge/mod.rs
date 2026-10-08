@@ -5,6 +5,7 @@ mod model_handle;
 mod native_func;
 mod render_view;
 pub(crate) mod tacz_arm_target;
+mod tail_options;
 
 pub use animation_handle::AnimationHandle;
 pub use model_handle::ModelHandle;

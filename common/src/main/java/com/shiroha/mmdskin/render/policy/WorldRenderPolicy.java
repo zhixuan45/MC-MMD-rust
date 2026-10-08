@@ -22,7 +22,12 @@ public final class WorldRenderPolicy {
         boolean localPlayer = isLocalPlayer(entity);
         double distanceSq = priorityService.distanceSqToCamera(entity, localPlayer);
         boolean shouldUpdate = priorityService.shouldUpdateAnimation(modelHandle, distanceSq, localPlayer);
-        boolean physicsEnabled = shouldUpdate && priorityService.shouldEnablePhysics(entity, localPlayer);
+        boolean physicsEnabled = priorityService.shouldEnablePhysics(entity, localPlayer);
+        return worldDecision(shouldUpdate, physicsEnabled);
+    }
+
+    static Decision worldDecision(boolean shouldUpdate, boolean physicsEnabled) {
+        // 动画跳帧只暂停求值，不能反复关闭并重建物理链。
         return new Decision(true, shouldUpdate, physicsEnabled);
     }
 

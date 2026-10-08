@@ -515,14 +515,6 @@ public final class MMDCameraController {
         return stateMachine.shouldBlockInput();
     }
 
-    void setStateForTesting(StageCameraSessionStateMachine.StageState state) {
-        stateMachine.set(state);
-    }
-
-    StageCameraSessionStateMachine.StageState getStateForTesting() {
-        return stateMachine.current();
-    }
-
     private void computeIntroAndStandby(Minecraft minecraft) {
         if (minecraft.gameRenderer != null && minecraft.gameRenderer.getMainCamera() != null) {
             var camera = minecraft.gameRenderer.getMainCamera();

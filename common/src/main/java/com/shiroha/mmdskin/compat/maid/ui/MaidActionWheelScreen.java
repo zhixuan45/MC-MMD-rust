@@ -59,23 +59,24 @@ public class MaidActionWheelScreen extends AbstractWheelScreen {
         if (actionSlots.isEmpty()) {
             renderWheelBase(guiGraphics, mouseX, mouseY, partialTick, List.of());
             renderEmptyState(guiGraphics, Component.translatable("gui.mmdskin.maid_action_wheel.no_actions"));
-            renderCenterBubble(guiGraphics, maidName, style.lineColor());
+            renderCenterBubble(guiGraphics, Component.literal(maidName), style.lineColor());
         } else {
             renderWheelBase(guiGraphics, mouseX, mouseY, partialTick, buildEntries());
 
-            String centerText = selectedSlot >= 0
-                    ? Component.translatable("gui.mmdskin.action_wheel.click_select").getString()
-                    : maidName;
+            Component centerText = selectedSlot >= 0
+                    ? Component.translatable("gui.mmdskin.action_wheel.click_select")
+                    : Component.literal(maidName);
             renderCenterBubble(guiGraphics, centerText, style.lineColor());
         }
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderWheelTooltip(guiGraphics, mouseX, mouseY);
     }
 
     private List<WheelEntry> buildEntries() {
         List<WheelEntry> entries = new ArrayList<>(actionSlots.size());
         for (ActionSlot slot : actionSlots) {
-            entries.add(new WheelEntry(slot.name, null));
+            entries.add(new WheelEntry(Component.literal(slot.name), null));
         }
         return entries;
     }

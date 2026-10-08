@@ -11,10 +11,6 @@ public final class VRDataProvider {
     private VRDataProvider() {
     }
 
-    static void setTrackingFacadeForTesting(VrTrackingFacade trackingFacade) {
-        VRDataProvider.trackingFacade = trackingFacade != null ? trackingFacade : VivecraftVrTrackingFacade.INSTANCE;
-    }
-
     public static boolean isVRPlayer(Player player) {
         return trackingFacade.isVrPlayer(player);
     }

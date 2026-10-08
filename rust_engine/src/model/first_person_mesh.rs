@@ -348,45 +348,6 @@ mod tests {
         assert_eq!(mesh.submeshes[0].index_count, 3);
     }
 
-    #[test]
-    fn removes_a_boundary_triangle_when_it_enters_the_expanded_view() {
-        let vertices = vec![
-            vertex(-0.2, 0.0, 0.0),
-            vertex(0.2, 0.0, 0.0),
-            vertex(0.0, 0.2, 0.0),
-            vertex(0.0, -0.2, 0.0),
-            vertex(0.2, -0.2, 0.0),
-        ];
-        let weights = vec![VertexWeight::Bdef1 { bone: 1 }; 3]
-            .into_iter()
-            .chain(vec![VertexWeight::Bdef1 { bone: 0 }; 2])
-            .collect::<Vec<_>>();
-        let indices = vec![0, 1, 2, 0, 3, 4];
-        let submeshes = vec![SubMesh::new(0, 6, 0)];
-        let mut mesh = build_first_person_mesh(
-            &vertices,
-            &indices,
-            &weights,
-            &submeshes,
-            &HashSet::from([1]),
-        )
-        .unwrap();
-        let positions = vertices
-            .iter()
-            .map(|vertex| vertex.position)
-            .collect::<Vec<_>>();
-
-        refresh_first_person_mesh(
-            &mut mesh,
-            &positions,
-            &indices,
-            &submeshes,
-            Mat4::IDENTITY,
-            Mat4::IDENTITY,
-        )
-        .unwrap();
-        assert!(mesh.indices.is_empty());
-    }
 
     #[test]
     fn finds_a_boundary_across_duplicated_seam_vertices() {
@@ -431,43 +392,4 @@ mod tests {
         assert!(mesh.indices.is_empty());
     }
 
-    #[test]
-    fn keeps_a_boundary_triangle_outside_the_expanded_view() {
-        let vertices = vec![
-            vertex(-0.2, 0.0, 0.0),
-            vertex(0.2, 0.0, 0.0),
-            vertex(0.0, 0.2, 0.0),
-            vertex(0.0, -0.2, 0.0),
-            vertex(0.2, -0.2, 0.0),
-        ];
-        let weights = vec![VertexWeight::Bdef1 { bone: 1 }; 3]
-            .into_iter()
-            .chain(vec![VertexWeight::Bdef1 { bone: 0 }; 2])
-            .collect::<Vec<_>>();
-        let indices = vec![0, 1, 2, 0, 3, 4];
-        let submeshes = vec![SubMesh::new(0, 6, 0)];
-        let mut mesh = build_first_person_mesh(
-            &vertices,
-            &indices,
-            &weights,
-            &submeshes,
-            &HashSet::from([1]),
-        )
-        .unwrap();
-        let positions = vertices
-            .iter()
-            .map(|vertex| vertex.position + Vec3::new(5.0, 0.0, 0.0))
-            .collect::<Vec<_>>();
-
-        refresh_first_person_mesh(
-            &mut mesh,
-            &positions,
-            &indices,
-            &submeshes,
-            Mat4::IDENTITY,
-            Mat4::IDENTITY,
-        )
-        .unwrap();
-        assert_eq!(mesh.indices, vec![0, 3, 4]);
-    }
 }

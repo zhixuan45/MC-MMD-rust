@@ -13,6 +13,9 @@ mod vmd_loader;
 pub mod vmd_writer;
 mod vpd_file;
 
+#[cfg(test)]
+mod camera_tests;
+
 pub use animation_layer::{
     AnimationLayer, AnimationLayerConfig, AnimationLayerManager, AnimationLayerState, BonePose,
     PoseSnapshot,

@@ -28,4 +28,7 @@ public interface ModelRuntimeAccessPort {
     void tickTextures();
 
     void deleteModel(long modelHandle);
+
+    default void setTailPhysicsOptions(long modelHandle, boolean idleLift, boolean movementBoost) {
+    }
 }

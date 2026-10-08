@@ -349,28 +349,22 @@ fn read_camera_keyframe<R: Read>(reader: &mut R) -> Result<CameraKeyframe> {
         .read_exact(&mut interp_raw)
         .map_err(|e| MmdError::VmdParse(format!("Failed to read camera interpolation: {}", e)))?;
 
+    // VMD 每组顺序是 [x1, x2, y1, y2]，内部统一为 [x1, y1, x2, y2]。
+    let reorder = |i: usize| {
+        [
+            interp_raw[i],
+            interp_raw[i + 2],
+            interp_raw[i + 1],
+            interp_raw[i + 3],
+        ]
+    };
     let interpolation = CameraInterpolation {
-        lookat_x: [interp_raw[0], interp_raw[1], interp_raw[2], interp_raw[3]],
-        lookat_y: [interp_raw[4], interp_raw[5], interp_raw[6], interp_raw[7]],
-        lookat_z: [interp_raw[8], interp_raw[9], interp_raw[10], interp_raw[11]],
-        angle: [
-            interp_raw[12],
-            interp_raw[13],
-            interp_raw[14],
-            interp_raw[15],
-        ],
-        distance: [
-            interp_raw[16],
-            interp_raw[17],
-            interp_raw[18],
-            interp_raw[19],
-        ],
-        fov: [
-            interp_raw[20],
-            interp_raw[21],
-            interp_raw[22],
-            interp_raw[23],
-        ],
+        lookat_x: reorder(0),
+        lookat_y: reorder(4),
+        lookat_z: reorder(8),
+        angle: reorder(12),
+        distance: reorder(16),
+        fov: reorder(20),
     };
 
     // FOV (u32)

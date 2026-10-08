@@ -1,6 +1,8 @@
 package com.shiroha.mmdskin.forge.register;
 
 import com.shiroha.mmdskin.config.UIConstants;
+import com.shiroha.mmdskin.compat.maid.runtime.MaidMMDModelManager;
+import com.shiroha.mmdskin.compat.maid.ui.VerifiedMaidDirectory;
 import com.shiroha.mmdskin.debug.client.PerformanceHud;
 import com.shiroha.mmdskin.forge.network.MmdSkinNetworkPack;
 import com.shiroha.mmdskin.player.sync.PlayerModelSyncService;
@@ -99,6 +101,8 @@ final class ForgeClientRuntimeHooks {
     }
 
     void onPlayerLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        MaidMMDModelManager.clearAll();
+        VerifiedMaidDirectory.clearSession();
         MMDCameraController.getInstance().exitStageMode();
         PlayerModelSyncService.onDisconnect();
         MmdSkinRendererPlayerHelper.onDisconnect();

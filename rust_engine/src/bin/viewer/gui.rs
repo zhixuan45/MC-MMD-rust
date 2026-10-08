@@ -1,3 +1,7 @@
+use super::{
+    motion_edit::{MotionEdit, MotionEditAction},
+    smoothing_panel::SmoothingPanel,
+};
 use egui::{Color32, ComboBox, RichText, TextEdit};
 use rfd::FileDialog;
 
@@ -10,6 +14,7 @@ pub struct ViewerSnapshot {
     pub show_colliders: bool,
     pub static_collider_scale: f32,
     pub rigid_body_count: usize,
+    pub loaded_fbx: bool,
 }
 
 pub enum ViewerAction {
@@ -106,244 +111,263 @@ impl ViewerGuiState {
         });
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, snapshot: ViewerSnapshot) -> Vec<ViewerAction> {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        snapshot: ViewerSnapshot,
+        motion: &mut MotionEdit,
+    ) -> (Vec<ViewerAction>, Vec<MotionEditAction>) {
         let mut actions = Vec::new();
+        let mut edit_actions = Vec::new();
 
         egui::SidePanel::left("viewer_controls")
             .default_width(360.0)
             .min_width(300.0)
             .show(ctx, |ui| {
-                ui.heading("资源面板");
-                ui.label("在这里选择 PMX 模型和 VMD/FBX 动作。");
-                ui.small("选择内容会自动保存，下次打开 viewer 会恢复。");
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.heading("资源面板");
+                    ui.label("在这里选择 PMX 模型和 VMD/FBX 动作。");
+                    ui.small("选择内容会自动保存，下次打开 viewer 会恢复。");
 
-                if let Some(status) = &self.status {
-                    let color = if status.is_error {
-                        Color32::from_rgb(210, 70, 70)
-                    } else {
-                        Color32::from_rgb(80, 170, 95)
-                    };
-                    ui.colored_label(color, &status.text);
-                }
-
-                ui.separator();
-                ui.label(RichText::new("PMX 模型").strong());
-                if ui
-                    .add(
-                        TextEdit::singleline(&mut self.model_path)
-                            .hint_text("选择 .pmx 文件")
-                            .desired_width(f32::INFINITY),
-                    )
-                    .changed()
-                {
-                    actions.push(ViewerAction::PersistState);
-                }
-
-                ui.horizontal(|ui| {
-                    if ui.button("浏览 PMX").clicked() {
-                        if let Some(path) = FileDialog::new()
-                            .add_filter("PMX Model", &["pmx"])
-                            .pick_file()
-                        {
-                            self.model_path = path.display().to_string();
-                            actions.push(ViewerAction::PersistState);
-                        }
+                    if let Some(status) = &self.status {
+                        let color = if status.is_error {
+                            Color32::from_rgb(210, 70, 70)
+                        } else {
+                            Color32::from_rgb(80, 170, 95)
+                        };
+                        ui.colored_label(color, &status.text);
                     }
 
+                    ui.separator();
+                    ui.label(RichText::new("PMX 模型").strong());
                     if ui
-                        .add_enabled(
-                            !self.model_path.trim().is_empty(),
-                            egui::Button::new("加载模型"),
+                        .add(
+                            TextEdit::singleline(&mut self.model_path)
+                                .hint_text("选择 .pmx 文件")
+                                .desired_width(f32::INFINITY),
                         )
-                        .clicked()
+                        .changed()
                     {
-                        actions.push(ViewerAction::LoadModel(self.model_path.trim().to_string()));
+                        actions.push(ViewerAction::PersistState);
                     }
-                });
 
-                ui.separator();
-                ui.label(RichText::new("动作文件").strong());
-                if ui
-                    .add(
-                        TextEdit::singleline(&mut self.animation_path)
-                            .hint_text("选择 .vmd 或 .fbx 文件")
-                            .desired_width(f32::INFINITY),
-                    )
-                    .changed()
-                {
-                    if !self.is_fbx_path() {
-                        self.clear_fbx_stacks();
-                    }
-                    actions.push(ViewerAction::PersistState);
-                }
-
-                ui.horizontal(|ui| {
-                    if ui.button("浏览动作").clicked() {
-                        if let Some(path) = FileDialog::new()
-                            .add_filter("Animation", &["vmd", "fbx"])
-                            .pick_file()
-                        {
-                            self.animation_path = path.display().to_string();
-                            if !self.is_fbx_path() {
-                                self.clear_fbx_stacks();
-                            }
-                            actions.push(ViewerAction::PersistState);
-                            if self.is_fbx_path() {
-                                actions.push(ViewerAction::RefreshFbxStacks(
-                                    self.animation_path.trim().to_string(),
-                                ));
+                    ui.horizontal(|ui| {
+                        if ui.button("浏览 PMX").clicked() {
+                            if let Some(path) = FileDialog::new()
+                                .add_filter("PMX Model", &["pmx"])
+                                .pick_file()
+                            {
+                                self.model_path = path.display().to_string();
+                                actions.push(ViewerAction::PersistState);
                             }
                         }
-                    }
 
+                        if ui
+                            .add_enabled(
+                                !self.model_path.trim().is_empty(),
+                                egui::Button::new("加载模型"),
+                            )
+                            .clicked()
+                        {
+                            actions
+                                .push(ViewerAction::LoadModel(self.model_path.trim().to_string()));
+                        }
+                    });
+
+                    ui.separator();
+                    ui.label(RichText::new("动作文件").strong());
                     if ui
-                        .add_enabled(
-                            self.is_fbx_path() && !self.animation_path.trim().is_empty(),
-                            egui::Button::new("读取 FBX 动作列表"),
+                        .add(
+                            TextEdit::singleline(&mut self.animation_path)
+                                .hint_text("选择 .vmd 或 .fbx 文件")
+                                .desired_width(f32::INFINITY),
                         )
-                        .clicked()
+                        .changed()
                     {
-                        actions.push(ViewerAction::RefreshFbxStacks(
-                            self.animation_path.trim().to_string(),
-                        ));
+                        if !self.is_fbx_path() {
+                            self.clear_fbx_stacks();
+                        }
+                        actions.push(ViewerAction::PersistState);
                     }
-                });
 
-                if self.is_fbx_path() {
-                    if self.fbx_stacks.is_empty() {
-                        ui.label("多 Stack FBX 可先读取列表；单 Stack FBX 也可直接加载。");
-                    } else {
-                        let selected_text = self
-                            .fbx_stacks
-                            .get(self.selected_fbx_stack)
-                            .map(String::as_str)
-                            .unwrap_or("默认首个动作");
-                        let before = self.selected_fbx_stack;
-                        ComboBox::from_label("FBX 动作")
-                            .selected_text(selected_text)
-                            .show_ui(ui, |ui| {
-                                for (index, stack_name) in self.fbx_stacks.iter().enumerate() {
-                                    ui.selectable_value(
-                                        &mut self.selected_fbx_stack,
-                                        index,
-                                        stack_name,
-                                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("浏览动作").clicked() {
+                            if let Some(path) = FileDialog::new()
+                                .add_filter("Animation", &["vmd", "fbx"])
+                                .pick_file()
+                            {
+                                self.animation_path = path.display().to_string();
+                                if !self.is_fbx_path() {
+                                    self.clear_fbx_stacks();
                                 }
-                            });
-                        if before != self.selected_fbx_stack {
-                            actions.push(ViewerAction::PersistState);
+                                actions.push(ViewerAction::PersistState);
+                                if self.is_fbx_path() {
+                                    actions.push(ViewerAction::RefreshFbxStacks(
+                                        self.animation_path.trim().to_string(),
+                                    ));
+                                }
+                            }
+                        }
+
+                        if ui
+                            .add_enabled(
+                                self.is_fbx_path() && !self.animation_path.trim().is_empty(),
+                                egui::Button::new("读取 FBX 动作列表"),
+                            )
+                            .clicked()
+                        {
+                            actions.push(ViewerAction::RefreshFbxStacks(
+                                self.animation_path.trim().to_string(),
+                            ));
+                        }
+                    });
+
+                    if self.is_fbx_path() {
+                        if self.fbx_stacks.is_empty() {
+                            ui.label("多 Stack FBX 可先读取列表；单 Stack FBX 也可直接加载。");
+                        } else {
+                            let selected_text = self
+                                .fbx_stacks
+                                .get(self.selected_fbx_stack)
+                                .map(String::as_str)
+                                .unwrap_or("默认首个动作");
+                            let before = self.selected_fbx_stack;
+                            ComboBox::from_label("FBX 动作")
+                                .selected_text(selected_text)
+                                .show_ui(ui, |ui| {
+                                    for (index, stack_name) in self.fbx_stacks.iter().enumerate() {
+                                        ui.selectable_value(
+                                            &mut self.selected_fbx_stack,
+                                            index,
+                                            stack_name,
+                                        );
+                                    }
+                                });
+                            if before != self.selected_fbx_stack {
+                                actions.push(ViewerAction::PersistState);
+                            }
                         }
                     }
-                }
 
-                ui.horizontal(|ui| {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                snapshot.has_model && !self.animation_path.trim().is_empty(),
+                                egui::Button::new("加载动作"),
+                            )
+                            .clicked()
+                        {
+                            actions.push(ViewerAction::LoadAnimation {
+                                path: self.animation_path.trim().to_string(),
+                                stack_name: self.selected_stack_name(),
+                            });
+                        }
+
+                        if ui
+                            .add_enabled(snapshot.has_animation, egui::Button::new("清除动作"))
+                            .clicked()
+                        {
+                            actions.push(ViewerAction::ClearAnimation);
+                        }
+                    });
+
+                    ui.separator();
+                    ui.label(RichText::new("播放控制").strong());
+                    ui.horizontal(|ui| {
+                        let play_label = if snapshot.playing { "暂停" } else { "播放" };
+                        if ui
+                            .add_enabled(snapshot.has_animation, egui::Button::new(play_label))
+                            .clicked()
+                        {
+                            actions.push(ViewerAction::ToggleAnimation);
+                        }
+
+                        if ui
+                            .add_enabled(snapshot.has_animation, egui::Button::new("重置到第 0 帧"))
+                            .clicked()
+                        {
+                            actions.push(ViewerAction::ResetAnimation);
+                        }
+                    });
+
+                    ui.separator();
+                    ui.label(RichText::new("状态").strong());
+                    ui.label(format!(
+                        "模型: {}",
+                        if snapshot.has_model {
+                            "已加载"
+                        } else {
+                            "未加载"
+                        }
+                    ));
+                    ui.label(format!(
+                        "动画: {}",
+                        if snapshot.has_animation {
+                            "已加载"
+                        } else {
+                            "未加载"
+                        }
+                    ));
+                    ui.label(format!(
+                        "播放: {}",
+                        if snapshot.playing {
+                            "进行中"
+                        } else {
+                            "已暂停"
+                        }
+                    ));
+                    ui.label(format!("当前帧: {:.2}", snapshot.current_frame));
+
+                    ui.separator();
+                    ui.label(RichText::new("物理调试").strong());
+                    let collider_label = if snapshot.show_colliders {
+                        "隐藏碰撞体"
+                    } else {
+                        "显示碰撞体"
+                    };
                     if ui
-                        .add_enabled(
-                            snapshot.has_model && !self.animation_path.trim().is_empty(),
-                            egui::Button::new("加载动作"),
+                        .add_enabled(snapshot.has_model, egui::Button::new(collider_label))
+                        .clicked()
+                    {
+                        actions.push(ViewerAction::ToggleColliders);
+                    }
+                    let mut static_scale = snapshot.static_collider_scale;
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut static_scale, 0.1..=1.5)
+                                .text("绿色人体碰撞体倍率")
+                                .step_by(0.01),
                         )
-                        .clicked()
+                        .changed()
                     {
-                        actions.push(ViewerAction::LoadAnimation {
-                            path: self.animation_path.trim().to_string(),
-                            stack_name: self.selected_stack_name(),
-                        });
+                        actions.push(ViewerAction::SetStaticColliderScale(static_scale));
                     }
+                    ui.label(format!("刚体数量: {}", snapshot.rigid_body_count));
+                    ui.colored_label(Color32::from_rgb(25, 220, 65), "绿色: 跟随骨骼");
+                    ui.colored_label(Color32::from_rgb(245, 45, 30), "红色: 完全物理");
+                    ui.colored_label(Color32::from_rgb(30, 135, 245), "蓝色: 物理旋转/骨骼位置");
 
-                    if ui
-                        .add_enabled(snapshot.has_animation, egui::Button::new("清除动作"))
-                        .clicked()
-                    {
-                        actions.push(ViewerAction::ClearAnimation);
+                    ui.separator();
+                    ui.label(RichText::new("视图快捷键").strong());
+                    ui.label("WASD/QE 移动，右键旋转，滚轮缩放");
+                    ui.label("Space 播放/暂停，R 重置动画");
+                    ui.label("B/G/X/F 切换骨骼、网格、坐标轴、线框");
+                    ui.label("C 切换碰撞体显示");
+                    ui.label("1/2/3/4 切换正面、侧面、顶部、自由视角");
+                    let can_preview = snapshot.has_model
+                        && snapshot.has_animation
+                        && !snapshot.loaded_fbx
+                        && motion.has_source();
+                    let (smoothing_changed, mut motion_actions) =
+                        SmoothingPanel::show(ui, motion, can_preview);
+                    edit_actions.append(&mut motion_actions);
+                    if smoothing_changed {
+                        actions.push(ViewerAction::PersistState);
                     }
                 });
-
-                ui.separator();
-                ui.label(RichText::new("播放控制").strong());
-                ui.horizontal(|ui| {
-                    let play_label = if snapshot.playing { "暂停" } else { "播放" };
-                    if ui
-                        .add_enabled(snapshot.has_animation, egui::Button::new(play_label))
-                        .clicked()
-                    {
-                        actions.push(ViewerAction::ToggleAnimation);
-                    }
-
-                    if ui
-                        .add_enabled(snapshot.has_animation, egui::Button::new("重置到第 0 帧"))
-                        .clicked()
-                    {
-                        actions.push(ViewerAction::ResetAnimation);
-                    }
-                });
-
-                ui.separator();
-                ui.label(RichText::new("状态").strong());
-                ui.label(format!(
-                    "模型: {}",
-                    if snapshot.has_model {
-                        "已加载"
-                    } else {
-                        "未加载"
-                    }
-                ));
-                ui.label(format!(
-                    "动画: {}",
-                    if snapshot.has_animation {
-                        "已加载"
-                    } else {
-                        "未加载"
-                    }
-                ));
-                ui.label(format!(
-                    "播放: {}",
-                    if snapshot.playing {
-                        "进行中"
-                    } else {
-                        "已暂停"
-                    }
-                ));
-                ui.label(format!("当前帧: {:.2}", snapshot.current_frame));
-
-                ui.separator();
-                ui.label(RichText::new("物理调试").strong());
-                let collider_label = if snapshot.show_colliders {
-                    "隐藏碰撞体"
-                } else {
-                    "显示碰撞体"
-                };
-                if ui
-                    .add_enabled(snapshot.has_model, egui::Button::new(collider_label))
-                    .clicked()
-                {
-                    actions.push(ViewerAction::ToggleColliders);
-                }
-                let mut static_scale = snapshot.static_collider_scale;
-                if ui
-                    .add(
-                        egui::Slider::new(&mut static_scale, 0.1..=1.5)
-                            .text("绿色人体碰撞体倍率")
-                            .step_by(0.01),
-                    )
-                    .changed()
-                {
-                    actions.push(ViewerAction::SetStaticColliderScale(static_scale));
-                }
-                ui.label(format!("刚体数量: {}", snapshot.rigid_body_count));
-                ui.colored_label(Color32::from_rgb(25, 220, 65), "绿色: 跟随骨骼");
-                ui.colored_label(Color32::from_rgb(245, 45, 30), "红色: 完全物理");
-                ui.colored_label(Color32::from_rgb(30, 135, 245), "蓝色: 物理旋转/骨骼位置");
-
-                ui.separator();
-                ui.label(RichText::new("视图快捷键").strong());
-                ui.label("WASD/QE 移动，右键旋转，滚轮缩放");
-                ui.label("Space 播放/暂停，R 重置动画");
-                ui.label("B/G/X/F 切换骨骼、网格、坐标轴、线框");
-                ui.label("C 切换碰撞体显示");
-                ui.label("1/2/3/4 切换正面、侧面、顶部、自由视角");
             });
 
-        actions
+        (actions, edit_actions)
     }
 
     fn is_fbx_path(&self) -> bool {

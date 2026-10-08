@@ -52,22 +52,6 @@ public class ToonRenderHelper {
         shader.setGlobalAlpha(globalAlpha);
     }
 
-    public static void setupOutlineUniforms(ToonShaderBase shader) {
-        setupOutlineUniforms(shader, 1.0f);
-    }
-
-    public static void setupOutlineUniforms(ToonShaderBase shader, float globalAlpha) {
-        shader.setOutlineSampler0(0);
-        shader.setOutlineAlphaCutoff(ALPHA_CUTOFF);
-        shader.setOutlineWidth(toonConfig.getOutlineWidth());
-        shader.setOutlineColor(
-            toonConfig.getOutlineColorR(),
-            toonConfig.getOutlineColorG(),
-            toonConfig.getOutlineColorB()
-        );
-        shader.setOutlineGlobalAlpha(globalAlpha);
-    }
-
     public static void prepareRenderState(int vao) {
         BufferUploader.reset();
         GL46C.glBindVertexArray(vao);

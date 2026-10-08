@@ -5,24 +5,34 @@
 
 use std::collections::{HashMap, HashSet};
 
-use glam::{Mat3, Mat4, Vec3};
+use glam::{Mat4, Vec3};
 
 use mmd::pmx::joint::Joint as PmxJoint;
-use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
+use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
 
+use self::diagnostics::{ActivePhysicsDebugConfig, PhysicsDebugTelemetry};
 use super::bullet_ffi::{self, BulletWorld};
 use super::collision_topology::{
     build_filter_plan, CollisionAabb, CollisionBody, CollisionFilterPlan, CollisionStabilityMode,
 };
-use super::config::{get_config, PhysicsConfig};
+use super::config::get_config;
+use super::garment_contacts::build_garment_contact_plan;
 use super::kinematic_target_filter::KinematicTargetFilter;
 use super::mmd_joint::MmdJointData;
 use super::mmd_rigid_body::{
-    body_collider_scale_flags, effective_collision_shape_size_with_static_scale,
-    is_pelvis_or_thigh_collider, is_skirt_or_lower_garment, is_tail_dynamic_part,
-    MmdRigidBodyData, PhysicsMode,
+    body_collider_scale_flags, classify_tail_dynamic,
+    effective_collision_shape_size_with_static_scale, garment_contact_body_flags,
+    is_skirt_or_lower_garment, is_tail_dynamic_part, MmdRigidBodyData, PhysicsMode,
 };
-use super::physics_diagnostics::{model_topology_signature, ContactWindow, JointLimitPeak};
+use super::physics_diagnostics::model_topology_signature;
+use super::tail_forces::TailForceState;
+
+mod body_contacts;
+mod diagnostics;
+mod garment_diagnostics;
+mod motion_forces;
+
+pub use garment_diagnostics::{GarmentContactSnapshot, GarmentPhysicsSnapshot};
 
 /// MMD 物理世界管理器（Bullet3 引擎）
 ///
@@ -73,8 +83,12 @@ pub struct MMDPhysics {
     collision_filter_applied_pairs: usize,
     /// Bullet 回读仍允许碰撞的计划对数量。
     collision_filter_rejected_pairs: usize,
+    /// 初始身体深嵌入触发的祖先躯干禁碰对数量。
+    embedded_body_filtered_pairs: usize,
     /// 当前模型刚体与关节拓扑的稳定签名。
     model_topology_signature: String,
+    /// 每个物理实例独立的尾巴选项与闲置包络。
+    tail_forces: TailForceState,
 }
 
 /// 供命令行诊断工具读取的关节瞬时状态。
@@ -126,7 +140,9 @@ impl MMDPhysics {
             collision_filter_plan: CollisionFilterPlan::default(),
             collision_filter_applied_pairs: 0,
             collision_filter_rejected_pairs: 0,
+            embedded_body_filtered_pairs: 0,
             model_topology_signature: "fnv1a64:UNBUILT".to_owned(),
+            tail_forces: TailForceState::default(),
         })
     }
 
@@ -147,6 +163,14 @@ impl MMDPhysics {
 
         // 按整个模型的碰撞用途分类，避免把动态链的静态关节锚点误当成人体碰撞壳。
         let body_collider_flags = body_collider_scale_flags(pmx_rigid_bodies, pmx_joints);
+        // 兼容裙摆的资格独立于 PMX 原始掩码，避免漏配掩码导致补碰撞永远无法生效。
+        let garment_body_flags = garment_contact_body_flags(pmx_rigid_bodies, pmx_joints);
+        let garment_contact_plan = build_garment_contact_plan(
+            pmx_rigid_bodies,
+            &garment_body_flags,
+            config.collision_enabled,
+            self.collision_stability_mode,
+        );
 
         // 预分配容量
         self.rigid_bodies.reserve(pmx_rigid_bodies.len());
@@ -183,35 +207,30 @@ impl MMDPhysics {
 
         // 刚体入场前安装过滤规则，避免 broadphase 按旧规则缓存碰撞对。
         self.world.set_kinematic_filter(config.kinematic_filter);
+        for &(a_index, b_index) in &garment_contact_plan.forced_ignore_pairs {
+            let (Some(body_a), Some(body_b)) = (
+                self.rigid_bodies
+                    .get(a_index)
+                    .and_then(|body| body.bullet_body.as_ref()),
+                self.rigid_bodies
+                    .get(b_index)
+                    .and_then(|body| body.bullet_body.as_ref()),
+            ) else {
+                continue;
+            };
+            body_a.set_ignore_collision_check(body_b, true);
+        }
 
         // 第二步：统一将已存储的刚体添加到世界
         // 此时所有权已在 self.rigid_bodies 中，panic 时 Drop 链会正确清理
-        for (i, rb_data) in self.rigid_bodies.iter().enumerate() {
+        for (rb_data_index, rb_data) in self.rigid_bodies.iter().enumerate() {
             if let Some(ref body) = rb_data.bullet_body {
                 let group = 1i32 << (rb_data.group.min(15) as i32);
-                let mut mask_u16 = rb_data.collision_mask;
-                // 确保骨盆和上大腿跟骨碰撞体与所有动态裙摆刚体始终能够双向碰撞，防止腿部和臀部穿透裙摆；
-                // 小腿/膝盖等保留 PMX 作者配置的掩码，避免跑跳摆腿时小腿撕裂长裙。
-                if rb_data.physics_mode == PhysicsMode::FollowBone
-                    && is_pelvis_or_thigh_collider(&pmx_rigid_bodies[i])
-                {
-                    for dynamic_rb in pmx_rigid_bodies.iter() {
-                        if dynamic_rb.mode != RigidBodyMode::Static
-                            && is_skirt_or_lower_garment(dynamic_rb)
-                        {
-                            mask_u16 |= 1u16 << dynamic_rb.group.min(15);
-                        }
-                    }
-                } else if is_skirt_or_lower_garment(&pmx_rigid_bodies[i]) {
-                    for static_rb in pmx_rigid_bodies.iter() {
-                        if static_rb.mode == RigidBodyMode::Static
-                            && is_pelvis_or_thigh_collider(static_rb)
-                        {
-                            mask_u16 |= 1u16 << static_rb.group.min(15);
-                        }
-                    }
-                }
-                let mask = effective_collision_mask(config.collision_enabled, mask_u16);
+                // 只应用计划中为裙摆与骨盆/大腿补齐的组位。
+                let mask = effective_collision_mask(
+                    config.collision_enabled,
+                    garment_contact_plan.effective_masks[rb_data_index],
+                );
                 self.world.add_rigid_body(body, group, mask);
             }
         }
@@ -393,6 +412,29 @@ impl MMDPhysics {
         );
     }
 
+    /// 根据关联骨骼名补充尾巴分类，并缓存到每个刚体。
+    pub fn set_tail_bone_names(&mut self, bone_names: &[String], bone_parents: &[i32]) {
+        for body in &mut self.rigid_bodies {
+            let bone_name = usize::try_from(body.bone_index)
+                .ok()
+                .and_then(|index| bone_names.get(index))
+                .map(String::as_str)
+                .unwrap_or("");
+            body.is_tail_dynamic = classify_tail_dynamic(
+                body.physics_mode != PhysicsMode::FollowBone,
+                [&body.name, &body.universal_name, bone_name],
+            );
+        }
+        self.tail_forces.set_wave_delays(super::tail_wave::tail_wave_delays(
+            &self.rigid_bodies, bone_parents,
+        ));
+    }
+
+    /// 设置当前物理实例的尾巴闲置与移动效果。
+    pub fn set_tail_physics_options(&mut self, idle_lift: bool, movement_boost: bool) {
+        self.tail_forces.set_options(idle_lift, movement_boost);
+    }
+
     /// 同步运动学刚体位置（babylon-mmd syncBodies）
     ///
     /// 在每帧物理步进前调用。将 FollowBone 模式的刚体位置
@@ -455,123 +497,6 @@ impl MMDPhysics {
         }
     }
 
-    /// 同步运动学刚体并传递模型移动速度（实现惯性）
-    ///
-    /// 原理：物理在模型局部空间运行，角色世界移动对物理不可见。
-    /// 第一步：同步 FollowBone 刚体到骨骼位置。
-    /// 第二步：平滑模型世界速度，转换到物理空间并施加阻力；
-    ///        尾巴额外使用二次风阻和升力，裙摆使用较低的响应系数。
-    pub fn sync_bodies_with_model_velocity(
-        &mut self,
-        bone_transforms: &[Mat4],
-        delta_time: f32,
-        model_transform: Mat4,
-    ) {
-        let config = get_config();
-        if !delta_time.is_finite() || delta_time <= 0.0 {
-            self.reset_motion_history();
-            self.sync_bodies(bone_transforms);
-            return;
-        }
-
-        let dt = delta_time.max(0.001);
-        let curr_pos = model_transform.w_axis.truncate();
-
-        if !curr_pos.is_finite() {
-            self.reset_motion_history();
-            self.sync_bodies(bone_transforms);
-            return;
-        }
-
-        // 计算模型世界速度，并使用低通滤波平滑以消除逐帧离散渲染跳步
-        let raw_velocity = if let Some(prev_pos) = self.prev_model_position {
-            (curr_pos - prev_pos) / dt
-        } else {
-            Vec3::ZERO
-        };
-        self.prev_model_position = Some(curr_pos);
-
-        let smooth_factor = (dt / 0.08).clamp(0.0, 1.0);
-        self.smoothed_model_velocity = self.smoothed_model_velocity.lerp(raw_velocity, smooth_factor);
-        let model_velocity = self.smoothed_model_velocity;
-
-        // 第一步：同步运动学刚体位置
-        if config.debug_log {
-            self.update_debug_body_targets(bone_transforms, delta_time);
-        }
-        self.sync_bodies(bone_transforms);
-
-        // 第二步：给动态刚体施加惯性力
-        if config.inertia_strength > 0.0 && model_velocity.length_squared() > 1e-6 {
-            // 钳制世界速度（20 blocks/s = 200 MMD units/s 覆盖疾跑和速度药水，超出视为传送）
-            let speed_sq = model_velocity.length_squared();
-            let max_speed = 200.0_f32;
-            let world_vel = if speed_sq > max_speed * max_speed {
-                model_velocity * (max_speed / speed_sq.sqrt())
-            } else {
-                model_velocity
-            };
-
-            // 世界速度 → 模型局部空间（R^T * v_world）
-            let rot_inv = Mat3::from_mat4(model_transform).transpose();
-            let local_vel = rot_inv * world_vel;
-
-            // 在 MMD Bullet 物理空间中：+X 为右侧，+Y 为上方，+Z 为后方（尾巴方向），-Z 为前方。
-            // 当角色向前移动 (local_vel.z > 0) 时，惯性拖拽力应将头发和尾巴向后拉拽 (+Z 方向)；
-            // 当角色向右侧移 (local_vel.x > 0) 时，惯性力向左拉拽 (-X 方向)；
-            // 当角色向上跳跃 (local_vel.y > 0) 时，惯性力向下压 (-Y 方向)。
-            let inertia_accel = Vec3::new(
-                -local_vel.x * config.inertia_strength,
-                -local_vel.y * config.inertia_strength,
-                local_vel.z * config.inertia_strength,
-            );
-
-            // 最大加速度 = max_linear_velocity * physics_fps
-            let max_accel = config.max_linear_velocity * self.fps;
-
-            // F = m * a_drag（空气阻力与平滑加速度，不除以 dt，避免帧率抖动和过度爆炸）
-            for rb_data in &self.rigid_bodies {
-                if rb_data.physics_mode == PhysicsMode::FollowBone {
-                    continue;
-                }
-                if let Some(ref body) = rb_data.bullet_body {
-                    let mass = body.get_mass();
-                    if mass > 0.0 {
-                        let is_skirt = is_skirt_body_name(&rb_data.name);
-                        let is_tail = is_tail_body_name(&rb_data.name);
-
-                        let accel = if is_tail {
-                            // 尾巴作为柔性长摆锤，在跑动时需要明显的阻尼滞后（Damped Tracking）和迎风向后扬起效果。
-                            // 线性风阻 + 迎风动压阻力 + 空气升力，使尾巴在疾跑时自然向后上方扬起（~45°），并在停步时平滑摆回。
-                            let forward_speed = local_vel.z.max(0.0);
-                            let quad_drag = 0.025 * forward_speed * forward_speed * config.inertia_strength;
-                            let lift_accel = 0.012 * forward_speed * forward_speed * config.inertia_strength;
-                            Vec3::new(
-                                -local_vel.x * (2.8 * config.inertia_strength),
-                                -local_vel.y * (1.8 * config.inertia_strength) + lift_accel,
-                                (local_vel.z * 2.8 + quad_drag) * config.inertia_strength,
-                            )
-                        } else if is_skirt {
-                            // 裙摆是环绕身体的环状结构，惯性响应系数降低为 0.15，保持裙摆优雅形态，防止跑动时向上翻起
-                            inertia_accel * 0.15
-                        } else {
-                            // 头发与饰品等常规动态部位
-                            inertia_accel
-                        };
-
-                        let mut force = accel * mass;
-                        let max_force = max_accel * mass;
-                        let force_sq = force.length_squared();
-                        if force_sq > max_force * max_force {
-                            force *= max_force / force_sq.sqrt();
-                        }
-                        body.apply_central_force(force.x, force.y, force.z);
-                    }
-                }
-            }
-        }
-    }
-
     /// 步进物理模拟（Bullet3 stepSimulation）+ 速度钳制
     ///
     /// Bullet3 没有内置全局速度限制，需在每步后手动截断超速刚体，
@@ -612,7 +537,7 @@ impl MMDPhysics {
                 let lin_sq = lin_vel.length_squared();
                 if config.debug_log {
                     // 峰值必须与同一次求解后的速度、位置和目标偏差配套记录。
-                    let position = body.get_transform().w_axis.truncate();
+                    let position = body.get_simulation_transform().w_axis.truncate();
                     self.debug_telemetry.observe_body(
                         index,
                         lin_vel,
@@ -643,6 +568,12 @@ impl MMDPhysics {
                 ) else {
                     continue;
                 };
+                // 跟骨壳之间不会驱动动态链，避免掩盖有冲量的真实接触。
+                if self.rigid_bodies[body_a].physics_mode == PhysicsMode::FollowBone
+                    && self.rigid_bodies[body_b].physics_mode == PhysicsMode::FollowBone
+                {
+                    continue;
+                }
                 self.debug_telemetry
                     .contacts
                     .observe(manifold, body_a, body_b);
@@ -794,6 +725,7 @@ impl MMDPhysics {
     pub fn reset_motion_history(&mut self) {
         self.prev_model_position = None;
         self.smoothed_model_velocity = Vec3::ZERO;
+        self.tail_forces.reset();
         // 重同步后的首帧没有连续目标历史，避免诊断把姿态切换误报为静止跳变。
         self.debug_kinematic_target_transforms.fill(None);
         self.debug_telemetry = PhysicsDebugTelemetry::default();
@@ -830,9 +762,9 @@ impl MMDPhysics {
                 let diagnostic = joint.constraint.as_ref()?.diagnostic()?;
                 let (anchor_error, anchor_a, anchor_b) =
                     super::mmd_joint::joint_anchor_position_error(
-                        body_a.get_transform(),
+                        body_a.get_simulation_transform(),
                         joint.frame_a,
-                        body_b.get_transform(),
+                        body_b.get_simulation_transform(),
                         joint.frame_b,
                     );
                 Some(PhysicsJointSnapshot {
@@ -856,6 +788,8 @@ impl MMDPhysics {
         current_bone_transforms: &[Mat4],
     ) -> &[(usize, Mat4)] {
         self.dynamic_bone_buf.clear();
+        // 从最终求解姿态预测余下不足一个固定步的时间，接触面限制朝内预测。
+        self.world.sync_render_states();
 
         for rb_data in &self.rigid_bodies {
             if rb_data.physics_mode == PhysicsMode::FollowBone {
@@ -897,431 +831,30 @@ impl MMDPhysics {
         self.pending_debug_diagnostic.take()
     }
 
-    /// 构造当前聚合窗口中的峰值刚体信息，便于定位接触导致的高频振荡。
-    fn build_debug_diagnostic(&self) -> String {
-        let mut lines = vec![format!(
-            "[Bullet3][诊断][窗口] model_signature={} cfg(collision={} joints={} kinematic_filter={} inertia={:.3} static_scale={:.3} stability_mode={}) requested={} applied={} rejected={} largest_dynamic_component={} space=bullet_left steps={} max_dt={:.5}s invalid={}",
-            self.model_topology_signature,
-            self.active_debug_config.collision_enabled,
-            self.active_debug_config.joints_enabled,
-            self.active_debug_config.kinematic_filter,
-            self.active_debug_config.inertia_strength,
-            self.active_debug_config.static_collider_scale,
-            self.collision_stability_mode.as_str(),
-            self.collision_filter_plan.pairs.len(),
-            self.collision_filter_applied_pairs,
-            self.collision_filter_rejected_pairs,
-            self.collision_filter_plan.largest_dynamic_component,
-            self.debug_telemetry.step_count,
-            self.debug_telemetry.max_delta_time,
-            self.debug_telemetry.invalid_step_count,
-        )];
-        lines.push(format!(
-            "[Bullet3][诊断][初始重叠] dynamic_dynamic={} filtered_dynamic_dynamic={} dynamic_kinematic={} filtered_tail_anchor_skirt={} preserved_dynamic_kinematic={}",
-            self.collision_filter_plan.initial_overlap_dynamic_dynamic_pairs,
-            self.collision_filter_plan.filtered_initial_overlap_pairs,
-            self.collision_filter_plan.initial_overlap_dynamic_kinematic_pairs,
-            self.collision_filter_plan.filtered_tail_anchor_skirt_pairs,
-            self.collision_filter_plan.preserved_dynamic_kinematic_pairs,
-        ));
-
-        if let (Some(linear), Some(angular)) = (
-            self.debug_telemetry
-                .peak_linear_body_index
-                .and_then(|index| self.rigid_bodies.get(index)),
-            self.debug_telemetry
-                .peak_angular_body_index
-                .and_then(|index| self.rigid_bodies.get(index)),
-        ) {
-            lines.push(format!(
-                "[Bullet3][诊断][刚体] linear='{}' mode={:?} speed={:.3} vel={} pos={} target_error={:.5} angular='{}' mode={:?} speed={:.3} vel={} pos={} target_error={:.5}",
-                linear.name,
-                linear.physics_mode,
-                self.debug_telemetry.max_linear_speed,
-                format_vec3(self.debug_telemetry.peak_linear_velocity),
-                format_vec3(self.debug_telemetry.peak_linear_position),
-                self.debug_telemetry.peak_linear_body_target_error,
-                angular.name,
-                angular.physics_mode,
-                self.debug_telemetry.max_angular_speed,
-                format_vec3(self.debug_telemetry.peak_angular_velocity),
-                format_vec3(self.debug_telemetry.peak_angular_position),
-                self.debug_telemetry.peak_angular_body_target_error,
-            ));
-        }
-
-        if let Some(body) = self
-            .debug_telemetry
-            .peak_kinematic_target_index
-            .and_then(|index| self.rigid_bodies.get(index))
-        {
-            lines.push(format!(
-                "[Bullet3][诊断][运动学目标] body='{}' target_delta={:.6} target_speed={:.3} target_angle={:.5}rad target_angular_speed={:.3}",
-                body.name,
-                self.debug_telemetry.max_kinematic_target_delta,
-                self.debug_telemetry.max_kinematic_target_speed,
-                self.debug_telemetry.max_kinematic_target_angle,
-                self.debug_telemetry.max_kinematic_target_angular_speed,
-            ));
-        } else {
-            lines.push("[Bullet3][诊断][运动学目标] none".to_owned());
-        }
-
-        lines.push(format!(
-            "[Bullet3][诊断][运动学过滤] suppressed={} frame_translation_peak={:.6} frame_rotation_peak={:.6}rad",
-            self.debug_telemetry.kinematic_suppressed_count,
-            self.debug_telemetry.max_suppressed_translation_error,
-            self.debug_telemetry.max_suppressed_rotation_error,
-        ));
-
-        if let (Some(linear), Some(angular)) = (
-            self.debug_telemetry
-                .peak_kinematic_linear_body_index
-                .and_then(|index| self.rigid_bodies.get(index)),
-            self.debug_telemetry
-                .peak_kinematic_angular_body_index
-                .and_then(|index| self.rigid_bodies.get(index)),
-        ) {
-            lines.push(format!(
-                "[Bullet3][诊断][运动学速度] linear='{}' speed={:.3} vel={} angular='{}' speed={:.3} vel={}",
-                linear.name,
-                self.debug_telemetry.max_kinematic_linear_speed,
-                format_vec3(self.debug_telemetry.peak_kinematic_linear_velocity),
-                angular.name,
-                self.debug_telemetry.max_kinematic_angular_speed,
-                format_vec3(self.debug_telemetry.peak_kinematic_angular_velocity),
-            ));
-        } else {
-            lines.push("[Bullet3][诊断][运动学速度] none".to_owned());
-        }
-
-        if let (Some(linear), Some(angular)) = (
-            self.debug_telemetry
-                .peak_skirt_kinematic_linear_body_index
-                .and_then(|index| self.rigid_bodies.get(index)),
-            self.debug_telemetry
-                .peak_skirt_kinematic_angular_body_index
-                .and_then(|index| self.rigid_bodies.get(index)),
-        ) {
-            lines.push(format!(
-                "[Bullet3][诊断][裙摆运动学速度] linear='{}' speed={:.3} vel={} angular='{}' speed={:.3} vel={}",
-                linear.name,
-                self.debug_telemetry.max_skirt_kinematic_linear_speed,
-                format_vec3(self.debug_telemetry.peak_skirt_kinematic_linear_velocity),
-                angular.name,
-                self.debug_telemetry.max_skirt_kinematic_angular_speed,
-                format_vec3(self.debug_telemetry.peak_skirt_kinematic_angular_velocity),
-            ));
-        } else {
-            lines.push(
-                "[Bullet3][诊断][裙摆运动学速度] not_applicable(no FollowBone skirt collider)"
-                    .to_owned(),
-            );
-        }
-
-        if let Some(body) = self
-            .debug_telemetry
-            .peak_body_target_index
-            .and_then(|index| self.rigid_bodies.get(index))
-        {
-            // 这里的 expected 是同骨骼当前动画姿态对应的刚体目标，不代表动态体必须贴住目标。
-            lines.push(format!(
-                "[Bullet3][诊断][刚体偏差] body='{}' mode={:?} error={:.5} actual={} expected={} delta={}",
-                body.name,
-                body.physics_mode,
-                self.debug_telemetry.max_body_target_error,
-                format_vec3(self.debug_telemetry.max_body_target_actual),
-                format_vec3(self.debug_telemetry.max_body_target_expected),
-                format_vec3(self.debug_telemetry.max_body_target_delta),
-            ));
-        } else {
-            lines.push("[Bullet3][诊断][刚体偏差] none".to_owned());
-        }
-
-        let contacts = self.debug_telemetry.contacts.top();
-        if contacts.is_empty() {
-            lines.push("[Bullet3][诊断][接触] none".to_owned());
-        }
-        for (rank, contact) in contacts.iter().enumerate() {
-            let (Some(a), Some(b)) = (
-                self.rigid_bodies.get(contact.body_a_index),
-                self.rigid_bodies.get(contact.body_b_index),
-            ) else {
-                continue;
-            };
-            lines.push(format!(
-                "[Bullet3][诊断][接触#{rank}] A='{}' mode={:?} group={} mask=0x{:04X} B='{}' mode={:?} group={} mask=0x{:04X} points={} depth={:.5} impulse_peak={:.5} impulse_sum={:.5} point_a={} point_b={} normal_on_b={}",
-                a.name, a.physics_mode, a.group, a.collision_mask,
-                b.name, b.physics_mode, b.group, b.collision_mask,
-                contact.contact_count,
-                contact.max_penetration_depth,
-                contact.max_applied_impulse,
-                contact.total_applied_impulse,
-                format_vec3(contact.point_a),
-                format_vec3(contact.point_b),
-                format_vec3(contact.normal_on_b),
-                rank = rank + 1,
-            ));
-        }
-
-        let peak = self.debug_telemetry.joint_limit_peak;
-        if peak.max_violation > 0.0 {
-            if let Some(joint) = self.joints.get(peak.joint_index) {
-                let body_a = self
-                    .rigid_bodies
-                    .get(joint.rigid_body_a_index as usize)
-                    .map_or("?", |body| body.name.as_str());
-                let body_b = self
-                    .rigid_bodies
-                    .get(joint.rigid_body_b_index as usize)
-                    .map_or("?", |body| body.name.as_str());
-                lines.push(format!(
-                    "[Bullet3][诊断][关节限位] joint='{}' bodies='{}'/'{}' max_violation={:.5} linear_pos={} linear_violation={} angular_pos={} angular_violation={}",
-                    joint.name, body_a, body_b, peak.max_violation,
-                    format_vec3(peak.linear_position),
-                    format_vec3(peak.linear_violation),
-                    format_vec3(peak.angular_position),
-                    format_vec3(peak.angular_violation),
-                ));
-            }
-        } else {
-            lines.push("[Bullet3][诊断][关节限位] none".to_owned());
-        }
-        lines.join("\n")
-    }
-
     /// 获取 C++ 侧存活对象计数（调试用）
     pub fn alloc_stats() -> bullet_ffi::BulletAllocStats {
         bullet_ffi::get_alloc_stats()
     }
 }
 
-#[derive(Clone, Copy)]
-struct ActivePhysicsDebugConfig {
-    collision_enabled: bool,
-    joints_enabled: bool,
-    kinematic_filter: bool,
-    inertia_strength: f32,
-    static_collider_scale: f32,
-}
-
-impl ActivePhysicsDebugConfig {
-    fn from_config(config: &PhysicsConfig) -> Self {
-        Self {
-            collision_enabled: config.collision_enabled,
-            joints_enabled: config.joints_enabled,
-            kinematic_filter: config.kinematic_filter,
-            inertia_strength: config.inertia_strength,
-            static_collider_scale: config.static_collider_scale,
-        }
-    }
-}
-
-#[derive(Default)]
-struct PhysicsDebugTelemetry {
-    elapsed: f32,
-    step_count: u32,
-    invalid_step_count: u32,
-    max_delta_time: f32,
-    max_linear_speed: f32,
-    max_angular_speed: f32,
-    peak_linear_body_index: Option<usize>,
-    peak_angular_body_index: Option<usize>,
-    peak_linear_velocity: Vec3,
-    peak_angular_velocity: Vec3,
-    peak_linear_position: Vec3,
-    peak_angular_position: Vec3,
-    peak_linear_body_target_error: f32,
-    peak_angular_body_target_error: f32,
-    max_body_target_error: f32,
-    max_body_target_delta: Vec3,
-    max_body_target_actual: Vec3,
-    max_body_target_expected: Vec3,
-    peak_body_target_index: Option<usize>,
-    max_kinematic_target_delta: f32,
-    max_kinematic_target_speed: f32,
-    max_kinematic_target_angle: f32,
-    max_kinematic_target_angular_speed: f32,
-    peak_kinematic_target_index: Option<usize>,
-    kinematic_suppressed_count: u32,
-    max_suppressed_translation_error: f32,
-    max_suppressed_rotation_error: f32,
-    max_kinematic_linear_speed: f32,
-    max_kinematic_angular_speed: f32,
-    peak_kinematic_linear_body_index: Option<usize>,
-    peak_kinematic_angular_body_index: Option<usize>,
-    peak_kinematic_linear_velocity: Vec3,
-    peak_kinematic_angular_velocity: Vec3,
-    max_skirt_kinematic_linear_speed: f32,
-    max_skirt_kinematic_angular_speed: f32,
-    peak_skirt_kinematic_linear_body_index: Option<usize>,
-    peak_skirt_kinematic_angular_body_index: Option<usize>,
-    peak_skirt_kinematic_linear_velocity: Vec3,
-    peak_skirt_kinematic_angular_velocity: Vec3,
-    contacts: ContactWindow,
-    joint_limit_peak: JointLimitPeak,
-}
-
-impl PhysicsDebugTelemetry {
-    fn observe_kinematic_suppression(&mut self, translation_error: f32, rotation_error: f32) {
-        self.kinematic_suppressed_count = self.kinematic_suppressed_count.saturating_add(1);
-        self.max_suppressed_translation_error =
-            self.max_suppressed_translation_error.max(translation_error);
-        self.max_suppressed_rotation_error = self.max_suppressed_rotation_error.max(rotation_error);
-    }
-
-    fn observe_kinematic_target(
-        &mut self,
-        body_index: usize,
-        previous: Mat4,
-        current: Mat4,
-        delta_time: f32,
-    ) {
-        let dt = delta_time.max(0.001);
-        let position_delta =
-            finite_length_or_infinity(current.w_axis.truncate() - previous.w_axis.truncate());
-        let previous_rotation = glam::Quat::from_mat3(&Mat3::from_mat4(previous));
-        let current_rotation = glam::Quat::from_mat3(&Mat3::from_mat4(current));
-        let angle_delta = (2.0
-            * previous_rotation
-                .dot(current_rotation)
-                .abs()
-                .clamp(0.0, 1.0)
-                .acos())
-        .min(std::f32::consts::PI);
-        let target_speed = position_delta / dt;
-        let angular_speed = angle_delta / dt;
-
-        if position_delta > self.max_kinematic_target_delta {
-            self.max_kinematic_target_delta = position_delta;
-            self.max_kinematic_target_speed = target_speed;
-            self.max_kinematic_target_angle = angle_delta;
-            self.max_kinematic_target_angular_speed = angular_speed;
-            self.peak_kinematic_target_index = Some(body_index);
-        }
-    }
-
-    fn observe_kinematic_body(&mut self, body_index: usize, linear: Vec3, angular: Vec3) {
-        let linear_speed = finite_length_or_infinity(linear);
-        let angular_speed = finite_length_or_infinity(angular);
-        // 首个样本即使恰为零也要保留，避免日志把“已观测且静止”误写成 none。
-        if self.peak_kinematic_linear_body_index.is_none() {
-            self.peak_kinematic_linear_body_index = Some(body_index);
-            self.peak_kinematic_linear_velocity = linear;
-        }
-        if self.peak_kinematic_angular_body_index.is_none() {
-            self.peak_kinematic_angular_body_index = Some(body_index);
-            self.peak_kinematic_angular_velocity = angular;
-        }
-        if linear_speed > self.max_kinematic_linear_speed {
-            self.max_kinematic_linear_speed = linear_speed;
-            self.peak_kinematic_linear_body_index = Some(body_index);
-            self.peak_kinematic_linear_velocity = linear;
-        }
-        if angular_speed > self.max_kinematic_angular_speed {
-            self.max_kinematic_angular_speed = angular_speed;
-            self.peak_kinematic_angular_body_index = Some(body_index);
-            self.peak_kinematic_angular_velocity = angular;
-        }
-    }
-
-    fn observe_skirt_kinematic_body(&mut self, body_index: usize, linear: Vec3, angular: Vec3) {
-        let linear_speed = finite_length_or_infinity(linear);
-        let angular_speed = finite_length_or_infinity(angular);
-        if self.peak_skirt_kinematic_linear_body_index.is_none() {
-            self.peak_skirt_kinematic_linear_body_index = Some(body_index);
-            self.peak_skirt_kinematic_linear_velocity = linear;
-        }
-        if self.peak_skirt_kinematic_angular_body_index.is_none() {
-            self.peak_skirt_kinematic_angular_body_index = Some(body_index);
-            self.peak_skirt_kinematic_angular_velocity = angular;
-        }
-        if linear_speed > self.max_skirt_kinematic_linear_speed {
-            self.max_skirt_kinematic_linear_speed = linear_speed;
-            self.peak_skirt_kinematic_linear_body_index = Some(body_index);
-            self.peak_skirt_kinematic_linear_velocity = linear;
-        }
-        if angular_speed > self.max_skirt_kinematic_angular_speed {
-            self.max_skirt_kinematic_angular_speed = angular_speed;
-            self.peak_skirt_kinematic_angular_body_index = Some(body_index);
-            self.peak_skirt_kinematic_angular_velocity = angular;
-        }
-    }
-
-    fn observe_body(
-        &mut self,
-        body_index: usize,
-        linear: Vec3,
-        angular: Vec3,
-        actual_position: Vec3,
-        target_position: Option<Vec3>,
-    ) {
-        let linear_speed = finite_length_or_infinity(linear);
-        let angular_speed = finite_length_or_infinity(angular);
-        let target_error = target_position
-            .map(|target| finite_length_or_infinity(actual_position - target))
-            .unwrap_or(0.0);
-        if linear_speed > self.max_linear_speed {
-            self.max_linear_speed = linear_speed;
-            self.peak_linear_body_index = Some(body_index);
-            self.peak_linear_velocity = linear;
-            self.peak_linear_position = actual_position;
-            self.peak_linear_body_target_error = target_error;
-        }
-        if angular_speed > self.max_angular_speed {
-            self.max_angular_speed = angular_speed;
-            self.peak_angular_body_index = Some(body_index);
-            self.peak_angular_velocity = angular;
-            self.peak_angular_position = actual_position;
-            self.peak_angular_body_target_error = target_error;
-        }
-        if let Some(target) = target_position {
-            if target_error > self.max_body_target_error {
-                self.max_body_target_error = target_error;
-                self.max_body_target_delta = actual_position - target;
-                self.max_body_target_actual = actual_position;
-                self.max_body_target_expected = target;
-                self.peak_body_target_index = Some(body_index);
-            }
-        }
-    }
-
-    fn reset_window(&mut self) {
-        *self = Self::default();
-    }
-}
-
-fn finite_length_or_infinity(value: Vec3) -> f32 {
-    let length = value.length();
-    if length.is_finite() {
-        length
-    } else {
-        f32::INFINITY
-    }
-}
-
-fn format_vec3(value: Vec3) -> String {
-    format!("({:.4},{:.4},{:.4})", value.x, value.y, value.z)
-}
-
 fn is_skirt_body_name(name: &str) -> bool {
     const SKIRT_PARTS: &[&str] = &[
-        "裙", "スカート", "skirt", "petticoat", "下装", "下衣", "裾", "摆", "衣摆", "后摆", "下摆", "cloak", "cape",
+        "裙",
+        "スカート",
+        "skirt",
+        "petticoat",
+        "下装",
+        "下衣",
+        "裾",
+        "摆",
+        "衣摆",
+        "后摆",
+        "下摆",
+        "cloak",
+        "cape",
     ];
     let lower = name.to_ascii_lowercase();
     SKIRT_PARTS.iter().any(|p| lower.contains(p))
-}
-
-fn is_tail_body_name(name: &str) -> bool {
-    const NOT_TAIL_NAMES: &[&str] = &[
-        "馬尾", "马尾", "ツインテール", "ポニーテール", "twintail", "ponytail", "tail_hair", "tailhair",
-    ];
-    const TAIL_NAMES: &[&str] = &["tail", "尻尾", "しっぽ", "尾巴", "尾"];
-    let lower = name.to_ascii_lowercase();
-    if NOT_TAIL_NAMES.iter().any(|not_tail| lower.contains(not_tail)) {
-        return false;
-    }
-    TAIL_NAMES.iter().any(|part| lower.contains(part))
 }
 
 /// 根据实验性总开关选择 Bullet 的允许碰撞掩码。

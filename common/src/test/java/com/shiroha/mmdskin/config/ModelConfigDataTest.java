@@ -2,13 +2,19 @@
 package com.shiroha.mmdskin.config;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModelConfigDataTest {
 
@@ -42,27 +48,40 @@ class ModelConfigDataTest {
     }
 
     @Test
-    void shouldLoadLegacyHeldBlockScaleField() {
-        File tempFile = new File("build/tmp/test-legacy-model-config.json");
-        tempFile.getParentFile().mkdirs();
-        ModelConfigData legacy = new ModelConfigData();
-        legacy.heldItemScale = 1.0f;
-        legacy.save(tempFile);
-
+    void shouldLoadLegacyHeldBlockScaleFieldAndEnableMissingTailOptions(@TempDir Path tempDir) throws IOException {
+        File tempFile = tempDir.resolve("legacy-config.json").toFile();
         String legacyJson = """
                 {
                   "firstPersonHeldBlockScale": 0.6
                 }
                 """;
-        tempFile.delete();
-        try {
-            java.nio.file.Files.writeString(tempFile.toPath(), legacyJson, java.nio.charset.StandardCharsets.UTF_8);
-            ModelConfigData loaded = ModelConfigData.load(tempFile);
-            assertEquals(0.6f, loaded.heldItemScale);
-        } catch (java.io.IOException e) {
-            throw new RuntimeException(e);
-        } finally {
-            tempFile.delete();
-        }
+        Files.writeString(tempFile.toPath(), legacyJson, java.nio.charset.StandardCharsets.UTF_8);
+        ModelConfigData loaded = ModelConfigData.load(tempFile);
+        assertEquals(0.6f, loaded.heldItemScale);
+        assertTrue(loaded.tailIdleLiftEnabled);
+        assertTrue(loaded.tailMovementBoostEnabled);
+    }
+
+    @Test
+    void tailPhysicsOptionsDefaultOnAndRoundTripThroughCopyAndJson(@TempDir Path tempDir) {
+        ModelConfigData defaults = new ModelConfigData();
+        assertTrue(defaults.tailIdleLiftEnabled);
+        assertTrue(defaults.tailMovementBoostEnabled);
+
+        defaults.tailIdleLiftEnabled = false;
+        ModelConfigData copied = defaults.copy();
+        assertFalse(copied.tailIdleLiftEnabled);
+        assertTrue(copied.tailMovementBoostEnabled);
+
+        File tempFile = tempDir.resolve("tail-config.json").toFile();
+        copied.save(tempFile);
+        ModelConfigData loaded = ModelConfigData.load(tempFile);
+        assertFalse(loaded.tailIdleLiftEnabled);
+        assertTrue(loaded.tailMovementBoostEnabled);
+
+        File missingFile = tempDir.resolve("missing-config.json").toFile();
+        ModelConfigData missingConfig = ModelConfigData.load(missingFile);
+        assertTrue(missingConfig.tailIdleLiftEnabled);
+        assertTrue(missingConfig.tailMovementBoostEnabled);
     }
 }

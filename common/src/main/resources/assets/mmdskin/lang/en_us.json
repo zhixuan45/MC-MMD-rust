@@ -152,6 +152,9 @@
   "gui.mmdskin.model_settings.held_item_scale": "Item Scale: %s",
   "gui.mmdskin.model_settings.held_block_display": "Held Block",
   "gui.mmdskin.model_settings.held_block_scale": "Block Scale: %s",
+  "gui.mmdskin.model_settings.tail_physics": "Tail Physics",
+  "gui.mmdskin.model_settings.tail_idle_lift": "Idle Lift",
+  "gui.mmdskin.model_settings.tail_movement_boost": "Movement ×1.5",
   "gui.mmdskin.model_settings.quick_bind": "Quick Bind",
   "gui.mmdskin.model_settings.slot": "Slot %s",
   "key.mmdskin.morph_wheel": "Expression Wheel",
@@ -381,5 +384,16 @@
   "gui.mmdskin.model_anim.slot.sneak": "Sneak",
   "gui.mmdskin.model_anim.slot.onHorse": "On Horse",
   "gui.mmdskin.model_anim.slot.crawl": "Crawl",
-  "gui.mmdskin.model_anim.slot.lieDown": "Lie Down"
+  "gui.mmdskin.model_anim.slot.lieDown": "Lie Down",
+  "gui.mmdskin.config.maid_manager": "Maid Manager",
+  "gui.mmdskin.maid_manager.last_seen": "Seen this session",
+  "gui.mmdskin.maid_manager.title": "Maid Manager",
+  "gui.mmdskin.maid_manager.loaded": "Loaded",
+  "gui.mmdskin.maid.save_failed": "Could not save the maid model preference",
+  "gui.mmdskin.maid_model_selector.search": "Search models...",
+  "gui.mmdskin.maid.current": "Current",
+  "gui.mmdskin.maid_model_selector.no_results": "No matching models",
+  "gui.mmdskin.maid_manager.scope": "Only maids verified as yours are listed.",
+  "gui.mmdskin.maid.default_appearance": "Restore default maid appearance",
+  "gui.mmdskin.maid_manager.empty": "No verified maids in this session"
 }

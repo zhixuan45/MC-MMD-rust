@@ -74,6 +74,28 @@ final class TextureGpuLoader {
         }
     }
 
+    static TextureRepository.Texture createColorTexture(float[] color) {
+        ByteBuffer pixel = MemoryUtil.memAlloc(4);
+        int texId = 0;
+        try {
+            texId = GL46C.glGenTextures();
+            for (int i = 0; i < 4; i++) {
+                float value = color != null && i < color.length ? color[i] : 1.0f;
+                pixel.put((byte) Math.round(Math.max(0.0f, Math.min(1.0f, value)) * 255.0f));
+            }
+            pixel.flip();
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
+            uploadPixels(1, 1, true, pixel);
+            configureTexture();
+            return buildTexture(texId, 1, 1, true);
+        } catch (RuntimeException | Error e) {
+            deleteGlTexture(texId);
+            throw e;
+        } finally {
+            MemoryUtil.memFree(pixel);
+        }
+    }
+
     static void deleteGlTexture(TextureRepository.Texture tex) {
         if (tex != null) {
             deleteGlTexture(tex.tex);

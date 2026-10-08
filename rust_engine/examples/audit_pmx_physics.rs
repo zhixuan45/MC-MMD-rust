@@ -128,8 +128,9 @@ fn weight_for_bone(weight: &VertexWeight, target: i32) -> f32 {
 }
 
 fn collision_enabled(a: &RigidBody, b: &RigidBody) -> bool {
-    ((!a.un_collision_group_flag) & (1u16 << b.group.min(15))) != 0
-        && ((!b.un_collision_group_flag) & (1u16 << a.group.min(15))) != 0
+    // PMX 原始位为允许碰撞；编辑器“不冲突”勾选显示反面。
+    (a.un_collision_group_flag & (1u16 << b.group.min(15))) != 0
+        && (b.un_collision_group_flag & (1u16 << a.group.min(15))) != 0
 }
 
 /// 使用与运行时一致的形状尺寸和欧拉顺序计算绑定姿态保守 AABB。
@@ -196,11 +197,23 @@ fn main() -> ExitCode {
         min_pos = min_pos.min(v.position);
         max_pos = max_pos.max(v.position);
     }
-    println!("顶点包围盒: min={:?}, max={:?}, 大小={:?}, 高度={:.3}", min_pos, max_pos, max_pos - min_pos, max_pos.y - min_pos.y);
+    println!(
+        "顶点包围盒: min={:?}, max={:?}, 大小={:?}, 高度={:.3}",
+        min_pos,
+        max_pos,
+        max_pos - min_pos,
+        max_pos.y - min_pos.y
+    );
     println!("骨骼总数: {}", model.bone_manager.bone_count());
     for i in 0..model.bone_manager.bone_count() {
         if let Some(bone) = model.bone_manager.get_bone(i) {
-            if i < 20 || bone.name.contains("頭") || bone.name.contains("head") || bone.name.contains("目") || bone.name.contains("センター") || bone.name.contains("全ての親") {
+            if i < 20
+                || bone.name.contains("頭")
+                || bone.name.contains("head")
+                || bone.name.contains("目")
+                || bone.name.contains("センター")
+                || bone.name.contains("全ての親")
+            {
                 println!("  骨骼 #{i}: {} pos={:?}", bone.name, bone.initial_position);
             }
         }
@@ -273,7 +286,7 @@ fn main() -> ExitCode {
             .map_or("<无绑定骨骼>", |bone| bone.name.as_str());
         println!("  bone_index={} bone={}", body.bone_index, bone_name);
         println!(
-            "  group={} excluded=0x{:04X}",
+            "  group={} allowed_mask=0x{:04X}",
             body.group, body.un_collision_group_flag
         );
         println!("  shape={:?} size={:?}", body.shape, body.size);
@@ -328,8 +341,6 @@ fn main() -> ExitCode {
             joint.position_spring, joint.rotation_spring
         );
     }
-
-
 
     println!("\n衣物动态链根关节:");
     for (index, joint) in model.joints.iter().enumerate() {
@@ -427,11 +438,11 @@ fn main() -> ExitCode {
 
             // Bullet 只有在双方掩码都允许对方组时才会生成接触。
             let static_allows_dynamic =
-                (!body.un_collision_group_flag & (1u16 << dynamic_group.min(15))) != 0;
+                (body.un_collision_group_flag & (1u16 << dynamic_group.min(15))) != 0;
             let dynamic_allows_static = model.rigid_bodies.iter().any(|dynamic| {
                 dynamic.mode != mmd::pmx::rigid_body::RigidBodyMode::Static
                     && dynamic.group == dynamic_group
-                    && (!dynamic.un_collision_group_flag & (1u16 << body.group.min(15))) != 0
+                    && (dynamic.un_collision_group_flag & (1u16 << body.group.min(15))) != 0
             });
             if static_allows_dynamic && dynamic_allows_static {
                 let bone_name = usize::try_from(body.bone_index)

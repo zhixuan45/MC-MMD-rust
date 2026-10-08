@@ -5,6 +5,9 @@ use std::collections::{HashMap, HashSet};
 
 use super::{BoneLink, IkSolver};
 
+#[path = "physics_writeback.rs"]
+mod physics_writeback;
+
 /// 骨骼集合 - 类似 nphysics Multibody
 ///
 /// 设计原则（参考 nphysics）：
@@ -29,6 +32,9 @@ pub struct BoneSet {
 
     /// 物理驱动的骨骼索引集合
     physics_bone_indices: HashSet<usize>,
+    /// 按真实父子关系回写物理，独立于 PMX 的变形层级。
+    physics_writeback_order: Vec<usize>,
+    physics_transform_buf: Vec<Option<Mat4>>,
 
     /// 子骨骼缓存（parent_index -> children_indices）
     children_cache: Vec<Vec<usize>>,
@@ -50,6 +56,8 @@ impl BoneSet {
             ik_solvers: Vec::new(),
             skinning_matrices: Vec::new(),
             physics_bone_indices: HashSet::new(),
+            physics_writeback_order: Vec::new(),
+            physics_transform_buf: Vec::new(),
             children_cache: Vec::new(),
             needs_hierarchy_update: true,
             is_vrm: false,
@@ -129,6 +137,7 @@ impl BoneSet {
 
         // 3. 构建子骨骼缓存
         self.build_children_cache();
+        self.build_physics_writeback_order();
 
         // 4. 创建 IK 求解器
         self.ik_solvers.clear();
@@ -711,6 +720,8 @@ impl BoneSet {
         total += (self.ik_solvers.capacity() * size_of::<IkSolver>()) as u64;
         total += (self.skinning_matrices.capacity() * size_of::<Mat4>()) as u64;
         total += (self.physics_bone_indices.capacity() * size_of::<usize>()) as u64;
+        total += (self.physics_writeback_order.capacity() * size_of::<usize>()) as u64;
+        total += (self.physics_transform_buf.capacity() * size_of::<Option<Mat4>>()) as u64;
         // children_cache: Vec<Vec<usize>>
         for children in &self.children_cache {
             total += (children.capacity() * size_of::<usize>()) as u64;

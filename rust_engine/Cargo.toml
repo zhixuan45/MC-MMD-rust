@@ -78,6 +78,10 @@ path = "src/bin/viewer/main.rs"
 required-features = ["viewer"]
 
 [[bin]]
+name = "vmd_smooth"
+path = "src/bin/vmd_smooth.rs"
+
+[[bin]]
 name = "vr-pmx-demo"
 path = "src/bin/vrdemo-old/main.rs"
 required-features = ["vr_demo"]

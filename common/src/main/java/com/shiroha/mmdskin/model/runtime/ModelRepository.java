@@ -154,6 +154,7 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
     }
 
     private ManagedModel createManagedModel(ModelRequestKey requestKey, ModelInstance modelInstance) {
+        ModelConfigData config = ModelConfigManager.getConfig(requestKey.modelName());
         Properties properties = loadProperties(requestKey.modelName());
         ManagedModel managedModel = new ManagedModel(
                 requestKey,
@@ -161,10 +162,21 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
                 modelInstance,
                 properties,
                 ModelRenderProperties.from(properties));
-        modelInstance.resetPhysics();
+        initializePhysicsOptions(modelInstance, config);
         modelInstance.changeAnim(managedModel.animationLibrary().animation("idle"), 0);
-        applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName());
+        applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName(), config);
         return managedModel;
+    }
+
+    void initializePhysicsOptions(ModelInstance modelInstance, ModelConfigData config) {
+        modelInstance.resetPhysics();
+        // 新实例按已保存配置初始化尾巴物理。
+        try {
+            runtimeAccessPort.setTailPhysicsOptions(
+                    modelInstance.getModelHandle(), config.tailIdleLiftEnabled, config.tailMovementBoostEnabled);
+        } catch (Exception e) {
+            logger.warn("Failed to apply tail physics options for {}", modelInstance.getModelName(), e);
+        }
     }
 
     private Properties loadProperties(String modelName) {
@@ -173,9 +185,8 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
         return properties;
     }
 
-    private void applyMaterialVisibility(long modelHandle, String modelName) {
+    private void applyMaterialVisibility(long modelHandle, String modelName, ModelConfigData config) {
         try {
-            ModelConfigData config = ModelConfigManager.getConfig(modelName);
             if (config.hiddenMaterials.isEmpty()) {
                 return;
             }

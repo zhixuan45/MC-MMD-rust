@@ -32,6 +32,10 @@ public class ModelConfigData {
 
     public boolean eyeTrackingEnabled = true;
 
+    public boolean tailIdleLiftEnabled = true;
+
+    public boolean tailMovementBoostEnabled = true;
+
     public float eyeMaxAngle = DEFAULT_EYE_MAX_ANGLE;
 
     public float modelScale = DEFAULT_MODEL_SCALE;
@@ -61,6 +65,8 @@ public class ModelConfigData {
     public ModelConfigData copy() {
         ModelConfigData c = new ModelConfigData();
         c.eyeTrackingEnabled = this.eyeTrackingEnabled;
+        c.tailIdleLiftEnabled = this.tailIdleLiftEnabled;
+        c.tailMovementBoostEnabled = this.tailMovementBoostEnabled;
         c.eyeMaxAngle = this.eyeMaxAngle;
         c.modelScale = this.modelScale;
         c.heldItemScale = this.heldItemScale;

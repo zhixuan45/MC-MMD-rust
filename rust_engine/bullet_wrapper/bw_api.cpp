@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <vector>
 
 /* 
  * Bullet3 classes override operator new (btAlignedAlloc), 
@@ -27,6 +28,7 @@
 // LinearMath
 #include "LinearMath/btDefaultMotionState.h"
 #include "LinearMath/btAlignedAllocator.h"
+#include "LinearMath/btTransformUtil.h"
 
 // Collision
 #include "BulletCollision/BroadphaseCollision/btDbvtBroadphase.h"
@@ -109,12 +111,188 @@ struct KinematicDynamicFilter : public btOverlapFilterCallback {
     }
 };
 
+class BW_KinematicStepWorld final : public btDiscreteDynamicsWorld {
+    struct KinematicTrack {
+        btRigidBody* body;
+        btTransform start;
+        btTransform target;
+    };
+
+    std::vector<KinematicTrack> kinematicTracks;
+    btScalar batchDuration = 0;
+    btScalar elapsedDuration = 0;
+
+    static void constrainRenderPrediction(
+        btRigidBody* body, const btManifoldPoint& point, const btVector3& normal, bool isBodyA) {
+        if (!body || body->isStaticOrKinematicObject() || !body->getMotionState()) {
+            return;
+        }
+
+        const btTransform& solved = body->getCenterOfMassTransform();
+        btTransform predicted;
+        body->getMotionState()->getWorldTransform(predicted);
+        const btVector3 worldPoint = isBodyA
+            ? point.getPositionWorldOnA()
+            : point.getPositionWorldOnB();
+        const btVector3 localPoint = solved.invXform(worldPoint);
+        const btVector3 rotationDelta =
+            predicted.getBasis() * localPoint - solved.getBasis() * localPoint;
+        if (rotationDelta.dot(normal) < -SIMD_EPSILON) {
+            predicted.setBasis(solved.getBasis());
+        }
+
+        btVector3 translation = predicted.getOrigin() - solved.getOrigin();
+        const btScalar inward = translation.dot(normal);
+        if (inward < 0.0f) {
+            translation -= normal * inward;
+            predicted.setOrigin(solved.getOrigin() + translation);
+        }
+        body->getMotionState()->setWorldTransform(predicted);
+    }
+
+    static bool predictionMovesIntoContact(
+        btRigidBody* body, const btManifoldPoint& point, const btVector3& normal, bool isBodyA) {
+        if (!body || body->isStaticOrKinematicObject() || !body->getMotionState()) {
+            return false;
+        }
+        const btTransform& solved = body->getCenterOfMassTransform();
+        btTransform predicted;
+        body->getMotionState()->getWorldTransform(predicted);
+        const btVector3 worldPoint = isBodyA
+            ? point.getPositionWorldOnA()
+            : point.getPositionWorldOnB();
+        const btVector3 localPoint = solved.invXform(worldPoint);
+        const btVector3 pointDelta = predicted * localPoint - worldPoint;
+        return pointDelta.dot(normal) < -SIMD_EPSILON;
+    }
+
+public:
+    using btDiscreteDynamicsWorld::btDiscreteDynamicsWorld;
+
+    btScalar renderTimeOffset() const {
+        if (m_fixedTimeStep <= 0 || m_localTime < 0 || m_localTime >= m_fixedTimeStep) {
+            return 0;
+        }
+        return m_localTime;
+    }
+
+    void syncRenderStates() {
+        const btScalar offset = renderTimeOffset();
+        for (int i = 0; i < m_nonStaticRigidBodies.size(); ++i) {
+            btRigidBody* body = m_nonStaticRigidBodies[i];
+            if (body->isStaticOrKinematicObject() || !body->getMotionState()) {
+                continue;
+            }
+
+            const btTransform& solved = body->getCenterOfMassTransform();
+            if (offset <= SIMD_EPSILON) {
+                body->getMotionState()->setWorldTransform(solved);
+                continue;
+            }
+
+            btTransform predicted;
+            btTransformUtil::integrateTransform(
+                solved, body->getLinearVelocity(), body->getAngularVelocity(), offset, predicted);
+            body->getMotionState()->setWorldTransform(predicted);
+        }
+
+        // 接触约束只扫流形，避免按刚体重复遍历全世界。
+        for (int pass = 0; pass < 4; ++pass) {
+            for (int i = 0; i < getDispatcher()->getNumManifolds(); ++i) {
+                const btPersistentManifold* manifold = getDispatcher()->getManifoldByIndexInternal(i);
+                btRigidBody* bodyA = btRigidBody::upcast(
+                    const_cast<btCollisionObject*>(manifold->getBody0()));
+                btRigidBody* bodyB = btRigidBody::upcast(
+                    const_cast<btCollisionObject*>(manifold->getBody1()));
+                for (int j = 0; j < manifold->getNumContacts(); ++j) {
+                    const btManifoldPoint& point = manifold->getContactPoint(j);
+                    if (point.getDistance() > 0.0f) {
+                        continue;
+                    }
+                    constrainRenderPrediction(bodyA, point, point.m_normalWorldOnB, true);
+                    constrainRenderPrediction(bodyB, point, -point.m_normalWorldOnB, false);
+                }
+            }
+        }
+
+        // 斜向法线反复投影仍冲突时，退回真实解算姿态。
+        for (int i = 0; i < getDispatcher()->getNumManifolds(); ++i) {
+            const btPersistentManifold* manifold = getDispatcher()->getManifoldByIndexInternal(i);
+            btRigidBody* bodyA = btRigidBody::upcast(
+                const_cast<btCollisionObject*>(manifold->getBody0()));
+            btRigidBody* bodyB = btRigidBody::upcast(
+                const_cast<btCollisionObject*>(manifold->getBody1()));
+            for (int j = 0; j < manifold->getNumContacts(); ++j) {
+                const btManifoldPoint& point = manifold->getContactPoint(j);
+                if (point.getDistance() > 0.0f) {
+                    continue;
+                }
+                if (predictionMovesIntoContact(bodyA, point, point.m_normalWorldOnB, true)) {
+                    bodyA->getMotionState()->setWorldTransform(bodyA->getCenterOfMassTransform());
+                }
+                if (predictionMovesIntoContact(bodyB, point, -point.m_normalWorldOnB, false)) {
+                    bodyB->getMotionState()->setWorldTransform(bodyB->getCenterOfMassTransform());
+                }
+            }
+        }
+    }
+
+protected:
+    void saveKinematicState(btScalar timeStep) override {
+        kinematicTracks.clear();
+        batchDuration = timeStep;
+        elapsedDuration = 0;
+
+        for (int i = 0; i < m_collisionObjects.size(); ++i) {
+            btRigidBody* body = btRigidBody::upcast(m_collisionObjects[i]);
+            if (!body || body->getActivationState() == ISLAND_SLEEPING || !body->isKinematicObject()) {
+                continue;
+            }
+
+            btMotionState* motionState = body->getMotionState();
+            if (!motionState) {
+                // 无 MotionState 时保留 Bullet 的原始端点速度计算。
+                body->saveKinematicState(timeStep);
+                continue;
+            }
+
+            btTransform target;
+            motionState->getWorldTransform(target);
+            kinematicTracks.push_back({body, body->getWorldTransform(), target});
+        }
+    }
+
+    void internalSingleStepSimulation(btScalar timeStep) override {
+        if (batchDuration > btScalar(0) && !kinematicTracks.empty()) {
+            elapsedDuration = btMin(elapsedDuration + timeStep, batchDuration);
+            const btScalar fraction = elapsedDuration / batchDuration;
+            for (const KinematicTrack& track : kinematicTracks) {
+                btMotionState* motionState = track.body->getMotionState();
+                if (!motionState) {
+                    continue;
+                }
+
+                btTransform pose;
+                pose.setOrigin(track.start.getOrigin().lerp(track.target.getOrigin(), fraction));
+                pose.setRotation(track.start.getRotation().slerp(track.target.getRotation(), fraction));
+                motionState->setWorldTransform(pose);
+                track.body->saveKinematicState(timeStep);
+            }
+        }
+
+        btDiscreteDynamicsWorld::internalSingleStepSimulation(timeStep);
+        if (elapsedDuration >= batchDuration) {
+            kinematicTracks.clear();
+        }
+    }
+};
+
 struct BW_World {
     btDefaultCollisionConfiguration* config;
     btCollisionDispatcher* dispatcher;
     btDbvtBroadphase* broadphase;
     btSequentialImpulseConstraintSolver* solver;
-    btDiscreteDynamicsWorld* world;
+    BW_KinematicStepWorld* world;
     KinematicDynamicFilter* kinematicFilter;
 };
 
@@ -125,7 +303,7 @@ BW_World* bw_world_create(float gravity_x, float gravity_y, float gravity_z) {
     w->dispatcher = new btCollisionDispatcher(w->config);
     w->broadphase = new btDbvtBroadphase();
     w->solver     = new btSequentialImpulseConstraintSolver();
-    w->world      = new btDiscreteDynamicsWorld(
+    w->world      = new BW_KinematicStepWorld(
         w->dispatcher, w->broadphase, w->solver, w->config);
     w->world->setGravity(btVector3(gravity_x, gravity_y, gravity_z));
     w->kinematicFilter = nullptr;
@@ -149,6 +327,14 @@ void bw_world_destroy(BW_World* w) {
 void bw_world_step(BW_World* w, float dt, int max_substeps, float fixed_dt) {
     if (!w) return;
     w->world->stepSimulation(dt, max_substeps, fixed_dt);
+}
+
+float bw_world_get_render_time_offset(BW_World* w) {
+    return w ? (float)w->world->renderTimeOffset() : 0.0f;
+}
+
+void bw_world_sync_render_states(BW_World* w) {
+    if (w) w->world->syncRenderStates();
 }
 
 void bw_world_detect_collisions(BW_World* w) {
@@ -344,12 +530,37 @@ void bw_rigid_body_destroy(BW_RigidBody* rb) {
     g_alloc_rigid_bodies.fetch_sub(1, std::memory_order_relaxed);
 }
 
+// 仅供 Rust 回归测试覆盖无 MotionState 分支，不放入公共头文件。
+extern "C" void bw_test_only_clear_motion_state(BW_RigidBody* rb) {
+    if (!rb) return;
+    btRigidBody* body = (btRigidBody*)rb;
+    btMotionState* motionState = body->getMotionState();
+    if (!motionState) return;
+    body->setMotionState(nullptr);
+    delete motionState;
+    g_alloc_motion_states.fetch_sub(1, std::memory_order_relaxed);
+}
+
 void bw_rigid_body_get_transform(BW_RigidBody* rb, float* matrix4x4) {
     if (!rb || !matrix4x4) return;
     btRigidBody* body = (btRigidBody*)rb;
     btTransform t;
     body->getMotionState()->getWorldTransform(t);
     bt_to_mat4(t, matrix4x4);
+}
+
+void bw_world_refresh_body_collision_filter(BW_World* w, BW_RigidBody* rb) {
+    if (!w || !rb) return;
+    btBroadphaseProxy* proxy = ((btRigidBody*)rb)->getBroadphaseHandle();
+    if (!proxy) return;
+    // 禁碰标志不会主动释放旧接触流形；旧流形仍会被求解器遍历。
+    w->broadphase->getOverlappingPairCache()->cleanProxyFromPairs(proxy, w->dispatcher);
+}
+
+void bw_rigid_body_get_simulation_transform(BW_RigidBody* rb, float* matrix4x4) {
+    if (!rb || !matrix4x4) return;
+    // 接触与约束使用求解姿态；MotionState 是渲染插值姿态。
+    bt_to_mat4(((btRigidBody*)rb)->getCenterOfMassTransform(), matrix4x4);
 }
 
 void bw_rigid_body_set_transform(BW_RigidBody* rb, const float* matrix4x4) {
@@ -491,6 +702,16 @@ void bw_rigid_body_apply_central_force(BW_RigidBody* rb, float x, float y, float
     if (!rb) return;
     btRigidBody* body = (btRigidBody*)rb;
     body->applyCentralForce(btVector3(x, y, z));
+}
+
+void bw_rigid_body_apply_force_at_point(
+    BW_RigidBody* rb,
+    float fx, float fy, float fz,
+    float rel_x, float rel_y, float rel_z) {
+    if (!rb) return;
+    btRigidBody* body = (btRigidBody*)rb;
+    // Bullet 的 applyForce 同时保留线性力与 r×F 力矩；相对位置必须是世界坐标。
+    body->applyForce(btVector3(fx, fy, fz), btVector3(rel_x, rel_y, rel_z));
 }
 
 void bw_rigid_body_set_ignore_collision_check(

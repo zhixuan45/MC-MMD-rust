@@ -3,6 +3,8 @@ package com.shiroha.mmdskin.forge.register;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.shiroha.mmdskin.MmdSkin;
 import com.shiroha.mmdskin.forge.config.ModConfigScreen;
+import com.shiroha.mmdskin.forge.maid.MaidContainerGuiHandler;
+import com.shiroha.mmdskin.compat.maid.ui.PlayerMaidManagerScreen;
 import com.shiroha.mmdskin.render.entity.EntityRenderFactory;
 import com.shiroha.mmdskin.ui.wheel.ConfigWheelScreen;
 import com.shiroha.mmdskin.util.KeyMappingUtil;
@@ -23,6 +25,7 @@ import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.ModList;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.glfw.GLFW;
@@ -72,6 +75,10 @@ public class MmdSkinRegisterClient {
         KeyMappingUtil.setBoundKeyGetter(k -> k.getKey());
         MinecraftForge.EVENT_BUS.register(ForgeEventHandler.class);
         ConfigWheelScreen.setModSettingsScreenFactory(() -> ModConfigScreen.create(null));
+        if (ModList.get().isLoaded("touhou_little_maid")) {
+            ConfigWheelScreen.setMaidManagerScreenFactory(() -> new PlayerMaidManagerScreen(null));
+            MaidContainerGuiHandler.registerIfAvailable();
+        }
         NETWORK_BINDINGS.register();
     }
 

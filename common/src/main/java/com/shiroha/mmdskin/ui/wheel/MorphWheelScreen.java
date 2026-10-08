@@ -78,19 +78,20 @@ public class MorphWheelScreen extends AbstractWheelScreen {
             renderEmptyState(guiGraphics, Component.translatable("gui.mmdskin.morph_wheel.no_morphs"));
         }
 
-        String centerText = Component.translatable("gui.mmdskin.morph_wheel.select").getString();
+        Component centerText = Component.translatable("gui.mmdskin.morph_wheel.select");
         if (selectedSlot >= 0 && selectedSlot < morphSlots.size()) {
-            centerText = morphSlots.get(selectedSlot).displayName;
+            centerText = Component.literal(morphSlots.get(selectedSlot).displayName);
         }
         renderCenterBubble(guiGraphics, centerText, style.lineColor());
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderWheelTooltip(guiGraphics, mouseX, mouseY);
     }
 
     private List<WheelEntry> buildEntries() {
         List<WheelEntry> entries = new ArrayList<>(morphSlots.size());
         for (MorphSlot slot : morphSlots) {
-            entries.add(new WheelEntry(slot.displayName, null));
+            entries.add(new WheelEntry(Component.literal(slot.displayName), null));
         }
         return entries;
     }

@@ -54,6 +54,7 @@ public class OpenGlModelInstance extends BaseModelInstance {
     int I_positionLocation;
     int I_normalLocation;
     int I_uv0Location;
+    int I_uv1Location;
     int I_uv2Location;
     int I_colorLocation;
 
@@ -199,6 +200,7 @@ public class OpenGlModelInstance extends BaseModelInstance {
         I_positionLocation = GlStateManager._glGetAttribLocation(shaderProgram, "iris_Position");
         I_normalLocation = GlStateManager._glGetAttribLocation(shaderProgram, "iris_Normal");
         I_uv0Location = GlStateManager._glGetAttribLocation(shaderProgram, "iris_UV0");
+        I_uv1Location = GlStateManager._glGetAttribLocation(shaderProgram, "iris_UV1");
         I_uv2Location = GlStateManager._glGetAttribLocation(shaderProgram, "iris_UV2");
         I_colorLocation = GlStateManager._glGetAttribLocation(shaderProgram, "iris_Color");
     }

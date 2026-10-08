@@ -94,8 +94,12 @@ typedef struct {
 BW_World* bw_world_create(float gravity_x, float gravity_y, float gravity_z);
 void bw_world_destroy(BW_World* world);
 void bw_world_step(BW_World* world, float dt, int max_substeps, float fixed_dt);
+float bw_world_get_render_time_offset(BW_World* world);
+void bw_world_sync_render_states(BW_World* world);
 /* 仅更新宽相/窄相接触，不推进时间、不执行约束或接触求解。 */
 void bw_world_detect_collisions(BW_World* world);
+/* 更改碰撞过滤后释放旧窄相算法与流形，避免继续求解旧接触。 */
+void bw_world_refresh_body_collision_filter(BW_World* world, BW_RigidBody* rb);
 void bw_world_set_gravity(BW_World* world, float x, float y, float z);
 void bw_world_add_rigid_body(BW_World* world, BW_RigidBody* rb, int group, int mask);
 void bw_world_remove_rigid_body(BW_World* world, BW_RigidBody* rb);
@@ -116,6 +120,7 @@ void bw_shape_destroy(BW_Shape* shape);
 BW_RigidBody* bw_rigid_body_create(const BW_RigidBodyInfo* info);
 void bw_rigid_body_destroy(BW_RigidBody* rb);
 void bw_rigid_body_get_transform(BW_RigidBody* rb, float* matrix4x4);
+void bw_rigid_body_get_simulation_transform(BW_RigidBody* rb, float* matrix4x4);
 void bw_rigid_body_set_transform(BW_RigidBody* rb, const float* matrix4x4);
 void bw_rigid_body_set_kinematic_target(BW_RigidBody* rb, const float* matrix4x4);
 void bw_rigid_body_get_position(BW_RigidBody* rb, float* x, float* y, float* z);
@@ -133,6 +138,11 @@ void bw_rigid_body_set_kinematic(BW_RigidBody* rb, bool kinematic);
 float bw_rigid_body_get_mass(BW_RigidBody* rb);
 void bw_rigid_body_clear_forces(BW_RigidBody* rb);
 void bw_rigid_body_apply_central_force(BW_RigidBody* rb, float x, float y, float z);
+/* 在质心外施力，rel_pos 为相对质心的世界坐标，用于产生可控力矩。 */
+void bw_rigid_body_apply_force_at_point(
+    BW_RigidBody* rb,
+    float fx, float fy, float fz,
+    float rel_x, float rel_y, float rel_z);
 void bw_rigid_body_set_ignore_collision_check(
     BW_RigidBody* rb, BW_RigidBody* other, bool ignore);
 bool bw_rigid_body_check_collide_with(BW_RigidBody* rb, BW_RigidBody* other);

@@ -9,8 +9,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.*;
+import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
+import java.util.UUID;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 /** 模型选择配置管理。 */
 public class ModelSelectorConfig {
@@ -18,9 +23,15 @@ public class ModelSelectorConfig {
     private static ModelSelectorConfig instance;
 
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private final File configFile;
     private ConfigData data;
 
     private ModelSelectorConfig() {
+        this(PathConstants.getModelSelectorConfigFile());
+    }
+
+    ModelSelectorConfig(File configFile) {
+        this.configFile = configFile;
         load();
     }
 
@@ -32,15 +43,15 @@ public class ModelSelectorConfig {
     }
 
     private void load() {
-        File configFile = PathConstants.getModelSelectorConfigFile();
-
         if (configFile.exists()) {
             int retryCount = 0;
             int maxRetries = 3;
 
             while (retryCount < maxRetries) {
                 try (Reader reader = new InputStreamReader(new FileInputStream(configFile), java.nio.charset.StandardCharsets.UTF_8)) {
-                    data = gson.fromJson(reader, ConfigData.class);
+                    JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                    // 女仆字段独立逐项解析，避免单条坏记录使玩家模型与快捷槽位一并丢失。
+                    data = parseConfigWithoutMaidPreferences(root);
 
                     if (data == null || data.playerModels == null) {
                         throw new IOException("配置数据无效");
@@ -49,6 +60,7 @@ public class ModelSelectorConfig {
                     if (data.quickModelSlots == null) {
                         data.quickModelSlots = new ConcurrentHashMap<>();
                     }
+                    data.maidModelPreferences = parseMaidModelPreferences(root.get("maidModelPreferences"));
 
                     return;
                 } catch (Exception e) {
@@ -72,17 +84,65 @@ public class ModelSelectorConfig {
         saveInternal();
     }
 
-    private void saveInternal() {
-        File configFile = PathConstants.getModelSelectorConfigFile();
+    /** 保存女仆本地偏好，并在磁盘替换失败时向调用方报错。 */
+    public synchronized void setMaidModelPreference(UUID maidUUID, String modelName) {
+        if (maidUUID == null || modelName == null || modelName.isBlank()) {
+            throw new IllegalArgumentException("女仆 UUID 和模型名不能为空");
+        }
+        ensureData();
+        String key = maidUUID.toString();
+        String previous = data.maidModelPreferences.put(key, modelName);
+        try {
+            saveForced();
+        } catch (RuntimeException exception) {
+            if (previous == null) data.maidModelPreferences.remove(key);
+            else data.maidModelPreferences.put(key, previous);
+            throw exception;
+        }
+    }
 
-        PathConstants.ensureDirectoryExists(configFile.getParentFile());
+    /** 返回指定女仆的本地覆盖；显式 Default 作为真实值返回，null 表示尚无本地选择。 */
+    public synchronized String getMaidModelPreference(UUID maidUUID) {
+        ensureData();
+        return maidUUID == null ? null : data.maidModelPreferences.get(maidUUID.toString());
+    }
+
+    /** 清除本地覆盖与选择原版不同：清除后仍可回退到当前连接的远端绑定。 */
+    public synchronized void removeMaidModelPreference(UUID maidUUID) {
+        if (maidUUID == null) return;
+        ensureData();
+        String key = maidUUID.toString();
+        String previous = data.maidModelPreferences.remove(key);
+        if (previous == null) return;
+        try {
+            saveForced();
+        } catch (RuntimeException exception) {
+            data.maidModelPreferences.put(key, previous);
+            throw exception;
+        }
+    }
+
+    /** 快照用于诊断和测试，调用方无法修改配置内部映射。 */
+    public synchronized Map<UUID, String> getMaidModelPreferences() {
+        ensureData();
+        Map<UUID, String> copy = new HashMap<>();
+        data.maidModelPreferences.forEach((key, value) -> copy.put(UUID.fromString(key), value));
+        return Map.copyOf(copy);
+    }
+
+    private void saveForced() {
+        ensureData();
+        writeConfigAtomically();
+    }
+
+    private void saveInternal() {
 
         int retryCount = 0;
         int maxRetries = 3;
 
         while (retryCount < maxRetries) {
-            try (Writer writer = new OutputStreamWriter(new FileOutputStream(configFile), java.nio.charset.StandardCharsets.UTF_8)) {
-                gson.toJson(data, writer);
+            try {
+                writeConfigAtomically();
                 logger.debug("模型选择配置保存成功");
                 return;
             } catch (Exception e) {
@@ -94,6 +154,49 @@ public class ModelSelectorConfig {
                 }
             }
         }
+    }
+
+    private void writeConfigAtomically() {
+        PathConstants.ensureDirectoryExists(configFile.getParentFile());
+        AtomicConfigFileWriter.write(configFile, writer -> gson.toJson(data, writer));
+    }
+
+    private ConfigData parseConfigWithoutMaidPreferences(JsonObject root) {
+        JsonObject legacyFields = root.deepCopy();
+        legacyFields.remove("maidModelPreferences");
+        return gson.fromJson(legacyFields, ConfigData.class);
+    }
+
+    private Map<String, String> parseMaidModelPreferences(JsonElement element) {
+        Map<String, String> preferences = new ConcurrentHashMap<>();
+        if (element == null || element.isJsonNull()) return preferences;
+        if (!element.isJsonObject()) {
+            logger.warn("女仆模型偏好字段格式无效，忽略该字段并保留其他配置");
+            return preferences;
+        }
+        for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+            try {
+                UUID.fromString(entry.getKey());
+                if (!entry.getKey().matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+                    throw new IllegalArgumentException("UUID 格式不完整");
+                }
+                JsonElement value = entry.getValue();
+                if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+                    throw new IllegalArgumentException("模型名不是字符串");
+                }
+                String modelName = value.getAsString();
+                if (modelName.isBlank()) throw new IllegalArgumentException("模型名为空");
+                preferences.put(UUID.fromString(entry.getKey()).toString(), modelName);
+            } catch (RuntimeException exception) {
+                logger.warn("忽略损坏的女仆模型偏好条目 {}: {}", entry.getKey(), exception.getMessage());
+            }
+        }
+        return preferences;
+    }
+
+    private void ensureData() {
+        if (data == null) data = new ConfigData();
+        if (data.maidModelPreferences == null) data.maidModelPreferences = new ConcurrentHashMap<>();
     }
 
     public String getSelectedModel() {
@@ -237,5 +340,7 @@ public class ModelSelectorConfig {
         Map<String, String> playerModels = new ConcurrentHashMap<>();
 
         Map<String, String> quickModelSlots = new ConcurrentHashMap<>();
+
+        Map<String, String> maidModelPreferences = new ConcurrentHashMap<>();
     }
 }

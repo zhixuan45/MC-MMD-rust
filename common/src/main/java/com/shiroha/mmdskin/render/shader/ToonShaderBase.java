@@ -6,6 +6,10 @@ import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL46C;
 
 import java.nio.FloatBuffer;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Toon 着色器抽象基类。
@@ -16,6 +20,11 @@ public abstract class ToonShaderBase {
     protected int mainProgram = 0;
     protected int outlineProgram = 0;
     protected boolean initialized = false;
+    private final Map<String, Programs> variants = new LinkedHashMap<>();
+    private final Set<String> failedVariants = new HashSet<>();
+    private String activeProfile;
+
+    private record Programs(int main, int outline) {}
 
     protected static final String MAIN_FRAGMENT_SHADER_BODY =
             AssetsUtil.getAssetsAsString("shader/toon_main_body.frag.glsl");
@@ -41,16 +50,13 @@ public abstract class ToonShaderBase {
     protected int outlineModelViewMatLocation = -1;
     protected int outlineWidthLocation = -1;
     protected int outlineColorLocation = -1;
-    protected int outlineSampler0Location = -1;
-    protected int outlineAlphaCutoffLocation = -1;
-    protected int outlineGlobalAlphaLocation = -1;
+    protected int outlineAlphaLocation = -1;
 
     protected int positionLocation = -1;
     protected int normalLocation = -1;
     protected int uv0Location = -1;
     protected int outlinePositionLocation = -1;
     protected int outlineNormalLocation = -1;
-    protected int outlineUv0Location = -1;
 
     protected abstract String getMainVertexShader();
 
@@ -61,37 +67,70 @@ public abstract class ToonShaderBase {
     protected abstract String getShaderName();
 
     public boolean init() {
-        if (initialized) return true;
+        return initialized || selectOutputProfile(ToonOutputProfile.vanilla());
+    }
 
+    public boolean selectOutputProfile(ToonOutputProfile profile) {
+        if (!profile.isSupported()) return false;
+        String key = profile.id();
+        if (initialized && key.equals(activeProfile)) return true;
+        if (failedVariants.contains(key)) return false;
         try {
-
-            mainProgram = compileProgram(getMainVertexShader(), MAIN_FRAGMENT_SHADER_BODY,
-                                        getShaderName() + "主着色器");
-            if (mainProgram == 0) return false;
-
-            outlineProgram = compileProgram(getOutlineVertexShader(), OUTLINE_FRAGMENT_SHADER_BODY,
-                                            getShaderName() + "描边着色器");
-            if (outlineProgram == 0) {
-                GL46C.glDeleteProgram(mainProgram);
-                mainProgram = 0;
-                return false;
+            Programs programs = variants.get(key);
+            if (programs == null) {
+                int main = compileProgram(getMainVertexShader(), outputSource(MAIN_FRAGMENT_SHADER_BODY, profile),
+                        getShaderName() + "主着色器/" + key);
+                if (main == 0) {
+                    failedVariants.add(key);
+                    return false;
+                }
+                int outline = compileProgram(getOutlineVertexShader(), outputSource(OUTLINE_FRAGMENT_SHADER_BODY, profile),
+                        getShaderName() + "描边着色器/" + key);
+                if (outline == 0) {
+                    GL46C.glDeleteProgram(main);
+                    failedVariants.add(key);
+                    return false;
+                }
+                programs = new Programs(main, outline);
+                variants.put(key, programs);
             }
-
+            mainProgram = programs.main();
+            outlineProgram = programs.outline();
+            activeProfile = key;
+            // 每个变体的 uniform 位置独立，切换后重新绑定。
             initCommonUniforms();
-
             initCommonAttributes();
-
             onInitialized();
-
             initialized = true;
+            trimVariants();
             return true;
-
         } catch (Exception e) {
-            logger.error("{} 初始化异常", getShaderName(), e);
+            failedVariants.add(key);
+            logger.error("{} 输出策略初始化异常: {}", getShaderName(), key, e);
             return false;
         }
     }
 
+    static String outputSource(String body, ToonOutputProfile profile) {
+        return body.replace("/* TOON_OUTPUT_DECLARATIONS */", profile.fragmentDeclarations())
+                .replace("/* TOON_OUTPUT_WRITER */", profile.fragmentWriter());
+    }
+
+    private void trimVariants() {
+        // 限制不同布局占用的 GPU 程序数，保留无光影变体。
+        var iterator = variants.entrySet().iterator();
+        while (variants.size() > 16 && iterator.hasNext()) {
+            var entry = iterator.next();
+            if (entry.getKey().equals(activeProfile) || entry.getKey().equals(ToonOutputProfile.vanilla().id())) continue;
+            deletePrograms(entry.getValue());
+            iterator.remove();
+        }
+    }
+
+    private static void deletePrograms(Programs programs) {
+        GL46C.glDeleteProgram(programs.main());
+        GL46C.glDeleteProgram(programs.outline());
+    }
     private void initCommonUniforms() {
 
         projMatLocation = GL46C.glGetUniformLocation(mainProgram, "ProjMat");
@@ -112,9 +151,7 @@ public abstract class ToonShaderBase {
         outlineModelViewMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ModelViewMat");
         outlineWidthLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineWidth");
         outlineColorLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineColor");
-        outlineSampler0Location = GL46C.glGetUniformLocation(outlineProgram, "Sampler0");
-        outlineAlphaCutoffLocation = GL46C.glGetUniformLocation(outlineProgram, "AlphaCutoff");
-        outlineGlobalAlphaLocation = GL46C.glGetUniformLocation(outlineProgram, "GlobalAlpha");
+        outlineAlphaLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineAlpha");
     }
 
     private void initCommonAttributes() {
@@ -125,7 +162,6 @@ public abstract class ToonShaderBase {
 
         outlinePositionLocation = GL46C.glGetAttribLocation(outlineProgram, "Position");
         outlineNormalLocation = GL46C.glGetAttribLocation(outlineProgram, "Normal");
-        outlineUv0Location = GL46C.glGetAttribLocation(outlineProgram, "UV0");
     }
 
     protected int compileProgram(String vertexSource, String fragmentSource, String name) {
@@ -238,27 +274,15 @@ public abstract class ToonShaderBase {
         }
     }
 
-    public void setOutlineSampler0(int textureUnit) {
-        if (outlineSampler0Location >= 0) {
-            GL46C.glUniform1i(outlineSampler0Location, textureUnit);
-        }
-    }
-
-    public void setOutlineAlphaCutoff(float cutoff) {
-        if (outlineAlphaCutoffLocation >= 0) {
-            GL46C.glUniform1f(outlineAlphaCutoffLocation, cutoff);
+    public void setOutlineAlpha(float alpha) {
+        if (outlineAlphaLocation >= 0) {
+            GL46C.glUniform1f(outlineAlphaLocation, Math.max(0.0f, Math.min(1.0f, alpha)));
         }
     }
 
     public void setGlobalAlpha(float alpha) {
         if (globalAlphaLocation >= 0) {
             GL46C.glUniform1f(globalAlphaLocation, alpha);
-        }
-    }
-
-    public void setOutlineGlobalAlpha(float alpha) {
-        if (outlineGlobalAlphaLocation >= 0) {
-            GL46C.glUniform1f(outlineGlobalAlphaLocation, alpha);
         }
     }
 
@@ -271,19 +295,16 @@ public abstract class ToonShaderBase {
 
     public int getOutlinePositionLocation() { return outlinePositionLocation; }
     public int getOutlineNormalLocation() { return outlineNormalLocation; }
-    public int getOutlineUv0Location() { return outlineUv0Location; }
 
     public boolean isInitialized() { return initialized; }
 
     public void cleanup() {
-        if (mainProgram > 0) {
-            GL46C.glDeleteProgram(mainProgram);
-            mainProgram = 0;
-        }
-        if (outlineProgram > 0) {
-            GL46C.glDeleteProgram(outlineProgram);
-            outlineProgram = 0;
-        }
+        variants.values().forEach(ToonShaderBase::deletePrograms);
+        variants.clear();
+        failedVariants.clear();
+        mainProgram = 0;
+        outlineProgram = 0;
+        activeProfile = null;
         initialized = false;
     }
 }

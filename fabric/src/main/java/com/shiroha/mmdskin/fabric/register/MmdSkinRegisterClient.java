@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.fabric.register;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.shiroha.mmdskin.fabric.config.ModConfigScreen;
 import com.shiroha.mmdskin.fabric.maid.MaidCompatMixinPlugin;
+import com.shiroha.mmdskin.compat.maid.ui.PlayerMaidManagerScreen;
 import com.shiroha.mmdskin.fabric.network.MmdSkinNetworkPack;
 import com.shiroha.mmdskin.mixin.fabric.KeyMappingAccessor;
 import com.shiroha.mmdskin.render.entity.EntityRenderFactory;
@@ -68,6 +69,9 @@ public class MmdSkinRegisterClient {
         }
 
         ConfigWheelScreen.setModSettingsScreenFactory(() -> ModConfigScreen.create(null));
+        if (MaidCompatMixinPlugin.isMaidModLoaded()) {
+            ConfigWheelScreen.setMaidManagerScreenFactory(() -> new PlayerMaidManagerScreen(null));
+        }
         NETWORK_BINDINGS.register(MCinstance);
         RUNTIME_HOOKS.register(MCinstance);
 

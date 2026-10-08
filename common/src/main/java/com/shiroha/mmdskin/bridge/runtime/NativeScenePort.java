@@ -13,5 +13,7 @@ public interface NativeScenePort {
 
     void setEyeMaxAngle(long modelHandle, float maxAngle);
 
+    void setTailPhysicsOptions(long modelHandle, boolean idleLift, boolean movementBoost);
+
     void setEyeAngle(long modelHandle, float eyeX, float eyeY);
 }

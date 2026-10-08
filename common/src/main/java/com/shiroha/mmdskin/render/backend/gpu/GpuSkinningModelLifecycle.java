@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.backend.gpu;
 
 import com.shiroha.mmdskin.render.shader.ShaderConstants;
+import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
 import org.lwjgl.opengl.GL46C;
 import org.lwjgl.system.MemoryUtil;
 
@@ -36,6 +37,10 @@ final class GpuSkinningModelLifecycle {
         }
         if (target.skinnedUvBuffer > 0) {
             total += (long) target.vertexCount * 8;
+        }
+        // 默认纹理属于模型实例，不计入文件贴图共享缓存。
+        for (var material : target.mats) {
+            if (material != null && material.ownsTexture && material.tex > 0) total += 4;
         }
         return total;
     }
@@ -82,6 +87,7 @@ final class GpuSkinningModelLifecycle {
 
         target.initialized = false;
         target.releaseBaseResources();
+        MaterialTextureLoader.releaseOwnedTextures(target.mats);
 
         GL46C.glDeleteVertexArrays(target.vertexArrayObject);
         GL46C.glDeleteBuffers(target.indexBufferObject);

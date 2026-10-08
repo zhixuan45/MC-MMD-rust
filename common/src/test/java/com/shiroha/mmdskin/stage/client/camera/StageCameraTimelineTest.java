@@ -80,4 +80,22 @@ class StageCameraTimelineTest {
         assertTrue(machine.shouldBlockInput());
         assertTrue(machine.isWatching());
     }
+
+    @Test
+    void shouldConvertNativeRadiansOnceAndRotatePositionAroundStageAnchor() {
+        MMDCameraData data = new MMDCameraData();
+        data.getPosition().set(2.0f, 4.0f, 6.0f);
+        data.getRotation().set((float) Math.toRadians(12.0), (float) Math.PI,
+                (float) Math.toRadians(1.0));
+
+        StageCameraPose pose = StageCameraTimeline.playbackPose(
+                data, 10.0, 20.0, 30.0, 90.0f, 0.75f, 0.5f);
+
+        assertEquals(7.0, pose.x(), 1.0E-5);
+        assertEquals(22.75, pose.y(), 1.0E-5);
+        assertEquals(31.0, pose.z(), 1.0E-5);
+        assertEquals(12.0f, pose.pitch(), 1.0E-5f);
+        assertEquals(270.0f, pose.yaw(), 1.0E-5f);
+        assertEquals(1.0f, pose.roll(), 1.0E-5f);
+    }
 }

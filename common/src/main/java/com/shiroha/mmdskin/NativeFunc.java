@@ -193,6 +193,8 @@ public class NativeFunc {
 
     public native void SetEyeMaxAngle(long model, float maxAngle);
 
+    public native void SetTailPhysicsOptions(long model, boolean idleLift, boolean movementBoost);
+
     public native void SetEyeTrackingEnabled(long model, boolean enabled);
 
     public native boolean IsEyeTrackingEnabled(long model);

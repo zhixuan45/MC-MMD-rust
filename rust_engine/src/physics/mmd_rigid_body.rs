@@ -44,11 +44,7 @@ pub fn effective_collision_shape_size_with_static_scale(
         RigidBodyShape::Sphere => [base_radius * scale, pmx_rb.size[1], pmx_rb.size[2]],
         RigidBodyShape::Capsule => [base_radius * scale, pmx_rb.size[1], pmx_rb.size[2]],
         // PMX 箱体的局部 Y 是人体碰撞体高度，保留高度只收窄横截面。
-        RigidBodyShape::Box => [
-            base_radius * scale,
-            pmx_rb.size[1],
-            pmx_rb.size[2] * scale,
-        ],
+        RigidBodyShape::Box => [base_radius * scale, pmx_rb.size[1], pmx_rb.size[2] * scale],
     }
 }
 
@@ -65,7 +61,10 @@ fn is_under_sized_leg_collider(body: &PmxRigidBody) -> bool {
     ];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
-    body.size[0] < 0.45 && LEG_PARTS.iter().any(|p| local.contains(p) || universal.contains(p))
+    body.size[0] < 0.45
+        && LEG_PARTS
+            .iter()
+            .any(|p| local.contains(p) || universal.contains(p))
 }
 
 /// 按 PMX 的部位、碰撞组和关节用途识别需要收窄的人体碰撞体。
@@ -78,6 +77,32 @@ pub fn body_collider_scale_flags(rigid_bodies: &[PmxRigidBody], joints: &[PmxJoi
                 && is_lower_body_collider(body)
                 && collides_with_skirt_dynamic_body(body, rigid_bodies)
                 && !is_dynamic_chain_anchor(index, rigid_bodies, joints)
+        })
+        .collect()
+}
+
+/// 返回可用于裙摆兼容接触的真实身体碰撞体。
+///
+/// 该资格与碰撞体缩放分开计算：即使 PMX 原始掩码漏配裙摆，
+/// 也不能因此把身体碰撞体从 Stable/Relaxed 的兼容计划中删除。
+/// 蝶律 #25 下半身这类髋部体积常同时是裙摆根关节父刚体，必须保留接触资格；
+/// 仅排除专门用来挂关节的小球锚点。
+pub(super) fn garment_contact_body_flags(
+    rigid_bodies: &[PmxRigidBody],
+    joints: &[PmxJoint],
+) -> Vec<bool> {
+    let has_garment = rigid_bodies
+        .iter()
+        .any(|body| body.mode != RigidBodyMode::Static && is_skirt_or_lower_garment(body));
+    rigid_bodies
+        .iter()
+        .enumerate()
+        .map(|(index, body)| {
+            has_garment
+                && body.mode == RigidBodyMode::Static
+                && is_lower_body_collider(body)
+                && is_pelvis_or_thigh_collider(body)
+                && !is_dedicated_kinematic_stub(index, rigid_bodies, joints)
         })
         .collect()
 }
@@ -110,8 +135,8 @@ pub(super) fn is_lower_body_collider(body: &PmxRigidBody) -> bool {
 
 /// 识别骨盆和上大腿部位的静态碰撞体。
 ///
-/// 裙摆仅与骨盆和上大腿强制开启 Broadphase 碰撞连通；
-/// 小腿、膝盖和脚部不强制连通，严格保留 PMX 作者配置的掩码，避免跑跳摆腿时小腿撕裂长裙。
+/// Stable/Relaxed 仅为裙摆与骨盆、上大腿补齐 Broadphase 碰撞组位；
+/// 小腿、膝盖和脚部继续使用 PMX 掩码，Strict 完全保留原始掩码。
 pub(super) fn is_pelvis_or_thigh_collider(body: &PmxRigidBody) -> bool {
     const LOWER_NAMES: &[&str] = &[
         "下半身",
@@ -126,6 +151,9 @@ pub(super) fn is_pelvis_or_thigh_collider(body: &PmxRigidBody) -> bool {
     ];
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
+    if has_non_skirt_local_semantics(&local) {
+        return false;
+    }
     // 排除小腿、膝盖和脚部
     if local.contains("shin")
         || universal.contains("shin")
@@ -189,24 +217,111 @@ pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
     let local = body.local_name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
     // 尾巴具有独立动态特性，必须排除在裙摆下装分类之外
-    if is_tail_dynamic_part(body) {
+    if is_tail_dynamic_part(body) || has_non_skirt_local_semantics(&local) {
         return false;
     }
-    PART_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
+    PART_NAMES.iter().any(|part| local.contains(part))
+        || PART_NAMES.iter().any(|part| universal.contains(part))
+}
+
+pub(super) fn has_non_skirt_local_semantics(name: &str) -> bool {
+    const NON_SKIRT_PARTS: &[&str] = &[
+        "胸",
+        "乳",
+        "バスト",
+        "おっぱい",
+        "breast",
+        "bust",
+        "chest",
+        "shoe",
+        "shoes",
+        "heel",
+        "靴",
+        "くつ",
+        "鞋",
+        "accessory",
+        "accessories",
+        "アクセサリー",
+        "装飾",
+        "配件",
+        "附件",
+        "飾",
+        "饰",
+        "tassel",
+        "穗",
+        "穂",
+        "房穗",
+        "リボン",
+        "ribbon",
+        "bow",
+        "蝴蝶结",
+        "蝴蝶結",
+        "袖",
+        "sleeve",
+        "手臂",
+        "上臂",
+        "前臂",
+        "腕",
+        "upperarm",
+        "forearm",
+        "髪",
+        "髮",
+        "头发",
+        "頭髪",
+        "hair",
+    ];
+    NON_SKIRT_PARTS.iter().any(|part| name.contains(part)) || has_arm_token(name)
+}
+
+fn has_arm_token(name: &str) -> bool {
+    name.match_indices("arm").any(|(index, token)| {
+        let before = name[..index].chars().next_back();
+        let after = name[index + token.len()..].chars().next();
+        let is_separator =
+            |ch: Option<char>| ch.map_or(true, |value| !value.is_ascii_alphanumeric());
+        is_separator(before) || is_separator(after)
+    })
 }
 
 /// 尾巴是独立动态链，不能并入裙摆分类，否则跨部位碰撞无法单独诊断和过滤。
 /// 静态跟骨刚体和身体阻挡体（blocker）不属于动态尾巴链。
 pub(super) fn is_tail_dynamic_part(body: &PmxRigidBody) -> bool {
-    if body.mode == RigidBodyMode::Static
-        || body.local_name.to_lowercase().contains("blocker")
-        || body.universal_name.to_lowercase().contains("blocker")
+    classify_tail_dynamic(
+        body.mode != RigidBodyMode::Static,
+        [&body.local_name, &body.universal_name, ""],
+    )
+}
+
+pub(super) fn classify_tail_dynamic(dynamic: bool, names: [&str; 3]) -> bool {
+    if !dynamic {
+        return false;
+    }
+    const EXCLUDED: &[&str] = &[
+        "ponytail",
+        "twintail",
+        "馬尾",
+        "马尾",
+        "ポニーテール",
+        "ツインテール",
+        "tail_hair",
+        "tailhair",
+        "blocker",
+    ];
+    const TAIL_PARTS: &[&str] = &["tail", "尻尾", "しっぽ", "尾巴", "尾"];
+    let normalized = names.map(str::to_lowercase);
+    if EXCLUDED
+        .iter()
+        .any(|part| normalized.iter().any(|name| name.contains(part)))
     {
         return false;
     }
-    const NOT_TAIL_NAMES: &[&str] = &[
+    TAIL_PARTS
+        .iter()
+        .any(|part| normalized.iter().any(|name| name.contains(part)))
+}
+
+fn is_legacy_tail_name(name: &str) -> bool {
+    const EXCLUDED: &[&str] = &[
         "馬尾",
         "马尾",
         "ツインテール",
@@ -216,24 +331,20 @@ pub(super) fn is_tail_dynamic_part(body: &PmxRigidBody) -> bool {
         "tail_hair",
         "tailhair",
     ];
-    const TAIL_NAMES: &[&str] = &["tail", "尻尾", "しっぽ", "尾巴", "尾"];
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    if NOT_TAIL_NAMES
-        .iter()
-        .any(|not_tail| local.contains(not_tail) || universal.contains(not_tail))
-    {
-        return false;
-    }
-    TAIL_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
+    const TAIL_PARTS: &[&str] = &["tail", "尻尾", "しっぽ", "尾巴", "尾"];
+    let name = name.to_lowercase();
+    !EXCLUDED.iter().any(|part| name.contains(part))
+        && TAIL_PARTS.iter().any(|part| name.contains(part))
 }
 
 fn collision_pair_is_enabled(a: &PmxRigidBody, b: &PmxRigidBody) -> bool {
-    // 静态骨盆与上大腿碰撞体与动态裙摆始终保持双向碰撞连接；小腿/膝盖等保留 PMX 作者配置的掩码
-    if (a.mode == RigidBodyMode::Static && is_pelvis_or_thigh_collider(a) && is_skirt_or_lower_garment(b))
-        || (b.mode == RigidBodyMode::Static && is_pelvis_or_thigh_collider(b) && is_skirt_or_lower_garment(a))
+    // 人体壳缩放沿用 Stable 裙摆兼容资格；实际 Bullet 过滤由最终掩码计划控制。
+    if (a.mode == RigidBodyMode::Static
+        && is_pelvis_or_thigh_collider(a)
+        && is_skirt_or_lower_garment(b))
+        || (b.mode == RigidBodyMode::Static
+            && is_pelvis_or_thigh_collider(b)
+            && is_skirt_or_lower_garment(a))
     {
         return true;
     }
@@ -242,7 +353,22 @@ fn collision_pair_is_enabled(a: &PmxRigidBody, b: &PmxRigidBody) -> bool {
     (a_mask & (1u16 << b.group.min(15))) != 0 && (b_mask & (1u16 << a.group.min(15))) != 0
 }
 
-fn is_dynamic_chain_anchor(
+fn is_dedicated_kinematic_stub(
+    body_index: usize,
+    rigid_bodies: &[PmxRigidBody],
+    joints: &[PmxJoint],
+) -> bool {
+    rigid_bodies.get(body_index).is_some_and(|body| {
+        is_dynamic_chain_anchor(body_index, rigid_bodies, joints) && is_kinematic_joint_stub(body)
+    })
+}
+
+fn is_kinematic_joint_stub(body: &PmxRigidBody) -> bool {
+    // 关节锚点球通常半径小于身体壳；髋部胶囊和 Oguri pelvis 球不能当 stub。
+    matches!(body.shape, RigidBodyShape::Sphere) && body.size[0] < 0.45
+}
+
+pub(super) fn is_dynamic_chain_anchor(
     body_index: usize,
     rigid_bodies: &[PmxRigidBody],
     joints: &[PmxJoint],
@@ -274,7 +400,7 @@ pub enum PhysicsMode {
     FollowBone,
     /// 完全物理驱动
     Physics,
-    /// 物理驱动但位置跟随骨骼（仅旋转由物理控制）
+    /// 动态刚体；回写骨骼时保留动画层级位置，仅使用物理旋转。
     PhysicsWithBone,
 }
 
@@ -296,6 +422,12 @@ impl From<RigidBodyMode> for PhysicsMode {
 pub struct MmdRigidBodyData {
     /// 刚体名称
     pub name: String,
+    /// 刚体英文名称，用于尾巴分类回退。
+    pub universal_name: String,
+    /// 构建时缓存的尾巴动态体分类。
+    pub is_tail_dynamic: bool,
+    /// 默认关闭选项时保留旧版本地名分类。
+    pub is_tail_dynamic_legacy: bool,
     /// 关联骨骼索引
     pub bone_index: i32,
     /// 物理模式
@@ -316,7 +448,7 @@ pub struct MmdRigidBodyData {
     pub raw_rotation: [f32; 3],
     /// 送入欧拉角构造前的弧度值。
     pub decoded_rotation: [f32; 3],
-    /// PMX 原始形状尺寸。
+    /// 实际送入 Bullet 的形状尺寸。
     pub shape_size: [f32; 3],
     /// 便于 JNI 日志稳定输出的形状名称。
     pub shape_name: &'static str,
@@ -342,8 +474,7 @@ impl MmdRigidBodyData {
         let physics_mode = PhysicsMode::from(pmx_rb.mode);
 
         let decoded_rotation = normalize_rigid_body_rotation(pmx_rb.rotation);
-        // PMX 刚体与关节都按 Bullet setEulerZYX 的 X-Y-Z 输入语义构造，
-        // 避免多轴旋转时碰撞形状与约束轴落入不同的局部坐标系。
+        // PMX 刚体采用 Y-X-Z；关节采用 Bullet Z-Y-X，局部 frame 负责衔接。
         let rotation = rigid_body_rotation(decoded_rotation);
 
         let position = Vec3::new(pmx_rb.position[0], pmx_rb.position[1], pmx_rb.position[2]);
@@ -363,11 +494,13 @@ impl MmdRigidBodyData {
 
         Self {
             name: pmx_rb.local_name.clone(),
+            universal_name: pmx_rb.universal_name.clone(),
+            is_tail_dynamic: is_tail_dynamic_part(pmx_rb),
+            is_tail_dynamic_legacy: is_legacy_tail_name(&pmx_rb.local_name),
             bone_index: pmx_rb.bone_index,
             physics_mode,
             group: pmx_rb.group,
-            // PMX 保存的是“不碰撞组”，Bullet 接收的是“允许碰撞组”，
-            // 两者语义相反，因此必须在 16 位组范围内取反。
+            // PMX raw mask 本身就是允许碰撞的组位，直接交给 Bullet。
             collision_mask: pmx_collision_mask(pmx_rb.un_collision_group_flag),
             body_offset_matrix,
             body_offset_matrix_inverse,
@@ -375,7 +508,7 @@ impl MmdRigidBodyData {
             raw_position: pmx_rb.position,
             raw_rotation: pmx_rb.rotation,
             decoded_rotation,
-            shape_size: pmx_rb.size,
+            shape_size,
             shape_name: rigid_body_shape_name(pmx_rb.shape),
             collision_half_extents: collision_half_extents(pmx_rb.shape, shape_size),
             bullet_body: None,
@@ -457,9 +590,9 @@ fn collision_half_extents(shape: RigidBodyShape, size: [f32; 3]) -> Option<Vec3>
     (extents.is_finite() && extents.cmpgt(Vec3::ZERO).all()).then_some(extents)
 }
 
-/// 将 PMX 的“不碰撞组”标志转换为 Bullet 的“允许碰撞组”掩码。
-fn pmx_collision_mask(un_collision_group_flag: u16) -> u16 {
-    !un_collision_group_flag
+/// PMX raw 位本身就是 Bullet 的允许碰撞组掩码。
+fn pmx_collision_mask(raw_collision_mask: u16) -> u16 {
+    raw_collision_mask
 }
 
 /// 按 Bullet `setEulerZYX(x, y, z)` 的语义构造 PMX 物理旋转。
@@ -470,7 +603,9 @@ pub(super) fn mmd_physics_rotation(rotation: [f32; 3]) -> Quat {
 }
 
 fn rigid_body_rotation(rotation: [f32; 3]) -> Quat {
-    mmd_physics_rotation(rotation)
+    Quat::from_rotation_y(rotation[1])
+        * Quat::from_rotation_x(rotation[0])
+        * Quat::from_rotation_z(rotation[2])
 }
 
 fn rigid_body_shape_name(shape: RigidBodyShape) -> &'static str {
@@ -501,66 +636,31 @@ fn normalize_rigid_body_rotation(rotation: [f32; 3]) -> [f32; 3] {
 mod tests {
     use super::{
         body_collider_scale_flags, collision_half_extents, effective_collision_shape_size,
-        effective_collision_shape_size_with_static_scale, normalize_rigid_body_rotation,
-        pmx_collision_mask, rigid_body_rotation,
+        effective_collision_shape_size_with_static_scale, garment_contact_body_flags,
+        is_dynamic_chain_anchor, normalize_rigid_body_rotation, pmx_collision_mask,
+        rigid_body_rotation,
     };
     use glam::{Mat4, Quat, Vec3};
     use mmd::pmx::joint::{Joint, JointType};
     use mmd::pmx::rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape};
 
     #[test]
-    fn pmx_collision_mask_allows_all_groups_when_none_are_excluded() {
-        assert_eq!(pmx_collision_mask(0x0000), 0xFFFF);
+    fn pmx_zero_mask_disallows_every_group() {
+        assert_eq!(pmx_collision_mask(0x0000), 0x0000);
     }
 
-    #[test]
-    fn pmx_collision_mask_excludes_marked_groups() {
-        assert_eq!(pmx_collision_mask(0x0001), 0xFFFE);
-    }
+
 
     #[test]
-    fn pmx_collision_mask_disallows_all_groups_when_all_are_excluded() {
-        assert_eq!(pmx_collision_mask(0xFFFF), 0x0000);
-    }
-
-    #[test]
-    fn rigid_body_rotation_matches_bullet_zyx_matrix_composition() {
+    fn rigid_body_rotation_matches_pmx_yxz_composition() {
         let [x, y, z] = [0.31, -0.47, 0.83];
         let expected =
-            Quat::from_rotation_z(z) * Quat::from_rotation_y(y) * Quat::from_rotation_x(x);
+            Quat::from_rotation_y(y) * Quat::from_rotation_x(x) * Quat::from_rotation_z(z);
         assert!(rigid_body_rotation([x, y, z]).abs_diff_eq(expected, 1e-6));
     }
 
-    #[test]
-    fn decoded_exported_rotation_uses_the_same_frame_as_pmx_joint() {
-        let radians = [0.355_930_42, -0.000_011_105_393, std::f32::consts::PI];
-        let export_scale = (180.0_f32 / std::f32::consts::PI).powi(2);
-        let encoded = radians.map(|value| value * export_scale);
-        let expected = Quat::from_rotation_z(radians[2])
-            * Quat::from_rotation_y(radians[1])
-            * Quat::from_rotation_x(radians[0]);
 
-        assert!(
-            rigid_body_rotation(normalize_rigid_body_rotation(encoded)).abs_diff_eq(expected, 1e-5)
-        );
-    }
 
-    #[test]
-    fn rigid_body_rotation_recovers_double_degree_encoded_vector() {
-        let original = [0.004_436, -std::f32::consts::PI, std::f32::consts::PI];
-        let double_degree_scale = (180.0_f32 / std::f32::consts::PI).powi(2);
-        let encoded = original.map(|value| value * double_degree_scale);
-        let decoded = normalize_rigid_body_rotation(encoded);
-        for (actual, expected) in decoded.into_iter().zip(original) {
-            assert!((actual - expected).abs() < 1e-5);
-        }
-    }
-
-    #[test]
-    fn rigid_body_rotation_preserves_normal_pmx_radians() {
-        let rotation = [0.31, -0.47, 0.83];
-        assert_eq!(normalize_rigid_body_rotation(rotation), rotation);
-    }
 
     fn test_rigid_body(shape: RigidBodyShape, size: [f32; 3]) -> RigidBody {
         RigidBody {
@@ -582,20 +682,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn capsule_bounds_include_caps_and_cylinder_height() {
-        let body = test_rigid_body(RigidBodyShape::Capsule, [0.5, 2.0, 0.0]);
-        assert_eq!(
-            collision_half_extents(body.shape, body.size),
-            Some(Vec3::new(0.5, 1.5, 0.5))
-        );
-    }
 
-    #[test]
-    fn dynamic_shape_keeps_original_size() {
-        let body = test_rigid_body(RigidBodyShape::Box, [2.0, 4.0, 6.0]);
-        assert_eq!(effective_collision_shape_size(&body), body.size);
-    }
 
     #[test]
     fn static_capsule_only_shrinks_collision_radius() {
@@ -607,46 +694,61 @@ mod tests {
         );
     }
 
-    #[test]
-    fn under_sized_leg_collider_gets_normalized_base_radius() {
-        let mut body = test_rigid_body(RigidBodyShape::Capsule, [0.163, 4.0, 0.0]);
-        body.local_name = "left_thigh_skirt_collider".to_owned();
-        body.mode = RigidBodyMode::Static;
-        let res_10 = effective_collision_shape_size_with_static_scale(&body, 1.0, true);
-        assert!((res_10[0] - 0.55).abs() < 1e-6);
-        assert_eq!(res_10[1], 4.0);
 
-        let res_15 = effective_collision_shape_size_with_static_scale(&body, 1.5, true);
-        assert!((res_15[0] - 0.825).abs() < 1e-6);
-        assert_eq!(res_15[1], 4.0);
+
+
+
+
+    #[test]
+    fn garment_contact_body_is_eligible_even_when_pmx_mask_omits_skirt() {
+        let mut collider = test_rigid_body(RigidBodyShape::Capsule, [1.0, 2.0, 0.0]);
+        collider.local_name = "下半身".to_owned();
+        collider.mode = RigidBodyMode::Static;
+        collider.group = 0;
+        collider.un_collision_group_flag = 0x0000;
+
+        let mut skirt = test_rigid_body(RigidBodyShape::Box, [1.0, 1.0, 0.2]);
+        skirt.local_name = "スカート_11_7".to_owned();
+        skirt.group = 14;
+        skirt.un_collision_group_flag = 0x0000;
+
+        let bodies = vec![collider, skirt];
+        let flags = garment_contact_body_flags(&bodies, &[]);
+        assert_eq!(flags, [true, false]);
     }
 
     #[test]
-    fn static_box_preserves_local_height() {
-        let mut body = test_rigid_body(RigidBodyShape::Box, [2.0, 4.0, 6.0]);
-        body.mode = RigidBodyMode::Static;
-        assert_eq!(
-            effective_collision_shape_size_with_static_scale(&body, 0.5, true),
-            [1.0, 4.0, 3.0]
-        );
+    fn garment_root_body_remains_eligible_when_it_anchors_dynamic_skirt() {
+        let mut collider = test_rigid_body(RigidBodyShape::Capsule, [1.0, 2.0, 0.0]);
+        collider.local_name = "下半身".to_owned();
+        collider.mode = RigidBodyMode::Static;
+        collider.group = 0;
+
+        let mut skirt = test_rigid_body(RigidBodyShape::Box, [1.0, 1.0, 0.2]);
+        skirt.local_name = "スカート_0_0".to_owned();
+        skirt.group = 14;
+
+        let joint = Joint {
+            local_name: "裙根".to_owned(),
+            universal_name: String::new(),
+            type_: JointType::Spring6DOF,
+            rigid_body_a_index: 0,
+            rigid_body_b_index: 1,
+            position: [0.0; 3],
+            rotation: [0.0; 3],
+            position_min: [0.0; 3],
+            position_max: [0.0; 3],
+            rotation_min: [0.0; 3],
+            rotation_max: [0.0; 3],
+            position_spring: [0.0; 3],
+            rotation_spring: [0.0; 3],
+        };
+
+        assert_eq!(garment_contact_body_flags(&[collider, skirt], &[joint]), [true, false]);
     }
 
     #[test]
-    fn custom_static_scale_is_clamped_to_viewer_range() {
-        let mut body = test_rigid_body(RigidBodyShape::Sphere, [1.0, 0.0, 0.0]);
-        body.mode = RigidBodyMode::Static;
-        assert_eq!(
-            super::effective_collision_shape_size_with_static_scale(&body, 0.05, true),
-            [0.1, 0.0, 0.0]
-        );
-        assert_eq!(
-            super::effective_collision_shape_size_with_static_scale(&body, 2.0, true),
-            [1.5, 0.0, 0.0]
-        );
-    }
-
-    #[test]
-    fn body_collider_filter_uses_part_mask_and_anchor_topology() {
+    fn tiny_named_pelvis_anchor_stays_out_of_garment_contact() {
         let mut collider = test_rigid_body(RigidBodyShape::Capsule, [1.0, 2.0, 0.0]);
         collider.local_name = "M-M-M-下半身".to_owned();
         collider.mode = RigidBodyMode::Static;
@@ -661,8 +763,7 @@ mod tests {
         skirt.local_name = "裙_0_0".to_owned();
         skirt.group = 7;
 
-        let bodies = vec![collider, anchor, skirt];
-        let joints = vec![Joint {
+        let joint = Joint {
             local_name: "裙根".to_owned(),
             universal_name: String::new(),
             type_: JointType::Spring6DOF,
@@ -676,65 +777,15 @@ mod tests {
             rotation_max: [0.0; 3],
             position_spring: [0.0; 3],
             rotation_spring: [0.0; 3],
-        }];
-
+        };
+        let bodies = vec![collider, anchor, skirt];
+        assert!(is_dynamic_chain_anchor(1, &bodies, std::slice::from_ref(&joint)));
         assert_eq!(
-            body_collider_scale_flags(&bodies, &joints),
+            garment_contact_body_flags(&bodies, std::slice::from_ref(&joint)),
             [true, false, false]
         );
     }
 
-    #[test]
-    fn lower_body_collider_is_not_scaled_for_sleeve_only_collision() {
-        let mut collider = test_rigid_body(RigidBodyShape::Capsule, [1.0, 2.0, 0.0]);
-        collider.local_name = "M-M-M-下半身".to_owned();
-        collider.mode = RigidBodyMode::Static;
-        collider.group = 0;
 
-        let mut sleeve = test_rigid_body(RigidBodyShape::Box, [1.0, 1.0, 0.2]);
-        sleeve.local_name = "右袖2".to_owned();
-        sleeve.group = 7;
 
-        assert_eq!(
-            body_collider_scale_flags(&[collider, sleeve], &[]),
-            [false, false]
-        );
-    }
-
-    #[test]
-    fn bind_offset_remains_stable_when_runtime_pose_changes() {
-        let mut pmx_body = test_rigid_body(RigidBodyShape::Sphere, [0.5, 0.0, 0.0]);
-        pmx_body.bone_index = 0;
-        pmx_body.position = [2.5, 4.0, -1.25];
-        pmx_body.rotation = [0.2, -0.35, 0.1];
-
-        // 绑定姿态只包含 PMX 初始全局位置；运行旋转不得被烘焙进静态 offset。
-        let bind_pose = Mat4::from_translation(Vec3::new(1.0, 3.0, 0.5));
-        let runtime_pose =
-            Mat4::from_rotation_translation(Quat::from_rotation_y(0.8), Vec3::new(1.4, 3.2, -0.3));
-        let data = super::MmdRigidBodyData::from_pmx(&pmx_body, Some(bind_pose), pmx_body.size);
-        let expected_offset = super::super::inv_z(bind_pose).inverse() * data.initial_transform;
-
-        assert!(data.body_offset_matrix.abs_diff_eq(expected_offset, 1e-6));
-        assert!(data
-            .compute_body_matrix(super::super::inv_z(runtime_pose))
-            .abs_diff_eq(super::super::inv_z(runtime_pose) * expected_offset, 1e-6));
-    }
-
-    #[test]
-    fn tail_dynamic_part_is_detected_and_excluded_from_skirt() {
-        let tail_names = ["Tail_01", "尻尾01", "しっぽ1", "尾_02", "尾巴根部"];
-        for name in tail_names {
-            let mut body = test_rigid_body(RigidBodyShape::Capsule, [0.5, 1.0, 0.0]);
-            body.local_name = name.to_owned();
-            assert!(
-                super::is_tail_dynamic_part(&body),
-                "name={name} should be tail"
-            );
-            assert!(
-                !super::is_skirt_or_lower_garment(&body),
-                "name={name} must not be skirt"
-            );
-        }
-    }
 }

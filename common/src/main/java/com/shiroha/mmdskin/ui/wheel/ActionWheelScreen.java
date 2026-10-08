@@ -56,23 +56,24 @@ public class ActionWheelScreen extends AbstractWheelScreen {
         if (actionSlots.isEmpty()) {
             renderWheelBase(guiGraphics, mouseX, mouseY, partialTick, List.of());
             renderEmptyState(guiGraphics, Component.translatable("gui.mmdskin.action_wheel.no_actions"));
-            renderCenterBubble(guiGraphics, Component.translatable("gui.mmdskin.select_action").getString(), style.lineColor());
+            renderCenterBubble(guiGraphics, Component.translatable("gui.mmdskin.select_action"), style.lineColor());
         } else {
             renderWheelBase(guiGraphics, mouseX, mouseY, partialTick, buildEntries());
 
-            String centerText = selectedSlot >= 0
-                    ? Component.translatable("gui.mmdskin.action_wheel.click_select").getString()
-                    : Component.translatable("gui.mmdskin.select_action").getString();
+            Component centerText = selectedSlot >= 0
+                    ? Component.translatable("gui.mmdskin.action_wheel.click_select")
+                    : Component.translatable("gui.mmdskin.select_action");
             renderCenterBubble(guiGraphics, centerText, style.lineColor());
         }
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderWheelTooltip(guiGraphics, mouseX, mouseY);
     }
 
     private List<WheelEntry> buildEntries() {
         List<WheelEntry> entries = new ArrayList<>(actionSlots.size());
         for (ActionSlot slot : actionSlots) {
-            entries.add(new WheelEntry(slot.name, null));
+            entries.add(new WheelEntry(Component.literal(slot.name), null));
         }
         return entries;
     }

@@ -20,12 +20,15 @@ mod camera;
 mod collision_debug;
 mod gui;
 mod input;
+mod motion_edit;
 mod renderer;
+mod smoothing_panel;
 mod state;
 
 use camera::Camera;
 use gui::{ViewerAction, ViewerGuiState, ViewerSnapshot};
 use input::InputState;
+use motion_edit::{MotionEdit, MotionEditAction};
 use renderer::Renderer;
 use state::ViewerPersistedState;
 
@@ -53,9 +56,23 @@ fn main() {
         .as_ref()
         .map(|state| state.static_collider_scale)
         .unwrap_or(0.75);
+    let startup_smoothing_groups = persisted_state
+        .as_ref()
+        .map(|state| state.smoothing_groups.clone())
+        .unwrap_or_else(|| {
+            vec![mmd_engine::vmd_smoothing::SmoothingGroup {
+                name: "默认平滑组".into(),
+                enabled: true,
+                options: mmd_engine::vmd_smoothing::SmoothingOptions::default(),
+            }]
+        });
+    let startup_active_group_index = persisted_state
+        .as_ref()
+        .map(|state| state.active_group_index)
+        .unwrap_or(0);
 
     println!("=== MMD Model Viewer ===");
-    println!("用法: viewer <pmx文件> [vmd/fbx文件]");
+    println!("用法: viewer <pmx文件> [vmd/fbx文件] [--smooth-preview] [--smooth-loop]");
     println!("GUI: 左侧面板可自由选择 PMX 模型和 VMD/FBX 动作");
     println!("快捷键: WASD/QE 移动, 右键旋转, 滚轮缩放, Space 播放/暂停, R 重置");
 
@@ -72,7 +89,16 @@ fn main() {
         startup_animation,
         startup_fbx_stack,
         startup_static_collider_scale,
+        startup_smoothing_groups,
+        startup_active_group_index,
     );
+    // 显式启动参数可直接生成预览，仍以原 VMD 快照作为对比基线。
+    if args.iter().any(|arg| arg == "--smooth-loop") {
+        app.motion_edit.options_mut().looped = true;
+    }
+    if args.iter().any(|arg| arg == "--smooth-preview") {
+        app.motion_edit.start_preview();
+    }
     if let Err(error) = event_loop.run_app(&mut app) {
         eprintln!("viewer 退出失败: {}", error);
     }
@@ -86,6 +112,7 @@ struct ViewerApp {
     camera: Camera,
     input: InputState,
     gui: ViewerGuiState,
+    motion_edit: MotionEdit,
     last_frame: Instant,
 }
 
@@ -98,10 +125,14 @@ impl ViewerApp {
         startup_animation: Option<String>,
         startup_fbx_stack: Option<String>,
         startup_static_collider_scale: f32,
+        startup_smoothing_groups: Vec<mmd_engine::vmd_smoothing::SmoothingGroup>,
+        startup_active_group_index: usize,
     ) -> Self {
         let mut renderer = Renderer::new(&display);
         renderer.set_static_collider_scale(startup_static_collider_scale);
         let mut gui = ViewerGuiState::new(startup_model.clone(), startup_animation.clone());
+        let mut motion_edit =
+            MotionEdit::new_with_groups(startup_smoothing_groups, startup_active_group_index);
 
         if let Some(model_path) = startup_model {
             match renderer.load_model(&display, &model_path) {
@@ -128,7 +159,20 @@ impl ViewerApp {
 
             let load_stack_name = gui.selected_stack_name();
             match renderer.load_animation(animation_path, load_stack_name.as_deref()) {
-                Ok(()) => gui.set_info(format!("已加载动作: {}", animation_arg)),
+                Ok(()) => {
+                    gui.set_info(format!("已加载动作: {}", animation_arg));
+                    if animation_path.to_ascii_lowercase().ends_with(".vmd") {
+                        match std::fs::read(animation_path)
+                            .map_err(|error| error.to_string())
+                            .and_then(|bytes| {
+                                motion_edit
+                                    .set_source(std::path::PathBuf::from(animation_path), bytes)
+                            }) {
+                            Ok(()) => {}
+                            Err(error) => gui.set_error(format!("VMD 平滑源读取失败: {error}")),
+                        }
+                    }
+                }
                 Err(error) => gui.set_error(format!("动作加载失败: {}", error)),
             }
         }
@@ -141,6 +185,7 @@ impl ViewerApp {
             camera: Camera::new(),
             input: InputState::new(),
             gui,
+            motion_edit,
             last_frame: Instant::now(),
         }
     }
@@ -154,6 +199,7 @@ impl ViewerApp {
             show_colliders: self.renderer.shows_colliders(),
             static_collider_scale: self.renderer.static_collider_scale(),
             rigid_body_count: self.renderer.rigid_body_count(),
+            loaded_fbx: self.renderer.loaded_fbx(),
         }
     }
 
@@ -162,14 +208,25 @@ impl ViewerApp {
         let delta_time = (now - self.last_frame).as_secs_f32();
         self.last_frame = now;
 
+        let edit_actions = self.motion_edit.poll();
+        self.process_edit_actions(edit_actions);
         let snapshot = self.snapshot();
         let gui = &mut self.gui;
         let mut actions = Vec::new();
+        let mut edit_actions = Vec::new();
+        let edit_epoch = self.motion_edit.source_epoch();
         self.egui.run(&self.window, |ctx| {
-            actions = gui.show(ctx, snapshot);
+            let (viewer_actions, produced_edit_actions) =
+                gui.show(ctx, snapshot, &mut self.motion_edit);
+            actions = viewer_actions;
+            edit_actions = produced_edit_actions;
         });
 
         self.process_actions(actions);
+        // 同帧更换资源后，丢弃界面为旧动作产生的切换操作。
+        if edit_epoch == self.motion_edit.source_epoch() {
+            self.process_edit_actions(edit_actions);
+        }
 
         self.camera.update(&self.input, delta_time);
         self.input.end_frame();
@@ -194,6 +251,7 @@ impl ViewerApp {
         for action in actions {
             match action {
                 ViewerAction::LoadModel(path) => {
+                    self.motion_edit.invalidate_for_model_change();
                     match self.renderer.load_model(&self.display, &path) {
                         Ok(()) => self.gui.set_info(format!("模型加载成功: {}", path)),
                         Err(error) => self.gui.set_error(format!("模型加载失败: {}", error)),
@@ -215,6 +273,7 @@ impl ViewerApp {
                     should_save_state = true;
                 }
                 ViewerAction::LoadAnimation { path, stack_name } => {
+                    self.motion_edit.invalidate_for_model_change();
                     match self.renderer.load_animation(&path, stack_name.as_deref()) {
                         Ok(()) => {
                             let suffix = stack_name
@@ -222,6 +281,20 @@ impl ViewerApp {
                                 .unwrap_or_default();
                             self.gui
                                 .set_info(format!("动作加载成功: {}{}", path, suffix));
+                            if path.to_ascii_lowercase().ends_with(".vmd") {
+                                self.motion_edit.clear_source();
+                                let loaded = std::fs::read(&path)
+                                    .map_err(|error| error.to_string())
+                                    .and_then(|bytes| {
+                                        self.motion_edit
+                                            .set_source(std::path::PathBuf::from(&path), bytes)
+                                    });
+                                if let Err(error) = loaded {
+                                    self.gui.set_error(format!("VMD 平滑源读取失败: {error}"));
+                                }
+                            } else {
+                                self.motion_edit.clear_source();
+                            }
                         }
                         Err(error) => self.gui.set_error(format!("动作加载失败: {}", error)),
                     }
@@ -229,6 +302,7 @@ impl ViewerApp {
                 }
                 ViewerAction::ClearAnimation => {
                     self.renderer.clear_animation();
+                    self.motion_edit.clear_source();
                     self.gui.set_info("已清除当前动作");
                     should_save_state = true;
                 }
@@ -263,10 +337,42 @@ impl ViewerApp {
             animation_path: self.gui.animation_path().to_string(),
             selected_fbx_stack: self.gui.selected_stack_name(),
             static_collider_scale: self.renderer.static_collider_scale(),
+            smoothing_options: self.motion_edit.options().clone(),
+            smoothing_groups: self.motion_edit.groups().to_vec(),
+            active_group_index: self.motion_edit.active_group_index(),
         };
 
         if let Err(error) = state.save() {
             self.gui.set_error(error);
+        }
+    }
+
+    fn process_edit_actions(&mut self, actions: Vec<MotionEditAction>) {
+        for action in actions {
+            self.process_single_edit_action(action);
+        }
+    }
+
+    fn process_single_edit_action(&mut self, action: MotionEditAction) {
+        match action {
+            MotionEditAction::ApplyPreview(bytes) => {
+                match self.renderer.replace_vmd_bytes(&bytes) {
+                    Ok(()) => {
+                        self.motion_edit.mark_preview_active(true);
+                        self.gui.set_info("已切换到平滑预览");
+                    }
+                    Err(error) => self.gui.set_error(format!("应用平滑预览失败: {error}")),
+                }
+            }
+            MotionEditAction::RestoreOriginal(bytes) => {
+                match self.renderer.replace_vmd_bytes(&bytes) {
+                    Ok(()) => {
+                        self.motion_edit.mark_preview_active(false);
+                        self.gui.set_info("已恢复原版 VMD");
+                    }
+                    Err(error) => self.gui.set_error(format!("恢复原版失败: {error}")),
+                }
+            }
         }
     }
 

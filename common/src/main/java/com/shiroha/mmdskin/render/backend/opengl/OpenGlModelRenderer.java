@@ -6,6 +6,8 @@ import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.compat.iris.IrisEntityDiagnostics;
+import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
 import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
@@ -15,6 +17,7 @@ import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKin
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
+import com.shiroha.mmdskin.render.outline.OutlineRenderPass;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -51,6 +54,7 @@ final class OpenGlModelRenderer {
         } else {
             target.light0Direction.set(1.0f, 0.75f, 0.0f).normalize();
             target.light1Direction.set(-1.0f, 0.75f, 0.0f).normalize();
+            // 光照方向使用实体世界 yaw，与模型根的逆向坐标变换配对。
             float yawRad = entityYaw * ((float) Math.PI / 180F);
             target.light0Direction.rotate(workingQuat.identity().rotateY(yawRad));
             target.light1Direction.rotate(workingQuat.identity().rotateY(yawRad));
@@ -76,11 +80,13 @@ final class OpenGlModelRenderer {
         RenderPerformanceProfiler.get().recordTransfer(TransferKind.SUB_MESH, (long) copiedSubMeshes * 20L);
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_SUB_MESH_FETCH, subMeshTimer);
 
-        boolean useToon = initializeToonShaderIfNeeded();
+        boolean useToon = initializeToonShaderIfNeeded(!isGuiScene);
+        float toonIntensity = isGuiScene ? 1.0f
+                : (IrisCompat.isIrisShaderActive() ? light.intensity() * 0.8f : light.intensity());
         if (useToon) {
             long drawTimer = RenderPerformanceProfiler.get().startTimer();
             try {
-                renderToon(target, minecraft, light.intensity(), deliverStack);
+                renderToon(target, minecraft, toonIntensity, deliverStack, !isGuiScene);
             } finally {
                 RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
             }
@@ -89,7 +95,7 @@ final class OpenGlModelRenderer {
 
         long drawTimer = RenderPerformanceProfiler.get().startTimer();
         try {
-            renderStandard(target, minecraft, light, deliverStack);
+            renderStandard(target, minecraft, light, deliverStack, isGuiScene);
         } finally {
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
         }
@@ -105,7 +111,8 @@ final class OpenGlModelRenderer {
         }
         // 传入的矩阵与随后 shader 使用的矩阵完全相同，避免重新推导实体/相机坐标。
         target.firstPersonMatrixFloatBuffer.position(0);
-        deliverStack.last().pose().get(target.firstPersonMatrixFloatBuffer);
+        // 裁剪计算必须与最终着色器使用同一套相机视图矩阵。
+        target.composeModelViewMatrix(deliverStack).get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonMatrixFloatBuffer.position(16);
         RenderSystem.getProjectionMatrix().get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonIndexBuffer.clear();
@@ -146,8 +153,9 @@ final class OpenGlModelRenderer {
                 String.format(java.util.Locale.ROOT, "%.4f", ratio));
     }
 
-    private static boolean initializeToonShaderIfNeeded() {
-        if (!ConfigManager.isToonRenderingEnabled()) {
+    private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene) {
+        // 阴影通道必须保留 Iris 的深度输出程序，跳过 Toon 与描边。
+        if (IrisCompat.isRenderingShadows() || !ConfigManager.isToonRenderingEnabled()) {
             return false;
         }
 
@@ -164,7 +172,10 @@ final class OpenGlModelRenderer {
             }
         }
 
-        return OpenGlModelInstance.toonShaderCpu.isInitialized();
+        return irisEntityScene
+                ? IrisToonCompat.prepare(OpenGlModelInstance.toonShaderCpu)
+                : OpenGlModelInstance.toonShaderCpu.selectOutputProfile(
+                        com.shiroha.mmdskin.render.shader.ToonOutputProfile.vanilla());
     }
 
     private static void updateMaterialMorphIfDirty(OpenGlModelInstance target) {
@@ -189,18 +200,12 @@ final class OpenGlModelRenderer {
     }
 
     private static void renderStandard(OpenGlModelInstance target, Minecraft minecraft,
-                                       LightingHelper.LightData light, PoseStack deliverStack) {
+                                       LightingHelper.LightData light, PoseStack deliverStack,
+                                       boolean guiScene) {
         boolean irisActive = IrisCompat.isIrisShaderActive();
         float colorFactor = irisActive ? 1.0f : light.intensity();
         float alphaFactor = target.getGlobalAlpha();
         RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, alphaFactor);
-
-        if (!bindActiveShader(target, deliverStack)) {
-            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
-            return;
-        }
-
-        target.updateLocation(target.shaderProgram);
 
         BufferUploader.reset();
         GL46C.glBindVertexArray(target.vertexArrayObject);
@@ -209,18 +214,39 @@ final class OpenGlModelRenderer {
         RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
         RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
-        uploadDynamicBuffers(target, light.blockLight(), light.skyLight(), light.skyDarken(), irisActive);
-        uploadMatrixUniforms(target, deliverStack);
-        bindStandardAttributes(target);
-        bindCustomShaderAttributes(target);
-        bindIrisAttributes(target);
-        drawSubMeshes(target, minecraft);
-        clearStandardRenderState(target);
+        boolean shadowPass = IrisCompat.isRenderingShadows();
+        int shadowDraw = shadowPass ? GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING) : -1;
+        int shadowRead = shadowPass ? GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING) : -1;
+        ShaderInstance irisShader = null;
+        try {
+            // 普通混合先设置，随后由 Iris 应用各 G-buffer 的覆盖规则。
+            if (!bindActiveShader(target, deliverStack)) return;
+            ShaderInstance currentShader = RenderSystem.getShader();
+            if (IrisCompat.isIrisProgram(currentShader) && currentShader.getId() == target.shaderProgram) {
+                irisShader = currentShader;
+            }
+            target.updateLocation(target.shaderProgram);
+            uploadDynamicBuffers(target, light.blockLight(), light.skyLight(), light.skyDarken(), irisActive);
+            uploadMatrixUniforms(target, deliverStack);
+            bindStandardAttributes(target);
+            bindCustomShaderAttributes(target);
+            // GUI/纸娃娃使用原版实体 shader，不能注入 Iris 世界实体属性。
+            if (!guiScene && irisShader != null) bindIrisAttributes(target);
+            IrisEntityDiagnostics.record(irisShader, light);
+            drawSubMeshes(target, minecraft);
+        } finally {
+            try {
+                clearStandardRenderState(target);
+            } finally {
+                IrisCompat.clearProgram(irisShader, shadowDraw, shadowRead);
+            }
+        }
     }
 
     private static boolean bindActiveShader(OpenGlModelInstance target, PoseStack deliverStack) {
         int shaderPipelineMode = ClientRenderRuntime.get().renderBackendRegistry().shaderPipelineMode();
-        if (shaderPipelineMode == 0) {
+        // 自定义 MMD shader 模式也不能覆盖 Iris 的阴影程序。
+        if (IrisCompat.isRenderingShadows() || shaderPipelineMode == 0) {
             ShaderInstance mcShader = RenderSystem.getShader();
             if (mcShader == null) {
                 return false;
@@ -305,15 +331,21 @@ final class OpenGlModelRenderer {
     private static void uploadMatrixUniforms(OpenGlModelInstance target, PoseStack deliverStack) {
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
-        deliverStack.last().pose().get(target.modelViewMatBuff);
+        target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
         RenderSystem.getProjectionMatrix().get(target.projMatBuff);
 
-        if (ClientRenderRuntime.get().renderBackendRegistry().shaderPipelineMode() != 1) {
-            return;
+        if (target.modelViewLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.modelViewLocation, false, target.modelViewMatBuff);
         }
-
-        RenderSystem.glUniformMatrix4(target.modelViewLocation, false, target.modelViewMatBuff);
-        RenderSystem.glUniformMatrix4(target.projMatLocation, false, target.projMatBuff);
+        if (target.projMatLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.projMatLocation, false, target.projMatBuff);
+        }
+        if (target.K_modelViewLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.K_modelViewLocation, false, target.modelViewMatBuff);
+        }
+        if (target.K_projMatLocation != -1) {
+            RenderSystem.glUniformMatrix4(target.K_projMatLocation, false, target.projMatBuff);
+        }
 
         if (target.light0Location != -1) {
             target.light0Buff.clear();
@@ -334,12 +366,14 @@ final class OpenGlModelRenderer {
         if (target.sampler0Location != -1) {
             GL46C.glUniform1i(target.sampler0Location, 0);
         }
-        if (target.sampler1Location != -1) {
+        boolean irisProgram = IrisCompat.isIrisProgram(RenderSystem.getShader())
+                && RenderSystem.getShader().getId() == target.shaderProgram;
+        if (!irisProgram && target.sampler1Location != -1) {
             RenderSystem.activeTexture(GL46C.GL_TEXTURE1);
             RenderSystem.bindTexture(target.lightMapMaterial.tex);
             GL46C.glUniform1i(target.sampler1Location, 1);
         }
-        if (target.sampler2Location != -1) {
+        if (!irisProgram && target.sampler2Location != -1) {
             RenderSystem.activeTexture(GL46C.GL_TEXTURE2);
             RenderSystem.bindTexture(target.lightMapMaterial.tex);
             GL46C.glUniform1i(target.sampler2Location, 2);
@@ -427,6 +461,13 @@ final class OpenGlModelRenderer {
     }
 
     private static void bindIrisAttributes(OpenGlModelInstance target) {
+        if (target.I_uv1Location != -1) {
+            // 单次非实例绘制也只读第 0 实例，避免改全局常量属性。
+            GL46C.glEnableVertexAttribArray(target.I_uv1Location);
+            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.uv1BufferObject);
+            GL46C.glVertexAttribIPointer(target.I_uv1Location, 2, GL46C.GL_INT, 0, target.vertexCount * 8L);
+            GL46C.glVertexAttribDivisor(target.I_uv1Location, 1);
+        }
         if (target.I_uv2Location != -1) {
             GL46C.glEnableVertexAttribArray(target.I_uv2Location);
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.uv2BufferObject);
@@ -484,6 +525,10 @@ final class OpenGlModelRenderer {
         if (target.I_positionLocation != -1) GL46C.glDisableVertexAttribArray(target.I_positionLocation);
         if (target.I_normalLocation != -1) GL46C.glDisableVertexAttribArray(target.I_normalLocation);
         if (target.I_uv0Location != -1) GL46C.glDisableVertexAttribArray(target.I_uv0Location);
+        if (target.I_uv1Location != -1) {
+            GL46C.glDisableVertexAttribArray(target.I_uv1Location);
+            GL46C.glVertexAttribDivisor(target.I_uv1Location, 0);
+        }
         if (target.I_uv2Location != -1) GL46C.glDisableVertexAttribArray(target.I_uv2Location);
         if (target.I_colorLocation != -1) GL46C.glDisableVertexAttribArray(target.I_colorLocation);
         // 先解绑 VAO，再解绑缓冲区，避免污染 VAO 内部的 EBO 绑定
@@ -491,12 +536,8 @@ final class OpenGlModelRenderer {
         GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
         RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
-
-        ShaderInstance currentShader = RenderSystem.getShader();
-        if (currentShader != null) {
-            currentShader.clear();
-        }
         BufferUploader.reset();
+
         // 严格恢复 Blaze3D 的默认面剔除与混合状态，避免方块实体以双面无剔除或 Alpha 混合模式渲染
         RenderSystem.enableCull();
         GL46C.glCullFace(GL46C.GL_BACK);
@@ -508,7 +549,8 @@ final class OpenGlModelRenderer {
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    private static void renderToon(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity, PoseStack deliverStack) {
+    private static void renderToon(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity,
+                                   PoseStack deliverStack, boolean irisEntityScene) {
         BufferUploader.reset();
         GL46C.glBindVertexArray(target.vertexArrayObject);
         RenderSystem.enableBlend();
@@ -516,121 +558,87 @@ final class OpenGlModelRenderer {
         RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
         RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
-        if (IrisCompat.isIrisShaderActive()) {
-            ShaderInstance irisShader = RenderSystem.getShader();
+        ShaderInstance currentShader = RenderSystem.getShader();
+        // Iris 全局开启不代表 GUI 当前 shader 是 Iris 实体程序。
+        ShaderInstance irisShader = irisEntityScene && IrisCompat.isIrisProgram(currentShader)
+                ? currentShader : null;
+        try {
             if (irisShader != null) {
                 target.setUniforms(irisShader, deliverStack);
                 irisShader.apply();
             }
-        }
 
-        long currentRevision = target.nativeUpdateRevisionValue();
-        if (target.lastPositionRevision != currentRevision) {
-            var nativeBackend = target.nativeBackendPort();
-            long modelHandle = target.nativeModelHandle();
-            int posAndNorSize = target.vertexCount * 12;
-            long posData = nativeBackend.getPositionDataAddress(modelHandle);
-            nativeBackend.copyNativeDataToBuffer(target.posBuffer, posData, posAndNorSize);
-            long normalData = nativeBackend.getNormalDataAddress(modelHandle);
-            nativeBackend.copyNativeDataToBuffer(target.norBuffer, normalData, posAndNorSize);
+            long currentRevision = target.nativeUpdateRevisionValue();
+            if (target.lastPositionRevision != currentRevision) {
+                var nativeBackend = target.nativeBackendPort();
+                long modelHandle = target.nativeModelHandle();
+                int posAndNorSize = target.vertexCount * 12;
+                long posData = nativeBackend.getPositionDataAddress(modelHandle);
+                nativeBackend.copyNativeDataToBuffer(target.posBuffer, posData, posAndNorSize);
+                long normalData = nativeBackend.getNormalDataAddress(modelHandle);
+                nativeBackend.copyNativeDataToBuffer(target.norBuffer, normalData, posAndNorSize);
 
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.vertexBufferObject);
-            GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0, target.posBuffer);
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.normalBufferObject);
-            GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0, target.norBuffer);
-            if (target.hasUvMorph) {
-                int uv0Size = target.vertexCount * 8;
-                long uv0Data = nativeBackend.getUvDataAddress(modelHandle);
-                nativeBackend.copyNativeDataToBuffer(target.uv0Buffer, uv0Data, uv0Size);
-                GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.texcoordBufferObject);
-                GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0, target.uv0Buffer);
+                GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.vertexBufferObject);
+                GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0, target.posBuffer);
+                GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.normalBufferObject);
+                GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0, target.norBuffer);
+                if (target.hasUvMorph) {
+                    int uv0Size = target.vertexCount * 8;
+                    long uv0Data = nativeBackend.getUvDataAddress(modelHandle);
+                    nativeBackend.copyNativeDataToBuffer(target.uv0Buffer, uv0Data, uv0Size);
+                    GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.texcoordBufferObject);
+                    GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0, target.uv0Buffer);
+                }
+
+                long vertexUploadBytes = (long) posAndNorSize * 2L
+                        + (target.hasUvMorph ? (long) target.vertexCount * 8L : 0L);
+                RenderPerformanceProfiler.get().recordTransfer(TransferKind.CPU_VERTEX, vertexUploadBytes);
+
+                target.lastPositionRevision = currentRevision;
+            } else {
+                long avoidedBytes = (long) target.vertexCount * 12L * 2L
+                        + (target.hasUvMorph ? (long) target.vertexCount * 8L : 0L);
+                RenderPerformanceProfiler.get().recordAvoidedUpload(TransferKind.CPU_VERTEX, avoidedBytes);
             }
 
-            long vertexUploadBytes = (long) posAndNorSize * 2L
-                    + (target.hasUvMorph ? (long) target.vertexCount * 8L : 0L);
-            RenderPerformanceProfiler.get().recordTransfer(TransferKind.CPU_VERTEX, vertexUploadBytes);
+            target.modelViewMatBuff.clear();
+            target.projMatBuff.clear();
+            target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
+            RenderSystem.getProjectionMatrix().get(target.projMatBuff);
+            GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
 
-            target.lastPositionRevision = currentRevision;
-        } else {
-            long avoidedBytes = (long) target.vertexCount * 12L * 2L
-                    + (target.hasUvMorph ? (long) target.vertexCount * 8L : 0L);
-            RenderPerformanceProfiler.get().recordAvoidedUpload(TransferKind.CPU_VERTEX, avoidedBytes);
+            renderToonMainPass(target, minecraft, lightIntensity);
+
+            if (OpenGlModelInstance.toonConfig.isOutlineEnabled()) {
+                renderOutlinePass(target);
+            }
+        } finally {
+            // 清理 Iris 的各缓冲混合覆盖，再恢复原版状态。
+            if (irisShader != null) irisShader.clear();
+            GL46C.glBindVertexArray(0);
+            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
+            GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
+            GL46C.glUseProgram(0);
+            RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
+            BufferUploader.reset();
+
+            RenderSystem.enableCull();
+            GL46C.glCullFace(GL46C.GL_BACK);
+            RenderSystem.depthMask(true);
+            RenderSystem.enableDepthTest();
+            RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
+            RenderSystem.defaultBlendFunc();
+            RenderSystem.disableBlend();
+            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
         }
-
-        target.modelViewMatBuff.clear();
-        target.projMatBuff.clear();
-        deliverStack.last().pose().get(target.modelViewMatBuff);
-        RenderSystem.getProjectionMatrix().get(target.projMatBuff);
-        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
-
-        renderToonMainPass(target, minecraft, lightIntensity);
-
-        if (OpenGlModelInstance.toonConfig.isOutlineEnabled()) {
-            renderOutlinePass(target, minecraft);
-        }
-
-        GL46C.glBindVertexArray(0);
-        GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
-        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
-        GL46C.glUseProgram(0);
-        RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
-        BufferUploader.reset();
-
-        RenderSystem.enableCull();
-        GL46C.glCullFace(GL46C.GL_BACK);
-        RenderSystem.depthMask(true);
-        RenderSystem.enableDepthTest();
-        RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableBlend();
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    private static void renderOutlinePass(OpenGlModelInstance target, Minecraft minecraft) {
-        OpenGlModelInstance.toonShaderCpu.useOutline();
-        int posLoc = OpenGlModelInstance.toonShaderCpu.getOutlinePositionLocation();
-        int norLoc = OpenGlModelInstance.toonShaderCpu.getOutlineNormalLocation();
-        int uvLoc = OpenGlModelInstance.toonShaderCpu.getOutlineUv0Location();
-
-        if (posLoc != -1) {
-            GL46C.glEnableVertexAttribArray(posLoc);
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.vertexBufferObject);
-            GL46C.glVertexAttribPointer(posLoc, 3, GL46C.GL_FLOAT, false, 0, 0);
-        }
-        if (norLoc != -1) {
-            GL46C.glEnableVertexAttribArray(norLoc);
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.normalBufferObject);
-            GL46C.glVertexAttribPointer(norLoc, 3, GL46C.GL_FLOAT, false, 0, 0);
-        }
-        if (uvLoc != -1) {
-            GL46C.glEnableVertexAttribArray(uvLoc);
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.texcoordBufferObject);
-            GL46C.glVertexAttribPointer(uvLoc, 2, GL46C.GL_FLOAT, false, 0, 0);
-        }
-
-        OpenGlModelInstance.toonShaderCpu.setOutlineProjectionMatrix(target.projMatBuff);
-        OpenGlModelInstance.toonShaderCpu.setOutlineModelViewMatrix(target.modelViewMatBuff);
-        ToonRenderHelper.setupOutlineUniforms(OpenGlModelInstance.toonShaderCpu, target.getGlobalAlpha());
-        int missingTextureId = minecraft.getTextureManager()
-                .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
-                .getId();
-
-        RenderSystem.depthMask(false);
-        GL46C.glCullFace(GL46C.GL_FRONT);
-        RenderSystem.enableCull();
-        SubMeshDrawHelper.drawOutline(
-                target.subMeshDataBuf,
-                target.subMeshCount,
-                target.indexElementSize,
-                target.indexType,
-                materialId -> target.mats[materialId].tex == 0 ? missingTextureId : target.mats[materialId].tex,
+    private static void renderOutlinePass(OpenGlModelInstance target) {
+        OutlineRenderPass.draw(OpenGlModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
+                target.vertexBufferObject, target.normalBufferObject, target.subMeshDataBuf,
+                target.subMeshCount, target.indexElementSize, target.indexType,
+                target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
                 (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha));
-        GL46C.glCullFace(GL46C.GL_BACK);
-        RenderSystem.depthMask(true);
-
-        if (posLoc != -1) GL46C.glDisableVertexAttribArray(posLoc);
-        if (norLoc != -1) GL46C.glDisableVertexAttribArray(norLoc);
-        if (uvLoc != -1) GL46C.glDisableVertexAttribArray(uvLoc);
     }
 
     private static void renderToonMainPass(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity) {

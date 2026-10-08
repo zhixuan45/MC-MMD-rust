@@ -18,6 +18,27 @@ public class IrisCompat {
     private static volatile boolean shadowStateDetected = false;
     private static Method areShadowsBeingRenderedMethod = null;
 
+    /** 背包的原版程序不能按全局光影开关判断。 */
+    public static boolean isIrisProgram(net.minecraft.client.renderer.ShaderInstance shader) {
+        return shader != null && shader.getClass().getName().startsWith("net.irisshaders.iris.");
+    }
+
+    /** Iris clear 会绑定主目标，阴影通道须恢复原目标。 */
+    public static void clearProgram(net.minecraft.client.renderer.ShaderInstance shader,
+                                    int shadowDraw, int shadowRead) {
+        if (!isIrisProgram(shader)) return;
+        try {
+            shader.clear();
+        } finally {
+            if (shadowDraw >= 0) {
+                com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(
+                        org.lwjgl.opengl.GL46C.GL_DRAW_FRAMEBUFFER, shadowDraw);
+                com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(
+                        org.lwjgl.opengl.GL46C.GL_READ_FRAMEBUFFER, shadowRead);
+            }
+        }
+    }
+
     public static boolean isIrisShaderActive() {
         if (irisPresent == null) {
             detectIris();
@@ -76,6 +97,8 @@ public class IrisCompat {
     }
 
     public static void reset() {
+        IrisToonCompat.reset();
+        IrisEntityDiagnostics.reset();
         irisPresent = null;
         isShaderPackInUseMethod = null;
         irisApiInstance = null;

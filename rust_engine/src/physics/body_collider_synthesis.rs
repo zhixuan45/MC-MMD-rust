@@ -30,7 +30,19 @@ pub const SYNTHESIZED_GLUTES_WIDTH: f32 = 0.50;
 /// 检测模型中是否包含裙摆物理刚体。
 pub fn has_skirt_rigid_bodies(rigid_bodies: &[PmxRigidBody]) -> bool {
     const SKIRT_PARTS: &[&str] = &[
-        "裙", "スカート", "skirt", "petticoat", "下装", "下衣", "裾", "摆", "衣摆", "后摆", "下摆", "cloak", "cape",
+        "裙",
+        "スカート",
+        "skirt",
+        "petticoat",
+        "下装",
+        "下衣",
+        "裾",
+        "摆",
+        "衣摆",
+        "后摆",
+        "下摆",
+        "cloak",
+        "cape",
     ];
     rigid_bodies.iter().any(|rb| {
         if rb.mode == RigidBodyMode::Static {
@@ -38,7 +50,9 @@ pub fn has_skirt_rigid_bodies(rigid_bodies: &[PmxRigidBody]) -> bool {
         }
         let local = rb.local_name.to_lowercase();
         let universal = rb.universal_name.to_lowercase();
-        SKIRT_PARTS.iter().any(|part| local.contains(part) || universal.contains(part))
+        SKIRT_PARTS
+            .iter()
+            .any(|part| local.contains(part) || universal.contains(part))
     })
 }
 
@@ -53,7 +67,10 @@ pub fn has_posterior_glutes_collider(rigid_bodies: &[PmxRigidBody], waist_bone_i
         }
         let local = rb.local_name.to_lowercase();
         let universal = rb.universal_name.to_lowercase();
-        if GLUTES_PARTS.iter().any(|part| local.contains(part) || universal.contains(part)) {
+        if GLUTES_PARTS
+            .iter()
+            .any(|part| local.contains(part) || universal.contains(part))
+        {
             return true;
         }
         if rb.bone_index == waist_bone_idx as i32 {
@@ -152,7 +169,7 @@ pub fn synthesize_missing_body_colliders(
                 universal_name: "Synthesized_Chest_Collider".to_owned(),
                 bone_index: idx as i32,
                 group: 0, // PMX 组 0（通用身体组），允许与全部动态刚体碰撞
-                un_collision_group_flag: 0x0000,
+                un_collision_group_flag: 0xFFFF,
                 shape: RigidBodyShape::Capsule,
                 size: [SYNTHESIZED_CHEST_RADIUS, SYNTHESIZED_CHEST_HEIGHT, 0.0],
                 position: pos,
@@ -175,7 +192,7 @@ pub fn synthesize_missing_body_colliders(
                 universal_name: "Synthesized_Neck_Collider".to_owned(),
                 bone_index: idx as i32,
                 group: 0,
-                un_collision_group_flag: 0x0000,
+                un_collision_group_flag: 0xFFFF,
                 shape: RigidBodyShape::Sphere,
                 size: [SYNTHESIZED_NECK_RADIUS, 0.0, 0.0],
                 position: pos,
@@ -194,7 +211,15 @@ pub fn synthesize_missing_body_colliders(
     if !has_lower_body_collider(rigid_bodies) {
         let pelvis_bone_idx = find_bone_index(
             bone_names,
-            &["腰", "waist", "pelvis", "hips", "hip", "下半身", "lowerbody"],
+            &[
+                "腰",
+                "waist",
+                "pelvis",
+                "hips",
+                "hip",
+                "下半身",
+                "lowerbody",
+            ],
         );
         if let Some(idx) = pelvis_bone_idx {
             let pos = bone_positions.get(idx).copied().unwrap_or([0.0; 3]);
@@ -203,7 +228,7 @@ pub fn synthesize_missing_body_colliders(
                 universal_name: "Synthesized_Pelvis_Collider".to_owned(),
                 bone_index: idx as i32,
                 group: 0, // PMX 组 0（通用身体组），绝不被裙摆 mask 过滤
-                un_collision_group_flag: 0x0000,
+                un_collision_group_flag: 0xFFFF,
                 shape: RigidBodyShape::Capsule,
                 size: [SYNTHESIZED_PELVIS_RADIUS, SYNTHESIZED_PELVIS_HEIGHT, 0.0],
                 position: pos,
@@ -224,7 +249,15 @@ pub fn synthesize_missing_body_colliders(
     if has_skirt_rigid_bodies(rigid_bodies) {
         let waist_bone_idx = find_bone_index(
             bone_names,
-            &["腰", "waist", "pelvis", "hips", "hip", "下半身", "lowerbody"],
+            &[
+                "腰",
+                "waist",
+                "pelvis",
+                "hips",
+                "hip",
+                "下半身",
+                "lowerbody",
+            ],
         );
         if let Some(idx) = waist_bone_idx {
             if !has_posterior_glutes_collider(rigid_bodies, idx) {
@@ -234,7 +267,7 @@ pub fn synthesize_missing_body_colliders(
                     universal_name: "Synthesized_Glutes_Collider".to_owned(),
                     bone_index: idx as i32,
                     group: 0,
-                    un_collision_group_flag: 0x0000,
+                    un_collision_group_flag: 0xFFFF,
                     shape: RigidBodyShape::Capsule,
                     size: [SYNTHESIZED_GLUTES_RADIUS, SYNTHESIZED_GLUTES_WIDTH, 0.0],
                     position: [pos[0], pos[1] - 0.15, (-pos[2]) + 0.55],
@@ -433,7 +466,6 @@ pub fn push_out_dynamic_bone_position(
 
     world_pos
 }
-
 
 #[cfg(test)]
 #[path = "body_collider_synthesis_tests.rs"]

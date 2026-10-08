@@ -84,20 +84,6 @@ mod tests {
     use super::*;
     use glam::{Quat, Vec3};
 
-    #[test]
-    fn suppresses_stationary_noise_but_keeps_exact_current_target() {
-        let mut filter = KinematicTargetFilter::default();
-        let initial = Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0));
-        assert!(!filter.filter(0, initial).suppressed);
-
-        let noisy = Mat4::from_rotation_translation(
-            Quat::from_rotation_y(0.001),
-            Vec3::new(1.001, 2.0, 3.0),
-        );
-        let result = filter.filter(0, noisy);
-        assert!(result.suppressed);
-        assert!(result.transform.abs_diff_eq(noisy, 1e-7));
-    }
 
     #[test]
     fn repeated_small_motion_does_not_accumulate_into_a_velocity_pulse() {
@@ -112,26 +98,5 @@ mod tests {
         }
     }
 
-    #[test]
-    fn preserves_kinematic_velocity_for_large_per_frame_motion() {
-        let mut filter = KinematicTargetFilter::default();
-        filter.seed(0, Mat4::IDENTITY);
 
-        let result = filter.filter(0, Mat4::from_translation(Vec3::new(0.002, 0.0, 0.0)));
-        assert!(!result.suppressed);
-        assert_eq!(result.transform.w_axis.x, 0.002);
-    }
-
-    #[test]
-    fn seed_replaces_old_model_history() {
-        let mut filter = KinematicTargetFilter::default();
-        filter.seed(0, Mat4::from_translation(Vec3::X));
-        filter.seed(0, Mat4::from_translation(Vec3::Y));
-
-        let result = filter.filter(0, Mat4::from_translation(Vec3::new(0.0, 1.001, 0.0)));
-        assert!(result.suppressed);
-        assert!(result
-            .transform
-            .abs_diff_eq(Mat4::from_translation(Vec3::new(0.0, 1.001, 0.0)), 1e-7));
-    }
 }

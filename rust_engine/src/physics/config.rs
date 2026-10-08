@@ -87,6 +87,11 @@ mod tests {
             super::CollisionStabilityMode::Stable
         );
         assert!(!config.kinematic_filter);
-        assert!((config.static_collider_scale - crate::physics::mmd_rigid_body::STATIC_COLLISION_SHAPE_SCALE).abs() < 1e-6);
+        assert!(
+            (config.static_collider_scale
+                - crate::physics::mmd_rigid_body::STATIC_COLLISION_SHAPE_SCALE)
+                .abs()
+                < 1e-6
+        );
     }
 }

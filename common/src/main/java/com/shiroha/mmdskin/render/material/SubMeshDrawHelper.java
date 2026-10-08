@@ -67,38 +67,4 @@ public final class SubMeshDrawHelper {
         RenderSystem.enableCull();
     }
 
-    public static void drawOutline(ByteBuffer subMeshDataBuf,
-                                   int subMeshCount,
-                                   int indexElementSize,
-                                   int indexType,
-                                   TextureResolver textureResolver,
-                                   AlphaResolver alphaResolver) {
-        RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
-        int lastBoundTexture = -1;
-
-        for (int i = 0; i < subMeshCount; ++i) {
-            int base = i * SUB_MESH_STRIDE;
-            int materialId = subMeshDataBuf.getInt(base);
-            int beginIndex = subMeshDataBuf.getInt(base + 4);
-            int vertexCount = subMeshDataBuf.getInt(base + 8);
-            float alpha = subMeshDataBuf.getFloat(base + 12);
-            boolean visible = subMeshDataBuf.get(base + 16) != 0;
-
-            if (!visible || alphaResolver.resolve(materialId, alpha) < 0.001f) {
-                continue;
-            }
-
-            int textureId = textureResolver.resolve(materialId);
-            if (textureId != lastBoundTexture) {
-                RenderSystem.setShaderTexture(0, textureId);
-                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, textureId);
-                lastBoundTexture = textureId;
-            }
-
-            long startPos = (long) beginIndex * indexElementSize;
-            GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, indexType, startPos);
-        }
-        // 描边绘制完毕后恢复面剔除
-        RenderSystem.enableCull();
-    }
 }

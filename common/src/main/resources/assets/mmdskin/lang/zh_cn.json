@@ -158,6 +158,9 @@
   "gui.mmdskin.model_settings.held_item_scale": "物品缩放: %s",
   "gui.mmdskin.model_settings.held_block_display": "手持方块",
   "gui.mmdskin.model_settings.held_block_scale": "方块缩放: %s",
+  "gui.mmdskin.model_settings.tail_physics": "尾巴物理",
+  "gui.mmdskin.model_settings.tail_idle_lift": "闲置抬起",
+  "gui.mmdskin.model_settings.tail_movement_boost": "移动增强 ×1.5",
   "gui.mmdskin.model_settings.quick_bind": "快捷绑定",
   "gui.mmdskin.model_settings.slot": "槽位 %s",
   "key.mmdskin.morph_wheel": "表情轮盘",
@@ -393,5 +396,16 @@
   "gui.mmdskin.model_anim.slot.sneak": "潜行",
   "gui.mmdskin.model_anim.slot.onHorse": "骑马",
   "gui.mmdskin.model_anim.slot.crawl": "爬行",
-  "gui.mmdskin.model_anim.slot.lieDown": "趴下"
+  "gui.mmdskin.model_anim.slot.lieDown": "趴下",
+  "gui.mmdskin.config.maid_manager": "女仆管理",
+  "gui.mmdskin.maid_manager.last_seen": "本次会话见过",
+  "gui.mmdskin.maid_manager.title": "女仆管理",
+  "gui.mmdskin.maid_manager.loaded": "已加载",
+  "gui.mmdskin.maid.save_failed": "女仆模型偏好保存失败",
+  "gui.mmdskin.maid_model_selector.search": "搜索模型…",
+  "gui.mmdskin.maid.current": "当前",
+  "gui.mmdskin.maid_model_selector.no_results": "没有匹配的模型",
+  "gui.mmdskin.maid_manager.scope": "列表只显示已验证为你的女仆。",
+  "gui.mmdskin.maid.default_appearance": "恢复女仆默认外观",
+  "gui.mmdskin.maid_manager.empty": "本次会话中没有已验证的女仆"
 }

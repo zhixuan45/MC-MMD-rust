@@ -4,6 +4,7 @@ import com.shiroha.mmdskin.config.RuntimeConfigPort;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
 import com.shiroha.mmdskin.fabric.YsmCompat;
 import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
+import com.shiroha.mmdskin.stage.client.camera.StageCameraOrientation;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
 import net.minecraft.client.Camera;
 import net.minecraft.util.Mth;
@@ -13,6 +14,9 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Final;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -20,6 +24,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /** 相机 Mixin，用于接管舞台模式与第一人称 MMD 相机位置。 */
 @Mixin(Camera.class)
 public abstract class CameraMixin {
+
+    @Shadow @Final private Vector3f forwards;
+    @Shadow @Final private Vector3f up;
+    @Shadow @Final private Vector3f left;
+    @Shadow public abstract Quaternionf rotation();
 
     @Shadow
     protected abstract void setPosition(double x, double y, double z);
@@ -38,6 +47,7 @@ public abstract class CameraMixin {
                 if (controller.isActive()) {
                     this.setPosition(controller.getCameraX(), controller.getCameraY(), controller.getCameraZ());
                     this.setRotation(controller.getCameraYaw(), controller.getCameraPitch());
+                    StageCameraOrientation.applyRoll(rotation(), forwards, up, left, controller.getCameraRoll());
                 }
             }
         } else {

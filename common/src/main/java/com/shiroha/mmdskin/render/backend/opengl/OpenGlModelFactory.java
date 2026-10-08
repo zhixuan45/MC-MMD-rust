@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.render.backend.opengl;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.texture.runtime.TextureRepository;
 import java.nio.ByteBuffer;
@@ -62,6 +63,8 @@ final class OpenGlModelFactory {
         int uv1BufferObject = 0;
         int uv2BufferObject = 0;
         ModelMaterial lightMapMaterial = null;
+        ModelMaterial[] mats = null;
+        List<String> texKeys = new ArrayList<>();
         FloatBuffer modelViewMatBuff = null;
         FloatBuffer projMatBuff = null;
         FloatBuffer light0Buff = null;
@@ -85,7 +88,7 @@ final class OpenGlModelFactory {
             ByteBuffer colorBuffer = MemoryUtil.memAlloc(vertexCount * 16);
             ByteBuffer norBuffer = MemoryUtil.memAlloc(vertexCount * 12);
             ByteBuffer uv0Buffer = MemoryUtil.memAlloc(vertexCount * 8);
-            ByteBuffer uv1Buffer = MemoryUtil.memAlloc(vertexCount * 8);
+            ByteBuffer uv1Buffer = MemoryUtil.memAlloc(vertexCount * 8 + 8);
             ByteBuffer uv2Buffer = MemoryUtil.memAlloc(vertexCount * 8);
             colorBuffer.order(ByteOrder.LITTLE_ENDIAN);
             uv1Buffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -122,22 +125,10 @@ final class OpenGlModelFactory {
                 default -> 0;
             };
 
-            List<String> texKeys = new ArrayList<>();
-            ModelMaterial[] mats = new ModelMaterial[nativeBackend.getMaterialCount(model)];
+            mats = new ModelMaterial[nativeBackend.getMaterialCount(model)];
             for (int i = 0; i < mats.length; ++i) {
-                mats[i] = new ModelMaterial();
+                mats[i] = MaterialTextureLoader.loadMaterial(nativeBackend, model, i, texKeys);
                 mats[i].name = nativeBackend.getMaterialName(model, i);
-                String texFilename = nativeBackend.getMaterialTexturePath(model, i);
-                mats[i].texturePath = texFilename != null ? texFilename : "";
-                if (texFilename != null && !texFilename.isEmpty()) {
-                    TextureRepository.Texture mgrTex = TextureRepository.GetTexture(texFilename);
-                    if (mgrTex != null) {
-                        mats[i].tex = mgrTex.tex;
-                        mats[i].hasAlpha = mgrTex.hasAlpha;
-                        TextureRepository.addRef(texFilename);
-                        texKeys.add(texFilename);
-                    }
-                }
             }
 
             lightMapMaterial = new ModelMaterial();
@@ -181,6 +172,8 @@ final class OpenGlModelFactory {
                 uv1Buffer.putInt(15);
                 uv1Buffer.putInt(15);
             }
+            // 尾部单独存 Iris 中性覆盖坐标，保留原 UV1 数据。
+            uv1Buffer.putInt(0).putInt(10);
             uv1Buffer.flip();
 
             int posAndNorSize = vertexCount * 12;
@@ -268,6 +261,9 @@ final class OpenGlModelFactory {
             if (lightMapMaterial != null && lightMapMaterial.ownsTexture && lightMapMaterial.tex > 0) {
                 GL46C.glDeleteTextures(lightMapMaterial.tex);
             }
+            // 构造中途失败时同时归还默认纹理与共享贴图引用。
+            MaterialTextureLoader.releaseOwnedTextures(mats);
+            TextureRepository.releaseAll(texKeys);
             if (modelViewMatBuff != null) MemoryUtil.memFree(modelViewMatBuff);
             if (projMatBuff != null) MemoryUtil.memFree(projMatBuff);
             if (light0Buff != null) MemoryUtil.memFree(light0Buff);

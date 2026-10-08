@@ -2,6 +2,8 @@ package com.shiroha.mmdskin.fabric.register;
 
 import com.shiroha.mmdskin.player.sync.BoneSyncManager;
 import com.shiroha.mmdskin.config.UIConstants;
+import com.shiroha.mmdskin.compat.maid.runtime.MaidMMDModelManager;
+import com.shiroha.mmdskin.compat.maid.ui.VerifiedMaidDirectory;
 import com.shiroha.mmdskin.debug.client.PerformanceHud;
 import com.shiroha.mmdskin.fabric.maid.MaidCompatMixinPlugin;
 import com.shiroha.mmdskin.fabric.network.MmdSkinNetworkPack;
@@ -114,6 +116,8 @@ final class FabricClientRuntimeHooks {
     }
 
     private void onDisconnect() {
+        MaidMMDModelManager.clearAll();
+        VerifiedMaidDirectory.clearSession();
         MMDCameraController.getInstance().exitStageMode();
         PlayerModelSyncService.onDisconnect();
         MmdSkinRendererPlayerHelper.onDisconnect();
