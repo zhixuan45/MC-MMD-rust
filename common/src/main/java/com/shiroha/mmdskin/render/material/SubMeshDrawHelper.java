@@ -63,6 +63,8 @@ public final class SubMeshDrawHelper {
             long startPos = (long) beginIndex * indexElementSize;
             GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, indexType, startPos);
         }
+        // 绘制完毕后必须确保恢复默认的面剔除状态，防止污染后续方块实体与实体渲染
+        RenderSystem.enableCull();
     }
 
     public static void drawOutline(ByteBuffer subMeshDataBuf,
@@ -96,5 +98,7 @@ public final class SubMeshDrawHelper {
             long startPos = (long) beginIndex * indexElementSize;
             GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, indexType, startPos);
         }
+        // 描边绘制完毕后恢复面剔除
+        RenderSystem.enableCull();
     }
 }

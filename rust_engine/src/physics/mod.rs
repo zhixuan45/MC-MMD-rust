@@ -14,6 +14,7 @@ mod mmd_joint;
 mod mmd_physics;
 mod mmd_rigid_body;
 mod physics_diagnostics;
+pub(crate) mod skirt_cross_joints;
 
 /// Z 轴翻转变换（左手 ↔ 右手坐标系转换，与 saba InvZ 一致）
 ///

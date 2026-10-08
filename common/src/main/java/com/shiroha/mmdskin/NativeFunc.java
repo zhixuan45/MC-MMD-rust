@@ -333,6 +333,7 @@ public class NativeFunc {
         boolean kinematicFilter,
         boolean collisionEnabled,
         int collisionStabilityMode,
+        float staticColliderScale,
         boolean debugLog
     );
 

@@ -160,6 +160,7 @@ pub fn is_side_hair_body(body: &PmxRigidBody) -> bool {
 }
 
 /// 判断刚体是否属于头部或上半身跟骨碰撞体。
+#[allow(dead_code)]
 pub fn is_head_or_upper_body_collider(body: &PmxRigidBody) -> bool {
     const UPPER_NAMES: &[&str] = &[
         "頭",

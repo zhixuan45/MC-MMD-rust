@@ -78,18 +78,8 @@ impl MmdJointData {
             pmx_joint.position_spring,
             pmx_joint.rotation_spring,
         );
-        let clamped_wide_root = apply_wide_skirt_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
+        let _clamped_wide_root = apply_wide_skirt_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
         apply_wide_skirt_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
-        if !clamped_wide_root {
-            apply_skirt_root_outward_limit(
-                &mut parameters,
-                pmx_rb_a,
-                pmx_rb_b,
-                position,
-                rotation,
-                rb_b_initial_transform.w_axis.truncate(),
-            );
-        }
 
         let clamped_wide_hair_root =
             apply_wide_back_hair_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
@@ -182,47 +172,6 @@ impl MmdJointData {
 fn joint_rotation(rotation: [f32; 3]) -> Quat {
     // 刚体形状与 6DOF frame 必须共享同一旋转约定。
     mmd_physics_rotation(rotation)
-}
-
-fn apply_skirt_root_outward_limit(
-    parameters: &mut JointParameters,
-    body_a: &PmxRigidBody,
-    body_b: &PmxRigidBody,
-    joint_position: Vec3,
-    joint_rotation: Quat,
-    dynamic_body_position: Vec3,
-) {
-    if body_a.mode != RigidBodyMode::Static
-        || body_b.mode == RigidBodyMode::Static
-        || !is_skirt_body(body_b)
-    {
-        return;
-    }
-
-    let center_offset = dynamic_body_position - joint_position;
-    let radial = Vec3::new(center_offset.x, 0.0, center_offset.z).length();
-    if radial <= 1e-5 {
-        return;
-    }
-
-    // 计算中心线向外的径向单位向量
-    let outward = Vec3::new(center_offset.x, 0.0, center_offset.z).normalize();
-
-    // 分别评估关节局部 X 轴（Pitch 俯仰）与 Z 轴（Roll 侧滚）正向旋转对径向位移的贡献得分。
-    // 得分为正表示正向旋转将摆片推向外侧；得分为负表示负向旋转将摆片推向外侧。
-    let axis_x = joint_rotation * Vec3::X;
-    let axis_z = joint_rotation * Vec3::Z;
-
-    let score_x = axis_x.cross(center_offset).dot(outward);
-    let score_z = axis_z.cross(center_offset).dot(outward);
-
-    if score_x.abs() > 1e-4 {
-        parameters.angular[0].restrict_inward_rotation(score_x > 0.0);
-    }
-
-    if score_z.abs() > 1e-4 {
-        parameters.angular[2].restrict_inward_rotation(score_z > 0.0);
-    }
 }
 
 fn apply_wide_skirt_root_fallback(
@@ -370,9 +319,8 @@ pub(crate) fn joint_anchor_position_error(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_skirt_root_outward_limit, apply_wide_skirt_chain_fallback,
-        apply_wide_skirt_root_fallback, joint_anchor_position_error, joint_rotation, MmdJointData,
-        JOINT_STOP_ERP,
+        apply_wide_skirt_chain_fallback, apply_wide_skirt_root_fallback,
+        joint_anchor_position_error, joint_rotation, MmdJointData, JOINT_STOP_ERP,
     };
     use crate::physics::bullet_ffi::{BulletRigidBody, BulletShape, RigidBodyInfo};
     use glam::{Mat4, Quat, Vec3};
@@ -431,157 +379,6 @@ mod tests {
     #[test]
     fn stabilization_parameters_stay_in_bullet_ranges() {
         assert!((0.0..=1.0).contains(&JOINT_STOP_ERP));
-    }
-
-    #[test]
-    fn skirt_root_limit_uses_geometry_to_choose_outward_x_direction() {
-        let anchor = test_pmx_body("下半身", RigidBodyMode::Static);
-        let skirt = test_pmx_body("裙_0_0", RigidBodyMode::Dynamic);
-        let mut negative_outward = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-1.5, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [0.0; 3],
-            [0.0; 3],
-        );
-
-        apply_skirt_root_outward_limit(
-            &mut negative_outward,
-            &anchor,
-            &skirt,
-            Vec3::ZERO,
-            Quat::IDENTITY,
-            Vec3::new(0.0, -1.0, -0.2),
-        );
-        assert_eq!(negative_outward.angular[0].lower, 0.0);
-        assert_eq!(negative_outward.angular[0].upper, 1.5);
-
-        let mut positive_outward = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-1.5, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [0.0; 3],
-            [0.0; 3],
-        );
-        apply_skirt_root_outward_limit(
-            &mut positive_outward,
-            &anchor,
-            &skirt,
-            Vec3::ZERO,
-            Quat::IDENTITY,
-            Vec3::new(0.0, -1.0, 0.2),
-        );
-        assert_eq!(positive_outward.angular[0].lower, -1.5);
-        assert_eq!(positive_outward.angular[0].upper, 0.0);
-
-        // 两种判向都必须允许绑定姿态，不能在首步制造限位越界。
-        for parameters in [&negative_outward, &positive_outward] {
-            assert!(parameters.angular[0].lower <= 0.0);
-            assert!(parameters.angular[0].upper >= 0.0);
-        }
-    }
-
-    #[test]
-    fn skirt_root_limit_supports_side_skirt_flaps_via_z_axis() {
-        let anchor = test_pmx_body("下半身", RigidBodyMode::Static);
-        let skirt = test_pmx_body("裙_侧摆", RigidBodyMode::Dynamic);
-
-        // 左侧裙摆 (x < 0)
-        let mut left_skirt = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [0.0, 0.0, -1.5],
-            [0.0, 0.0, 1.5],
-            [0.0; 3],
-            [0.0; 3],
-        );
-        apply_skirt_root_outward_limit(
-            &mut left_skirt,
-            &anchor,
-            &skirt,
-            Vec3::ZERO,
-            Quat::IDENTITY,
-            Vec3::new(-0.2, -1.0, 0.0),
-        );
-        assert_eq!(left_skirt.angular[2].lower, -1.5);
-        assert_eq!(left_skirt.angular[2].upper, 0.0);
-
-        // 右侧裙摆 (x > 0)
-        let mut right_skirt = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [0.0, 0.0, -1.5],
-            [0.0, 0.0, 1.5],
-            [0.0; 3],
-            [0.0; 3],
-        );
-        apply_skirt_root_outward_limit(
-            &mut right_skirt,
-            &anchor,
-            &skirt,
-            Vec3::ZERO,
-            Quat::IDENTITY,
-            Vec3::new(0.2, -1.0, 0.0),
-        );
-        assert_eq!(right_skirt.angular[2].lower, 0.0);
-        assert_eq!(right_skirt.angular[2].upper, 1.5);
-    }
-
-    #[test]
-    fn skirt_root_limit_preserves_valid_bounds_for_positive_pmx_offsets() {
-        let anchor = test_pmx_body("下半身", RigidBodyMode::Static);
-        let skirt = test_pmx_body("后摆", RigidBodyMode::Dynamic);
-
-        // PMX 中初始给出了正数的 lower/upper 限制 (例如 lower = 0.1, upper = 1.5)
-        let mut parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [0.1, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [0.0; 3],
-            [0.0; 3],
-        );
-        apply_skirt_root_outward_limit(
-            &mut parameters,
-            &anchor,
-            &skirt,
-            Vec3::ZERO,
-            Quat::IDENTITY,
-            Vec3::new(0.0, -1.0, 0.2), // 后摆，负向旋转为向外
-        );
-
-        // 裁切后 lower 必须 <= upper 且 0.0 处于合法区间内，决不能造成 lower > upper 的 Bullet 自由轴
-        assert!(parameters.angular[0].lower <= parameters.angular[0].upper);
-        assert_eq!(parameters.angular[0].upper, 0.0);
-        assert!(parameters.angular[0].lower <= 0.0);
-    }
-
-    #[test]
-    fn dynamic_skirt_chain_keeps_pmx_limits() {
-        let dynamic_a = test_pmx_body("裙_0_0", RigidBodyMode::Dynamic);
-        let dynamic_b = test_pmx_body("裙_1_0", RigidBodyMode::Dynamic);
-        let mut parameters = crate::physics::joint_parameters::JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [-1.5, 0.0, 0.0],
-            [1.5, 0.0, 0.0],
-            [0.0; 3],
-            [0.0; 3],
-        );
-
-        apply_skirt_root_outward_limit(
-            &mut parameters,
-            &dynamic_a,
-            &dynamic_b,
-            Vec3::ZERO,
-            Quat::IDENTITY,
-            Vec3::new(0.0, -1.0, 0.2),
-        );
-
-        assert_eq!(parameters.angular[0].lower, -1.5);
-        assert_eq!(parameters.angular[0].upper, 1.5);
     }
 
     #[test]

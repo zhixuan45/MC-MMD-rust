@@ -129,6 +129,9 @@ final class OpenGlModelRenderer {
     private static void diagnoseFirstPersonIndices(
             com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort nativeBackend,
             long modelHandle, int firstPersonIndexCount) {
+        if (!ConfigManager.isPhysicsDebugLog()) {
+            return;
+        }
         long now = System.nanoTime();
         if (now - lastFirstPersonDiagnosticNanos < FIRST_PERSON_DIAGNOSTIC_INTERVAL_NANOS) {
             return;
@@ -483,10 +486,10 @@ final class OpenGlModelRenderer {
         if (target.I_uv0Location != -1) GL46C.glDisableVertexAttribArray(target.I_uv0Location);
         if (target.I_uv2Location != -1) GL46C.glDisableVertexAttribArray(target.I_uv2Location);
         if (target.I_colorLocation != -1) GL46C.glDisableVertexAttribArray(target.I_colorLocation);
-
+        // 先解绑 VAO，再解绑缓冲区，避免污染 VAO 内部的 EBO 绑定
+        GL46C.glBindVertexArray(0);
         GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
-        GL46C.glBindVertexArray(0);
         RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
 
         ShaderInstance currentShader = RenderSystem.getShader();
@@ -494,6 +497,14 @@ final class OpenGlModelRenderer {
             currentShader.clear();
         }
         BufferUploader.reset();
+        // 严格恢复 Blaze3D 的默认面剔除与混合状态，避免方块实体以双面无剔除或 Alpha 混合模式渲染
+        RenderSystem.enableCull();
+        GL46C.glCullFace(GL46C.GL_BACK);
+        RenderSystem.depthMask(true);
+        RenderSystem.enableDepthTest();
+        RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableBlend();
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
@@ -558,12 +569,21 @@ final class OpenGlModelRenderer {
             renderOutlinePass(target, minecraft);
         }
 
+        GL46C.glBindVertexArray(0);
         GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
-        GL46C.glBindVertexArray(0);
         GL46C.glUseProgram(0);
         RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
         BufferUploader.reset();
+
+        RenderSystem.enableCull();
+        GL46C.glCullFace(GL46C.GL_BACK);
+        RenderSystem.depthMask(true);
+        RenderSystem.enableDepthTest();
+        RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableBlend();
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private static void renderOutlinePass(OpenGlModelInstance target, Minecraft minecraft) {

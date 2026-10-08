@@ -16,8 +16,12 @@ public final class MobReplacementService {
     private MobReplacementService() {
     }
 
+    public static boolean hasActiveReplacements() {
+        return ConfigManager.hasMobModelReplacements();
+    }
+
     public static String getReplacementModelName(LivingEntity entity) {
-        if (entity == null || !MobReplacementTargets.isSupported(entity.getType()) || isPlayerLike(entity) || isMaidEntity(entity)) {
+        if (!hasActiveReplacements() || entity == null || !MobReplacementTargets.isSupported(entity.getType()) || isPlayerLike(entity) || isMaidEntity(entity)) {
             return null;
         }
 

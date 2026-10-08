@@ -49,6 +49,8 @@ pub struct CollisionBody {
     pub is_skirt: bool,
     /// 是否属于尾巴动态链，用于隔离初始已穿入后裙的跨碰撞组刚体对。
     pub is_tail: bool,
+    /// 是否属于头发动态链，用于隔离披发落入后裙摆的跨碰撞组刚体对。
+    pub is_hair: bool,
     pub is_active: bool,
     /// 初始姿态下旋转碰撞体的保守世界 AABB；缺失时仅使用拓扑规则。
     pub initial_aabb: Option<CollisionAabb>,
@@ -252,18 +254,19 @@ pub fn build_filter_plan(
         }
     }
 
-    // 尾巴与后裙通常属于不同碰撞组，也没有关节边，因此不会进入上面的连通图过滤。
-    // Stable 模式只断开绑定姿态下已经重叠的尾巴-裙摆对。这里也包含 FollowBone
-    // 尾根锚点：静止锚点若持续顶住动态后裙，会与裙环关节形成高频能量输入。
+    // 尾巴/长发与后裙通常属于不同碰撞组，也没有关节边，因此不会进入上面的连通图过滤。
+    // Stable 模式只断开绑定姿态下已经重叠的动态尾巴-动态裙摆对、动态长发-动态裙摆对。
+    // 绝对不能断开静态跟骨刚体或阻挡体（FollowBone）与裙摆的碰撞，否则衣物会直接穿透身体内部。
     if mode == CollisionStabilityMode::Stable {
         for a in 0..bodies.len() {
             for b in (a + 1)..bodies.len() {
                 let tail_skirt_pair = (bodies[a].is_tail && bodies[b].is_skirt)
                     || (bodies[b].is_tail && bodies[a].is_skirt);
-                let has_dynamic_skirt = (bodies[a].is_skirt && bodies[a].is_dynamic)
-                    || (bodies[b].is_skirt && bodies[b].is_dynamic);
-                if tail_skirt_pair
-                    && has_dynamic_skirt
+                let hair_skirt_pair = (bodies[a].is_hair && bodies[b].is_skirt)
+                    || (bodies[b].is_hair && bodies[a].is_skirt);
+                let both_dynamic = bodies[a].is_dynamic && bodies[b].is_dynamic;
+                if (tail_skirt_pair || hair_skirt_pair)
+                    && both_dynamic
                     && bodies[a].is_active
                     && bodies[b].is_active
                     && collision_allowed(bodies[a], bodies[b])
@@ -327,6 +330,7 @@ mod tests {
         is_dynamic: true,
         is_skirt: false,
         is_tail: false,
+        is_hair: false,
         is_active: true,
         initial_aabb: None,
     };
@@ -570,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn stable_filters_overlapping_tail_anchor_and_dynamic_skirt() {
+    fn stable_preserves_overlapping_tail_anchor_and_dynamic_skirt() {
         let bounds = CollisionAabb::from_transform(Mat4::IDENTITY, Vec3::ONE);
         let tail_anchor = CollisionBody {
             group: 3,
@@ -588,9 +592,9 @@ mod tests {
 
         let plan = build_filter_plan(&[tail_anchor, skirt], &[], CollisionStabilityMode::Stable);
 
-        assert_eq!(plan.pairs, vec![(0, 1)]);
-        assert_eq!(plan.filtered_tail_anchor_skirt_pairs, 1);
-        assert_eq!(plan.preserved_dynamic_kinematic_pairs, 0);
+        assert!(plan.pairs.is_empty(), "静态跟骨刚体与动态裙摆碰撞应始终保留");
+        assert_eq!(plan.filtered_tail_anchor_skirt_pairs, 0);
+        assert_eq!(plan.preserved_dynamic_kinematic_pairs, 1);
     }
 
     #[test]

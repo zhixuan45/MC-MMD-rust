@@ -49,7 +49,8 @@ const GRASS_WONDER_PROFILE: ProbeProfile = ProbeProfile {
 };
 
 fn profile_for_path(path: &str) -> &'static ProbeProfile {
-    if path.to_ascii_lowercase().contains("grasswonder") {
+    let lower = path.to_ascii_lowercase();
+    if lower.contains("grasswonder") || lower.contains("suzuka") || lower.contains("teio") {
         &GRASS_WONDER_PROFILE
     } else {
         &RIN_PROFILE

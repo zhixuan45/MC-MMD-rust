@@ -88,8 +88,8 @@ public final class FirstPersonManager {
         if (!RuntimeConfigPortHolder.get().isFirstPersonModelEnabled()) return false;
         Minecraft mc = Minecraft.getInstance();
         if (mc.options.getCameraType() != CameraType.FIRST_PERSON) return false;
-        // 游泳时禁用第一人称模型，避免头部与身体进入相机造成遮挡穿模
-        if (mc.player != null && (mc.player.isSwimming() || mc.player.isVisuallySwimming())) return false;
+        // 游泳或乘坐载具时禁用第一人称模型，避免身体与饰品进入相机造成遮挡穿模
+        if (mc.player != null && (mc.player.isSwimming() || mc.player.isVisuallySwimming() || mc.player.isPassenger())) return false;
         return mc.player != null && MmdSkinRendererPlayerHelper.isUsingMmdModel(mc.player);
     }
 
