@@ -23,6 +23,10 @@ public interface ModelRuntimeAccessPort {
 
     void preloadTexture(String texturePath);
 
+    default void preloadTexture(String texturePath, String kind, String context) {
+        preloadTexture(texturePath);
+    }
+
     void clearPreloadedTextures();
 
     void tickTextures();

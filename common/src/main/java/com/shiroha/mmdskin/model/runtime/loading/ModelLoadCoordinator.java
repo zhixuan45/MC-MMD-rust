@@ -237,9 +237,11 @@ public final class ModelLoadCoordinator {
                 if (texturePath == null || texturePath.isEmpty()) {
                     continue;
                 }
-                runtimeAccessPort.preloadTexture(texturePath);
+                runtimeAccessPort.preloadTexture(texturePath, "diffuse",
+                        "preload modelHandle=" + modelHandle + " materialIndex=" + i);
             }
-            runtimeAccessPort.preloadTexture(modelDir + "/lightMap.png");
+            runtimeAccessPort.preloadTexture(modelDir + "/lightMap.png", "light-map",
+                    "preload modelHandle=" + modelHandle);
         } catch (Exception e) {
             logger.warn("[异步加载] 纹理预解码部分失败（不影响后续加载）", e);
         }

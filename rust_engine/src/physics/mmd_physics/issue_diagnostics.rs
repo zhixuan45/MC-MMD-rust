@@ -26,6 +26,9 @@ impl MMDPhysics {
             self.collision_filter_rejected_pairs, self.collision_filter_plan.largest_dynamic_component,
             self.garment_extension_pairs, self.garment_rejected_pairs, self.embedded_body_filtered_pairs);
 
+        let _ = writeln!(out, "[MMD诊断][COLLISION] velocity_caps linear={:.4} angular={:.4} clamp_phase=after_step sample_phase=instantaneous_read sample=current_read_not_pre_clamp_peak",
+            requested.max_linear_velocity, requested.max_angular_velocity);
+
         let filter_total = self.collision_filter_plan.pairs.len();
         for &(a, b) in self.collision_filter_plan.pairs.iter().take(SAMPLE_LIMIT) {
             let name_a = self
@@ -118,13 +121,23 @@ impl MMDPhysics {
                 .get(b)
                 .map_or("<missing>", |body| body.name.as_str());
             let _ = writeln!(out,
-                "[MMD诊断][COLLISION] contact rank={} a={} name_a={} b={} name_b={} points={} penetration={:.5} impulse={:.5}",
+                "[MMD诊断][COLLISION] contact rank={} a={} name_a={} b={} name_b={} points={} penetration={:.5} impulse={:.5} mode_a={:?} mass_a={:.4} group_a={} mask_a=0x{:04X} mode_b={:?} mass_b={:.4} group_b={} mask_b=0x{:04X} snapshot=current_manifold space=bullet_left_model impulse_kind=max_point_applied_impulse",
                 rank + 1, a, escape(name_a), b, escape(name_b), contact.contact_count,
-                contact.max_penetration_depth, contact.max_applied_impulse);
+                contact.max_penetration_depth, contact.max_applied_impulse,
+                self.rigid_bodies[a].physics_mode, self.rigid_bodies[a].mass, self.rigid_bodies[a].group, self.rigid_bodies[a].collision_mask,
+                self.rigid_bodies[b].physics_mode, self.rigid_bodies[b].mass, self.rigid_bodies[b].group, self.rigid_bodies[b].collision_mask);
         }
         let _ = writeln!(out, "[MMD诊断][COLLISION] contacts_sampled={} contacts_truncated_at_scan_limit={} note=current_manifold_not_window_peak", contact_total, manifolds_truncated);
 
-        let mut worst: Option<(f32, &str, &str, &str, glam::Vec3, glam::Vec3)> = None;
+        let mut worst: Option<(
+            f32,
+            &str,
+            &str,
+            &str,
+            glam::Vec3,
+            glam::Vec3,
+            Option<glam::Vec3>,
+        )> = None;
         let mut scanned = 0usize;
         for joint in self.joints.iter().take(JOINT_SCAN_LIMIT) {
             scanned += 1;
@@ -159,12 +172,18 @@ impl MMDPhysics {
                     &body_b.name,
                     anchor_a,
                     anchor_b,
+                    joint
+                        .constraint
+                        .as_ref()
+                        .and_then(|constraint| constraint.diagnostic())
+                        .map(|diagnostic| diagnostic.linear_violation),
                 ));
             }
         }
-        if let Some((error, joint, body_a, body_b, anchor_a, anchor_b)) = worst {
-            let _ = writeln!(out, "[MMD诊断][COLLISION] worst_anchor joint={} body_a={} body_b={} error={:.5} anchor_a={} anchor_b={} scanned_joints={} total_joints={} truncated={}",
-                escape(joint), escape(body_a), escape(body_b), error, vec3(anchor_a), vec3(anchor_b), scanned, self.joints.len(), self.joints.len() > scanned);
+        if let Some((error, joint, body_a, body_b, anchor_a, anchor_b, violation)) = worst {
+            let _ = writeln!(out, "[MMD诊断][COLLISION] worst_anchor joint={} body_a={} body_b={} error={:.5} anchor_a={} anchor_b={} scanned_joints={} total_joints={} truncated={} metric=world_anchor_separation space=bullet_left_model linear_limit_violation={}",
+                escape(joint), escape(body_a), escape(body_b), error, vec3(anchor_a), vec3(anchor_b), scanned, self.joints.len(), self.joints.len() > scanned,
+                violation.map_or_else(|| "unavailable".to_owned(), vec3));
         } else {
             let _ = writeln!(
                 out,
@@ -271,6 +290,12 @@ mod tests {
         assert!(output.contains("status=applied"));
         assert!(output.contains("contact rank=1"));
         assert!(output.contains("note=current_manifold_not_window_peak"));
+        assert!(output.contains("mode_a="));
+        assert!(output.contains("mask_a=0x"));
+        assert!(output.contains("impulse=0.00000"));
+        assert!(output.contains("impulse_kind=max_point_applied_impulse"));
+        assert!(output.contains("clamp_phase=after_step sample_phase=instantaneous_read"));
+        assert!(output.contains("linear_limit_violation="));
         assert!(physics.collision_stability_mode == CollisionStabilityMode::Stable);
     }
 }

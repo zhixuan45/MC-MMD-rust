@@ -8,10 +8,37 @@ use crate::{MmdError, Result};
 
 /// 从文件加载纹理
 pub fn load_texture<P: AsRef<Path>>(path: P) -> Result<Texture> {
-    let img = image::open(path.as_ref())
-        .map_err(|e| MmdError::Texture(format!("Failed to load texture: {}", e)))?;
+    let path = path.as_ref();
+    let img = image::open(path).map_err(|e| {
+        MmdError::Texture(format!(
+            "Failed to load texture path={} error={}",
+            bounded_path(path),
+            e
+        ))
+    })?;
 
     Ok(texture_from_image(img))
+}
+
+fn bounded_path(path: &Path) -> String {
+    let value = path.to_string_lossy();
+    let mut bounded = String::new();
+    let mut truncated = false;
+    for (index, character) in value.chars().enumerate() {
+        if index == 240 {
+            truncated = true;
+            break;
+        }
+        bounded.push(if character.is_control() {
+            ' '
+        } else {
+            character
+        });
+    }
+    if truncated {
+        bounded.push_str("...");
+    }
+    bounded
 }
 
 fn texture_from_image(img: DynamicImage) -> Texture {
@@ -78,6 +105,20 @@ mod tests {
         assert!(texture.data.chunks_exact(3).all(|px| px == [255, 0, 0]));
     }
 
+    #[test]
+    fn missing_texture_error_includes_bounded_input_path() {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "mmd_engine_missing_texture_{}.png",
+            std::process::id()
+        ));
+        let message = match load_texture(&path) {
+            Ok(_) => panic!("missing texture should fail"),
+            Err(error) => error.to_string(),
+        };
+        assert!(message.contains(&path.to_string_lossy().to_string()));
+        assert!(message.contains("os error 2") || message.contains("No such file"));
+    }
 
     fn dds_texture(fourcc: &str, linear_size: u32, block: &[u8]) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(128 + block.len());

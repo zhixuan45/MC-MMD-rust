@@ -293,3 +293,45 @@ UUID 同步、未加载实体的消息保留、新玩家回放和服务端重启
 纸娃娃描边补充修复（2026-10-05）：文件隔离后仍有薄片全黑，定位为 GUI 视图 Z 约 -10950 被旧距离衰减归零，外壳收回主体且 LEQUAL 允许同深度覆盖。修复限制在独立 pass 与两个描边 shader：正交分支使用 GUI 宽度、固定视线，临时 LESS 并恢复原深度函数；透视分支维持原计算。早期探针少一组法线，已补齐并加入数量断言，原像素计数不再作为验收依据。最新完整样本在 4 倍栅格下由 63440 个主体黑色像素降为 0，亚像素扫描仍检出外缘；common 编译与资源处理通过。未修改物理、主材质或模型文件，实际游戏画面仍待验收。详见 `OUTLINE_RENDER_ISOLATION.md`。
 
 纸娃娃粗细补充（2026-10-05）：用户确认按人物显示大小匹配世界描边相对粗细。移除固定 0.5 GUI 宽度，改用世界基础宽度乘实际 GUI 额外缩放，即 model-view 第一列长度除以模型世界根缩放；两 renderer 仅补充现有 modelScaleValue() 输入。默认纸娃娃宽度由 0.5 改为 0.066 GUI 单位，模型配置缩放与纸娃娃/背包显示缩放均纳入计算。保留防黑的 LESS、固定正交视线和原世界距离修饰，无需修改模型设置界面、物理或主材质。common 编译与资源处理、9 组宽度比例、正常/异常清理及防黑回归均通过；4 倍栅格的亚像素扫描检出外缘，所有位置主体黑色像素为 0。世界透视旧/新输出逐字节一致，实际游戏观感待验收。
+
+# PMX SDEF/QDEF 完整蒙皮支持实施计划（2026-10-11）
+
+状态：用户已选择“需要完整支持”，并于本轮交付确认“本轮先交付现有修复，方案暂缓”。本文件保留独立技术方案，尚未获准实施，未修改生产蒙皮算法。下述 GPU baseline 测试记录的是当前降级行为，不能作为完整 SDEF/QDEF 验收。
+
+## 当前源码调用链与已确认差异
+
+PMX 顶点权重在 `rust_engine/src/model/loader.rs::convert_weight_deform` 被转换为 `VertexWeight`。该转换保留 SDEF 的两骨索引、权重和 `c/r0/r1`，也保留 QDEF 的四骨索引和权重，因此解析层已有原始参数。运行时 CPU 路径由 `rust_engine/src/model/runtime/animation.rs` 使用 Morph 后的位置并行调用 `rust_engine/src/model/runtime/mod.rs::compute_vertex_skinning`；目前 SDEF 忽略 `c/r0/r1` 并按 BDEF2 矩阵混合，QDEF 按 BDEF4 矩阵混合。`rust_engine/src/model/runtime/material_visibility.rs` 也调用该 CPU 蒙皮函数计算材质可见性位置，后续实现须保持其语义一致。
+
+GPU 数据在 `rust_engine/src/model/runtime/render_data.rs::init_gpu_skinning_data` 按每顶点四个骨索引和权重构造。当前 SDEF 写成两个索引及互补权重，QDEF 原样写四索引/权重；`rust_engine/src/jni_bridge/native_func.rs` 导出 `GetBoneIndices`、`GetBoneWeights` 和复制到 direct buffer 的 native 入口，Java 侧由 `NativeRuntimeBridge`、`GpuSkinningModelInstance`、`GpuSkinningModelUploader` 准备 buffer，再由 `SkinningComputeShader` 绑定 0–12 号 SSBO 并执行 `shader/compute_skinning.comp.glsl`。shader 对全部类型执行矩阵线性混合。另有 `rust_engine/src/skinning/skinning.rs` 的简化 SDEF 函数，但它不是上述运行时主路径，不应只修该文件。
+
+目前的 GPU payload 行为由 `rust_engine/tests/gpu_sdef_payload.rs::gpu_payload_keeps_sdef_as_explicit_bdef2_approximation` 固定。该测试已经在本轮独立运行通过（1/1），只证明当前数据降级且 BDEF 数据布局现状；完整支持获批后，应把它改为检查类型标签及辅助参数的完整 payload，并保留 BDEF 项的既有索引/权重断言。
+
+## 建议实现边界与 ABI
+
+保持现有 `VertexWeight` 对外形状及现有 `GetBoneIndices`/`GetBoneWeights` JNI 方法签名和四索引、四权重的原有 buffer 布局；不改已有 Java 用户 API。新增 GPU 内部 per-vertex deform-kind 数据，并为 SDEF 提供 `C/R0/R1` sidecar buffer。QDEF 继续使用现有四骨数据，但通过类型标签选择双四元数算法。新增 JNI 读取入口仅作为内部 ABI 的加法扩展，所有旧入口和 BDEF payload 不变。具体 sidecar 编码应使用显式 Rust/Java 字节布局断言及版本/长度检查，避免依赖 Rust 枚举内存布局或未对齐 struct 直接透传。
+
+CPU 路径基于现有骨骼变换矩阵生成每骨刚体变换表示，并按权重类型分派；SDEF/QDEF helper 放入小型专用 module，避免继续膨胀 `runtime/mod.rs`。CPU 更新动画位置和材质可见性路径调用同一纯计算 helper。GPU 在 `render_data.rs` 构造元数据，JNI 只复制规范化后的 sidecar，Java instance/uploader 管理创建、上传、销毁及模型重载；Compute shader 通过类型标签分派。当前 shader 已占用 binding 0–12；新增 binding 前必须核对运行设备 `GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS` 与项目保存/恢复逻辑，不能假定额外槽位必然可用。若设备能力不足，需按可验证布局合并元数据 buffer 或显式关闭 GPU skinning 回退 CPU，不能静默按 BDEF 解释。
+
+不改变 Morph 先于蒙皮的顺序。首先保留并精确回归 BDEF1/2/4 的当前输出语义；SDEF 按经核定的 MMD SDEF 参考公式使用 `C/R0/R1` 与两骨刚体旋转；四元数符号须同半球对齐，避免 antipodal 取反导致抵消。参考实现需确认 bind-space 与 current-space 的坐标定义、参数空间、法线处理和非单位权重行为，再确定数学代码。日志样本没有提供可用于真实验证的 PMX 字节，不能从日志计数推造样例数据。
+
+QDEF 按 dual-quaternion linear blending：把每骨刚体蒙皮变换转成 dual quaternion；相对参考实部做同半球符号对齐；按权重累加并依据参考算法归一化，得到旋转和刚体平移后变换 Morph 后的位置与法线。要覆盖零长度 blend、非法骨索引、负/非凸权重和权重和不为 1 的输入；以 PMX 解析器和原始格式资料核实合法输入边界，非法输入沿用明确、可测试的安全规则。QDEF 不接受矩阵线性混合作为完整实现。
+
+## 数学参考与待核实项
+
+QDEF 数学参考采用 Kavan 等人的原始论文 *Skinning with Dual Quaternions*，尤其是 dual quaternion blend、同半球符号处理及归一化伪代码（论文第 3.2–3.4 节）：[原作者论文 PDF](https://users.cs.utah.edu/~ladislav/kavan07skinning/kavan07skinning.pdf)。论文把骨变换视作刚体变换，不覆盖非刚性 scale/shear；项目须先确认 PMX 骨矩阵是否带 scale/shear，再决定 QDEF 对此的显式策略及测试。
+
+SDEF 方面已找到 nagadomi 的 [MMD SDEF 原始实验代码](https://gist.github.com/nagadomi/aa39745ae6716b50c2a60288b093d14b)，其中包含以两骨姿态四元数加权归一化及 C/R0/R1 位置修正的实现，并注明后来合入 `mmd_tools`。另一个说明指出完整官方算法公开规范不足，但它是二手文章，不能单独构成规范来源。故此计划不把某个公式冒称为官方标准：实施前应固定并审查 `mmd_tools` 当前对应实现及许可/版本，寻找可用的原始 PMX 2.1 规范原文或 MMD/Mikoto/XISMO 可复核结果；如仍无正式公式，以明确标注的兼容参考实现和参考姿态比对作为项目行为契约，交用户确认后编码。QDEF 的 PMX 字段定义也须引用已核验的格式原文，不从第三方文章转述推导。
+
+## 文件范围
+
+生产改动预计涉及：`rust_engine/src/model/runtime/mod.rs` 与新增 CPU skinning helper module；`rust_engine/src/model/runtime/animation.rs` 和 `material_visibility.rs` 的 helper 调用一致性；`rust_engine/src/model/runtime/render_data.rs` 的 kind/sidecar 生成；在 `rust_engine/src/jni_bridge/` 新增专用 sidecar 复制模块，并接入 `mod.rs` 与测试（既有 `native_func.rs` 已超过 1000 行，本方案不向其中追加实现）；Java `NativeFunc.java`、`NativeRuntimeBridge.java`、`NativeRenderBackendPort.java`、`GpuSkinningModelInstance.java`、`GpuSkinningModelUploader.java`、`SkinningComputeShader.java` 的内部数据生命周期；`common/src/main/resources/assets/mmdskin/shader/compute_skinning.comp.glsl`；CPU/Rust 集成测试、Java buffer/layout 测试和 GPU offscreen 测试；最后更新 `index.md` 与变形诊断描述。提交实现前再次测每个代码文件行数，超过 1000 行时拆分到专用 module/helper，不扩大 `runtime/mod.rs`。
+
+## 回归与验收
+
+先写解析与 payload 测试：确认 SDEF 的两骨、权重、C/R0/R1 和 QDEF 四骨/权重逐字段保真；JNI sidecar 每顶点 stride、端序、buffer 长度、空值、释放和模型重载有明确断言。BDEF1、BDEF2、BDEF4 要与当前实现的确定输入输出严格比对，GPU 改动前后原 buffer ABI 不变。
+
+CPU 算法测试使用来源固定、可追溯的 reference vectors 和同一组姿态，分别覆盖 SDEF 关节弯曲、QDEF 前臂扭转、纯旋转、纯平移、多个骨影响、四元数 antipodal、零权重/无效骨与 Morph 叠加；位置和法线均对参考输出比较。参考数值须由已确认的参考实现实际生成并附生成脚本/版本，不在计划中填造数值或误差阈值。至少一个肘部弯曲和一个前臂 twist 形变需与相同 mesh 下 BDEF 对照；对比定量指标之外，保留变形网格/法线的可视检查。
+
+GPU 验收需建立可重复的 offscreen OpenGL context，上传同一组 BDEF/SDEF/QDEF 输入和骨矩阵，dispatch compute shader，readback position/normal，与 CPU 同算法逐顶点比对，验证容差基于实际精度制定并覆盖所有权重类型、Morph、错误输入、资源释放和 SSBO 状态恢复。当前仅有的 `gpu_sdef_payload` Rust 集成测试不是 GPU shader 测试。GPU offscreen 通过后仍需 Minecraft/Iris 实际模型和动作验收；该验收不能用纯计算测试、静态截图推断或缺失的附件资源替代。
+
+最终验证顺序为：Rust 单元/集成和格式回归、Java 定向测试、`:common:test` 与模块编译、GPU offscreen dispatch/readback、真实 PMX 的弯曲/扭转对照、游戏画面验收。用户本轮暂缓该方案，后续批准并实现后统一运行这些验证。只有在取得真实含 SDEF/QDEF 的样例后，才能报告对应类型的模型验收；当前日志 QDEF 计数为 0，shader 包和 PMX 字节不可取得。

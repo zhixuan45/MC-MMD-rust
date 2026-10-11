@@ -21,14 +21,21 @@ public final class ToonOutputProfile {
     private final String reason;
     private final String fragmentDeclarations;
     private final String fragmentWriter;
+    private final String lightingSource;
 
     private ToonOutputProfile(boolean supported, String id, String reason,
                               String fragmentDeclarations, String fragmentWriter) {
+        this(supported, id, reason, fragmentDeclarations, fragmentWriter, "");
+    }
+
+    private ToonOutputProfile(boolean supported, String id, String reason,
+                              String fragmentDeclarations, String fragmentWriter, String lightingSource) {
         this.supported = supported;
         this.id = id;
         this.reason = reason;
         this.fragmentDeclarations = fragmentDeclarations;
         this.fragmentWriter = fragmentWriter;
+        this.lightingSource = lightingSource;
     }
 
     public static ToonOutputProfile vanilla() {
@@ -41,6 +48,11 @@ public final class ToonOutputProfile {
 
     public static ToonOutputProfile resolve(String packName, String programName,
                                             String fragmentSource, int[] drawBuffers) {
+        return resolve(packName, programName, fragmentSource, null, drawBuffers);
+    }
+
+    public static ToonOutputProfile resolve(String packName, String programName,
+                                            String fragmentSource, String vertexSource, int[] drawBuffers) {
         if (packName == null || programName == null || fragmentSource == null || drawBuffers == null) {
             return unsupported("缺少光影包、程序源码或 DRAWBUFFERS 信息");
         }
@@ -106,7 +118,14 @@ public final class ToonOutputProfile {
         String colorEncoding = family == Family.BSL && hasSqrtColorEncoding(source) ? "sqrt-linear" : "linear";
         String id = family.name().toLowerCase(Locale.ROOT) + ":" + kind.name().toLowerCase(Locale.ROOT)
                 + ":" + colorEncoding + ":" + layout;
-        return new ToonOutputProfile(true, id, "", declarations(drawBuffers.length), writer(outputs, colorEncoding));
+        String lighting = family == Family.COMPLEMENTARY
+                ? ComplementaryToonLighting.create(fragmentSource, vertexSource) : "";
+        if (family == Family.COMPLEMENTARY && vertexSource != null && lighting.isEmpty()) {
+            return unsupported("Complementary 光照函数或太阳方向契约未确认");
+        }
+        // 设置和维度改变后，光照源码也必须参与变体缓存键。
+        if (!lighting.isEmpty()) id += ":light-" + Integer.toUnsignedString(lighting.hashCode(), 16);
+        return new ToonOutputProfile(true, id, "", declarations(drawBuffers.length), writer(outputs, colorEncoding), lighting);
     }
 
     private static boolean hasDrawBufferEvidence(String source, int[] buffers) {
@@ -240,6 +259,7 @@ public final class ToonOutputProfile {
     public String reason() { return reason; }
     public String fragmentDeclarations() { return fragmentDeclarations; }
     public String fragmentWriter() { return fragmentWriter; }
+    public String lightingSource() { return lightingSource; }
 
     private enum Family { COMPLEMENTARY, BSL }
     private enum Program { ENTITIES, HAND }

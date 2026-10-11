@@ -18,11 +18,17 @@ public final class OutlineRenderPass {
         float resolve(int materialId, float baseAlpha);
     }
 
+    @FunctionalInterface
+    public interface TextureResolver {
+        int resolve(int materialId);
+    }
+
     private OutlineRenderPass() {
     }
 
     public record Inputs(int positionsBuffer,
                          int normalsBuffer,
+                         int uvBuffer,
                          ByteBuffer subMeshData,
                          int subMeshCount,
                          int indexElementSize,
@@ -33,11 +39,16 @@ public final class OutlineRenderPass {
     }
 
     public static void draw(ToonShaderBase shader, Inputs inputs,
-                            AlphaResolver alphaResolver) {
+                            AlphaResolver alphaResolver, TextureResolver textureResolver) {
         int positionLocation = shader.getOutlinePositionLocation();
         int normalLocation = shader.getOutlineNormalLocation();
+        int uvLocation = shader.getOutlineUvLocation();
         boolean positionEnabled = false;
         boolean normalEnabled = false;
+        boolean uvEnabled = false;
+        int previousTextureUnit = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
+        RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
+        int previousTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
         FloatBuffer projection = inputs.projection();
         int projectionStart = projection.position();
         boolean orthographic = Math.abs(projection.get(projectionStart + 11)) < 0.000001f
@@ -45,6 +56,7 @@ public final class OutlineRenderPass {
         int previousDepthFunc = orthographic ? GL46C.glGetInteger(GL46C.GL_DEPTH_FUNC) : 0;
         try {
             shader.useOutline();
+            shader.setOutlineAlphaCutoff(0.1f);
             if (positionLocation != -1) {
                 GL46C.glEnableVertexAttribArray(positionLocation);
                 positionEnabled = true;
@@ -56,6 +68,12 @@ public final class OutlineRenderPass {
                 normalEnabled = true;
                 GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, inputs.normalsBuffer());
                 GL46C.glVertexAttribPointer(normalLocation, 3, GL46C.GL_FLOAT, false, 0, 0);
+            }
+            if (uvLocation != -1) {
+                GL46C.glEnableVertexAttribArray(uvLocation);
+                uvEnabled = true;
+                GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, inputs.uvBuffer());
+                GL46C.glVertexAttribPointer(uvLocation, 2, GL46C.GL_FLOAT, false, 0, 0);
             }
 
             ToonConfig config = ToonConfig.getInstance();
@@ -70,11 +88,14 @@ public final class OutlineRenderPass {
             if (orthographic) RenderSystem.depthFunc(GL46C.GL_LESS);
             GL46C.glCullFace(GL46C.GL_FRONT);
             RenderSystem.enableCull();
-            drawSubMeshes(shader, inputs, alphaResolver);
+            drawSubMeshes(shader, inputs, alphaResolver, textureResolver);
         } finally {
             // 只清理本 pass 启用的属性，并恢复描边使用的固定状态。
             if (positionEnabled) GL46C.glDisableVertexAttribArray(positionLocation);
             if (normalEnabled) GL46C.glDisableVertexAttribArray(normalLocation);
+            if (uvEnabled) GL46C.glDisableVertexAttribArray(uvLocation);
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTexture);
+            RenderSystem.activeTexture(previousTextureUnit);
             GL46C.glCullFace(GL46C.GL_BACK);
             RenderSystem.depthMask(true);
             if (orthographic) RenderSystem.depthFunc(previousDepthFunc);
@@ -92,14 +113,18 @@ public final class OutlineRenderPass {
         return width * (viewScale / rootScale);
     }
 
-    private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver) {
+    private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver,
+                                      TextureResolver textureResolver) {
         ByteBuffer data = inputs.subMeshData();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
             int base = i * SUB_MESH_STRIDE;
             if (data.get(base + 16) == 0) continue;
             float alpha = alphaResolver.resolve(data.getInt(base), data.getFloat(base + 12));
             if (alpha < 0.001f) continue;
-            // 逐子网格透明度来自可见性策略，纯色通道不绑定材质纹理。
+            // 无纹理材质沿用实心遮罩，不采样上一材质的残留绑定。
+            int texture = textureResolver.resolve(data.getInt(base));
+            shader.setOutlineUseTextureAlpha(texture > 0);
+            if (texture > 0) GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
             shader.setOutlineAlpha(alpha);
             GL46C.glDrawElements(GL46C.GL_TRIANGLES, data.getInt(base + 8), inputs.indexType(),
                     (long) data.getInt(base + 4) * inputs.indexElementSize());

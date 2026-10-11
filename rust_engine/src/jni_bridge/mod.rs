@@ -8,6 +8,9 @@ mod render_view;
 pub(crate) mod tacz_arm_target;
 mod tail_options;
 
+#[cfg(test)]
+mod resource_lifecycle_tests;
+
 pub use animation_handle::AnimationHandle;
 pub use model_handle::ModelHandle;
 pub use native_func::*;

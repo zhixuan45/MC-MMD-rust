@@ -444,9 +444,11 @@ impl MMDPhysics {
                 [&body.name, &body.universal_name, bone_name],
             );
         }
-        self.tail_forces.set_wave_delays(super::tail_wave::tail_wave_delays(
-            &self.rigid_bodies, bone_parents,
-        ));
+        self.tail_forces
+            .set_wave_delays(super::tail_wave::tail_wave_delays(
+                &self.rigid_bodies,
+                bone_parents,
+            ));
     }
 
     /// 设置当前物理实例的尾巴闲置与移动效果。
@@ -892,6 +894,12 @@ mod tests;
 
 impl Drop for MMDPhysics {
     fn drop(&mut self) {
+        let debug_log = get_config().debug_log;
+        let world_id = self.world.opaque_id();
+        if debug_log {
+            log_lifecycle_stats("before_clear", world_id, bullet_ffi::get_alloc_stats());
+        }
+
         // Bullet3 要求：必须在 destroy 对象前先从世界中移除。
         // Rust 默认按声明顺序 drop 字段（joints → rigid_bodies → world），
         // 如果不先移除，bw_world_destroy 会访问已释放的指针导致崩溃。
@@ -905,16 +913,23 @@ impl Drop for MMDPhysics {
                 self.world.remove_rigid_body(body);
             }
         }
-        // 之后 Rust 自动 drop 各字段（约束/刚体/世界），此时世界已为空，安全释放
-
-        // 泄漏检测日志（仅在当前实例释放后检查全局计数）
-        let stats = bullet_ffi::get_alloc_stats();
-        if !stats.is_clean() {
-            log::warn!(
-                "[Bullet3] C++ 侧仍有存活对象: worlds={}, shapes={}, bodies={}, constraints={}, motionStates={}",
-                stats.worlds, stats.shapes, stats.rigid_bodies,
-                stats.constraints, stats.motion_states
-            );
+        // 先销毁约束、刚体和形状，再销毁世界；此处之后的全局计数才是释放后值。
+        self.joints.clear();
+        self.rigid_bodies.clear();
+        if debug_log {
+            log_lifecycle_stats("before_world_drop", world_id, bullet_ffi::get_alloc_stats());
+        }
+        self.world.destroy();
+        if debug_log {
+            log_lifecycle_stats("after_world_drop", world_id, bullet_ffi::get_alloc_stats());
         }
     }
+}
+
+fn log_lifecycle_stats(phase: &str, world_id: usize, stats: bullet_ffi::BulletAllocStats) {
+    log::info!(
+        "[Bullet3][LIFECYCLE] phase={} world_id={} counts=process_global other_worlds_possible=true worlds={} shapes={} bodies={} constraints={} motionStates={}",
+        phase, world_id, stats.worlds, stats.shapes, stats.rigid_bodies,
+        stats.constraints, stats.motion_states
+    );
 }

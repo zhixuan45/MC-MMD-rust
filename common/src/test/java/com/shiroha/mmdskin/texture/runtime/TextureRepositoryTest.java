@@ -3,9 +3,11 @@ package com.shiroha.mmdskin.texture.runtime;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import com.shiroha.mmdskin.bridge.runtime.NativeTexturePort;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.system.MemoryUtil;
@@ -65,6 +67,32 @@ class TextureRepositoryTest {
         predecoded.release();
 
         assertNull(predecoded.pixelData());
+    }
+
+    @Test
+    void shouldSkipPredecodeForMissingOptionalTextureAndTryOnceAtRuntime() {
+        TextureRepository.Init();
+        AtomicInteger loadCalls = new AtomicInteger();
+        TextureRepository.configureRuntimeCollaborators(new NativeTexturePort() {
+            @Override public long loadTexture(String filename) {
+                loadCalls.incrementAndGet();
+                return 0L;
+            }
+            @Override public int textureWidth(long handle) { return 0; }
+            @Override public int textureHeight(long handle) { return 0; }
+            @Override public long textureData(long handle) { return 0L; }
+            @Override public boolean textureHasAlpha(long handle) { return false; }
+            @Override public void copyTextureData(ByteBuffer buffer, long source, int size) {}
+            @Override public void deleteTexture(long handle) {}
+        });
+
+        String missingPath = Path.of(System.getProperty("java.io.tmpdir"),
+                "mmd-missing-lightmap-" + System.nanoTime() + ".png").toString();
+        TextureRepository.preloadTexture(missingPath, "light-map", "preload modelHandle=7");
+        assertEquals(0, loadCalls.get());
+
+        assertNull(TextureRepository.GetTexture(missingPath, "light-map", "render modelHandle=7"));
+        assertEquals(1, loadCalls.get());
     }
 
     @Test

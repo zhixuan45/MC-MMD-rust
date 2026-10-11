@@ -378,6 +378,19 @@ impl BulletWorld {
         unsafe { ffi::bw_world_remove_constraint(self.ptr, constraint.ptr) }
     }
 
+    /// 返回仅供生命周期日志关联的 opaque 地址值。
+    pub(super) fn opaque_id(&self) -> usize {
+        self.ptr as usize
+    }
+
+    /// 由 physics 生命周期拥有者先释放子对象，再显式销毁 world。
+    pub(super) fn destroy(&mut self) {
+        if !self.ptr.is_null() {
+            unsafe { ffi::bw_world_destroy(self.ptr) }
+            self.ptr = std::ptr::null_mut();
+        }
+    }
+
     pub fn set_kinematic_filter(&self, enabled: bool) {
         unsafe { ffi::bw_world_set_kinematic_filter(self.ptr, enabled) }
     }
@@ -385,7 +398,7 @@ impl BulletWorld {
 
 impl Drop for BulletWorld {
     fn drop(&mut self) {
-        unsafe { ffi::bw_world_destroy(self.ptr) }
+        self.destroy();
     }
 }
 

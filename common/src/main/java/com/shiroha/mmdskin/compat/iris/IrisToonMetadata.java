@@ -85,12 +85,13 @@ final class IrisToonMetadata {
         if (source == null) return unsupported(packName, shaderName, "没有有效的实体片段程序");
         String sourceName = (String) access.sourceName.invoke(source);
         String fragment = ((Optional<?>) access.fragment.invoke(source)).map(Object::toString).orElse("");
+        String vertex = ((Optional<?>) access.vertex.invoke(source)).map(Object::toString).orElse("");
         Object directives = access.directives.invoke(source);
         if ((boolean) access.unknownBuffers.invoke(directives)) {
             return unsupported(packName, sourceName, "实体程序未声明输出布局");
         }
         int[] buffers = (int[]) access.drawBuffers.invoke(directives);
-        return new Result(packName, sourceName, ToonOutputProfile.resolve(packName, sourceName, fragment, buffers));
+        return new Result(packName, sourceName, ToonOutputProfile.resolve(packName, sourceName, fragment, vertex, buffers));
     }
 
     private static Result vanilla() {
@@ -117,7 +118,7 @@ final class IrisToonMetadata {
     private static final class Access {
         final Method currentPack, currentDimension, packName, programSet;
         final Object[] shaderKeys;
-        final Method keyName, keyProgram, resolve, sourceName, fragment, directives, unknownBuffers, drawBuffers;
+        final Method keyName, keyProgram, resolve, sourceName, fragment, vertex, directives, unknownBuffers, drawBuffers;
         final java.lang.reflect.Constructor<?> resolverConstructor;
 
         Access() throws ReflectiveOperationException {
@@ -141,6 +142,7 @@ final class IrisToonMetadata {
             resolve = resolver.getMethod("resolve", id);
             sourceName = source.getMethod("getName");
             fragment = source.getMethod("getFragmentSource");
+            vertex = source.getMethod("getVertexSource");
             directives = source.getMethod("getDirectives");
             unknownBuffers = directive.getMethod("hasUnknownDrawBuffers");
             drawBuffers = directive.getMethod("getDrawBuffers");

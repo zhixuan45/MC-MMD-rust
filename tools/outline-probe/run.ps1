@@ -18,6 +18,7 @@ $taskStubs = @{
 package com.mojang.blaze3d.systems;
 import org.lwjgl.opengl.GL46C;
 public final class RenderSystem {
+    public static void activeTexture(int value) { GL46C.glActiveTexture(value); }
     public static void depthMask(boolean value) { GL46C.glDepthMask(value); }
     public static void depthFunc(int value) { GL46C.glDepthFunc(value); }
     public static void enableCull() { GL46C.glEnable(GL46C.GL_CULL_FACE); }
@@ -40,6 +41,9 @@ import java.nio.FloatBuffer;
 public class ToonShaderBase {
     public int getOutlinePositionLocation() { return 0; }
     public int getOutlineNormalLocation() { return 1; }
+    public int getOutlineUvLocation() { return 2; }
+    public void setOutlineAlphaCutoff(float value) {}
+    public void setOutlineUseTextureAlpha(boolean value) {}
     public void useOutline() {}
     public void setOutlineProjectionMatrix(FloatBuffer value) {}
     public void setOutlineModelViewMatrix(FloatBuffer value) {}

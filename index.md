@@ -55,7 +55,7 @@
 - `rust_engine/src/physics/mmd_physics.rs`：Bullet3 刚体生命周期、固定步进及状态同步。`mmd_physics/diagnostics.rs` 保存遥测与日志，`motion_forces.rs` 处理移动惯性，`body_contacts.rs` 接入绑定姿态身体嵌入兼容过滤。速度限幅是保护措施，不能作为稳定性成立的证据。
 - `rust_engine/src/physics/tail_forces.rs`：单实例尾巴闲置抬起包络和全向移动受力增强。闲置力度按 2026-10-05 用户确认在此前力度上乘 4，即首版的 8 倍；`tail_wave.rs` 按骨骼父子关系和链距离缓存各段延迟，闲置脉冲从尾根到尾尖错峰传播，尾尖最大延迟 0.6 秒。`motion_forces.rs` 逐段施加向上和等量后向力，脉冲播到尾尖后再结束，回落交给原有物理。移动增强启用时三个轴统一乘 1.5，关闭时停止尾巴专用风阻、升力与移动力矩，仅保留普通惯性。两个效果独立叠加，闲置抬起关闭时停止全链延迟脉冲。`MMDPhysics::set_tail_physics_options` 接收两个默认启用的开关，`set_tail_bone_names` 接收名称和父索引，缓存刚体名、英文名和关联骨骼名分类及波浪延迟，分类不随开关切换；排除马尾、头发与静态体。回归见 `tail_wave.rs`、`tail_forces.rs` 与 `mmd_physics/motion_forces/tests.rs`。
 - `rust_engine/src/physics/embedded_body_contacts.rs` 与 `garment_contacts.rs`：身体深嵌入过滤和裙摆兼容均只用于 Stable/Relaxed；裙摆路径只补齐裙摆与 FollowBone 骨盆/大腿所需的双向组位，并显式禁碰由此额外开放的其它刚体对。饰带、布料、头发、小腿、膝盖和脚部不会被扩展；Strict 与全局碰撞关闭保留 PMX 原始掩码。
-- `rust_engine/src/physics/skirt_cross_joints.rs`：按纵向裙片链和深度补充缺失的环向关节。使用 `mmd_rigid_body.rs` 的共享部位分类，明确的本地配件、鞋、胸、袖和头发名称优先于英文 `Skirt_*` 模板，避免连接无关部件。回归见 `skirt_cross_joints_tests.rs`。
+- `rust_engine/src/physics/skirt_cross_joints.rs`：按纵向裙片链和深度补充缺失的环向关节。`skirt_cross_topology.rs` 根据共享部位分类、骨骼祖先和组件归属筛选链，有骨骼时不依赖 PMX 关节 A/B 的书写方向；不同 owner/family 或静态锚点集合分别生成。分支、环、无效坐标保守跳过，原始关节不删除。`MMD_SKIRT_CROSS_SYNTHESIS=off` 仅供关闭自动裙环的对照实验。回归见 `skirt_cross_joints_tests.rs`、`skirt_cross_joints_topology_tests.rs`、`skirt_cross_joints_bones_tests.rs` 和使用生产 Bullet frame 的 `skirt_cross_joint_anchor_tests.rs`；这些合成样例不替代真实资产验证。
 - `rust_engine/src/physics/body_collider_synthesis.rs`：躯干碰撞体智能补全与推离保护。针对缺少胸腔或臀部碰撞壳的模型，自动在对应骨骼位置植入胶囊体或球体刚体；在生成臀部碰撞体前严格核对现有后界边界，防止重复合成顶翻后裙摆。在回写骨骼前，执行几何推离检测，将深入体内的动态骨骼强行推回体表。
 - `rust_engine/src/physics/mmd_rigid_body.rs` 与 `mmd_joint.rs`：绑定姿态 offset、形状、碰撞掩码和关节参数映射。PMX 刚体旋转采用 Y-X-Z，关节采用 Bullet Z-Y-X，局部约束 frame 负责衔接。`STATIC_COLLISION_SHAPE_SCALE` 默认 0.70，按身体碰撞体分类收窄尺寸；`rebase_equilibrium` 在初始化运行姿态后记录弹簧零点。
   PMX 原始碰撞位直接作为 Bullet 允许掩码，不再取反；编辑器“不冲突群组”复选框对应原始位 0。合成碰撞体也遵守该语义。同组是否允许接触由该组位决定，不自动禁止同组碰撞。
@@ -64,7 +64,7 @@
   `issue_diagnostics.rs` 提供按类别读取的只读问题快照，通过独立 `jni_bridge/issue_diagnostics.rs` 导出，不改变物理或蒙皮求值。关闭相关日志时不发起诊断查询。
   `physics.rs` 的跳帧、无效时间和零步求值路径同样回写已有物理姿态；`physics_tests.rs` 验证蒙皮连续性和显式重同步请求。穿模修复验证见 `PHYSICS_CLIPPING_FIX_VALIDATION.md`，Oguri 资产交接标准见 `OGURI_PHYSICS_ASSET_STANDARD.md`。
 - `rust_engine/src/skeleton/physics_writeback.rs`：按真实父子层级回写物理；模式 2 保留沿本帧父姿态传播的骨骼位置，模式 1 使用完整物理姿态，刷新非物理中间骨骼。
-- `rust_engine/src/physics/bullet_ffi.rs` 与 `bullet_ffi/tests.rs`：安全封装和原生回归。求解诊断读取真实刚体姿态，渲染继续使用 MotionState 插值；初始接触建立后变更禁碰时，通过 `refresh_body_collision_filter` 释放旧接触缓存。
+- `rust_engine/src/physics/bullet_ffi.rs` 与 `bullet_ffi/tests.rs`：安全封装和原生回归。求解诊断读取真实刚体姿态，渲染继续使用 MotionState 插值；初始接触建立后变更禁碰时，通过 `refresh_body_collision_filter` 释放旧接触缓存。物理析构先移除并释放 constraint/body/shape，再销毁 world；调试计数区分各阶段。`jni_bridge/resource_lifecycle_tests.rs` 独立串行验证 20 轮句柄删除、在途 Arc、重复删除和全部 Bullet 对象回到基线，不包含 JVM 或游戏切换验收。
 - `rust_engine/src/jni_bridge/native_func.rs`：JNI 本地方法集中导出点，提供 159 个跨语言交互函数。
 
 ### JNI 桥接规范与数据交互契约
@@ -84,7 +84,7 @@ Java 端与 Rust 端的内存安全依靠句柄路由机制保障。Rust 端使�
 - `bridge.runtime`：接口隔离层。定义了 `NativeRuntimePort`、`NativeAnimationPort`、`NativeBoneOverridePort` 等细分接口，由 `NativeRuntimeBridge` 统一实现，在 JNI 边界前置完成非法浮点与畸变矩阵拦截。
 - `render.backend`：统一模型实例抽象。下分 `render.backend.opengl`（基于版本脏标记更新的 CPU 蒙皮后端）与 `render.backend.gpu`（基于计算着色器的 GPU 蒙皮后端）。
 - `render.shader`：赛璐珞渲染管线 `ToonShader`、计算着色器与 `SSBOBindings` 缓冲区状态治理。
-- `render.outline.OutlineRenderPass`：CPU/GPU 共用的独立纯色描边通道，集中管理位置/法线输入、描边配置、子网格遍历、GL_FRONT 与深度状态恢复。两个 renderer 只适配自身缓冲、矩阵与现有模型根缩放；主材质绘制不调用描边逻辑。描边不采样材质纹理/UV，保留子网格可见性、材质有效 alpha、人脸过滤与全局 alpha。倒置外壳在正交 GUI 下按实际显示缩放换算世界基础宽度，使用固定视线，不把 GUI 图层深度当作世界距离；临时 GL_LESS 防止同深度薄片覆黑，随后恢复原深度函数。透视分支保留原计算。游戏内长袖与透明裁切部件仍待视觉验收；验证见 `tools/outline-probe/run.ps1` 与 `OUTLINE_RENDER_ISOLATION.md`。
+- `render.outline.OutlineRenderPass`：CPU/GPU 共用的独立纯色描边通道，集中管理位置/法线/动态 UV 输入、描边配置、子网格遍历、GL_FRONT 与深度状态恢复。两个 renderer 适配自身缓冲、矩阵、现有模型根缩放与逐材质纹理；主材质绘制不调用描边逻辑。描边仅采样贴图 alpha 裁掉透明孔洞，RGB 仍由 OutlineColor 决定；无纹理材质关闭遮罩，正常/异常后恢复纹理单元和绑定。保留子网格可见性、材质有效 alpha、人脸过滤与全局 alpha。倒置外壳在正交 GUI 下按实际显示缩放换算世界基础宽度，使用固定视线，不把 GUI 图层深度当作世界距离；临时 GL_LESS 防止同深度薄片覆黑，随后恢复原深度函数。透视分支保留原计算。游戏内长袖与透明裁切部件仍待视觉验收；验证见 `tools/outline-probe/run.ps1` 与 `OUTLINE_RENDER_ISOLATION.md`。
 - `player`：玩家交互核心。包含第一人称近视锥裁剪与双眼相机同帧求解（`FirstPersonManager`）、防走光评估（`AntiPeekEvaluator`）、独立模型替换与网络广播（`PlayerModelSelectionSyncService`）以及多层动画状态机（`AnimationStateManager`）。
 - `asset` 与 `model.runtime`：模型文件扫描、异步加载协调器（`ModelLoadCoordinator`）与实体模型实例池（`ModelRepository`）。
 - `compat`：外部生态软兼容层。反射适配 TaCZ 枪械瞄准姿态、Iris 光影感知、Vivecraft VR 追踪与车万女仆实体替换。
@@ -94,13 +94,15 @@ Java 端与 Rust 端的内存安全依靠句柄路由机制保障。Rust 端使�
 
 Iris 阴影通道通过 `IrisCompat.isRenderingShadows()` 识别。该通道的实体 `PoseStack` 已包含光源视图，`BaseModelInstance.composeModelViewMatrix` 直接使用它，普通通道仍组合主相机矩阵。CPU/GPU 后端在阴影通道跳过 Toon 与描边，CPU 自定义 shader 模式也改用 Iris 当前阴影程序。两平台玩家 Mixin 与 `PlayerVanillaRenderPolicy` 的第一人称隐藏规则排除阴影通道，保证关闭第一人称身体显示后仍提交完整人物。矩阵回归见 `ShadowModelViewMatrixTest`。
 
-Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度和 ShaderKey，并委托 Iris 的 `ProgramFallbackResolver` 获取实际实体或手部程序。`render/shader/ToonOutputProfile` 校验已预处理源码、输出布局及语义，首批适配 Complementary 4.7.1、BSL 8.4.02.2，允许已知缓冲重排。`ToonShaderBase` 为主体与描边缓存输出变体，处理线性颜色、BSL 的可选平方根编码、材质默认值与球面法线。CPU/GPU 保留 Iris 的缓冲混合规则，并在绘制结束清理覆盖。未知契约或兼容程序编译失败由 `IrisToonCompat` 一次性提示并保留聊天记录，Toon 设置不变，用户自行关闭；不自动回退。人物明暗保留 Toon 计算，适配不复刻每个光影包的全部实体照明与反射。
+Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度和 ShaderKey，并委托 Iris 的 `ProgramFallbackResolver` 获取实际实体或手部程序。`render/shader/ToonOutputProfile` 校验已预处理的顶点/片段源码、输出布局及语义，首批适配 Complementary 4.7.1、BSL 8.4.02.2，允许已知缓冲重排。`ToonShaderBase` 为主体与描边缓存输出变体，处理线性颜色、BSL 的可选平方根编码、材质默认值与球面法线。Complementary 通过 `ComplementaryToonLighting` 复用当前设置预处理后的 GetLighting 和太阳方向，并通过 `ToonUniformBridge` 在 Iris apply 后同步真实环境色、天气、阴影等输入；方块/天空光仍分别传入，材质色阶保留，避免额外叠加白色高光。uniform 缓存关联 shader 实例，光照源码参与变体缓存键。BSL 仍保留已有 Toon 亮度计算与输出适配。CPU/GPU 保留 Iris 的缓冲混合规则，并在绘制结束清理覆盖。未知契约或兼容程序编译失败由 `IrisToonCompat` 按包、程序和原因限次提示并保留聊天记录；受影响绘制仅对当前 pass 使用标准渲染，Toon 长期设置不变，不把未知 MRT 布局套入 vanilla 四输出 Toon 变体。uniform 同步失败限次记录并使用基础亮度路径；本轮没有适配全部实体反射、法线贴图或自发光语义。
 
-相关定向回归见 `ToonOutputProfileTest`；可选本机 OpenGL 探针为 `tools/iris-toon-probe/run.ps1`，只读实例中的光影包，使用 Iris 预处理器验证三维度的实体/手部与选项分支，再编译主体/描边并回读颜色、原色及法线。它验证输出契约，不替代完整游戏画面验收。
+相关定向回归见 `ToonOutputProfileTest`；可选本机 OpenGL 探针为 `tools/iris-toon-probe/run.ps1`，只读实例中的光影包，使用 Iris 预处理器验证三维度的实体/手部与选项分支，再编译主体/描边并回读颜色、原色及法线。`LightingProbe` 编译原 Complementary 程序核对活动 uniform，再用独立来源程序模拟昼夜、洞穴、火把、雨天与阴影输入，在生产 Toon shader 中回读亮度；这些证据不替代完整 Iris 游戏链路和截图观感验收。本轮记录见 `TOON_LIGHTING_ROUND1.md`。
 
 普通 Iris 实体路径在 `BaseModelInstance.setupShaderUniforms` 绑定游戏覆盖色与光照图（纹理单元 1/2），CPU/GPU 补齐整数 `iris_UV1=(0,10)`，不再用模型 lightMap 覆盖 Iris 输入。通用混合设置位于 Iris apply 之前，结束后清理程序覆盖并恢复阴影目标。`IrisEntityDiagnostics` 每程序记录一次光照、颜色乘数和属性/纹理信息；`OverlayProbe` 隔离验证覆盖色公式与常量坐标。关闭 Toon 后全黑的游戏实测和 Toon 整体偏亮的对照仍需新包验收。
 
 无主贴图材质由 `render/material/MaterialTextureLoader` 统一加载：空路径通过既有 JNI `GetMaterialDiffuse` 读取材质 RGBA，生成实例独占的 1×1 纹理，供 CPU/GPU 与各着色路径采样；非空路径加载失败仍显示缺图提示。两个后端的生命周期与构造失败清理会释放默认纹理，共享文件纹理继续按引用计数回收。默认纹理计入模型显存统计。
+
+`texture/runtime/TextureGpuLoader` 在解码、内存复制和 GL 上传异常时通过 `finally` 释放 native handle、临时 buffer 和失败的 GL texture；`TextureRepository` 对不存在的可选预加载路径跳过解码，运行时仍按既有规则回退。失败诊断携带 path、diffuse/light-map 类型和模型/材质上下文，并有界去重。
 
 `tools/material-texture-probe/run.ps1` 使用隐藏 OpenGL 上下文验证材质颜色、透明度、像素解包状态与纹理释放，并对实际 Toon 着色器进行绘制回读；运行前需编译 `common`。探针不替代原模型的游戏画面验收。
 
@@ -110,6 +112,8 @@ Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度�
 ---
 
 ### 舞台相机与 VMD 镜头
+
+`stage/client/network/StageNetworkPlaybackBroadcastAdapter` 保留邀请式会话。单机 `StageRole.NONE` 合法跳过，远端服务器或公开 LAN 中未加入会话则限次提示上下文；开始后缓存已公告的有效会话 ID，用于本地会话先清理后的幂等结束。单元测试验证发送参数与配对，双客户端接收和断线仍须游戏验收。
 
 `rust_engine/src/animation/vmd_loader.rs` 将相机每组贝塞尔字节从 VMD 的 `[x1,x2,y1,y2]` 转成内部 `[x1,y1,x2,y2]`；骨骼插值布局不变。`motion_track.rs` 从逆旋转的前向与上方向提取 pitch/yaw/roll，镜头距离正负、跨零或目标点精度不再改变朝向。接近竖直时以已提取 pitch/yaw 定义的相机上方向计算 roll；分数帧仍先插值原始参数，保留作者设置的连续多圈旋转。
 
@@ -154,7 +158,7 @@ JNI 相机数据仍为 32 字节、旋转为弧度，`stage/client/camera/StageC
 - 单模型独立配置：`.minecraft/config/mmdskin/model_configs/<规范化模型名>.json`（视线追踪范围、缩放、材质可见性和默认启用的 `tailIdleLiftEnabled`、`tailMovementBoostEnabled`）。旧配置缺省的尾巴字段启用，明确保存的 false 保留关闭。模型设置保存时同步到同名已加载实例，新实例加载时应用；Java `NativeScenePort.setTailPhysicsOptions` 经 JNI `SetTailPhysicsOptions` 更新原生实例。
 - 模型设置界面：`ui/selector/ModelSettingsScreen` 绘制尾巴物理开关及其他模型选项；`ModelSettingsLayout` 统一滚动视口、裁剪命中和滚动条几何。设置内容支持滚轮、拖动滚动条和翻页键，标题与底部操作固定，小窗口不再压缩卡片文字。回归见 `ModelSettingsLayoutTest`。
 - 玩家独立替换配置：持久化于 `ModelSelectorConfig`，支持在游戏内配置界面或 Alt 快捷轮盘中按玩家名/UUID 指定独立展示模型。
-- 调试设置：Fabric/NeoForge 的“调试”分类新增模型变形、两侧部件物理、碰撞模式、描边与纸娃娃四项日志，配置字段为 `debugModelDeformationLog`、`debugSidePhysicsLog`、`debugCollisionModeLog`、`debugOutlinePaperDollLog`，默认关闭且独立于旧物理日志。`IssueDiagnosticOptions` 定义位标记，`ModelIssueDiagnostics` 按模型限频转交原生快照到 `latest.log`，`OutlineRenderDiagnostics` 记录各渲染场景绘制前状态。使用指南见 `ISSUE_DIAGNOSTICS_GUIDE.md`；抽样与有界样例不代替游戏画面证据。
+- 调试设置：Fabric/NeoForge 的“调试”分类新增模型变形、两侧部件物理、碰撞模式、描边与纸娃娃四项日志，配置字段为 `debugModelDeformationLog`、`debugSidePhysicsLog`、`debugCollisionModeLog`、`debugOutlinePaperDollLog`，默认关闭且独立于旧物理日志。`IssueDiagnosticOptions` 定义位标记，`ModelIssueDiagnostics` 每两秒转交摘要及接触、锚点、速度指标；首次、每 30 秒及手动请求输出完整明细，`-Dmmdskin.diagnostics.full=true` 保留旧明细频率。原生快照仍每两秒构造，减少日志量不代表采样开销已改善。`OutlineRenderDiagnostics` 记录各渲染场景绘制前状态。使用指南见 `ISSUE_DIAGNOSTICS_GUIDE.md`；抽样与有界样例不代替游戏画面证据。本轮审计记录见 `root_cause_report.md`，原日志分析工具见 `tools/latest-log-audit/`。
 
 ---
 ## 6. VMD 平滑与独立模型/动作预览工具

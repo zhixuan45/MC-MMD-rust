@@ -15,9 +15,12 @@ uniform float SpecularPower;
 uniform float SpecularIntensity;
 uniform float AlphaCutoff;
 uniform float GlobalAlpha;
+uniform bool UsePackLighting;
+uniform vec2 ToonLightmap;
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
+/* TOON_LIGHTING */
 
 float saturate(float value) {
     return clamp(value, 0.0, 1.0);
@@ -58,10 +61,8 @@ void main() {
 
     vec3 baseColor = mix(shadowTint, albedo, toonRamp);
 
-    float ambient = 0.2;
-    float lightFactor = max(LightIntensity, ambient);
+    float lightFactor = max(LightIntensity, 0.0);
     vec3 finalColor = baseColor * lightFactor;
-    finalColor = max(finalColor, albedo * ambient * 0.5);
 
     vec3 halfDir = normalize(lightDir + viewDir);
     float specAngle = saturate(dot(normal, halfDir));
@@ -69,7 +70,9 @@ void main() {
     float specThreshold = mix(0.82, 0.96, clamp(SpecularPower / 96.0, 0.0, 1.0));
     float specBand = smoothstep(specThreshold - 0.02, specThreshold + 0.02, specular);
     float specMask = step(0.5, halfLambert);
-    finalColor += vec3(1.0) * specBand * SpecularIntensity * specMask * 0.5;
+    finalColor += vec3(lightFactor) * specBand * SpecularIntensity * specMask * 0.5;
+    // 光影分支直接使用包内线性光照，避免重复乘亮度和叠加白色高光。
+    if (UsePackLighting) finalColor = applyPackLighting(albedo, normal, viewPos);
 
     float fresnel = 1.0 - saturate(dot(viewDir, normal));
     float rim = pow(fresnel, max(RimPower, 1.0));

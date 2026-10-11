@@ -11,8 +11,9 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Predicate;
 
-/** CPU、GPU 和描边共用输出策略；未知契约只提示。 */
+/** CPU、GPU 和描边共用输出策略；未知契约仅回退当前 pass。 */
 public final class IrisToonCompat {
     private static final Logger LOGGER = LogManager.getLogger();
     private static final SystemToast.SystemToastId TOAST_ID = new SystemToast.SystemToastId(12000);
@@ -25,22 +26,29 @@ public final class IrisToonCompat {
         ToonOutputProfile profile = result.profile();
         if (!profile.isSupported()) {
             notifyOnce(result, profile.reason());
-            // 用户要求手动回退，不修改 Toon 配置或擅自关闭。
-            profile = ToonOutputProfile.vanilla();
+            return false;
         }
-        if (shader.selectOutputProfile(profile)) return true;
-        notifyOnce(result, "Toon 兼容程序编译失败");
-        return shader.selectOutputProfile(ToonOutputProfile.vanilla());
+        boolean selected = selectCurrentPassProfile(profile, shader::selectOutputProfile);
+        if (!selected) notifyOnce(result, "Toon 兼容程序编译失败");
+        return selected;
+    }
+
+    static boolean selectCurrentPassProfile(ToonOutputProfile profile, Predicate<ToonOutputProfile> selector) {
+        return profile.isSupported() && selector.test(profile);
+    }
+
+    static String notificationKey(String pack, String program, String reason) {
+        return pack + "|" + program + "|" + reason;
     }
 
     private static void notifyOnce(IrisToonMetadata.Result result, String reason) {
-        String key = result.packName() + "|" + reason;
+        String key = notificationKey(result.packName(), result.programName(), reason);
         if (!NOTIFIED.add(key)) return;
-        LOGGER.warn("[Iris/Toon] pack={}, program={}, reason={}; Toon 保持开启，请手动回退",
+        LOGGER.warn("[Iris/Toon] pack={}, program={}, reason={}, action=current_pass_standard; Toon 设置未改",
                 result.packName(), result.programName(), reason);
         Minecraft minecraft = Minecraft.getInstance();
         Component message = Component.literal(result.packName() + "：" + reason
-                + "。如画面异常，请手动关闭 Toon；设置未改。");
+                + "。当前 pass 使用标准渲染，Toon 设置未改。");
         minecraft.getToasts().addToast(SystemToast.multiline(minecraft, TOAST_ID,
                 Component.literal("MMD Toon 光影兼容提示"), message));
         // 聊天记录保留原因，提示消失后仍可查看。

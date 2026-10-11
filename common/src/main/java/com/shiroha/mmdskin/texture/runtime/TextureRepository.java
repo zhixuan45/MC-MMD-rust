@@ -2,6 +2,8 @@ package com.shiroha.mmdskin.texture.runtime;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeTexturePort;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,8 +39,18 @@ public class TextureRepository {
     }
 
     public static void preloadTexture(String filename) {
+        preloadTexture(filename, "unknown", "preload");
+    }
+
+    public static void preloadTexture(String filename, String kind, String context) {
         Map<String, TextureSlot> localSlots = textureSlots;
         if (localSlots == null) return;
+        try {
+            // 缺失文件留给运行时 fallback 处理，避免预解码和实例创建重复读盘。
+            if (!Files.isRegularFile(Path.of(filename))) return;
+        } catch (RuntimeException ignored) {
+            return;
+        }
 
         while (true) {
             TextureSlot slot = localSlots.computeIfAbsent(filename, ignored -> new TextureSlot());
@@ -51,7 +63,7 @@ public class TextureRepository {
                 } else if (slot.texture != null || slot.predecoded != null) {
                     return;
                 } else {
-                    slot.predecoded = TextureGpuLoader.decode(filename, texturePort);
+                    slot.predecoded = TextureGpuLoader.decode(filename, texturePort, kind, context);
                     if (slot.predecoded != null) {
                         slot.retired = false;
                         return;
@@ -81,6 +93,10 @@ public class TextureRepository {
     }
 
     public static Texture GetTexture(String filename) {
+        return GetTexture(filename, "unknown", "runtime");
+    }
+
+    public static Texture GetTexture(String filename, String kind, String context) {
         Map<String, TextureSlot> localSlots = textureSlots;
         if (localSlots == null) return null;
 
@@ -109,7 +125,7 @@ public class TextureRepository {
                     return uploaded;
                 }
 
-                Texture loaded = TextureGpuLoader.loadToGpu(filename, texturePort);
+                Texture loaded = TextureGpuLoader.loadToGpu(filename, texturePort, kind, context);
                 if (loaded != null) {
                     slot.texture = loaded;
                     slot.retired = false;

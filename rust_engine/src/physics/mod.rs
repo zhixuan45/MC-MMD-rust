@@ -17,6 +17,7 @@ mod mmd_physics;
 mod mmd_rigid_body;
 mod physics_diagnostics;
 pub(crate) mod skirt_cross_joints;
+mod skirt_cross_topology;
 mod tail_forces;
 mod tail_wave;
 
@@ -34,7 +35,6 @@ pub(crate) fn inv_z(m: Mat4) -> Mat4 {
 mod coordinate_tests {
     use super::inv_z;
     use glam::{Mat4, Quat, Vec3};
-
 
     #[test]
     fn inv_z_is_an_involution_for_non_symmetric_joint_pose() {

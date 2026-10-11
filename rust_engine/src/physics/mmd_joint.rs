@@ -102,6 +102,21 @@ impl MmdJointData {
         let frame_a = rb_a_initial_transform.inverse() * joint_transform;
         let frame_b = rb_b_initial_transform.inverse() * joint_transform;
 
+        if pmx_joint.local_name.starts_with("Synthesized_Skirt_Cross_")
+            && super::config::get_config().debug_log
+        {
+            let (error, anchor_a, anchor_b) = joint_anchor_position_error(
+                rb_a_initial_transform,
+                frame_a,
+                rb_b_initial_transform,
+                frame_b,
+            );
+            log::info!("[Bullet3][SKIRT_CROSS_CREATED] phase=pmx_bind_before_runtime_pose space=bullet_left_model joint={:?} a={} name_a={:?} bone_a={} mode_a={:?} group_a={} display_group_a={} mask_a=0x{:04X} b={} name_b={:?} bone_b={} mode_b={:?} group_b={} display_group_b={} mask_b=0x{:04X} position_a={:?} position_b={:?} local_a={:?} local_b={:?} anchor_a={:?} anchor_b={:?} anchor_error={} material=unavailable_not_body_owned",
+                pmx_joint.local_name, pmx_joint.rigid_body_a_index, pmx_rb_a.local_name, pmx_rb_a.bone_index, pmx_rb_a.mode, pmx_rb_a.group, pmx_rb_a.group as u16 + 1, pmx_rb_a.un_collision_group_flag,
+                pmx_joint.rigid_body_b_index, pmx_rb_b.local_name, pmx_rb_b.bone_index, pmx_rb_b.mode, pmx_rb_b.group, pmx_rb_b.group as u16 + 1, pmx_rb_b.un_collision_group_flag,
+                pmx_rb_a.position, pmx_rb_b.position, frame_a.w_axis.truncate(), frame_b.w_axis.truncate(), anchor_a, anchor_b, error);
+        }
+
         // 创建 Bullet3 6DOF 弹簧约束
         let constraint = BulletConstraint::new_6dof_spring(rb_a, rb_b, frame_a, frame_b, true);
 
@@ -369,9 +384,6 @@ mod tests {
         }
     }
 
-
-
-
     #[test]
     fn authored_skirt_root_springs_are_preserved() {
         let anchor = test_pmx_body("下半身", RigidBodyMode::Static);
@@ -395,13 +407,4 @@ mod tests {
         assert_eq!(parameters.angular[1].stiffness, 10.0);
         assert_eq!(parameters.angular[2].stiffness, 20.8);
     }
-
-
-
-
-
-
-
-
-
 }

@@ -32,8 +32,8 @@ public final class Probe {
             GL46C.glLinkProgram(program);
             check(GL46C.glGetProgrami(program, GL46C.GL_LINK_STATUS) != 0, GL46C.glGetProgramInfoLog(program));
             GL46C.glUseProgram(program);
-            check(GL46C.glGetUniformLocation(program, "Sampler0") == -1, "描边不能采样材质纹理");
-            check(GL46C.glGetAttribLocation(program, "UV0") == -1, "描边不能依赖 UV");
+            check(GL46C.glGetUniformLocation(program, "Sampler0") >= 0, "透明遮罩必须采样当前材质");
+            check(GL46C.glGetAttribLocation(program, "UV0") >= 0, "遮罩必须使用主体 UV");
             check(GL46C.glGetUniformLocation(program, "OutlineAlpha") >= 0, "逐子网格 alpha 必须存在");
             check(GL46C.glGetUniformLocation(program, "GlobalAlpha") == -1, "最终 alpha 不能再乘全局 alpha");
             float[] identity = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
@@ -45,6 +45,7 @@ public final class Probe {
             GL46C.glBindVertexArray(vao);
             int positions = buffer(0, new float[]{-.6f,-.6f,-.5f, 0,.6f,-.5f, .6f,-.6f,-.5f});
             int normals = buffer(1, new float[]{0,0,-1, 0,0,-1, 0,0,-1});
+            int uvs = buffer(2, new float[]{0,0, 0,0, 0,0});
             GL46C.glViewport(0, 0, 64, 64);
             GL46C.glDisable(GL46C.GL_BLEND);
             GL46C.glDisable(GL46C.GL_DEPTH_TEST);
@@ -58,16 +59,23 @@ public final class Probe {
             float[] transparent = sample(program, new float[]{0,0,0,0}, 0.4f);
             near(opaque, new float[]{0.2f,0.3f,0.4f,0.4f});
             near(transparent, opaque);
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "UseTextureAlpha"), 1);
+            GL46C.glUniform1f(GL46C.glGetUniformLocation(program, "AlphaCutoff"), 0.1f);
+            near(sample(program, new float[]{0,1,0,1}, 0.4f), opaque);
+            near(sample(program, new float[]{1,0,0,0}, 0.4f), new float[4]);
+            near(sample(program, new float[]{1,0,0,0.09f}, 0.4f), new float[4]);
+            near(sample(program, new float[]{1,0,0,0.5f}, 0.4f), new float[]{0.2f,0.3f,0.4f,0.2f});
             near(sample(program, new float[]{1,1,1,1}, 0), new float[4]);
             GL46C.glDeleteTextures(texture);
             GL46C.glDeleteBuffers(positions);
             GL46C.glDeleteBuffers(normals);
+            GL46C.glDeleteBuffers(uvs);
             GL46C.glDeleteVertexArrays(vao);
             GL46C.glDeleteProgram(program);
             GL46C.glDeleteShader(vs);
             GL46C.glDeleteShader(fs);
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "OpenGL 状态错误");
-            System.out.println("PASS outline: GLSL link, no UV/sampler, pure color, texture independence, final alpha applied once");
+            System.out.println("PASS outline: GLSL link, pure color, optional alpha mask, cutoff, final alpha applied once");
         } finally {
             if (window != 0) GLFW.glfwDestroyWindow(window);
             GLFW.glfwTerminate();

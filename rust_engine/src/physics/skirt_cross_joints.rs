@@ -11,9 +11,11 @@
 
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use mmd::pmx::joint::{Joint as PmxJoint, JointType};
-use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
+use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
+#[cfg(test)]
+use mmd::pmx::rigid_body::RigidBodyMode;
 
-use super::body_collider_synthesis::has_skirt_rigid_bodies;
+#[cfg(test)]
 use super::mmd_rigid_body::is_skirt_or_lower_garment;
 
 /// 裙摆横向连接允许的相对位移容差（单位：MMD 局部单位）。
@@ -31,56 +33,41 @@ pub const SKIRT_CROSS_LINEAR_STIFFNESS: [f32; 3] = [35.0, 35.0, 35.0];
 pub const SKIRT_CROSS_ANGULAR_STIFFNESS: [f32; 3] = [18.0, 18.0, 18.0];
 
 /// 为缺少横向环形约束的裙摆自动合成水平保形 6DOF 弹簧关节。
+#[cfg(test)]
 pub fn synthesize_missing_skirt_cross_joints(
     rigid_bodies: &[PmxRigidBody],
     existing_joints: &[PmxJoint],
 ) -> Vec<PmxJoint> {
-    if !has_skirt_rigid_bodies(rigid_bodies) {
+    synthesize_missing_skirt_cross_joints_with_bones(rigid_bodies, existing_joints, &[], &[])
+}
+
+/// 骨骼层级用于区分纵向链与服装组件；原生 PMX 关节保持原样。
+pub fn synthesize_missing_skirt_cross_joints_with_bones(
+    rigid_bodies: &[PmxRigidBody],
+    existing_joints: &[PmxJoint],
+    bone_names: &[String],
+    bone_parents: &[i32],
+) -> Vec<PmxJoint> {
+    // 仅供 A/B 取证；不改原生关节、碰撞、重力与动画。
+    if std::env::var("MMD_SKIRT_CROSS_SYNTHESIS").is_ok_and(|value| value == "off") {
         return Vec::new();
     }
+    super::skirt_cross_topology::grouped_chains(
+        rigid_bodies,
+        existing_joints,
+        bone_names,
+        bone_parents,
+    )
+    .into_iter()
+    .flat_map(|chains| synthesize_group(rigid_bodies, existing_joints, &chains))
+    .collect()
+}
 
-    // 1. 识别所有动态裙摆刚体
-    let mut is_skirt = vec![false; rigid_bodies.len()];
-    let mut skirt_count = 0;
-    for (i, rb) in rigid_bodies.iter().enumerate() {
-        if rb.mode != RigidBodyMode::Static && is_skirt_or_lower_garment(rb) {
-            is_skirt[i] = true;
-            skirt_count += 1;
-        }
-    }
-
-    if skirt_count < 3 {
-        return Vec::new();
-    }
-
-    // 2. 根据垂直关节构建裙摆刚体的父子拓扑链
-    let mut children: Vec<Vec<usize>> = vec![Vec::new(); rigid_bodies.len()];
-    let mut has_skirt_parent: Vec<bool> = vec![false; rigid_bodies.len()];
-    for j in existing_joints {
-        let a = j.rigid_body_a_index as usize;
-        let b = j.rigid_body_b_index as usize;
-        if a < rigid_bodies.len() && b < rigid_bodies.len() {
-            if is_skirt[a] && is_skirt[b] {
-                children[a].push(b);
-                has_skirt_parent[b] = true;
-            }
-        }
-    }
-
-    // 3. 从链条根节点（无裙摆父节点的动态刚体）向下追踪每条独立的裙片垂直链
-    let mut chains: Vec<Vec<usize>> = Vec::new();
-    for i in 0..rigid_bodies.len() {
-        if is_skirt[i] && !has_skirt_parent[i] {
-            let mut chain = vec![i];
-            let mut curr = i;
-            while let Some(&next) = children[curr].iter().find(|&&c| is_skirt[c]) {
-                chain.push(next);
-                curr = next;
-            }
-            chains.push(chain);
-        }
-    }
-
+fn synthesize_group(
+    rigid_bodies: &[PmxRigidBody],
+    existing_joints: &[PmxJoint],
+    chains: &[Vec<usize>],
+) -> Vec<PmxJoint> {
     if chains.len() < 3 {
         return Vec::new();
     }
@@ -90,7 +77,7 @@ pub fn synthesize_missing_skirt_cross_joints(
     let mut layers: Vec<Vec<usize>> = Vec::new();
     for depth in 0..max_depth {
         let mut layer_nodes: Vec<usize> = Vec::new();
-        for chain in &chains {
+        for chain in chains {
             if depth < chain.len() {
                 layer_nodes.push(chain[depth]);
             }
@@ -126,7 +113,7 @@ pub fn synthesize_missing_skirt_cross_joints(
                 (idx, angle)
             })
             .collect();
-        sorted_layer.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        sorted_layer.sort_by(|a, b| a.1.total_cmp(&b.1));
 
         for i in 0..n {
             let a_idx = sorted_layer[i].0;
@@ -144,19 +131,22 @@ pub fn synthesize_missing_skirt_cross_joints(
                 let pos_b = Vec3::from_array(rigid_bodies[b_idx].position);
                 let mid_pos = (pos_a + pos_b) * 0.5;
                 let chord = pos_b - pos_a;
-                if chord.length_squared() < 1e-4 {
+                if !chord.is_finite()
+                    || !chord.length_squared().is_finite()
+                    || chord.length_squared() < 1e-4
+                {
                     continue;
                 }
 
                 // 构造横向弦轴局部坐标系：X 轴指向相邻刚体，Y 轴向上，Z 轴沿外法线方向
                 let dir_x = chord.normalize();
-                let dir_y = Vec3::Y;
-                let mut dir_z = dir_x.cross(dir_y);
-                if dir_z.length_squared() < 1e-4 {
-                    dir_z = Vec3::Z;
+                // 弦轴接近竖直时换参考轴，保持三个轴正交。
+                let dir_y = if dir_x.dot(Vec3::Y).abs() > 0.99 {
+                    Vec3::Z
                 } else {
-                    dir_z = dir_z.normalize();
-                }
+                    Vec3::Y
+                };
+                let dir_z = dir_x.cross(dir_y).normalize();
                 let adjusted_dir_y = dir_z.cross(dir_x).normalize();
 
                 let rot_mat = Mat4::from_cols(
@@ -198,3 +188,15 @@ pub fn synthesize_missing_skirt_cross_joints(
 #[cfg(test)]
 #[path = "skirt_cross_joints_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "skirt_cross_joints_topology_tests.rs"]
+mod topology_tests;
+
+#[cfg(test)]
+#[path = "skirt_cross_joints_bones_tests.rs"]
+mod bones_tests;
+
+#[cfg(test)]
+#[path = "skirt_cross_joint_anchor_tests.rs"]
+mod anchor_tests;

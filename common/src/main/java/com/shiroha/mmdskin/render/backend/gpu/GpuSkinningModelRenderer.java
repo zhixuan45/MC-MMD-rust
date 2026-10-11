@@ -103,7 +103,7 @@ final class GpuSkinningModelRenderer {
         GpuTimerQueryPool.draw().begin();
         try {
             if (useToon && GpuSkinningModelInstance.toonShaderCpu != null && GpuSkinningModelInstance.toonShaderCpu.isInitialized()) {
-                renderToon(target, minecraft, toonIntensity, firstPersonIndexReady, !isGuiScene);
+                renderToon(target, minecraft, light, toonIntensity, firstPersonIndexReady, !isGuiScene);
             } else {
                 renderNormal(target, minecraft, light, firstPersonIndexReady, deliverStack, isGuiScene);
             }
@@ -433,6 +433,7 @@ final class GpuSkinningModelRenderer {
 
     private static void renderToon(GpuSkinningModelInstance target,
                                    Minecraft minecraft,
+                                   LightingHelper.LightData light,
                                    float lightIntensity,
                                    boolean firstPersonIndexReady,
                                    boolean irisEntityScene) {
@@ -483,6 +484,8 @@ final class GpuSkinningModelRenderer {
             GpuSkinningModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
             GpuSkinningModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
             ToonRenderHelper.setupToonUniforms(GpuSkinningModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
+            GpuSkinningModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
+                    irisShader, light.blockLight(), light.skyLight());
 
             drawAllSubMeshes(target, minecraft);
 
@@ -503,10 +506,12 @@ final class GpuSkinningModelRenderer {
 
     private static void renderOutlinePass(GpuSkinningModelInstance target) {
         OutlineRenderPass.draw(GpuSkinningModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
-                target.skinnedPositionsBuffer, target.skinnedNormalsBuffer, target.subMeshDataBuf,
+                target.skinnedPositionsBuffer, target.skinnedNormalsBuffer,
+                target.skinnedUvBuffer > 0 ? target.skinnedUvBuffer : target.uv0BufferObject, target.subMeshDataBuf,
                 target.subMeshCount, target.indexElementSize, target.indexType,
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
-                (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha));
+                (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
+                materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex);
     }
 
     private static void drawAllSubMeshes(GpuSkinningModelInstance target, Minecraft minecraft) {

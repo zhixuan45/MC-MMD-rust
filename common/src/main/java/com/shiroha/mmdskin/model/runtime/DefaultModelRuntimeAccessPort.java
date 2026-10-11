@@ -77,6 +77,11 @@ public final class DefaultModelRuntimeAccessPort implements ModelRuntimeAccessPo
     }
 
     @Override
+    public void preloadTexture(String texturePath, String kind, String context) {
+        TextureRepository.preloadTexture(texturePath, kind, context);
+    }
+
+    @Override
     public void clearPreloadedTextures() {
         TextureRepository.clearPreloaded();
     }

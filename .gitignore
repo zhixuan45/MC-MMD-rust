@@ -94,6 +94,8 @@ gradle-local.properties
 .windsurfrules
 /TouhouLittleMaid
 Iris/
+!common/src/test/java/com/shiroha/mmdskin/compat/iris/
+!common/src/test/java/com/shiroha/mmdskin/compat/iris/*.java
 TouhouLittleMaid-Orihime/
 GUIDE_CN.md
 GUIDE_EN.md

@@ -325,7 +325,8 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
 
             lightMapMaterial = new ModelMaterial();
             String lightMapPath = modelDir + "/lightMap.png";
-            TextureRepository.Texture lightMapTexture = TextureRepository.GetTexture(lightMapPath);
+            TextureRepository.Texture lightMapTexture = TextureRepository.GetTexture(lightMapPath, "light-map",
+                    "render modelHandle=" + model);
             if (lightMapTexture != null) {
                 lightMapMaterial.tex = lightMapTexture.tex;
                 lightMapMaterial.hasAlpha = lightMapTexture.hasAlpha;

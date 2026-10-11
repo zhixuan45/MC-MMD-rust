@@ -100,7 +100,7 @@ final class OpenGlModelRenderer {
         if (useToon) {
             long drawTimer = RenderPerformanceProfiler.get().startTimer();
             try {
-                renderToon(target, minecraft, toonIntensity, deliverStack, !isGuiScene);
+                renderToon(target, minecraft, light, toonIntensity, deliverStack, !isGuiScene);
             } finally {
                 RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
             }
@@ -562,7 +562,7 @@ final class OpenGlModelRenderer {
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
-    private static void renderToon(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity,
+    private static void renderToon(OpenGlModelInstance target, Minecraft minecraft, LightingHelper.LightData light, float lightIntensity,
                                    PoseStack deliverStack, boolean irisEntityScene) {
         BufferUploader.reset();
         GL46C.glBindVertexArray(target.vertexArrayObject);
@@ -620,7 +620,7 @@ final class OpenGlModelRenderer {
             RenderSystem.getProjectionMatrix().get(target.projMatBuff);
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
 
-            renderToonMainPass(target, minecraft, lightIntensity);
+            renderToonMainPass(target, minecraft, lightIntensity, light, irisShader);
 
             if (OpenGlModelInstance.toonConfig.isOutlineEnabled()) {
                 renderOutlinePass(target);
@@ -647,13 +647,15 @@ final class OpenGlModelRenderer {
 
     private static void renderOutlinePass(OpenGlModelInstance target) {
         OutlineRenderPass.draw(OpenGlModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
-                target.vertexBufferObject, target.normalBufferObject, target.subMeshDataBuf,
+                target.vertexBufferObject, target.normalBufferObject, target.texcoordBufferObject, target.subMeshDataBuf,
                 target.subMeshCount, target.indexElementSize, target.indexType,
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
-                (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha));
+                (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
+                materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex);
     }
 
-    private static void renderToonMainPass(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity) {
+    private static void renderToonMainPass(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity,
+                                          LightingHelper.LightData light, ShaderInstance irisShader) {
         OpenGlModelInstance.toonShaderCpu.useMain();
         int posLoc = OpenGlModelInstance.toonShaderCpu.getPositionLocation();
         int norLoc = OpenGlModelInstance.toonShaderCpu.getNormalLocation();
@@ -678,6 +680,8 @@ final class OpenGlModelRenderer {
         OpenGlModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
         OpenGlModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
         ToonRenderHelper.setupToonUniforms(OpenGlModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
+        OpenGlModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
+                irisShader, light.blockLight(), light.skyLight());
 
         drawSubMeshes(target, minecraft);
 

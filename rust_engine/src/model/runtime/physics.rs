@@ -33,6 +33,7 @@ impl MmdModel {
 
         // 自动合成缺失的上身跟骨碰撞体（如 Grass Wonder 等模型），提供真实的物理阻挡面
         let bone_names: Vec<String> = self.bone_manager.links().map(|b| b.name.clone()).collect();
+        let bone_parents: Vec<_> = self.bone_manager.links().map(|b| b.parent_index).collect();
         let bone_positions: Vec<[f32; 3]> = self
             .bone_manager
             .links()
@@ -57,9 +58,11 @@ impl MmdModel {
 
         // 自动合成裙摆缺失的横向环形保形弹簧关节（方案 B）
         let synthesized_cross_joints =
-            crate::physics::skirt_cross_joints::synthesize_missing_skirt_cross_joints(
+            crate::physics::skirt_cross_joints::synthesize_missing_skirt_cross_joints_with_bones(
                 &all_rigid_bodies,
                 &self.joints,
+                &bone_names,
+                &bone_parents,
             );
         let all_joints: Vec<mmd::pmx::joint::Joint> = if synthesized_cross_joints.is_empty() {
             self.joints.clone()
@@ -72,7 +75,6 @@ impl MmdModel {
         };
 
         physics.build_physics(&all_rigid_bodies, &all_joints, &bind_bone_transforms);
-        let bone_parents: Vec<_> = self.bone_manager.links().map(|b| b.parent_index).collect();
         physics.configure_embedded_body_contacts(&bone_names, &bone_parents);
         physics.set_tail_bone_names(&bone_names, &bone_parents);
         physics.set_tail_physics_options(self.tail_idle_lift, self.tail_movement_boost);

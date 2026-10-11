@@ -133,7 +133,8 @@ final class OpenGlModelFactory {
 
             lightMapMaterial = new ModelMaterial();
             String lightMapPath = modelDir + "/lightMap.png";
-            TextureRepository.Texture mgrTex = TextureRepository.GetTexture(lightMapPath);
+            TextureRepository.Texture mgrTex = TextureRepository.GetTexture(lightMapPath, "light-map",
+                    "render modelHandle=" + model);
             if (mgrTex != null) {
                 lightMapMaterial.tex = mgrTex.tex;
                 lightMapMaterial.hasAlpha = mgrTex.hasAlpha;

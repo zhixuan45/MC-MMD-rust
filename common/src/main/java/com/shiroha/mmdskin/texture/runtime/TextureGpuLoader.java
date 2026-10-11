@@ -4,64 +4,205 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.shiroha.mmdskin.bridge.runtime.NativeTexturePort;
 import org.lwjgl.opengl.GL46C;
 import org.lwjgl.system.MemoryUtil;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** 文件职责：封装纹理从 native 解码到 GPU 上传的无状态操作。 */
 final class TextureGpuLoader {
+    private static final Logger LOGGER = LogManager.getLogger(TextureGpuLoader.class);
+    private static final int MAX_FAILURE_LOGS = 32;
+    private static final Set<String> REPORTED_FAILURES = ConcurrentHashMap.newKeySet();
+    private static final AtomicInteger FAILURE_LOG_COUNT = new AtomicInteger();
+    private static final BufferAllocator NATIVE_BUFFER_ALLOCATOR = new BufferAllocator() {
+        @Override
+        public ByteBuffer allocate(int size) {
+            return MemoryUtil.memAlloc(size);
+        }
+
+        @Override
+        public void free(ByteBuffer buffer) {
+            MemoryUtil.memFree(buffer);
+        }
+    };
+
+    interface BufferAllocator {
+        ByteBuffer allocate(int size);
+
+        void free(ByteBuffer buffer);
+    }
 
     private TextureGpuLoader() {
     }
 
     static TextureRepository.Texture loadToGpu(String filename, NativeTexturePort port) {
-        long handle = port.loadTexture(filename);
-        if (handle == 0) return null;
-
-        int width = port.textureWidth(handle);
-        int height = port.textureHeight(handle);
-        long dataAddr = port.textureData(handle);
-        boolean hasAlpha = port.textureHasAlpha(handle);
-        int size = width * height * (hasAlpha ? 4 : 3);
-
-        ByteBuffer buf = MemoryUtil.memAlloc(size);
-        int texId = GL46C.glGenTextures();
-        try {
-            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
-            port.copyTextureData(buf, dataAddr, size);
-            buf.rewind();
-            uploadPixels(width, height, hasAlpha, buf);
-            configureTexture();
-            return buildTexture(texId, width, height, hasAlpha);
-        } catch (RuntimeException | Error e) {
-            deleteGlTexture(texId);
-            throw e;
-        } finally {
-            MemoryUtil.memFree(buf);
-            port.deleteTexture(handle);
-        }
+        return loadToGpu(filename, port, "unknown", "runtime");
     }
 
-    static TextureRepository.PredecodedTexture decode(String filename, NativeTexturePort port) {
+    static TextureRepository.Texture loadToGpu(String filename, NativeTexturePort port,
+                                               String kind, String context) {
         long handle = port.loadTexture(filename);
-        if (handle == 0) return null;
+        if (handle == 0) {
+            logDecodeFailure(kind, filename, context);
+            return null;
+        }
+
+        TextureRepository.Texture uploaded = null;
+        Throwable failure = null;
         try {
             int width = port.textureWidth(handle);
             int height = port.textureHeight(handle);
             long dataAddr = port.textureData(handle);
             boolean hasAlpha = port.textureHasAlpha(handle);
             int size = width * height * (hasAlpha ? 4 : 3);
-            ByteBuffer buf = MemoryUtil.memAlloc(size);
-            port.copyTextureData(buf, dataAddr, size);
-            buf.rewind();
-            return new TextureRepository.PredecodedTexture(buf, width, height, hasAlpha);
+            ByteBuffer buf = NATIVE_BUFFER_ALLOCATOR.allocate(size);
+            try {
+                int texId = 0;
+                try {
+                    texId = GL46C.glGenTextures();
+                    GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
+                    port.copyTextureData(buf, dataAddr, size);
+                    buf.rewind();
+                    uploadPixels(width, height, hasAlpha, buf);
+                    configureTexture();
+                    uploaded = buildTexture(texId, width, height, hasAlpha);
+                } catch (RuntimeException | Error e) {
+                    try {
+                        deleteGlTexture(texId);
+                    } catch (RuntimeException | Error cleanupError) {
+                        addSuppressed(e, cleanupError);
+                    }
+                    throw e;
+                }
+            } finally {
+                NATIVE_BUFFER_ALLOCATOR.free(buf);
+            }
+        } catch (RuntimeException | Error e) {
+            failure = e;
+            throw e;
         } finally {
-            port.deleteTexture(handle);
+            Throwable nativeCleanupFailure = null;
+            try {
+                port.deleteTexture(handle);
+            } catch (RuntimeException | Error cleanupError) {
+                nativeCleanupFailure = cleanupError;
+            }
+
+            if (uploaded != null && (failure != null || nativeCleanupFailure != null)) {
+                try {
+                    deleteGlTexture(uploaded);
+                } catch (RuntimeException | Error glCleanupError) {
+                    addSuppressed(failure != null ? failure : nativeCleanupFailure, glCleanupError);
+                }
+            }
+            if (nativeCleanupFailure != null) {
+                if (failure != null) {
+                    addSuppressed(failure, nativeCleanupFailure);
+                } else if (nativeCleanupFailure instanceof RuntimeException runtimeError) {
+                    throw runtimeError;
+                } else {
+                    throw (Error) nativeCleanupFailure;
+                }
+            }
+        }
+        return uploaded;
+    }
+
+    static TextureRepository.PredecodedTexture decode(String filename, NativeTexturePort port) {
+        return decode(filename, port, "unknown", "preload");
+    }
+
+    static TextureRepository.PredecodedTexture decode(String filename, NativeTexturePort port,
+                                                       String kind, String context) {
+        return decode(filename, port, kind, context, NATIVE_BUFFER_ALLOCATOR);
+    }
+
+    static TextureRepository.PredecodedTexture decode(String filename, NativeTexturePort port,
+                                                       String kind, String context, BufferAllocator allocator) {
+        long handle = port.loadTexture(filename);
+        if (handle == 0) {
+            logDecodeFailure(kind, filename, context);
+            return null;
+        }
+        TextureRepository.PredecodedTexture predecoded = null;
+        ByteBuffer transferredBuffer = null;
+        Throwable failure = null;
+        try {
+            int width = port.textureWidth(handle);
+            int height = port.textureHeight(handle);
+            long dataAddr = port.textureData(handle);
+            boolean hasAlpha = port.textureHasAlpha(handle);
+            int size = width * height * (hasAlpha ? 4 : 3);
+            ByteBuffer buf = allocator.allocate(size);
+            boolean transferred = false;
+            try {
+                port.copyTextureData(buf, dataAddr, size);
+                buf.rewind();
+                predecoded = new TextureRepository.PredecodedTexture(buf, width, height, hasAlpha);
+                transferred = true;
+                transferredBuffer = buf;
+                return predecoded;
+            } finally {
+                if (!transferred) {
+                    allocator.free(buf);
+                }
+            }
+        } catch (RuntimeException | Error e) {
+            failure = e;
+            throw e;
+        } finally {
+            try {
+                port.deleteTexture(handle);
+            } catch (RuntimeException | Error cleanupError) {
+                if (transferredBuffer != null) {
+                    try {
+                        allocator.free(transferredBuffer);
+                    } catch (RuntimeException | Error releaseError) {
+                        addSuppressed(cleanupError, releaseError);
+                    }
+                }
+                if (failure != null) {
+                    addSuppressed(failure, cleanupError);
+                } else {
+                    throw cleanupError;
+                }
+            }
         }
     }
 
+    private static void addSuppressed(Throwable primary, Throwable cleanup) {
+        if (primary != null && primary != cleanup) primary.addSuppressed(cleanup);
+    }
+
+    private static synchronized void logDecodeFailure(String kind, String path, String context) {
+        String safeKind = bounded(kind, 32);
+        String safePath = bounded(path, 240);
+        String key = safeKind + '\0' + safePath;
+        if (FAILURE_LOG_COUNT.get() >= MAX_FAILURE_LOGS || !REPORTED_FAILURES.add(key)) return;
+        FAILURE_LOG_COUNT.incrementAndGet();
+        LOGGER.warn("[MMD纹理] kind={} context={} path={} result=decode_failed fallback=caller-defined",
+                safeKind, bounded(context, 96), safePath);
+    }
+
+    private static String bounded(String value, int limit) {
+        if (value == null) return "";
+        StringBuilder result = new StringBuilder(Math.min(value.length(), limit));
+        for (int i = 0; i < value.length() && result.length() < limit; i++) {
+            char c = value.charAt(i);
+            result.append(Character.isISOControl(c) ? ' ' : c);
+        }
+        if (value.length() > limit) result.append("...");
+        return result.toString();
+    }
+
     static TextureRepository.Texture uploadPredecoded(TextureRepository.PredecodedTexture pre) {
-        int texId = GL46C.glGenTextures();
+        int texId = 0;
         try {
+            texId = GL46C.glGenTextures();
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
             uploadPixels(pre.width, pre.height, pre.hasAlpha, pre.pixelData());
             configureTexture();

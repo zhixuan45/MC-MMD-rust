@@ -1,6 +1,7 @@
 import com.shiroha.mmdskin.render.shader.ShaderCompiler;
 import com.shiroha.mmdskin.render.shader.ToonOutputProfile;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
+import com.shiroha.mmdskin.render.shader.LightingProbe;
 import net.irisshaders.iris.helpers.StringPair;
 import net.irisshaders.iris.shaderpack.preprocessor.JcppProcessor;
 import org.lwjgl.glfw.GLFW;
@@ -31,7 +32,8 @@ public final class Probe {
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
-        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_CORE_PROFILE);
+        // 原光影含固定管线输入，兼容上下文用于检查真实来源程序的活动 uniform。
+        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_COMPAT_PROFILE);
         long window = GLFW.glfwCreateWindow(16, 16, "Toon output probe", 0, 0);
         if (window == 0) throw new IllegalStateException("无法创建隐藏 OpenGL 上下文");
         GLFW.glfwMakeContextCurrent(window);
@@ -84,11 +86,33 @@ public final class Probe {
                                 while (matcher.find()) drawBuffers = matcher.group(1);
                                 if (drawBuffers == null) throw new AssertionError("缺少 DRAWBUFFERS: " + program);
                                 int[] buffers = drawBuffers.chars().map(value -> value - '0').toArray();
-                                ToonOutputProfile profile = ToonOutputProfile.resolve(pack, program, source, buffers);
+                                String vertexWrapper = wrapper.replace(".fsh", ".vsh");
+                                String vertex = JcppProcessor.glslPreprocessSource(include(zip, vertexWrapper, variants.get(variant)),
+                                        List.of(new StringPair("MC_VERSION", "12101"), new StringPair("IS_IRIS", "1")));
+                                ToonOutputProfile profile = ToonOutputProfile.resolve(pack, program, source, vertex, buffers);
+                                if (pack.startsWith("Complementary") && profile.lightingSource().isEmpty()) {
+                                    Files.writeString(Path.of("build/iris-toon-probe/vertex.glsl"), vertex);
+                                    throw new AssertionError("未接入 Complementary 光照: " + dimension + "/" + program);
+                                }
                                 Path output = Path.of("build/iris-toon-probe", pack + "-" + variant + "-" + dimension + "-" + program + ".glsl");
                                 Files.writeString(output, source);
+                                if (pack.startsWith("Complementary")) {
+                                    Files.writeString(Path.of("build/iris-toon-probe/vertex.glsl"), vertex);
+                                    String body = Files.readString(Path.of("common/src/main/resources/assets/mmdskin/shader/toon_main_body.frag.glsl"));
+                                    Files.writeString(Path.of("build/iris-toon-probe/combined.glsl"), body
+                                            .replace("/* TOON_OUTPUT_DECLARATIONS */", profile.fragmentDeclarations())
+                                            .replace("/* TOON_OUTPUT_WRITER */", profile.fragmentWriter())
+                                            .replace("/* TOON_LIGHTING */", profile.lightingSource()));
+                                }
                                 if (!profile.isSupported()) throw new AssertionError(pack + "/" + program + "/" + variant + ": " + profile.reason());
                                 if (!shader.selectOutputProfile(profile)) throw new AssertionError("主/描边编译失败: " + profile.id());
+                                if (pack.startsWith("Complementary")) {
+                                    LightingProbe.checkPackProgram(shader, profile, vertex, source);
+                                }
+                                if (pack.startsWith("Complementary") && variant == 0
+                                        && dimension.equals("world0") && program.equals("gbuffers_entities")) {
+                                    LightingProbe.run(shader, profile);
+                                }
                                 checkOutput(profile, buffers, source, pack.startsWith("BSL"));
                                 checked++;
                                 System.out.println(pack + "/" + dimension + "/" + program + "/" + variant + " -> " + profile.id() + " OK");

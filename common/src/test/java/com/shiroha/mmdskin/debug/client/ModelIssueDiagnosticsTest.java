@@ -13,6 +13,55 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ModelIssueDiagnosticsTest {
     @Test
+    void summaryKeepsHotMetricsAndManualSnapshotRestoresDetails() {
+        AtomicLong now = new AtomicLong();
+        List<Integer> requests = new ArrayList<>();
+        List<String> logs = new ArrayList<>();
+        String records = "[MMD诊断][SIDE_PHYSICS] body=1 name=skirt\n"
+                + "[MMD诊断][SIDE_PHYSICS] peak_velocity body=1 speed=50.0\n"
+                + "[MMD诊断][COLLISION] worst_anchor error=7.15\n"
+                + "[MMD诊断][NEW_CATEGORY] diagnostic=keep";
+        ModelIssueDiagnostics diagnostics = new ModelIssueDiagnostics(() -> 2, now::get, logs::add, logs::add);
+        NativeRenderBackendPort backend = backend(requests, false, records);
+
+        diagnostics.sample(backend, 42, "model", "GPU");
+        logs.clear();
+        now.set(2_000_000_000L);
+        diagnostics.sample(backend, 42, "model", "GPU");
+        assertTrue(logs.stream().noneMatch(line -> line.startsWith("[MMD诊断][SIDE_PHYSICS] body=")));
+        assertTrue(logs.stream().anyMatch(line -> line.contains("peak_velocity")));
+        assertTrue(logs.stream().anyMatch(line -> line.contains("worst_anchor")));
+        assertTrue(logs.stream().anyMatch(line -> line.contains("NEW_CATEGORY")));
+        assertTrue(logs.stream().anyMatch(line -> line.contains("omitted_detail_records=1")));
+
+        diagnostics.requestSnapshot();
+        diagnostics.sample(backend, 42, "model", "GPU");
+        assertTrue(logs.stream().anyMatch(line -> line.startsWith("[MMD诊断][SIDE_PHYSICS] body=")));
+        now.set(32_000_000_000L);
+        diagnostics.sample(backend, 42, "model", "GPU");
+        assertEquals(List.of(0x102, 2, 0x102, 0x102), requests);
+        // 同一个诊断对象换 native handle 时也必须重新取 manifest。
+        diagnostics.sample(backend, 43, "new-model", "GPU");
+        assertEquals(0x102, requests.getLast());
+        assertEquals(5, requests.size());
+    }
+
+    @Test
+    void fullDetailOptionKeepsPreviousTwoSecondDetailCadence() {
+        AtomicLong now = new AtomicLong();
+        List<Integer> requests = new ArrayList<>();
+        List<String> logs = new ArrayList<>();
+        ModelIssueDiagnostics diagnostics = new ModelIssueDiagnostics(() -> 2, now::get,
+                logs::add, logs::add, () -> true);
+        NativeRenderBackendPort backend = backend(requests, false, "[MMD诊断][SIDE_PHYSICS] body=1");
+        diagnostics.sample(backend, 42, "model", "GPU");
+        now.set(2_000_000_000L);
+        diagnostics.sample(backend, 42, "model", "GPU");
+        assertEquals(List.of(0x102, 0x102), requests);
+        assertEquals(2, logs.stream().filter(line -> line.startsWith("[MMD诊断][SIDE_PHYSICS] body=")).count());
+    }
+
+    @Test
     void independentSwitchesThrottleAndReenableManifestWithoutPhysicsMasterSwitch() {
         AtomicInteger enabled = new AtomicInteger();
         AtomicLong now = new AtomicLong();
@@ -67,13 +116,17 @@ class ModelIssueDiagnosticsTest {
     }
 
     private static NativeRenderBackendPort backend(List<Integer> requests, boolean missingNative) {
+        return backend(requests, missingNative, "[MMD诊断][SIDE_PHYSICS] body=1\n[MMD诊断][COLLISION] mode=Strict");
+    }
+
+    private static NativeRenderBackendPort backend(List<Integer> requests, boolean missingNative, String records) {
         return (NativeRenderBackendPort) Proxy.newProxyInstance(
                 NativeRenderBackendPort.class.getClassLoader(),
                 new Class<?>[]{NativeRenderBackendPort.class}, (proxy, method, arguments) -> {
                     if (method.getName().equals("getIssueDebugDiagnostic")) {
                         requests.add((int) arguments[1]);
                         if (missingNative) throw new UnsatisfiedLinkError("old DLL");
-                        return "[MMD诊断][SIDE_PHYSICS] body=1\n[MMD诊断][COLLISION] mode=Strict";
+                        return records;
                     }
                     throw new AssertionError("诊断不应调用其它后端方法: " + method.getName());
                 });

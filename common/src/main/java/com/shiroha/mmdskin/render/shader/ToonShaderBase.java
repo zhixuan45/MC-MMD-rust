@@ -23,6 +23,10 @@ public abstract class ToonShaderBase {
     private final Map<String, Programs> variants = new LinkedHashMap<>();
     private final Set<String> failedVariants = new HashSet<>();
     private String activeProfile;
+    private ToonUniformBridge lightingBridge;
+    private int packLightingLocation = -1;
+    private int lightmapLocation = -1;
+    private boolean lightingSyncWarned;
 
     private record Programs(int main, int outline) {}
 
@@ -51,12 +55,16 @@ public abstract class ToonShaderBase {
     protected int outlineWidthLocation = -1;
     protected int outlineColorLocation = -1;
     protected int outlineAlphaLocation = -1;
+    protected int outlineSamplerLocation = -1;
+    protected int outlineAlphaCutoffLocation = -1;
+    protected int outlineUseTextureAlphaLocation = -1;
 
     protected int positionLocation = -1;
     protected int normalLocation = -1;
     protected int uv0Location = -1;
     protected int outlinePositionLocation = -1;
     protected int outlineNormalLocation = -1;
+    protected int outlineUvLocation = -1;
 
     protected abstract String getMainVertexShader();
 
@@ -97,6 +105,8 @@ public abstract class ToonShaderBase {
             mainProgram = programs.main();
             outlineProgram = programs.outline();
             activeProfile = key;
+            lightingBridge = new ToonUniformBridge(profile.lightingSource());
+            lightingSyncWarned = false;
             // 每个变体的 uniform 位置独立，切换后重新绑定。
             initCommonUniforms();
             initCommonAttributes();
@@ -113,7 +123,10 @@ public abstract class ToonShaderBase {
 
     static String outputSource(String body, ToonOutputProfile profile) {
         return body.replace("/* TOON_OUTPUT_DECLARATIONS */", profile.fragmentDeclarations())
-                .replace("/* TOON_OUTPUT_WRITER */", profile.fragmentWriter());
+                .replace("/* TOON_OUTPUT_WRITER */", profile.fragmentWriter())
+                .replace("/* TOON_LIGHTING */", profile.lightingSource().isEmpty()
+                        ? "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }"
+                        : profile.lightingSource());
     }
 
     private void trimVariants() {
@@ -146,12 +159,17 @@ public abstract class ToonShaderBase {
         lightDirLocation = GL46C.glGetUniformLocation(mainProgram, "LightDir");
         alphaCutoffLocation = GL46C.glGetUniformLocation(mainProgram, "AlphaCutoff");
         globalAlphaLocation = GL46C.glGetUniformLocation(mainProgram, "GlobalAlpha");
+        packLightingLocation = GL46C.glGetUniformLocation(mainProgram, "UsePackLighting");
+        lightmapLocation = GL46C.glGetUniformLocation(mainProgram, "ToonLightmap");
 
         outlineProjMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ProjMat");
         outlineModelViewMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ModelViewMat");
         outlineWidthLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineWidth");
         outlineColorLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineColor");
         outlineAlphaLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineAlpha");
+        outlineSamplerLocation = GL46C.glGetUniformLocation(outlineProgram, "Sampler0");
+        outlineAlphaCutoffLocation = GL46C.glGetUniformLocation(outlineProgram, "AlphaCutoff");
+        outlineUseTextureAlphaLocation = GL46C.glGetUniformLocation(outlineProgram, "UseTextureAlpha");
     }
 
     private void initCommonAttributes() {
@@ -162,6 +180,7 @@ public abstract class ToonShaderBase {
 
         outlinePositionLocation = GL46C.glGetAttribLocation(outlineProgram, "Position");
         outlineNormalLocation = GL46C.glGetAttribLocation(outlineProgram, "Normal");
+        outlineUvLocation = GL46C.glGetAttribLocation(outlineProgram, "UV0");
     }
 
     protected int compileProgram(String vertexSource, String fragmentSource, String name) {
@@ -177,7 +196,26 @@ public abstract class ToonShaderBase {
     public void useOutline() {
         if (outlineProgram > 0) {
             GL46C.glUseProgram(outlineProgram);
+            if (outlineSamplerLocation >= 0) GL46C.glUniform1i(outlineSamplerLocation, 0);
         }
+    }
+
+    public boolean setEnvironmentLighting(int originalProgram, int blockLight, int skyLight) {
+        return setEnvironmentLighting(originalProgram, null, blockLight, skyLight);
+    }
+
+    public boolean setEnvironmentLighting(int originalProgram, Object shaderIdentity, int blockLight, int skyLight) {
+        boolean copied = lightingBridge != null && lightingBridge.copy(originalProgram, mainProgram, shaderIdentity);
+        if (!copied && originalProgram > 0 && packLightingLocation >= 0 && !lightingSyncWarned) {
+            lightingSyncWarned = true;
+            logger.warn("Toon 环境光 uniform 同步失败，使用基础亮度路径: profile={}, sourceProgram={}",
+                    activeProfile, originalProgram);
+        }
+        if (packLightingLocation >= 0) GL46C.glUniform1i(packLightingLocation, copied ? 1 : 0);
+        // 与实体 UV2 的 (level * 16 + 8) / 256 约定一致。
+        if (lightmapLocation >= 0) GL46C.glUniform2f(lightmapLocation,
+                (blockLight * 16 + 8) / 256.0f, (skyLight * 16 + 8) / 256.0f);
+        return copied;
     }
 
     public void setProjectionMatrix(FloatBuffer matrix) {
@@ -280,6 +318,14 @@ public abstract class ToonShaderBase {
         }
     }
 
+    public void setOutlineAlphaCutoff(float cutoff) {
+        if (outlineAlphaCutoffLocation >= 0) GL46C.glUniform1f(outlineAlphaCutoffLocation, cutoff);
+    }
+
+    public void setOutlineUseTextureAlpha(boolean enabled) {
+        if (outlineUseTextureAlphaLocation >= 0) GL46C.glUniform1i(outlineUseTextureAlphaLocation, enabled ? 1 : 0);
+    }
+
     public void setGlobalAlpha(float alpha) {
         if (globalAlphaLocation >= 0) {
             GL46C.glUniform1f(globalAlphaLocation, alpha);
@@ -295,6 +341,7 @@ public abstract class ToonShaderBase {
 
     public int getOutlinePositionLocation() { return outlinePositionLocation; }
     public int getOutlineNormalLocation() { return outlineNormalLocation; }
+    public int getOutlineUvLocation() { return outlineUvLocation; }
 
     public boolean isInitialized() { return initialized; }
 

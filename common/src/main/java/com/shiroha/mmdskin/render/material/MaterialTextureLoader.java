@@ -22,7 +22,8 @@ public final class MaterialTextureLoader {
             material.hasAlpha = texture.hasAlpha;
             material.ownsTexture = true;
         } else {
-            TextureRepository.Texture texture = TextureRepository.GetTexture(path);
+            TextureRepository.Texture texture = TextureRepository.GetTexture(path, "diffuse",
+                    "render modelHandle=" + modelHandle + " materialIndex=" + materialIndex);
             if (texture != null) {
                 material.tex = texture.tex;
                 material.hasAlpha = texture.hasAlpha;

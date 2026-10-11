@@ -145,6 +145,22 @@ impl MmdModel {
         entries.sort_by_key(|(_, b)| (!is_side_accessory(&b.name, &b.universal_name),));
         let total = entries.len();
         let shown = total.min(MAX_ITEMS);
+        // 摘要扫描所有已纳入的动态体，避免最热刚体落在明细截断之外。
+        let mut peak = (0.0_f32, None);
+        let mut non_finite = 0;
+        for &(index, body) in &entries {
+            if let Some(bullet) = body.bullet_body.as_ref() {
+                let velocity = bullet.get_linear_velocity();
+                let speed = velocity.length();
+                if !speed.is_finite() {
+                    non_finite += 1;
+                } else if peak.1.is_none() || speed > peak.0 {
+                    peak = (speed, Some(index));
+                }
+            }
+        }
+        let _ = writeln!(out, "[MMD诊断][SIDE_PHYSICS] peak_velocity body={} speed={:.5} non_finite={} scanned={} truncated={} sample=current_read_not_window_peak",
+            peak.1.map_or_else(|| "unavailable".to_owned(), |index| index.to_string()), peak.0, non_finite, total, physics.rigid_bodies.len() > 8192);
         let _ = writeln!(out,
             "[MMD诊断][SIDE_PHYSICS] model={} model_physics_enabled={} global_physics_enabled={} rebuild_pending={} simulation_space=bullet_left_model render_space=bullet_left_model final_bone_space=right_model_local units=mmd_local raw_bodies={} runtime_bodies={} synthesized_bodies={} raw_joints={} runtime_joints={} synthesized_joints={} dynamic_scanned={} named_accessories={} unknown_dynamic={} sample={} truncated={} scan_truncated={}",
             escape(&self.name), self.physics_enabled, global_physics_enabled, self.physics_rebuild_pending,

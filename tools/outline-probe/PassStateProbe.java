@@ -37,6 +37,7 @@ public final class PassStateProbe {
                             zoom, modelScale, 0.7f, -0.35f, true);
                 }
             }
+            checkMaterialTextures(positions, normals);
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "OpenGL 状态错误");
             System.out.println("PASS outline pass state and width: orthographic zoom/model-scale mapping; perspective unchanged; finally cleanup");
 
@@ -68,7 +69,7 @@ public final class PassStateProbe {
         FloatBuffer modelView = modelView(guiZoom * rootScale, rotateY, rotateZ, mirrored);
         modelView.position(2);
         OutlineRenderPass.Inputs inputs = new OutlineRenderPass.Inputs(
-                positions, normals, mesh, 1, 4, GL46C.GL_UNSIGNED_INT, projection, modelView, rootScale);
+                positions, normals, positions, mesh, 1, 4, GL46C.GL_UNSIGNED_INT, projection, modelView, rootScale);
 
         boolean threw = false;
         try {
@@ -80,7 +81,7 @@ public final class PassStateProbe {
                 check(!GL46C.glGetBoolean(GL46C.GL_DEPTH_WRITEMASK), "pass 内 depth mask 应关闭");
                 if (throwFromResolver) throw new ProbeException();
                 return 0.0f;
-            });
+            }, material -> 0);
         } catch (ProbeException expected) {
             threw = true;
         }
@@ -89,6 +90,7 @@ public final class PassStateProbe {
         check(GL46C.glGetBoolean(GL46C.GL_DEPTH_WRITEMASK), "finally 应恢复 depth mask");
         check(GL46C.glGetVertexAttribi(0, GL46C.GL_VERTEX_ATTRIB_ARRAY_ENABLED) == 0, "position attribute 应关闭");
         check(GL46C.glGetVertexAttribi(1, GL46C.GL_VERTEX_ATTRIB_ARRAY_ENABLED) == 0, "normal attribute 应关闭");
+        check(GL46C.glGetVertexAttribi(2, GL46C.GL_VERTEX_ATTRIB_ARRAY_ENABLED) == 0, "UV attribute 应关闭");
         check(GL46C.glIsEnabled(GL46C.GL_DEPTH_TEST), "depth test 应保持开启");
         float expectedWidth = projectionKind == ORTHOGRAPHIC ? 0.0022f * guiZoom : 0.0022f;
         check(Math.abs(shader.outlineWidth - expectedWidth) < 0.00001f,
@@ -100,6 +102,76 @@ public final class PassStateProbe {
         GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, id);
         GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, new float[]{0, 0, 0}, GL46C.GL_STATIC_DRAW);
         return id;
+    }
+
+    /** 按实际 pass 遍历核对逐材质绑定以及无纹理和异常恢复。 */
+    private static void checkMaterialTextures(int positions, int normals) {
+        int program = testProgram();
+        int elements = GL46C.glGenBuffers();
+        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, elements);
+        GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER, new int[]{0}, GL46C.GL_STATIC_DRAW);
+        int[] textures = {GL46C.glGenTextures(), GL46C.glGenTextures(), GL46C.glGenTextures()};
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
+        for (int texture : textures) GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE3);
+        ByteBuffer meshes = ByteBuffer.allocate(60).order(java.nio.ByteOrder.nativeOrder());
+        for (int i = 0; i < 3; i++) {
+            meshes.putInt(i * 20, i);
+            meshes.putFloat(i * 20 + 12, 1);
+            meshes.put(i * 20 + 16, (byte) 1);
+        }
+        FloatBuffer projection = matrix(ORTHOGRAPHIC).position(3);
+        FloatBuffer modelView = modelView(1, 0, 0, false).position(2);
+        var inputs = new OutlineRenderPass.Inputs(positions, normals, positions, meshes, 3, 4,
+                GL46C.GL_UNSIGNED_INT, projection, modelView, 1);
+        int[] visits = {0};
+        // 第三材质在 draw 前抛出，前两材质使用合法的零索引绘制。
+        var shader = new com.shiroha.mmdskin.render.shader.ToonShaderBase() {
+            private int material;
+            private boolean mask;
+            @Override public void useOutline() { GL46C.glUseProgram(program); }
+            @Override public void setOutlineUseTextureAlpha(boolean enabled) { mask = enabled; }
+            @Override public void setOutlineAlpha(float alpha) {
+                check(mask == (material < 2), "无纹理材质必须关闭遮罩");
+                if (material < 2) check(GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D) == textures[material], "逐材质纹理绑定");
+                visits[0] = ++material;
+                if (material == 3) throw new ProbeException();
+            }
+        };
+        boolean threw = false;
+        try {
+            OutlineRenderPass.draw(shader, inputs, (material, alpha) -> 1,
+                    material -> material < 2 ? textures[material] : 0);
+        } catch (ProbeException expected) { threw = true; }
+        check(threw && visits[0] == 3, "应验证全部材质及无纹理异常路径");
+        check(GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE) == GL46C.GL_TEXTURE3, "恢复活动纹理单元");
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
+        check(GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D) == textures[2], "恢复原纹理绑定");
+        check(GL46C.glGetVertexAttribi(2, GL46C.GL_VERTEX_ATTRIB_ARRAY_ENABLED) == 0, "异常后清理 UV attribute");
+        for (int texture : textures) GL46C.glDeleteTextures(texture);
+        GL46C.glUseProgram(0);
+        GL46C.glDeleteProgram(program);
+        GL46C.glDeleteBuffers(elements);
+        System.out.println("PASS per-material outline texture: two bindings, untextured mask disabled, exception restoration");
+    }
+
+    private static int testProgram() {
+        int vertex = GL46C.glCreateShader(GL46C.GL_VERTEX_SHADER);
+        GL46C.glShaderSource(vertex, "#version 330 core\nlayout(location=0) in vec3 p; void main(){gl_Position=vec4(p,1);}");
+        GL46C.glCompileShader(vertex);
+        check(GL46C.glGetShaderi(vertex, GL46C.GL_COMPILE_STATUS) != 0, GL46C.glGetShaderInfoLog(vertex));
+        int fragment = GL46C.glCreateShader(GL46C.GL_FRAGMENT_SHADER);
+        GL46C.glShaderSource(fragment, "#version 330 core\nout vec4 c; void main(){c=vec4(1);}");
+        GL46C.glCompileShader(fragment);
+        check(GL46C.glGetShaderi(fragment, GL46C.GL_COMPILE_STATUS) != 0, GL46C.glGetShaderInfoLog(fragment));
+        int program = GL46C.glCreateProgram();
+        GL46C.glAttachShader(program, vertex);
+        GL46C.glAttachShader(program, fragment);
+        GL46C.glLinkProgram(program);
+        check(GL46C.glGetProgrami(program, GL46C.GL_LINK_STATUS) != 0, GL46C.glGetProgramInfoLog(program));
+        GL46C.glDeleteShader(vertex);
+        GL46C.glDeleteShader(fragment);
+        return program;
     }
 
     private static FloatBuffer matrix(int kind) {

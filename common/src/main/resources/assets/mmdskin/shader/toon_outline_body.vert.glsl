@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec3 Position;
 layout(location = 1) in vec3 Normal;
+layout(location = 2) in vec2 UV0;
 
 uniform mat4 ProjMat;
 uniform mat4 ModelViewMat;
@@ -9,6 +10,7 @@ uniform float OutlineWidth;
 
 out vec3 viewNormal;
 out vec3 viewPos;
+out vec2 texCoord0;
 
 void main() {
     mat3 normalMatrix = mat3(ModelViewMat);
@@ -31,4 +33,5 @@ void main() {
     gl_Position = ProjMat * vPos;
     viewNormal = transformedNormal;
     viewPos = vPos.xyz;
+    texCoord0 = UV0;
 }
