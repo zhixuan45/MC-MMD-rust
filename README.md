@@ -25,7 +25,7 @@
 2. **Minecraft Mod**（Fabric/Forge）: 基于 Java 的渲染和集成
    - OpenGL 模型渲染
    - Compute Shader 蒙皮
-   - Iris 光影兼容
+   - Iris 光影兼容（1.21.1 Toon 支持 Complementary Unbound/Reimagined r5.9.3、BSL 10.1.8；[适配版本与验证](SHADERPACK_COMPATIBILITY.md)）
 
 ## 使用教程
 

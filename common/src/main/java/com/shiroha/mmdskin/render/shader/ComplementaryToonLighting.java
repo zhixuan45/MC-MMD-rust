@@ -10,9 +10,52 @@ final class ComplementaryToonLighting {
     private static final Pattern COMMENTS = Pattern.compile("/\\*.*?\\*/|//[^\\r\\n]*", Pattern.DOTALL);
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*\\)\\s*\\{");
     private static final Pattern INITIALIZER = Pattern.compile("(?s)\\s*(float|vec[234]|int|mat[234])\\s+(.+);\\s*");
+    private static final Pattern MODERN_DIFFUSE = Pattern.compile("shadowMult\\s*\\*=\\s*max\\(\\s*NdotLM\\s*\\*\\s*shadowTime\\s*,");
     private static final Pattern DIFFUSE = Pattern.compile("fullShadow\\s*=\\s*shadow\\s*\\*\\s*max\\(\\s*NdotL\\s*,");
 
     private ComplementaryToonLighting() {}
+
+    /** 5.x 直接以纹理颜色调用 DoLighting，不能沿用 4.x 的线性 GetLighting 协议。 */
+    static String createModern(String fragment, String vertex) {
+        if (vertex == null) return "";
+        String source = clean(fragment);
+        Matcher main = MAIN.matcher(source);
+        Matcher sun = Pattern.compile("\\bsunVec\\s*=\\s*([^;]+);").matcher(clean(vertex));
+        if (!main.find() || !sun.find() || !source.contains("void DoLighting(")
+                || !source.contains("vec3 ViewToPlayer(")) return "";
+        source = source.substring(0, main.start())
+                .replaceAll("(?m)^\\s*#(?:version|extension|line)[^\\n]*", "")
+                // 去掉片段输入限定符，但保留函数参数的 in/inout。
+                .replaceAll("(?m)^\\s*(?:flat\\s+)?in\\s+(vec[234]\\s+[^;]+;)", "$1")
+                .replaceAll("\\btexture2D\\b", "texture")
+                .replaceAll("\\btexture2DLod\\b", "textureLod");
+        // 半透明程序包含旧固定管线雾函数；即使调用被优化掉，也须能在 core GLSL 中解析。
+        if (source.contains("gl_Fog.")) {
+            source = "uniform float iris_FogStart;\nuniform float iris_FogEnd;\n" + source
+                    .replace("gl_Fog.start", "iris_FogStart")
+                    .replace("gl_Fog.scale", "(1.0 / max(iris_FogEnd - iris_FogStart, 0.0001))");
+        }
+        int inputs = source.indexOf("vec2 texCoord;");
+        if (inputs < 0) return "";
+        StringBuilder before = new StringBuilder(), after = new StringBuilder();
+        String head = moveInitializers(source.substring(0, inputs), before);
+        String tail = moveInitializers(source.substring(inputs), after);
+        // 保留阴影采样偏移的连续法线，仅对采样后的直射光权重分档。
+        tail = MODERN_DIFFUSE.matcher(tail).replaceAll("shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
+        return head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
+                + before + "\nupVec = normalize(gbufferModelView[1].xyz);\n"
+                + "northVec = normalize(gbufferModelView[2].xyz); eastVec = normalize(gbufferModelView[0].xyz);\n"
+                + "sunVec = " + sun.group(1) + ";\n"
+                + "normal = n; texCoord = texCoord0; lmCoord = ToonLightmap; glColor = vec4(1.0);\n"
+                + after + "\nfloat ndl = max(dot(n, lightVec), 0.0);\n"
+                + "float band = toonDiffuseRamp(ndl);\n"
+                + "vec4 lit = vec4(1.0);\n"
+                + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
+                + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * n);\n"
+                + "DoLighting(lit, shadow, player, p, length(p), n, n, 0.5, worldNormal, lmCoord,\n"
+                + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
+                + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), band);\n}\n";
+    }
 
     static String create(String fragment, String vertex) {
         if (vertex == null) return "";

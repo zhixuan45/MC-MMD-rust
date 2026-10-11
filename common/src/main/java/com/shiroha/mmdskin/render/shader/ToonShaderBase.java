@@ -4,6 +4,8 @@ import com.shiroha.mmdskin.util.AssetsUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL46C;
+import org.joml.Matrix4f;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 import java.util.HashSet;
@@ -27,6 +29,9 @@ public abstract class ToonShaderBase {
     private int packLightingLocation = -1;
     private int lightmapLocation = -1;
     private boolean lightingSyncWarned;
+    private final Matrix4f outputViewToWorld = new Matrix4f();
+    private float outputFar = 1.0f;
+    private int mainOutputMatrixLocation = -1, mainOutputFarLocation = -1;
     private int eyeEmissionLocation = -1;
     private int outlinePremultipliedLocation = -1;
     private int outlineColorSlot;
@@ -180,6 +185,8 @@ public abstract class ToonShaderBase {
         globalAlphaLocation = GL46C.glGetUniformLocation(mainProgram, "GlobalAlpha");
         packLightingLocation = GL46C.glGetUniformLocation(mainProgram, "UsePackLighting");
         lightmapLocation = GL46C.glGetUniformLocation(mainProgram, "ToonLightmap");
+        mainOutputMatrixLocation = GL46C.glGetUniformLocation(mainProgram, "ToonViewToWorld");
+        mainOutputFarLocation = GL46C.glGetUniformLocation(mainProgram, "ToonFar");
         eyeEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "EyeEmission");
         outlinePremultipliedLocation = GL46C.glGetUniformLocation(outlineProgram, "Premultiplied");
 
@@ -211,6 +218,7 @@ public abstract class ToonShaderBase {
     public void useMain() {
         if (mainProgram > 0) {
             GL46C.glUseProgram(mainProgram);
+            uploadOutputUniforms(mainOutputMatrixLocation, mainOutputFarLocation);
         }
     }
 
@@ -227,6 +235,11 @@ public abstract class ToonShaderBase {
     }
 
     public boolean setEnvironmentLighting(int originalProgram, Object shaderIdentity, int blockLight, int skyLight) {
+        // 5.x 的主体反射法线在世界空间；描边通过独立颜色 pass 合成，不写材质缓冲。
+        if (mainOutputMatrixLocation >= 0 || mainOutputFarLocation >= 0) {
+            readOutputUniforms(originalProgram);
+            uploadOutputUniforms(mainOutputMatrixLocation, mainOutputFarLocation);
+        }
         boolean copied = lightingBridge != null && lightingBridge.copy(originalProgram, mainProgram, shaderIdentity);
         if (!copied && lightingBridge != null && originalProgram > 0 && packLightingLocation >= 0 && !lightingSyncWarned) {
             lightingSyncWarned = true;
@@ -238,6 +251,35 @@ public abstract class ToonShaderBase {
         if (lightmapLocation >= 0) GL46C.glUniform2f(lightmapLocation,
                 (blockLight * 16 + 8) / 256.0f, (skyLight * 16 + 8) / 256.0f);
         return copied;
+    }
+
+    private void readOutputUniforms(int source) {
+        outputViewToWorld.identity();
+        outputFar = 1.0f;
+        if (source <= 0) return;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer matrix = stack.mallocFloat(16);
+            int inverse = GL46C.glGetUniformLocation(source, "gbufferModelViewInverse");
+            int view = GL46C.glGetUniformLocation(source, "gbufferModelView");
+            if (inverse >= 0) {
+                GL46C.glGetUniformfv(source, inverse, matrix);
+                outputViewToWorld.set(matrix);
+            } else if (view >= 0) {
+                GL46C.glGetUniformfv(source, view, matrix);
+                outputViewToWorld.set(matrix).invert();
+            }
+            int far = GL46C.glGetUniformLocation(source, "far");
+            if (far >= 0) outputFar = Math.max(GL46C.glGetUniformf(source, far), 1.0f);
+        }
+    }
+
+    private void uploadOutputUniforms(int matrix, int far) {
+        if (matrix >= 0) {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                GL46C.glUniformMatrix4fv(matrix, false, outputViewToWorld.get(stack.mallocFloat(16)));
+            }
+        }
+        if (far >= 0) GL46C.glUniform1f(far, outputFar);
     }
 
     public void setProjectionMatrix(FloatBuffer matrix) {
