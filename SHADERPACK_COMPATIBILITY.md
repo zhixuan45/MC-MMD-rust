@@ -22,24 +22,24 @@ BSL_v10.1.8.zip                    36b0a50ff7918bf10e9422c401d93779f9d0088a26ace
 
 ## 适配依据
 
-原实现仅接受文件名中的 `4.7.1` 和 `8.4.02.2`。现在仍要求 Complementary/BSL 家族名称，但用 Iris 预处理后的活动源码确认输出语义；版本号不再作为兼容条件。未知输出、缺失源码证据、布局错位或未确认的光照函数仍会回退。
+原实现根据 Complementary/BSL 包名和固定版本号决定是否适配。现在包名仅供上层显示，不参与适配器选择；根据 Iris 预处理后的活动 GLSL 光照函数参数契约、颜色编码和各缓冲的写入语义识别协议。同样的源码即使改名、缺少名称或使用误导性名称，也得到相同结果。未知输出、缺失源码证据、布局错位或未确认的光照函数仍会回退。
 
 - 保留 Complementary 4.x 和 BSL 8.x 的已验证协议。
-- Complementary 5.x 使用 `DoLighting`，其颜色没有 4.x 的 `pow(albedo, 2.2)` 编码。复用当前程序中的光照函数、设置和太阳方向。
+- Complementary 5.x 使用 `DoLighting`，其颜色没有 4.x 的 `pow(albedo, 2.2)` 编码。复用当前程序中的光照函数、设置和太阳方向。接入 PR #7 的统一 Toon 色阶、高光和边缘光函数，保持眼部发光及描边抗锯齿功能。
 - 5.x 的 colortex3 是 `1 - translucentMult`，colortex6 是材质数据，colortex4 是世界空间法线。非 PBR 的 Toon 模型输出原包中性的实体材质标记 254/255、零光滑度与零反射天空因子。
-- 半透明实体的 colortex13 为 `sqrt(length(viewPos) / far)`。解析同时支持 `DRAWBUFFERS` 和带多位目标编号的 `RENDERTARGETS`；主 pass 与描边同步视图逆矩阵和远平面。
+- 半透明实体的 colortex13 为 `sqrt(length(viewPos) / far)`。解析同时支持 `DRAWBUFFERS` 和带多位目标编号的 `RENDERTARGETS`；主体同步视图逆矩阵和远平面；沿用 PR #7 的独立颜色描边 pass，避免修改材质缓冲。描边颜色采用与主体相同的编码，并支持覆盖率合成的预乘 alpha。
 - BSL 10.x 的 `entityMask` 随 alpha 变化，发光实体使用独立标记；保留混合模式的线性/平方根编码和 colortex1 体积光颜色。
 - 相同布局下不同透明度输出也参与程序缓存键，防止重载设置后复用错误变体。
 
 ## 验证与复现
 
-Java 回归测试覆盖新旧协议、改名版本、未知写入、多位目标、透明度缓存、实体标记和未确认光照的拒绝路径。
+Java 回归测试覆盖新旧协议、任意/空/误导包名、未知写入、多位目标的描边定位、透明度缓存、实体标记和未确认光照的拒绝路径。
 
 可选探针读取用户自行下载的 ZIP，不在仓库内分发光影。使用 Iris 的 Jcpp 预处理器，在主世界、下界、末地验证 entities、hand、entities_translucent 和 entities_glowing：
 
 - 每个 Complementary 版本 4 组选项，共 48 个程序：默认、关闭反射和细节、自定义 PBR、IPBR 与高反射/细节。
 - BSL 17 组选项，共 204 个程序：默认以及 ALPHA_BLEND、ADVANCED_MATERIALS、MCBL_SS、TAA_SELECTIVE 的 16 个组合。
-- 合计 300 个程序。Mesa OpenGL 4.5 下，主着色器及描边均编译、链接成功；独立输出程序回读验证颜色、alpha、法线极点与旋转、材质标记、体积光颜色、半透明深度；活动光照 uniform 与原包一致。
+- 合计 300 个程序。Mesa OpenGL 4.5 下，主着色器及描边均编译、链接成功；独立输出程序回读验证颜色、alpha、法线极点与旋转、材质标记、体积光颜色、半透明深度；活动光照 uniform 与原包一致。同一程序还以四种改名/空名重复解析；描边的直通/预乘颜色也通过回读验证。
 
 探针用 Iris 1.8.14-beta.1 的预处理器。原包来源程序在链接比较前将 GLSL 版本提升为 330 compatibility，以支持旧声明版本下的新选项语法；这不是完整的 Iris 游戏运行测试。
 

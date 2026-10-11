@@ -48,6 +48,15 @@ public final class SourceProbe {
                                     ? matcher.group(1).chars().map(c -> c - '0').toArray()
                                     : Arrays.stream(matcher.group(2).split(",")).map(String::trim).mapToInt(Integer::parseInt).toArray();
                             ToonOutputProfile profile = ToonOutputProfile.resolve(pack, program, fragment, vertex, buffers);
+                            // 用无家族名称、空名称及误导性名称重放同一程序，结果必须完全相同。
+                            for (String alias : Arrays.asList("renamed-pack.zip", "BSL_Complementary_misleading.zip", "", null)) {
+                                ToonOutputProfile renamed = ToonOutputProfile.resolve(alias, program, fragment, vertex, buffers);
+                                if (renamed.isSupported() != profile.isSupported() || !renamed.id().equals(profile.id())
+                                        || !renamed.fragmentWriter().equals(profile.fragmentWriter())
+                                        || !renamed.lightingSource().equals(profile.lightingSource())) {
+                                    throw new AssertionError("Pack name changed protocol resolution: " + pack + " -> " + alias);
+                                }
+                            }
                             String label = pack + "-" + variant + "-" + dimension + "-" + program;
                             if (!profile.isSupported()) throw new AssertionError(label + ": " + profile.reason());
                             if (pack.toLowerCase(Locale.ROOT).contains("complementary") && profile.lightingSource().isEmpty())
@@ -58,6 +67,10 @@ public final class SourceProbe {
                                         .replace("/* TOON_OUTPUT_WRITER */", profile.fragmentWriter())
                                         .replace("/* TOON_LIGHTING */", profile.lightingSource().isEmpty()
                                                 ? "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }" : profile.lightingSource());
+                                if (pass.equals("outline")) {
+                                    generated = body.replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location = 0) out vec4 outlineColor;\n")
+                                            .replace("/* TOON_OUTPUT_WRITER */", profile.outlineWriter());
+                                }
                                 Files.writeString(output.resolve(label + "." + pass + ".glsl"), generated);
                             }
                             // 独立输出程序供 EGL 颜色/法线/透明度/深度回读，避免光照影响协议断言。
@@ -65,6 +78,10 @@ public final class SourceProbe {
                                     + profile.fragmentDeclarations() + profile.fragmentWriter()
                                     + "uniform vec3 TestNormal;\nvoid main() { writeToonOutputs(vec3(0.5,0.25,0.75),vec3(0.6,0.4,0.2),TestNormal,0.4); }\n";
                             Files.writeString(output.resolve(label + ".writer.glsl"), writer);
+                            String outlineWriter = "#version 330 core\nuniform bool Premultiplied;\nlayout(location = 0) out vec4 outlineColor;\n"
+                                    + profile.outlineWriter()
+                                    + "void main() { writeToonOutputs(vec3(0.5,0.25,0.75),vec3(0.6,0.4,0.2),vec3(0.0,0.0,1.0),0.4); }\n";
+                            Files.writeString(output.resolve(label + ".outline-writer.glsl"), outlineWriter);
                             Files.writeString(output.resolve(label + ".meta"), profile.id() + "\n"
                                     + String.join(",", Arrays.stream(buffers).mapToObj(String::valueOf).toList()) + "\n");
                             Files.writeString(output.resolve(label + ".source.fsh"), fragment);

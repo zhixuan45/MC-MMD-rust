@@ -42,7 +42,8 @@ $taskJava = Join-Path $Jdk 'bin/java.exe'
 $taskJavac = Join-Path $Jdk 'bin/javac.exe'
 Push-Location $taskRoot
 try {
-    & $taskJavac -proc:none -encoding UTF-8 -cp $taskCp -d $taskProbeDir (Join-Path $PSScriptRoot 'Probe.java') (Join-Path $PSScriptRoot 'OverlayProbe.java') (Join-Path $PSScriptRoot 'LightingProbe.java')
+    $taskSources = @('Probe.java','OverlayProbe.java','LightingProbe.java','ToonControlsProbe.java','UniformBridgeProbe.java','OutlineCoverageProbe.java') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+    & $taskJavac -proc:none -encoding UTF-8 -cp $taskCp -d $taskProbeDir $taskSources
     if ($LASTEXITCODE -ne 0) { throw '探针编译失败' }
     & $taskJava -cp "$taskProbeDir;$taskCp" Probe (Join-Path $Instance 'shaderpacks')
     if ($LASTEXITCODE -ne 0) { throw '探针验证失败' }

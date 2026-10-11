@@ -10,6 +10,8 @@ final class ComplementaryToonLighting {
     private static final Pattern COMMENTS = Pattern.compile("/\\*.*?\\*/|//[^\\r\\n]*", Pattern.DOTALL);
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*\\)\\s*\\{");
     private static final Pattern INITIALIZER = Pattern.compile("(?s)\\s*(float|vec[234]|int|mat[234])\\s+(.+);\\s*");
+    private static final Pattern MODERN_DIFFUSE = Pattern.compile("shadowMult\\s*\\*=\\s*max\\(\\s*NdotLM\\s*\\*\\s*shadowTime\\s*,");
+    private static final Pattern DIFFUSE = Pattern.compile("fullShadow\\s*=\\s*shadow\\s*\\*\\s*max\\(\\s*NdotL\\s*,");
 
     private ComplementaryToonLighting() {}
 
@@ -38,19 +40,21 @@ final class ComplementaryToonLighting {
         StringBuilder before = new StringBuilder(), after = new StringBuilder();
         String head = moveInitializers(source.substring(0, inputs), before);
         String tail = moveInitializers(source.substring(inputs), after);
+        // 保留阴影采样偏移的连续法线，仅对采样后的直射光权重分档。
+        tail = MODERN_DIFFUSE.matcher(tail).replaceAll("shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
         return head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + "\nupVec = normalize(gbufferModelView[1].xyz);\n"
                 + "northVec = normalize(gbufferModelView[2].xyz); eastVec = normalize(gbufferModelView[0].xyz);\n"
                 + "sunVec = " + sun.group(1) + ";\n"
                 + "normal = n; texCoord = texCoord0; lmCoord = ToonLightmap; glColor = vec4(1.0);\n"
                 + after + "\nfloat ndl = max(dot(n, lightVec), 0.0);\n"
-                + "float levels = float(max(ToonLevels, 2)); float band = floor(ndl * levels + 0.5) / levels;\n"
-                + "vec4 lit = vec4(raw * mix(ShadowColor, vec3(1.0), band), 1.0);\n"
+                + "float band = toonDiffuseRamp(ndl);\n"
+                + "vec4 lit = vec4(1.0);\n"
                 + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
                 + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * n);\n"
                 + "DoLighting(lit, shadow, player, p, length(p), n, n, 0.5, worldNormal, lmCoord,\n"
-                + "           false, false, true, true, 0, 0.0, 0.0, 0.0);\n"
-                + "return max(lit.rgb, vec3(0.0));\n}\n";
+                + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
+                + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), band);\n}\n";
     }
 
     static String create(String fragment, String vertex) {
@@ -80,19 +84,28 @@ final class ComplementaryToonLighting {
         StringBuilder before = new StringBuilder(), after = new StringBuilder();
         String head = moveInitializers(source.substring(0, varyingStart), before);
         String tail = moveInitializers(source.substring(varyingStart).replaceAll("\\bvarying\\s+", ""), after);
+        // 阴影偏移保留连续 NdotL，仅对采样后的漫反射权重分档。
+        Matcher diffuse = DIFFUSE.matcher(tail);
+        if (diffuse.find()) {
+            if (diffuse.find()) return "";
+            tail = DIFFUSE.matcher(tail).replaceFirst("fullShadow = shadow * max(toonDiffuseRamp(NdotL),");
+        } else if (!tail.contains("vec3 sceneLighting = normalize(sqrt(max(fogColor,")) {
+            // Nether 只有环境光；其它未知漫反射形式不套用此适配。
+            return "";
+        }
         return "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(texture(s, p)); }\n"
                 + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + sunSetup + "\nnormal = n; texCoord = texCoord0; lmCoord = ToonLightmap; color = vec4(1.0);\n"
                 + after + "\nlmCoord.x -= max(lmCoord.x - 0.825, 0.0) * 0.75;\n"
                 + "float ndl = clamp(dot(n, lightVec) * 1.01 - 0.01, 0.0, 1.0);\n"
-                // 色阶用于材质明暗；保留包内 NdotL，维持阴影偏移的正确性。
-                + "float band = floor(ndl * float(ToonLevels) + 0.5) / float(ToonLevels);\n"
-                + "vec3 lit = pow(max(raw, vec3(0.0)), vec3(2.2)) * mix(ShadowColor, vec3(1.0), band);\n"
+                + "float band = toonDiffuseRamp(ndl);\n"
+                + "vec3 lit = vec3(1.0);\n"
                 + "vec3 shadow = vec3(1.0), lightAlbedo = vec3(0.0);\n"
-                + "float up = clamp(0.25 * dot(n, upVec) + 0.75, 0.5, 1.0); up *= up;\n"
                 + "vec3 world = (gbufferModelViewInverse * vec4(p, 1.0)).xyz;\n"
-                + "GetLighting(lit, shadow, lightAlbedo, p, length(p), world, lmCoord, 1.0, ndl, up, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
-                + "return pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2));\n}\n";
+                // 固定上方向遮蔽，避免色阶之外再叠一层连续的方块式面明暗。
+                + "GetLighting(lit, shadow, lightAlbedo, p, length(p), world, lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
+                + "vec3 illumination = pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2));\n"
+                + "return shadeToonSurface(raw, n, lightVec, p, illumination, band);\n}\n";
     }
 
     private static String clean(String source) {

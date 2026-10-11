@@ -63,6 +63,8 @@
   "gui.mmdskin.mod_settings.toon_enabled.tooltip": "Enable cartoon rendering effect (cel shading, outlines, rim lighting)",
   "gui.mmdskin.mod_settings.toon_levels": "Shade Levels",
   "gui.mmdskin.mod_settings.toon_levels.tooltip": "Number of lighting levels (2-5), higher values create smoother transitions",
+  "gui.mmdskin.mod_settings.toon_eye_emission": "Eye glow strength",
+  "gui.mmdskin.mod_settings.toon_eye_emission.tooltip": "0 disables glow; 100 is normal strength. Named iris/eye materials emit while dark pupils and white sclera are preserved. Halo depends on shader-pack bloom. Unnamed eyes or shared face textures are not detected.",
   "gui.mmdskin.mod_settings.toon_rim_power": "Rim Power",
   "gui.mmdskin.mod_settings.toon_rim_power.tooltip": "Rim light sharpness (1-10), higher values create sharper edges",
   "gui.mmdskin.mod_settings.toon_rim_intensity": "Rim Intensity",

@@ -15,16 +15,51 @@ uniform float SpecularPower;
 uniform float SpecularIntensity;
 uniform float AlphaCutoff;
 uniform float GlobalAlpha;
+uniform float EyeEmission;
 uniform bool UsePackLighting;
 uniform vec2 ToonLightmap;
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
-/* TOON_LIGHTING */
-
 float saturate(float value) {
     return clamp(value, 0.0, 1.0);
 }
+
+// 每档保留平坦区，仅在色阶交界按屏幕导数平滑。
+float toonDiffuseRamp(float ndl) {
+    float steps = float(clamp(ToonLevels, 2, 5) - 1);
+    float width = clamp(fwidth(ndl), 0.002, 0.015);
+    float ramp = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        if (float(i) >= steps) break;
+        float boundary = (float(i) + 0.5) / steps;
+        ramp += smoothstep(boundary - width, boundary + width, ndl) / steps;
+    }
+    return ramp;
+}
+
+vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination, float ramp) {
+    vec3 tint = mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp);
+    vec3 surface = albedo * tint;
+    vec3 view = normalize(-p);
+    vec3 halfVector = light + view;
+    float specAngle = saturate(dot(n, halfVector / max(length(halfVector), 0.0001)));
+    // 以半高宽切出高光色块，幂次只控制色块面积。
+    float spec = pow(specAngle, max(SpecularPower, 1.0));
+    float specWidth = clamp(fwidth(spec), 0.005, 0.05);
+    float highlight = smoothstep(0.5 - specWidth, 0.5 + specWidth, spec);
+    float litMask = smoothstep(0.0, 0.1, ramp);
+    surface = mix(surface, vec3(1.0), saturate(highlight * SpecularIntensity * litMask));
+
+    float rim = pow(1.0 - saturate(dot(view, n)), max(RimPower, 0.1));
+    float rimWidth = clamp(fwidth(rim), 0.005, 0.05);
+    float rimBand = smoothstep(0.5 - rimWidth, 0.5 + rimWidth, rim);
+    surface = mix(surface, vec3(1.0), saturate(rimBand * RimIntensity));
+    // 光照只乘一次；高光与边缘光在暗处同样衰减。
+    return surface * max(illumination, vec3(0.0));
+}
+
+/* TOON_LIGHTING */
 
 void main() {
     vec4 texColor = texture(Sampler0, texCoord0);
@@ -35,49 +70,19 @@ void main() {
     vec3 albedo = texColor.rgb;
     vec3 normal = normalize(viewNormal);
     vec3 lightDir = normalize(viewLightDir);
-    vec3 viewDir = normalize(-viewPos);
-
-    float NdotL = dot(normal, lightDir);
-    float halfLambert = NdotL * 0.5 + 0.5;
-
-    float bands = float(max(ToonLevels, 2));
-    float edgeSoftness = mix(0.08, 0.04, clamp((bands - 2.0) / 3.0, 0.0, 1.0));
-
-    float toonRamp;
-    if (bands <= 2.0) {
-        toonRamp = smoothstep(0.5 - edgeSoftness, 0.5 + edgeSoftness, halfLambert);
+    float ramp = toonDiffuseRamp(saturate(dot(normal, lightDir)));
+    vec3 finalColor;
+    if (UsePackLighting) {
+        finalColor = applyPackLighting(albedo, normal, viewPos);
     } else {
-        float scaled = halfLambert * (bands - 1.0);
-        float s = floor(scaled);
-        float f = fract(scaled);
-        float blend = smoothstep(0.5 - edgeSoftness, 0.5 + edgeSoftness, f);
-        toonRamp = saturate((s + blend) / (bands - 1.0));
+        finalColor = shadeToonSurface(albedo, normal, lightDir, viewPos,
+                vec3(max(LightIntensity, 0.0)), ramp);
     }
-
-    vec3 shadowColor = albedo * ShadowColor;
-    float shadowLum = dot(shadowColor, vec3(0.299, 0.587, 0.114));
-    vec3 coolShift = vec3(shadowLum * 0.85, shadowLum * 0.88, shadowLum * 1.1);
-    vec3 shadowTint = mix(shadowColor, coolShift, 0.2);
-
-    vec3 baseColor = mix(shadowTint, albedo, toonRamp);
-
-    float lightFactor = max(LightIntensity, 0.0);
-    vec3 finalColor = baseColor * lightFactor;
-
-    vec3 halfDir = normalize(lightDir + viewDir);
-    float specAngle = saturate(dot(normal, halfDir));
-    float specular = pow(specAngle, max(SpecularPower, 1.0));
-    float specThreshold = mix(0.82, 0.96, clamp(SpecularPower / 96.0, 0.0, 1.0));
-    float specBand = smoothstep(specThreshold - 0.02, specThreshold + 0.02, specular);
-    float specMask = step(0.5, halfLambert);
-    finalColor += vec3(lightFactor) * specBand * SpecularIntensity * specMask * 0.5;
-    // 光影分支直接使用包内线性光照，避免重复乘亮度和叠加白色高光。
-    if (UsePackLighting) finalColor = applyPackLighting(albedo, normal, viewPos);
-
-    float fresnel = 1.0 - saturate(dot(viewDir, normal));
-    float rim = pow(fresnel, max(RimPower, 1.0));
-    float rimEdge = smoothstep(0.7, 0.9, rim);
-    float rimMask = 1.0 - toonRamp;
+    // 色度与亮度遮罩保留眼白和黑瞳；只对当前眼部子网格上传强度。
+    float bright = max(albedo.r, max(albedo.g, albedo.b));
+    float chroma = bright - min(albedo.r, min(albedo.g, albedo.b));
+    float irisMask = smoothstep(0.08, 0.35, chroma) * smoothstep(0.15, 0.55, bright);
+    finalColor += albedo * irisMask * clamp(EyeEmission, 0.0, 3.0);
     float finalAlpha = texColor.a * clamp(GlobalAlpha, 0.0, 1.0);
     if (finalAlpha < 0.001) {
         discard;

@@ -32,7 +32,9 @@ public abstract class ToonShaderBase {
     private final Matrix4f outputViewToWorld = new Matrix4f();
     private float outputFar = 1.0f;
     private int mainOutputMatrixLocation = -1, mainOutputFarLocation = -1;
-    private int outlineOutputMatrixLocation = -1, outlineOutputFarLocation = -1;
+    private int eyeEmissionLocation = -1;
+    private int outlinePremultipliedLocation = -1;
+    private int outlineColorSlot;
 
     private record Programs(int main, int outline) {}
 
@@ -98,7 +100,7 @@ public abstract class ToonShaderBase {
                     failedVariants.add(key);
                     return false;
                 }
-                int outline = compileProgram(getOutlineVertexShader(), outputSource(OUTLINE_FRAGMENT_SHADER_BODY, profile),
+                int outline = compileProgram(getOutlineVertexShader(), outlineSource(OUTLINE_FRAGMENT_SHADER_BODY, profile),
                         getShaderName() + "描边着色器/" + key);
                 if (outline == 0) {
                     GL46C.glDeleteProgram(main);
@@ -111,7 +113,8 @@ public abstract class ToonShaderBase {
             mainProgram = programs.main();
             outlineProgram = programs.outline();
             activeProfile = key;
-            lightingBridge = new ToonUniformBridge(profile.lightingSource());
+            outlineColorSlot = profile.colorOutputSlot();
+            lightingBridge = profile.lightingSource().isEmpty() ? null : new ToonUniformBridge(profile.lightingSource());
             lightingSyncWarned = false;
             // 每个变体的 uniform 位置独立，切换后重新绑定。
             initCommonUniforms();
@@ -133,6 +136,21 @@ public abstract class ToonShaderBase {
                 .replace("/* TOON_LIGHTING */", profile.lightingSource().isEmpty()
                         ? "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }"
                         : profile.lightingSource());
+    }
+
+    static String outlineSource(String body, ToonOutputProfile profile) {
+        return body.replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location = 0) out vec4 outlineColor;\n")
+                .replace("/* TOON_OUTPUT_WRITER */", profile.outlineWriter());
+    }
+
+    public int getOutlineColorSlot() { return outlineColorSlot; }
+
+    public void setOutlinePremultiplied(boolean value) {
+        if (outlinePremultipliedLocation >= 0) GL46C.glUniform1i(outlinePremultipliedLocation, value ? 1 : 0);
+    }
+
+    public void setEyeEmission(float value) {
+        if (eyeEmissionLocation >= 0) GL46C.glUniform1f(eyeEmissionLocation, value);
     }
 
     private void trimVariants() {
@@ -169,8 +187,8 @@ public abstract class ToonShaderBase {
         lightmapLocation = GL46C.glGetUniformLocation(mainProgram, "ToonLightmap");
         mainOutputMatrixLocation = GL46C.glGetUniformLocation(mainProgram, "ToonViewToWorld");
         mainOutputFarLocation = GL46C.glGetUniformLocation(mainProgram, "ToonFar");
-        outlineOutputMatrixLocation = GL46C.glGetUniformLocation(outlineProgram, "ToonViewToWorld");
-        outlineOutputFarLocation = GL46C.glGetUniformLocation(outlineProgram, "ToonFar");
+        eyeEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "EyeEmission");
+        outlinePremultipliedLocation = GL46C.glGetUniformLocation(outlineProgram, "Premultiplied");
 
         outlineProjMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ProjMat");
         outlineModelViewMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ModelViewMat");
@@ -207,7 +225,7 @@ public abstract class ToonShaderBase {
     public void useOutline() {
         if (outlineProgram > 0) {
             GL46C.glUseProgram(outlineProgram);
-            uploadOutputUniforms(outlineOutputMatrixLocation, outlineOutputFarLocation);
+            setOutlinePremultiplied(false);
             if (outlineSamplerLocation >= 0) GL46C.glUniform1i(outlineSamplerLocation, 0);
         }
     }
@@ -217,16 +235,16 @@ public abstract class ToonShaderBase {
     }
 
     public boolean setEnvironmentLighting(int originalProgram, Object shaderIdentity, int blockLight, int skyLight) {
-        // 5.x 的反射法线在世界空间；主 pass 和描边必须使用同一视图逆矩阵。
+        // 5.x 的主体反射法线在世界空间；描边通过独立颜色 pass 合成，不写材质缓冲。
         if (mainOutputMatrixLocation >= 0 || mainOutputFarLocation >= 0) {
             readOutputUniforms(originalProgram);
             uploadOutputUniforms(mainOutputMatrixLocation, mainOutputFarLocation);
         }
         boolean copied = lightingBridge != null && lightingBridge.copy(originalProgram, mainProgram, shaderIdentity);
-        if (!copied && originalProgram > 0 && packLightingLocation >= 0 && !lightingSyncWarned) {
+        if (!copied && lightingBridge != null && originalProgram > 0 && packLightingLocation >= 0 && !lightingSyncWarned) {
             lightingSyncWarned = true;
-            logger.warn("Toon 环境光 uniform 同步失败，使用基础亮度路径: profile={}, sourceProgram={}",
-                    activeProfile, originalProgram);
+            logger.warn("Toon 环境光 uniform 同步失败，使用基础亮度路径: profile={}, sourceProgram={}, reason={}",
+                    activeProfile, originalProgram, lightingBridge.failureReason());
         }
         if (packLightingLocation >= 0) GL46C.glUniform1i(packLightingLocation, copied ? 1 : 0);
         // 与实体 UV2 的 (level * 16 + 8) / 256 约定一致。
@@ -392,6 +410,7 @@ public abstract class ToonShaderBase {
     public boolean isInitialized() { return initialized; }
 
     public void cleanup() {
+        com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
         variants.values().forEach(ToonShaderBase::deletePrograms);
         variants.clear();
         failedVariants.clear();

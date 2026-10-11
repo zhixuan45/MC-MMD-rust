@@ -53,8 +53,8 @@ public final class ToonOutputProfile {
 
     public static ToonOutputProfile resolve(String packName, String programName,
                                             String fragmentSource, String vertexSource, int[] drawBuffers) {
-        if (packName == null || programName == null || fragmentSource == null || drawBuffers == null) {
-            return unsupported("缺少光影包、程序源码或 DRAWBUFFERS 信息");
+        if (programName == null || fragmentSource == null || drawBuffers == null) {
+            return unsupported("缺少程序源码或 DRAWBUFFERS 信息");
         }
         if (drawBuffers.length == 0 || java.util.Arrays.stream(drawBuffers).noneMatch(value -> value == 0)) {
             return unsupported("DRAWBUFFERS 缺少 colortex0 主颜色槽");
@@ -66,21 +66,9 @@ public final class ToonOutputProfile {
             }
             requestedTargets[target] = true;
         }
-        String pack = packName.toLowerCase(Locale.ROOT);
         String program = programName.toLowerCase(Locale.ROOT);
         // 注释中的示例代码不能作为缓冲语义的证据。
         String source = COMMENTS.matcher(fragmentSource).replaceAll(" ");
-        Family family;
-        if (pack.contains("complementary") && hasModernComplementaryContract(source)) {
-            family = Family.COMPLEMENTARY_MODERN;
-        } else if (pack.contains("complementary") && hasVerifiedColorSource(source)) {
-            family = Family.COMPLEMENTARY;
-        } else if (pack.contains("bsl") && hasVerifiedColorSource(source)) {
-            family = Family.BSL;
-        } else {
-            return unsupported("光影包源码不属于已验证的 Complementary/BSL 输出协议");
-        }
-
         Program kind;
         if (program.equals("gbuffers_entities_glowing")) kind = Program.GLOWING;
         else if (program.equals("gbuffers_entities") || program.equals("gbuffers_entities_translucent")) kind = Program.ENTITIES;
@@ -96,6 +84,8 @@ public final class ToonOutputProfile {
             while (assignments.size() <= slot) assignments.add(new ArrayList<>());
             assignments.get(slot).add(assignmentMatcher.group(2).trim());
         }
+        Family family = detectFamily(source, vertexSource, kind, drawBuffers, assignments);
+        if (family == null) return unsupported("光照函数、颜色编码或缓冲输出协议未确认");
         List<String> outputs = new ArrayList<>();
         for (int i = 0; i < drawBuffers.length; i++) {
             int target = drawBuffers[i];
@@ -135,6 +125,39 @@ public final class ToonOutputProfile {
         return new ToonOutputProfile(true, id, "", outputDeclarations, writer(outputs, colorEncoding), lighting);
     }
 
+    /** 包名只用于上层显示；选择适配器必须有活动光照/输出协议的证据。 */
+    private static Family detectFamily(String source, String vertex, Program program,
+                                       int[] targets, List<List<String>> assignments) {
+        if (hasModernComplementaryContract(source)) return Family.COMPLEMENTARY_MODERN;
+        if (!hasVerifiedColorSource(source)) return null;
+        // GetLighting 的入参契约不同，不能根据目录名选择不同的调用或颜色编码。
+        Matcher lighting = Pattern.compile("voidgetlighting\\(([^)]*)\\)").matcher(compact(source));
+        if (lighting.find()) {
+            String[] parameters = lighting.group(1).split(",");
+            if (parameters.length == 15 && parameters[0].startsWith("inoutvec3")
+                    && (parameters[2].startsWith("inoutvec3") || parameters[2].startsWith("outvec3"))) {
+                return Family.COMPLEMENTARY;
+            }
+            if (parameters.length == 13 && parameters[0].startsWith("inoutvec3")
+                    && parameters[2].startsWith("vec3")) return Family.BSL;
+            return null;
+        }
+        // 仅解析输出时允许无光照函数的契约片段；游戏提供顶点源码时必须确认光照签名。
+        if (vertex != null) return null;
+        for (Family candidate : new Family[]{Family.BSL, Family.COMPLEMENTARY}) {
+            boolean matches = true;
+            for (int slot = 0; slot < targets.length; slot++) {
+                if (slot >= assignments.size() || assignments.get(slot).isEmpty()) { matches = false; break; }
+                for (String value : assignments.get(slot)) {
+                    if (!knownAssignment(candidate, program, targets[slot], value, source)) { matches = false; break; }
+                }
+                if (!matches) break;
+            }
+            if (matches) return candidate;
+        }
+        return null;
+    }
+
     private static boolean hasDrawBufferEvidence(String source, int[] buffers) {
         Matcher matcher = DRAW_BUFFERS.matcher(source);
         int[] lastDirective = null;
@@ -154,7 +177,10 @@ public final class ToonOutputProfile {
         if (family == Family.COMPLEMENTARY_MODERN) {
             return switch (target) {
                 case 3 -> compact.equals("vec4(1.0-translucentmult,1.0)") && hasModernTranslucencyContract(source);
-                case 6 -> compact.equals("vec4(smoothnessd,materialmask,skylightfactor,1.0)");
+                case 6 -> compact.equals("vec4(smoothnessd,materialmask,skylightfactor,1.0)")
+                        && compact(source).contains("smoothnessd=0.0,materialmask=osiebca*254.0")
+                        && compact(source).contains("constfloatosiebca=1.0/255.0;")
+                        && compact(source).contains("skylightfactor=getskylightfactor(lmcoordm,shadowmult)");
                 case 4 -> compact.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,1.0)");
                 case 13 -> compact.equals("vec4(entitylineardepth,1.0,1.0,1.0)")
                         && compact(source).contains("entitylineardepth=sqrt(lviewpos/far)")
@@ -191,10 +217,7 @@ public final class ToonOutputProfile {
         String code = compact(source);
         return code.contains("voiddolighting(inoutvec4color,inoutvec3shadowmult,")
                 && code.contains("color.rgb*=finaldiffuse") && code.contains("finaldiffuse=sqrt(max(finaldiffuse,vec3(0.0)))")
-                && code.contains("smoothnessd=0.0,materialmask=osiebca*254.0")
-                && code.contains("constfloatosiebca=1.0/255.0;")
-                && code.contains("skylightfactor=getskylightfactor(lmcoordm,shadowmult)")
-                && code.contains("gl_fragdata[0]=color;");
+                && Pattern.compile("gl_FragData\\s*\\[\\s*\\d+\\s*]\\s*=\\s*color\\s*;").matcher(source).find();
     }
 
     private static boolean hasModernTranslucencyContract(String source) {
@@ -318,6 +341,27 @@ public final class ToonOutputProfile {
         return "void writeToonOutputs(vec3 color, vec3 rawAlbedo, vec3 normal, float alpha) {\n"
                 + "    toonOutput0 = vec4(color, alpha);\n    toonOutput1 = vec4(normal * 0.5 + 0.5, 1.0);\n"
                 + "    toonOutput2 = vec4(0.0, 0.0, 0.0, 1.0);\n    toonOutput3 = vec4(0.0, 0.0, 0.0, 1.0);\n}\n";
+    }
+
+    public int colorOutputSlot() {
+        if (id.equals(VANILLA_ID)) return 0;
+        if (!supported) return -1;
+        String layout = id.split(":")[3];
+        if (!layout.contains(",")) return layout.indexOf('0');
+        String[] targets = layout.split(",");
+        for (int slot = 0; slot < targets.length; slot++) {
+            if (targets[slot].equals("0")) return slot;
+        }
+        return -1;
+    }
+
+    public String outlineWriter() {
+        String encoded = id.equals(VANILLA_ID) || id.contains(":gamma:") ? "color"
+                : id.contains(":sqrt-linear:") ? "pow(max(color, vec3(0.0)), vec3(1.1))"
+                : "pow(max(color, vec3(0.0)), vec3(2.2))";
+        return "void writeToonOutputs(vec3 color, vec3 rawAlbedo, vec3 normal, float alpha) {\n"
+                + "    vec3 encoded = " + encoded + ";\n"
+                + "    outlineColor = vec4(Premultiplied ? encoded * alpha : encoded, alpha);\n}\n";
     }
 
     public boolean isSupported() { return supported; }

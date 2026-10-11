@@ -37,7 +37,24 @@ class ModernToonOutputProfileTest {
             assertTrue(profile.fragmentWriter().contains("254.0 / 255.0"));
             assertTrue(profile.fragmentWriter().contains("mat3(ToonViewToWorld) * normal"));
             assertFalse(profile.fragmentWriter().contains("toonOutput0 = vec4(pow("));
+            assertTrue(profile.outlineWriter().contains("vec3 encoded = color;"));
+            assertTrue(profile.outlineWriter().contains("Premultiplied ? encoded * alpha : encoded"));
         }
+    }
+
+    @Test
+    void routesOutlineToColorSlotAfterMultiDigitTargets() {
+        String source = MODERN_CONTRACT.replace("DRAWBUFFERS:0364", "RENDERTARGETS:13,3,6,4,0")
+                .replace("gl_FragData[0] = color;", "gl_FragData[4] = color;") + """
+                float lViewPos = length(viewPos);
+                float entityLinearDepth = sqrt(lViewPos / far);
+                gl_FragData[0] = vec4(entityLinearDepth, 1.0, 1.0, 1.0);
+                """;
+        var profile = ToonOutputProfile.resolve("ComplementaryUnbound_r5.9.3", "gbuffers_entities_translucent",
+                source, new int[]{13, 3, 6, 4, 0});
+        assertTrue(profile.isSupported(), profile.reason());
+        assertEquals(4, profile.colorOutputSlot());
+        assertEquals(-1, ToonOutputProfile.unsupported("unknown").colorOutputSlot());
     }
 
     @Test
@@ -78,6 +95,25 @@ class ModernToonOutputProfileTest {
                 MODERN_CONTRACT.replace("materialMask = OSIEBCA * 254.0", "materialMask = 1.0"), new int[]{0, 3, 6, 4}).isSupported());
         assertFalse(ToonOutputProfile.resolve("ComplementaryUnbound_r5.9.3", "gbuffers_entities",
                 MODERN_CONTRACT.replace("vec4(mat3(gbufferModelViewInverse) * normalM, 1.0)", "mystery"), new int[]{0, 3, 6, 4}).isSupported());
+    }
+
+    @Test
+    void ignoresMissingMisleadingAndUnrelatedPackNames() {
+        String bsl = """
+                void GetLighting(inout vec3 a, out vec3 s, vec3 p, vec3 w, vec3 n, vec2 lm,
+                                 float sl, float nl, float vd, float ps, float e, float ss, float bs) {}
+                """ + BSL_COLOR + "/* DRAWBUFFERS:0 */";
+        for (String name : new String[]{null, "", "renamed.zip", "Complementary_v4.7.1.zip", "BSL_v10.1.8.zip"}) {
+            var modern = ToonOutputProfile.resolve(name, "gbuffers_entities", MODERN_CONTRACT, new int[]{0, 3, 6, 4});
+            assertTrue(modern.isSupported(), modern.reason());
+            assertTrue(modern.id().startsWith("complementary_modern:"));
+            var other = ToonOutputProfile.resolve(name, "gbuffers_entities", bsl, "void main() {}", new int[]{0});
+            assertTrue(other.isSupported(), other.reason());
+            assertTrue(other.id().startsWith("bsl:"));
+        }
+        String unverified = BSL_COLOR + "/* DRAWBUFFERS:0 */";
+        assertFalse(ToonOutputProfile.resolve("BSL_v10.1.8.zip", "gbuffers_entities", unverified,
+                "void main() {}", new int[]{0}).isSupported());
     }
 
     @Test

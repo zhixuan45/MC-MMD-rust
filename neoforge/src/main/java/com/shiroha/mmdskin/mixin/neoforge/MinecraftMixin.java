@@ -13,6 +13,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {
 
+    @Inject(method = "close", at = @At("HEAD"), remap = false)
+    private void releaseOutlineOnClose(CallbackInfo ci) {
+        com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
+    }
+
+    @Inject(method = "tick", at = @At("HEAD"))
+    private void releaseDisabledOutline(CallbackInfo ci) {
+        if (!com.shiroha.mmdskin.config.ConfigManager.isToonRenderingEnabled()
+                || !com.shiroha.mmdskin.config.ConfigManager.isToonOutlineEnabled()) {
+            com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
+        }
+    }
+
     @Inject(method = "pauseGame", at = @At("HEAD"), cancellable = true)
     private void onPauseGame(boolean showPauseMenu, CallbackInfo ci) {
         if (MMDCameraController.getInstance().isActive()) {

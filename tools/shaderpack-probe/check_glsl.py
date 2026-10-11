@@ -86,10 +86,11 @@ view_to_world = (ct.c_float * 16)(0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
 triangle = "#version 330 core\nvoid main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.0-1.0,0.0,1.0);}"
 
 
-def read_outputs(path, profile, buffers):
+def read_outputs(path, profile, buffers, premultiplied=False):
     source = path.read_text()
     handle = program(triangle, source, str(path))
     use_program(handle)
+    gl("glUniform1i", None, [INT, INT])(location(handle, b"Premultiplied"), int(premultiplied))
     gl("glUniformMatrix4fv", None, [INT, INT, UINT, PTR])(
         location(handle, b"ToonViewToWorld"), 1, 0, view_to_world
     )
@@ -125,6 +126,8 @@ def read_outputs(path, profile, buffers):
             if target == 0:
                 exponent = 1 if modern else 1.1 if "sqrt-linear" in profile else 2.2
                 expected = [x**exponent for x in [.5, .25, .75]] + [.4]
+                if premultiplied:
+                    expected[:3] = [x * .4 for x in expected[:3]]
             elif target == 13:
                 expected = [.25, 1, 1, 1]
             elif modern and target == 4:
@@ -174,13 +177,15 @@ for root in sys.argv[1:]:
                 for name in re.findall(r"\buniform\s+\w+\s+(\w+)", fragment):
                     if name.startswith("Toon") or name in {
                         "Sampler0", "LightIntensity", "ToonLevels", "RimPower", "RimIntensity", "ShadowColor",
-                        "SpecularPower", "SpecularIntensity", "AlphaCutoff", "GlobalAlpha", "UsePackLighting",
+                        "SpecularPower", "SpecularIntensity", "AlphaCutoff", "GlobalAlpha", "UsePackLighting", "EyeEmission",
                     }:
                         continue
                     if location(generated, name.encode()) >= 0:
                         assert location(original, name.replace("ToonPackTexture", "texture").encode()) >= 0, (label, "missing uniform", name)
             delete_program(generated)
         read_outputs(pathlib.Path(label + ".writer.glsl"), profile, buffers)
+        read_outputs(pathlib.Path(label + ".outline-writer.glsl"), profile, [0])
+        read_outputs(pathlib.Path(label + ".outline-writer.glsl"), profile, [0], premultiplied=True)
         delete_program(original)
         assert gl("glGetError", UINT, [])() == 0, label
         checked += 1

@@ -49,6 +49,9 @@ class ToonOutputProfileTest {
                 new int[]{7, 3, 0});
         assertTrue(profile.isSupported(), profile.reason());
         assertTrue(profile.fragmentWriter().contains("toonOutput2 = vec4(pow(max(color"));
+        org.junit.jupiter.api.Assertions.assertEquals(2, profile.colorOutputSlot());
+        assertFalse(profile.outlineWriter().contains("toonOutput"));
+        assertTrue(profile.outlineWriter().contains("encoded * alpha"));
     }
 
     @Test
