@@ -1,55 +1,56 @@
-// NeoForge 平台构建脚本 - 负责 NeoForge 平台的依赖装配、阴影打包与重映射
+// NeoForge 平台构建脚本 - 使用官方 ModDevGradle 插件装配与打包
 plugins {
+	id 'net.neoforged.moddev'
 	id 'com.gradleup.shadow'
 }
 
-architectury {
-	platformSetupLoomIde()
-	neoForge()
-}
+neoForge {
+	version = project.neoforge_version
 
-loom {
-	mixin {
-		useLegacyMixinAp = true
-		defaultRefmapName = "mmdskin-neoforge-refmap.json"
-	}
 	runs {
 		client {
 			client()
-			name "NeoForge Client"
-			runDir "run/client"
-			programArgs "--username", "Developer"
+			gameDirectory = file("run/client")
+			systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+			programArguments.addAll '--username', 'Developer'
 		}
 		server {
 			server()
-			name "NeoForge Server"
-			runDir "run/server"
-			programArgs "--nogui"
+			gameDirectory = file("run/server")
+			systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+			programArgument '--nogui'
+		}
+	}
+
+	mods {
+		"${project.mod_id}" {
+			sourceSet project.sourceSets.main
+			sourceSet project(':common').sourceSets.main
 		}
 	}
 }
 
 configurations {
-	common
-	shadowCommon
-	shadowBundle
-	compileClasspath.extendsFrom common
-	runtimeClasspath.extendsFrom common
-	developmentNeoForge.extendsFrom common
+	shadowBundle {
+		canBeResolved = true
+		canBeConsumed = false
+	}
 }
 
 dependencies {
-	neoForge "net.neoforged:neoforge:${rootProject.neoforge_version}"
-	modApi "dev.architectury:architectury-neoforge:${rootProject.architectury_version}"
-	modApi "me.shedaniel.cloth:cloth-config-neoforge:${rootProject.cloth_config_version}"
-	// 仅供 NeoForge 开发运行环境加载，便于调试女仆兼容。
-	modRuntimeOnly "maven.modrinth:R0bDWFAW:tXG1TkGx"
+	// 保持开发运行与发布包使用同一份 Mojmap 输出。
+	implementation project(':common').sourceSets.main.output
 
-	common(project(path: ":common", configuration: "namedElements")) { transitive false }
-	shadowCommon(project(path: ":common", configuration: "transformProductionNeoForge")) { transitive false }
+	// Cloth Config API
+	implementation "me.shedaniel.cloth:cloth-config-neoforge:${rootProject.cloth_config_version}"
 
-	common("javazoom:jlayer:1.0.1") { transitive = false }
+	// MP3 解码依赖私有化重定位
+	implementation("javazoom:jlayer:1.0.1") { transitive = false }
+	additionalRuntimeClasspath("javazoom:jlayer:1.0.1") { transitive = false }
 	shadowBundle("javazoom:jlayer:1.0.1") { transitive = false }
+
+	// 仅供 NeoForge 开发运行环境加载，便于调试女仆兼容
+	runtimeOnly "maven.modrinth:R0bDWFAW:tXG1TkGx"
 }
 
 processResources {
@@ -74,27 +75,17 @@ processResources {
 }
 
 shadowJar {
-	exclude "architectury.common.json"
-	exclude "fabric.mod.json"
-	configurations = [project.configurations.shadowCommon, project.configurations.shadowBundle]
-	archiveClassifier.set("dev-shadow")
+	configurations = [project.configurations.shadowBundle]
+	from project(':common').sourceSets.main.output
 	relocate "javazoom", "com.shiroha.mmdskin.shadow.javazoom"
+	archiveClassifier.set("")
 
-	// 排除不需要的文件
 	exclude 'META-INF/versions/**'
 	exclude 'module-info.class'
+	exclude 'fabric.mod.json'
 
 	mergeServiceFiles()
-}
 
-remapJar {
-	inputFile.set shadowJar.archiveFile
-	dependsOn shadowJar
-	archiveClassifier.set(null)
-}
-
-jar {
-	archiveClassifier.set("dev")
 	manifest {
 		attributes([
 			'Specification-Title'     : 'MMD Skin NeoForge',
@@ -108,24 +99,18 @@ jar {
 	}
 }
 
+jar {
+	archiveClassifier.set("dev")
+}
+
+tasks.named("assemble").configure {
+	dependsOn tasks.named("shadowJar")
+}
+
 sourcesJar {
 	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	exclude 'META-INF/neoforge.mods.toml'
 	def commonSources = project(":common").sourcesJar
 	dependsOn commonSources
 	from commonSources.archiveFile.map { zipTree(it) }
-}
-
-components.java {
-	withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
-		skip()
-	}
-}
-
-sourceSets {
-	main {
-		resources {
-			exclude 'assets/mmdskin/lang/*.json'
-		}
-	}
 }

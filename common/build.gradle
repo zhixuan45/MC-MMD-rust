@@ -1,6 +1,7 @@
-architectury {
-	common("fabric", "neoforge")
+plugins {
+	id 'fabric-loom'
 }
+
 
 def nativeResourcesDir = rootProject.layout.buildDirectory.dir("generated/native-resources")
 
@@ -13,7 +14,9 @@ sourceSets {
 }
 
 dependencies {
-	modImplementation "dev.architectury:architectury:${rootProject.architectury_version}"
+	minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+	mappings loom.officialMojangMappings()
+
 	compileOnly "net.fabricmc:fabric-loader:${rootProject.loader_version}"
 
 	// MP3 解码依赖
@@ -22,6 +25,7 @@ dependencies {
 	testImplementation "org.junit.jupiter:junit-jupiter-api:5.10.2"
 	testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.10.2"
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+	testCompileOnly "net.fabricmc:fabric-loader:${rootProject.loader_version}"
 }
 
 tasks.named("processResources").configure {

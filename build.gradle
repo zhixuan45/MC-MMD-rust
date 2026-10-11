@@ -1,16 +1,14 @@
-// 根项目构建脚本 - 多模块多平台协调与公共编译配置
 plugins {
-	id 'architectury-plugin' version "${architectury_plugin_version}"
-	id 'dev.architectury.loom' version "${architectury_loom_version}" apply false
 	id 'com.gradleup.shadow' version "${shadow_version}" apply false
-}
-
-architectury {
-	minecraft = project.minecraft_version
+	id 'fabric-loom' version "${fabric_loom_version}" apply false
+	id 'net.neoforged.moddev' version "${moddev_version}" apply false
 }
 
 // 原生 JNI 动态链接库本地构建逻辑
 def nativeResourcesDir = layout.buildDirectory.dir("generated/native-resources")
+// CI 使用同次工作流编译的多平台原生库，本地仍交给 Cargo 增量构建。
+def stagedNativePath = providers.gradleProperty("nativeResourcesPath").orNull
+def stagedNativeDir = stagedNativePath == null ? null : file(stagedNativePath)
 def bullet3Dir = file("rust_engine/deps/bullet3")
 def bullet3Commit = "63c4d67e337017f9d8b298c900e9aabdb69296e7"
 def bullet3Repository = "https://github.com/bulletphysics/bullet3.git"
@@ -94,26 +92,50 @@ tasks.register("buildRustNative", Exec) {
 	description = "编译当前主机的 Release 版本 Rust 原生库"
 	dependsOn tasks.named("prepareBullet3Sources")
 	workingDir projectDir
-	commandLine cargoExecutable(), "build", "--release", "--manifest-path", "rust_engine/Cargo.toml"
+	commandLine cargoExecutable(), "build", "--release", "--lib", "--manifest-path", "rust_engine/Cargo.toml"
 }
 
-tasks.register("prepareNativeResources", Copy) {
-	group = "build"
-	description = "将当前编译的原生库复制到构建资源目录"
-	if (nativeOutputFile != null && nativeOutputFile.exists() && nativeOutputDir != null) {
-		from(nativeOutputFile)
-		into(nativeResourcesDir.map { it.dir("natives/${nativeOutputDir}") })
-	} else {
-		// 如果本地尚未编译，则尝试触发编译；如果无 cargo 环境则略过
+tasks.register("validateNativeResources") {
+	if (stagedNativeDir == null) {
 		dependsOn tasks.named("buildRustNative")
-		from(nativeOutputFile)
-		into(nativeResourcesDir.map { it.dir("natives/${nativeOutputDir}") })
+	}
+	doLast {
+		if (stagedNativeDir != null) {
+			def outputPath = nativeResourcesDir.get().asFile.canonicalPath
+			def sourcePath = stagedNativeDir.canonicalPath
+			if (stagedNativePath.isBlank() || sourcePath == outputPath || sourcePath.startsWith(outputPath + File.separator)) {
+				throw new GradleException("nativeResourcesPath must be a separate staging directory")
+			}
+			def nativeFiles = fileTree(stagedNativeDir) {
+				include 'natives/**/*.dll', 'natives/**/*.so', 'natives/**/*.dylib'
+			}.files
+			if (nativeFiles.isEmpty() || nativeFiles.any { it.length() == 0 }) {
+				throw new GradleException("nativeResourcesPath contains no valid native libraries: ${stagedNativeDir}")
+			}
+		} else if (nativeOutputFile == null || nativeOutputDir == null || !nativeOutputFile.isFile() || nativeOutputFile.length() == 0) {
+			throw new GradleException("No native library was built for ${currentOs}/${currentArch}")
+		}
+	}
+}
+
+tasks.register("prepareNativeResources", Sync) {
+	group = "build"
+	description = "同步本地或 CI 原生库到构建资源目录"
+	dependsOn tasks.named("validateNativeResources")
+	into(nativeResourcesDir)
+	if (stagedNativeDir != null) {
+		from(stagedNativeDir) {
+			include 'natives/**'
+		}
+	} else {
+		from({ nativeOutputFile }) {
+			into("natives/${nativeOutputDir}")
+		}
 	}
 }
 
 allprojects {
 	apply plugin: 'java'
-	apply plugin: 'architectury-plugin'
 
 	group = rootProject.maven_group
 	version = rootProject.mod_version
@@ -131,10 +153,6 @@ allprojects {
 		maven {
 			name = 'Fabric'
 			url = 'https://maven.fabricmc.net/'
-		}
-		maven {
-			name = 'Architectury'
-			url = 'https://maven.architectury.dev/'
 		}
 		maven {
 			name = 'TerraformersMC'
@@ -164,18 +182,7 @@ allprojects {
 }
 
 subprojects {
-	apply plugin: 'dev.architectury.loom'
-
 	base {
 		archivesName = "${rootProject.mod_id}-${project.name}"
-	}
-
-	loom {
-		silentMojangMappingsLicense()
-	}
-
-	dependencies {
-		minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
-		mappings loom.officialMojangMappings()
 	}
 }
