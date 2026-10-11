@@ -16,6 +16,7 @@ public interface IToonConfig {
 
     default float getToonRimPower() { return 5.6f; }
     default float getToonRimIntensity() { return 0.02f; }
+    default float getToonEyeEmission() { return 0.0f; }
 
     default float getToonShadowR() { return 0.78f; }
     default float getToonShadowG() { return 0.84f; }

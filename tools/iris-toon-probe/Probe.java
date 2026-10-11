@@ -2,6 +2,8 @@ import com.shiroha.mmdskin.render.shader.ShaderCompiler;
 import com.shiroha.mmdskin.render.shader.ToonOutputProfile;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
 import com.shiroha.mmdskin.render.shader.LightingProbe;
+import com.shiroha.mmdskin.render.shader.ToonControlsProbe;
+import com.shiroha.mmdskin.render.shader.UniformBridgeProbe;
 import net.irisshaders.iris.helpers.StringPair;
 import net.irisshaders.iris.shaderpack.preprocessor.JcppProcessor;
 import org.lwjgl.glfw.GLFW;
@@ -38,11 +40,24 @@ public final class Probe {
         if (window == 0) throw new IllegalStateException("无法创建隐藏 OpenGL 上下文");
         GLFW.glfwMakeContextCurrent(window);
         GL.createCapabilities();
+        try {
+            run(args);
+        } finally {
+            GLFW.glfwDestroyWindow(window);
+            GLFW.glfwTerminate();
+        }
+    }
+
+    /** 允许 Linux EGL 探针复用同一组生产着色器检查。 */
+    public static void run(String[] args) throws Exception {
         System.out.println("OpenGL=" + GL46C.glGetString(GL46C.GL_VERSION));
+        UniformBridgeProbe.run();
         ToonShaderCpu shader = new ToonShaderCpu();
         try {
             if (!shader.init()) throw new AssertionError("无光影 Toon 编译失败");
             int vanillaProgram = shader.getMainProgram();
+            com.shiroha.mmdskin.render.outline.OutlineCoverageProbe.run(shader);
+            ToonControlsProbe.run(shader, 0, null, new float[]{0,1,0});
             for (String pack : List.of("ComplementaryShaders_v4.7.1.zip", "BSL_v8.4.02.2.zip")) {
                 Path path = Path.of(args[0], pack);
                 Map<String, String> currentOptions = options(Path.of(path + ".txt"));
@@ -131,8 +146,6 @@ public final class Probe {
             System.out.println("PASS: " + checked + " 个实际程序/选项组合，主程序、描边、颜色回读和变体切换");
         } finally {
             shader.cleanup();
-            GLFW.glfwDestroyWindow(window);
-            GLFW.glfwTerminate();
         }
     }
 

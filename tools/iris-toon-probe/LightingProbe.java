@@ -100,6 +100,18 @@ public final class LightingProbe {
         check(torch[0] > torch[2], "火把应保留暖色");
         check(luminance(day) > luminance(shadow), "阴影图应降低直射光");
         check(luminance(day) > luminance(rain), "降雨应影响直射光");
+        if (shadowTexture > 0) {
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE4);
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, shadowTexture);
+            GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, new float[]{1});
+        }
+        GL46C.glUseProgram(source);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "sunAngle"), .25f);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrengthS"), 0);
+        var rotation = Pattern.compile("sunPathRotation\\s*=\\s*([-0-9.]+)").matcher(profile.lightingSource());
+        check(rotation.find(), "太阳旋转参数");
+        double angle = Math.toRadians(Double.parseDouble(rotation.group(1)));
+        ToonControlsProbe.run(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
         check(!shader.setEnvironmentLighting(0, 15, 15), "GUI/无 Iris 应关闭包内光照");
         GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, 0);
         GL46C.glDeleteFramebuffers(fbo);

@@ -39,6 +39,7 @@ public class ConfigData {
     public int toonLevels = 4;
     public float toonRimPower = 5.6f;
     public float toonRimIntensity = 0.02f;
+    public float toonEyeEmission = 0.0f;
     public float toonShadowR = 0.78f;
     public float toonShadowG = 0.84f;
     public float toonShadowB = 0.94f;
@@ -167,6 +168,7 @@ public class ConfigData {
         toonLevels = Math.max(2, Math.min(5, toonLevels));
         toonRimPower = clamp(toonRimPower, 0.1f, 10.0f);
         toonRimIntensity = clamp(toonRimIntensity, 0.0f, 1.0f);
+        toonEyeEmission = Float.isFinite(toonEyeEmission) ? clamp(toonEyeEmission, 0.0f, 3.0f) : 0.0f;
         toonShadowR = clamp(toonShadowR, 0.0f, 1.0f);
         toonShadowG = clamp(toonShadowG, 0.0f, 1.0f);
         toonShadowB = clamp(toonShadowB, 0.0f, 1.0f);

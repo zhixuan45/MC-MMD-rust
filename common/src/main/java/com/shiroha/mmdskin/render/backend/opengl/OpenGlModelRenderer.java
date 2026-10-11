@@ -513,13 +513,21 @@ final class OpenGlModelRenderer {
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
+        boolean toonMain = OpenGlModelInstance.toonShaderCpu != null
+                && GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM) == OpenGlModelInstance.toonShaderCpu.getMainProgram();
         SubMeshDrawHelper.draw(
                 target.subMeshDataBuf,
                 target.subMeshCount,
                 target.indexElementSize,
                 target.indexType,
                 materialId -> target.mats[materialId].tex == 0 ? missingTextureId : target.mats[materialId].tex,
-                target::effectiveMaterialAlpha);
+                target::effectiveMaterialAlpha,
+                materialId -> {
+                    if (toonMain) {
+                        OpenGlModelInstance.toonShaderCpu.setEyeEmission(target.mats[materialId] != null && target.mats[materialId].isEye()
+                                ? OpenGlModelInstance.toonConfig.getEyeEmission() : 0.0f);
+                    }
+                });
     }
 
     private static void clearStandardRenderState(OpenGlModelInstance target) {

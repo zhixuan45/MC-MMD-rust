@@ -203,6 +203,15 @@ public class ModConfigScreen {
 
         toonCategory.addEntry(entryBuilder
             .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_eye_emission"),
+                (int) (data.toonEyeEmission * 100), 0, 300)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_eye_emission.tooltip"))
+            .setSaveConsumer(value -> data.toonEyeEmission = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_rim_power"),
                 (int) (data.toonRimPower * 10), 10, 100)
             .setDefaultValue(56)

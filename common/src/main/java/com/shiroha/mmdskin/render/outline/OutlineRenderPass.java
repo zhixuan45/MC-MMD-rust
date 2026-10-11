@@ -1,6 +1,5 @@
 package com.shiroha.mmdskin.render.outline;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.shiroha.mmdskin.render.shader.ToonConfig;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import org.lwjgl.opengl.GL46C;
@@ -43,35 +42,26 @@ public final class OutlineRenderPass {
         int positionLocation = shader.getOutlinePositionLocation();
         int normalLocation = shader.getOutlineNormalLocation();
         int uvLocation = shader.getOutlineUvLocation();
-        boolean positionEnabled = false;
-        boolean normalEnabled = false;
-        boolean uvEnabled = false;
-        int previousTextureUnit = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
-        RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
-        int previousTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
         FloatBuffer projection = inputs.projection();
         int projectionStart = projection.position();
         boolean orthographic = Math.abs(projection.get(projectionStart + 11)) < 0.000001f
                 && Math.abs(projection.get(projectionStart + 15) - 1.0f) < 0.000001f;
-        int previousDepthFunc = orthographic ? GL46C.glGetInteger(GL46C.GL_DEPTH_FUNC) : 0;
-        try {
+        try (OutlineCoverage pass = OutlineCoverage.begin(shader.getOutlineColorSlot())) {
             shader.useOutline();
+            shader.setOutlinePremultiplied(pass.isSampled());
             shader.setOutlineAlphaCutoff(0.1f);
             if (positionLocation != -1) {
                 GL46C.glEnableVertexAttribArray(positionLocation);
-                positionEnabled = true;
                 GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, inputs.positionsBuffer());
                 GL46C.glVertexAttribPointer(positionLocation, 3, GL46C.GL_FLOAT, false, 0, 0);
             }
             if (normalLocation != -1) {
                 GL46C.glEnableVertexAttribArray(normalLocation);
-                normalEnabled = true;
                 GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, inputs.normalsBuffer());
                 GL46C.glVertexAttribPointer(normalLocation, 3, GL46C.GL_FLOAT, false, 0, 0);
             }
             if (uvLocation != -1) {
                 GL46C.glEnableVertexAttribArray(uvLocation);
-                uvEnabled = true;
                 GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, inputs.uvBuffer());
                 GL46C.glVertexAttribPointer(uvLocation, 2, GL46C.GL_FLOAT, false, 0, 0);
             }
@@ -83,22 +73,13 @@ public final class OutlineRenderPass {
             shader.setOutlineModelViewMatrix(inputs.modelView());
             shader.setOutlineWidth(width);
             shader.setOutlineColor(config.getOutlineColorR(), config.getOutlineColorG(), config.getOutlineColorB());
-            RenderSystem.depthMask(false);
+            GL46C.glDepthMask(false);
             // GUI 的同深度薄片不能由倒置外壳再次覆盖，外缘仍通过背景深度。
-            if (orthographic) RenderSystem.depthFunc(GL46C.GL_LESS);
+            if (orthographic) GL46C.glDepthFunc(GL46C.GL_LESS);
             GL46C.glCullFace(GL46C.GL_FRONT);
-            RenderSystem.enableCull();
+            GL46C.glEnable(GL46C.GL_CULL_FACE);
             drawSubMeshes(shader, inputs, alphaResolver, textureResolver);
-        } finally {
-            // 只清理本 pass 启用的属性，并恢复描边使用的固定状态。
-            if (positionEnabled) GL46C.glDisableVertexAttribArray(positionLocation);
-            if (normalEnabled) GL46C.glDisableVertexAttribArray(normalLocation);
-            if (uvEnabled) GL46C.glDisableVertexAttribArray(uvLocation);
-            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTexture);
-            RenderSystem.activeTexture(previousTextureUnit);
-            GL46C.glCullFace(GL46C.GL_BACK);
-            RenderSystem.depthMask(true);
-            if (orthographic) RenderSystem.depthFunc(previousDepthFunc);
+            pass.composite();
         }
     }
 

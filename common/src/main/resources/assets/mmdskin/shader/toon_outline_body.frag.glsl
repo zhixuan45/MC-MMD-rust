@@ -10,6 +10,7 @@ uniform mat4 ProjMat;
 uniform sampler2D Sampler0;
 uniform bool UseTextureAlpha;
 uniform float AlphaCutoff;
+uniform bool Premultiplied;
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
