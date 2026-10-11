@@ -6,7 +6,8 @@ use crate::{
 use byteorder::{ReadBytesExt, LE};
 use enumflags2::BitFlags;
 use std::marker::PhantomData;
-use std::{io::Read, usize};
+// 直接使用原生 usize 类型，避免旧模块的弃用警告。
+use std::io::Read;
 
 pub struct BoneReader<R> {
   pub settings: Settings,
