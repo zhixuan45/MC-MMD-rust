@@ -31,6 +31,12 @@ public final class SubMeshDrawHelper {
                             int indexType,
                             TextureResolver textureResolver,
                             AlphaResolver alphaResolver) {
+        draw(subMeshDataBuf, subMeshCount, indexElementSize, indexType, textureResolver, alphaResolver, id -> {});
+    }
+
+    public static void draw(ByteBuffer subMeshDataBuf, int subMeshCount, int indexElementSize, int indexType,
+                            TextureResolver textureResolver, AlphaResolver alphaResolver,
+                            java.util.function.IntConsumer beforeDraw) {
         RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
         int lastBoundTexture = -1;
 
@@ -60,6 +66,7 @@ public final class SubMeshDrawHelper {
                 lastBoundTexture = textureId;
             }
 
+            beforeDraw.accept(materialId);
             long startPos = (long) beginIndex * indexElementSize;
             GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, indexType, startPos);
         }

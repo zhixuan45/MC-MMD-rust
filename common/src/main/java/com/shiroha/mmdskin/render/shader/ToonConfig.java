@@ -27,6 +27,10 @@ public class ToonConfig {
         return ConfigManager.getToonRimPower();
     }
 
+    public float getEyeEmission() {
+        return ConfigManager.getToonEyeEmission();
+    }
+
     public float getRimIntensity() {
         return ConfigManager.getToonRimIntensity();
     }

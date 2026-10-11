@@ -65,6 +65,23 @@ class ConfigDataTest {
         }
     }
 
+    @Test
+    void eyeEmissionDefaultsAndPersistsThroughProvider(@TempDir Path configDir) {
+        ConfigData data = new ConfigData();
+        assertEquals(0.0f, data.toonEyeEmission);
+        data.toonEyeEmission = 1.25f;
+        data.save(configDir);
+        ConfigManager.init(new TestConfig(ConfigData.load(configDir)));
+        try {
+            assertEquals(1.25f, ConfigManager.getToonEyeEmission(), 0.0001f);
+        } finally {
+            ConfigManager.init(null);
+        }
+        data.toonEyeEmission = 9;
+        data.save(configDir);
+        assertEquals(3.0f, ConfigData.load(configDir).toonEyeEmission);
+    }
+
     private static final class TestConfig extends AbstractMmdSkinConfig {
         private TestConfig(ConfigData data) { super(data); }
 

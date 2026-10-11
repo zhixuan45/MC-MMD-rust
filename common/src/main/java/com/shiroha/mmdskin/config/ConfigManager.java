@@ -86,6 +86,10 @@ public class ConfigManager {
         return provider != null ? provider.getToonRimPower() : 5.6f;
     }
 
+    public static float getToonEyeEmission() {
+        return provider != null ? provider.getToonEyeEmission() : 0.0f;
+    }
+
     public static float getToonRimIntensity() {
         return provider != null ? provider.getToonRimIntensity() : 0.02f;
     }

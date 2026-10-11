@@ -254,6 +254,21 @@ public final class ToonOutputProfile {
                 + "    toonOutput2 = vec4(0.0, 0.0, 0.0, 1.0);\n    toonOutput3 = vec4(0.0, 0.0, 0.0, 1.0);\n}\n";
     }
 
+    public int colorOutputSlot() {
+        if (id.equals(VANILLA_ID)) return 0;
+        String layout = id.split(":")[3];
+        return layout.indexOf('0');
+    }
+
+    public String outlineWriter() {
+        String encoded = id.equals(VANILLA_ID) ? "color"
+                : id.contains(":sqrt-linear:") ? "pow(max(color, vec3(0.0)), vec3(1.1))"
+                : "pow(max(color, vec3(0.0)), vec3(2.2))";
+        return "void writeToonOutputs(vec3 color, vec3 rawAlbedo, vec3 normal, float alpha) {\n"
+                + "    vec3 encoded = " + encoded + ";\n"
+                + "    outlineColor = vec4(Premultiplied ? encoded * alpha : encoded, alpha);\n}\n";
+    }
+
     public boolean isSupported() { return supported; }
     public String id() { return id; }
     public String reason() { return reason; }

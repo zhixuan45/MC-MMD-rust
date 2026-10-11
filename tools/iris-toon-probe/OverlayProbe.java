@@ -8,7 +8,7 @@ import java.nio.IntBuffer;
 public final class OverlayProbe {
     private static final String VERTEX = """
             #version 330 core
-            in ivec2 iris_UV1;
+            layout(location=3) in ivec2 iris_UV1;
             uniform sampler2D iris_overlay;
             out vec4 entityColor;
             void main() {
@@ -90,12 +90,13 @@ public final class OverlayProbe {
             GL46C.glVertexAttribI4i(uvLocation, 8, 9, 3, 4);
             GL46C.glVertexAttribIPointer(uvLocation, 2, GL46C.GL_INT, 0, 24L);
             GL46C.glVertexAttribDivisor(uvLocation, 1);
-            expect(drawAndRead(), new float[]{0.7f, 0.4f, 0.2f}, "缓冲尾部 UV1=(0,10)");
+            // 启用数组绘制后的 CURRENT_VERTEX_ATTRIB 未定义；在绘制前检查指针设置。
             int[] current = new int[4];
             GL46C.glGetVertexAttribIiv(uvLocation, GL46C.GL_CURRENT_VERTEX_ATTRIB, current);
             if (!java.util.Arrays.equals(current, new int[]{8, 9, 3, 4})) {
                 throw new AssertionError("覆盖坐标修改了全局常量属性");
             }
+            expect(drawAndRead(), new float[]{0.7f, 0.4f, 0.2f}, "缓冲尾部 UV1=(0,10)");
 
             GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_RGBA8, 16, 16, 0,
                     GL46C.GL_RGBA, GL46C.GL_UNSIGNED_BYTE, BufferUtils.createByteBuffer(16 * 16 * 4));

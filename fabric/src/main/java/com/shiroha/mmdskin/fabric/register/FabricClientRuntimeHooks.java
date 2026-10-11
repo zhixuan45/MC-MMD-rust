@@ -118,6 +118,7 @@ final class FabricClientRuntimeHooks {
     }
 
     private void onDisconnect() {
+        com.mojang.blaze3d.systems.RenderSystem.recordRenderCall(com.shiroha.mmdskin.render.outline.OutlineCoverage::release);
         MaidMMDModelManager.clearAll();
         VerifiedMaidDirectory.clearSession();
         MMDCameraController.getInstance().exitStageMode();

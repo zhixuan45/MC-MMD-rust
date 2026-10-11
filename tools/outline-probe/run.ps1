@@ -9,7 +9,9 @@ $taskJars = foreach ($module in @('lwjgl','lwjgl-glfw','lwjgl-opengl')) {
         Where-Object { $_.Name -eq "$module-3.3.3.jar" -or $_.Name -eq "$module-3.3.3-natives-windows.jar" } |
         ForEach-Object { $_.FullName }
 }
-$taskClasspath = $taskJars -join ';'
+$taskLog4j = Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE '.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-api') -Recurse -Filter '*.jar' |
+    Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1
+$taskClasspath = (@($taskJars) + @($taskLog4j.FullName)) -join ';'
 # 仅在隔离测试进程中替代 Minecraft 依赖，生产 pass 仍从源码编译。
 $taskStateOutput = Join-Path $taskOutput 'state'
 $taskStubRoot = Join-Path $taskStateOutput 'src'
@@ -39,6 +41,8 @@ public final class ToonConfig {
 package com.shiroha.mmdskin.render.shader;
 import java.nio.FloatBuffer;
 public class ToonShaderBase {
+    public int getOutlineColorSlot() { return 0; }
+    public void setOutlinePremultiplied(boolean value) {}
     public int getOutlinePositionLocation() { return 0; }
     public int getOutlineNormalLocation() { return 1; }
     public int getOutlineUvLocation() { return 2; }
@@ -73,6 +77,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw '纸娃娃描边修复回归验证失败' }
     $taskStateSources = @($taskStubFiles) + @(
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineRenderPass.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineCoverage.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineGlState.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ShaderCompiler.java'),
         (Join-Path $PSScriptRoot 'PassStateProbe.java')
     )
     & (Join-Path $Jdk 'bin/javac.exe') -proc:none -encoding UTF-8 -cp $taskClasspath -d $taskStateOutput @taskStateSources

@@ -18,6 +18,26 @@ public class ModelMaterial {
     public boolean ownsTexture = false;
 
     private Boolean cachedIsFacialFeature;
+    private Boolean cachedIsEye;
+
+    public boolean isEye() {
+        if (cachedIsEye == null) {
+            // 材质名优先，避免脸材质共用 eye.png 时把整张脸点亮。
+            cachedIsEye = isEyeLabel(name) || ((name == null || name.isBlank()) && isEyeLabel(texturePath));
+        }
+        return cachedIsEye;
+    }
+
+    private static boolean isEyeLabel(String value) {
+        if (value == null) return false;
+        String label = value.toLowerCase(Locale.ROOT);
+        for (String excluded : new String[]{"lash", "lid", "brow", "line", "shadow", "睫", "眉", "まつげ", "アイライン"}) {
+            if (label.contains(excluded)) return false;
+        }
+        return label.contains("iris") || label.contains("pupil") || label.contains("瞳")
+                || label.contains("虹彩") || label.contains("眼球") || label.contains("目玉")
+                || label.matches(".*(?:^|[^a-z])eyes?(?:[^a-z]|$).*");
+    }
 
     public boolean isFacialFeature() {
         if (cachedIsFacialFeature == null) {

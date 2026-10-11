@@ -518,14 +518,21 @@ final class GpuSkinningModelRenderer {
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
+        boolean toonMain = GpuSkinningModelInstance.toonShaderCpu != null
+                && GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM) == GpuSkinningModelInstance.toonShaderCpu.getMainProgram();
         SubMeshDrawHelper.draw(
                 target.subMeshDataBuf,
                 target.subMeshCount,
                 target.indexElementSize,
                 target.indexType,
                 materialId -> target.mats[materialId].tex == 0 ? missingTextureId : target.mats[materialId].tex,
-                target::effectiveMaterialAlpha
-        );
+                target::effectiveMaterialAlpha,
+                materialId -> {
+                    if (toonMain) {
+                        GpuSkinningModelInstance.toonShaderCpu.setEyeEmission(target.mats[materialId] != null && target.mats[materialId].isEye()
+                                ? GpuSkinningModelInstance.toonConfig.getEyeEmission() : 0.0f);
+                    }
+                });
     }
 
     private static float effectiveOutlineAlpha(GpuSkinningModelInstance target, int materialId, float baseAlpha) {

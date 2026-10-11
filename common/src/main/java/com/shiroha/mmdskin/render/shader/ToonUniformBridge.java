@@ -13,26 +13,34 @@ import java.util.regex.Pattern;
 /** Iris apply 之后同步已更新的光照 uniform；采样器沿用 Iris 绑定的单元。 */
 final class ToonUniformBridge {
     private record Binding(int source, int target, int type) {}
-    private record Plan(int program, List<Binding> bindings) {}
+    private record Plan(int source, int target, List<Binding> bindings, String reason) {}
+    private record Uniform(int type, int size) {}
     private final Set<String> uniforms;
     private final Map<Object, Plan> bindings = new IdentityHashMap<>();
+    private String failureReason = "";
 
     ToonUniformBridge(String lightingSource) {
         uniforms = new java.util.HashSet<>();
-        var matcher = Pattern.compile("\\buniform\\s+\\w+\\s+(\\w+)").matcher(lightingSource);
-        while (matcher.find()) uniforms.add(matcher.group(1));
+        var matcher = Pattern.compile("\\buniform\\s+\\w+\\s+([^;]+);").matcher(lightingSource);
+        while (matcher.find()) {
+            for (String declaration : matcher.group(1).split(",")) {
+                uniforms.add(declaration.trim().replaceFirst("\\s*\\[.*", ""));
+            }
+        }
     }
 
     boolean copy(int source, int target, Object identity) {
+        failureReason = "";
         if (uniforms.isEmpty() || source <= 0) return false;
         // GL 编号可复用，光影重载后必须按新 shader 实例重新取位置。
         Plan cached = identity == null ? null : bindings.get(identity);
-        List<Binding> plan;
-        if (cached == null || cached.program() != source) {
-            plan = plan(source, target);
+        if (cached == null || cached.source() != source || cached.target() != target) {
+            cached = plan(source, target);
             if (bindings.size() > 16) bindings.clear();
-            if (identity != null) bindings.put(identity, new Plan(source, plan));
-        } else plan = cached.bindings();
+            if (identity != null) bindings.put(identity, cached);
+        }
+        failureReason = cached.reason();
+        List<Binding> plan = cached.bindings();
         if (plan.isEmpty()) return false;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             var floats = stack.mallocFloat(16);
@@ -66,27 +74,45 @@ final class ToonUniformBridge {
         return true;
     }
 
-    private List<Binding> plan(int source, int target) {
+    String failureReason() { return failureReason; }
+
+    private Plan failure(int source, int target, String reason) {
+        return new Plan(source, target, List.of(), reason);
+    }
+
+    private Plan plan(int source, int target) {
         List<Binding> result = new ArrayList<>();
         try (MemoryStack stack = MemoryStack.stackPush()) {
             var size = stack.mallocInt(1);
             var type = stack.mallocInt(1);
+            Map<String, Uniform> sourceUniforms = new java.util.HashMap<>();
+            int sourceCount = GL46C.glGetProgrami(source, GL46C.GL_ACTIVE_UNIFORMS);
+            for (int i = 0; i < sourceCount; i++) {
+                String name = GL46C.glGetActiveUniform(source, i, size, type).replaceFirst("\\[0]$", "");
+                sourceUniforms.put(name, new Uniform(type.get(0), size.get(0)));
+            }
             int count = GL46C.glGetProgrami(target, GL46C.GL_ACTIVE_UNIFORMS);
             for (int i = 0; i < count; i++) {
                 String name = GL46C.glGetActiveUniform(target, i, size, type);
                 String base = name.replaceFirst("\\[0]$", "");
                 if (!uniforms.contains(base)) continue;
-                if (!supported(type.get(0))) return List.of();
+                if (!supported(type.get(0))) return failure(source, target, "不支持的 uniform 类型: " + base);
+                String sourceBase = base.equals("ToonPackTexture") ? "texture" : base;
+                Uniform input = sourceUniforms.get(sourceBase);
+                if (input == null) return failure(source, target, "来源缺少活动 uniform: " + sourceBase);
+                if (input.type() != type.get(0) || input.size() < size.get(0)) {
+                    return failure(source, target, "uniform 类型或数组大小不匹配: " + sourceBase);
+                }
                 for (int element = 0; element < size.get(0); element++) {
                     String targetName = size.get(0) > 1 ? base + "[" + element + "]" : name;
-                    String sourceName = targetName.replace("ToonPackTexture", "texture");
+                    String sourceName = sourceBase + (size.get(0) > 1 ? "[" + element + "]" : "");
                     int sourceLocation = GL46C.glGetUniformLocation(source, sourceName);
-                    if (sourceLocation < 0) return List.of();
+                    if (sourceLocation < 0) return failure(source, target, "来源缺少 uniform 位置: " + sourceName);
                     result.add(new Binding(sourceLocation, GL46C.glGetUniformLocation(target, targetName), type.get(0)));
                 }
             }
         }
-        return result;
+        return new Plan(source, target, result, result.isEmpty() ? "没有可同步的光照输入" : "");
     }
 
     private static boolean supported(int type) {

@@ -98,6 +98,8 @@ Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度�
 
 相关定向回归见 `ToonOutputProfileTest`；可选本机 OpenGL 探针为 `tools/iris-toon-probe/run.ps1`，只读实例中的光影包，使用 Iris 预处理器验证三维度的实体/手部与选项分支，再编译主体/描边并回读颜色、原色及法线。`LightingProbe` 编译原 Complementary 程序核对活动 uniform，再用独立来源程序模拟昼夜、洞穴、火把、雨天与阴影输入，在生产 Toon shader 中回读亮度；这些证据不替代完整 Iris 游戏链路和截图观感验收。本轮记录见 `TOON_LIGHTING_ROUND1.md`。
 
+三渲二第一阶段重实现统一主体色阶、高光和边缘光，在 Complementary 阴影采样之后离散漫反射，移除额外连续上方向面明暗。设置在 vanilla/Complementary 下均参与最终颜色；`ToonControlsProbe` 回读 2～5 档平坦区、各风格参数及白色描边，`UniformBridgeProbe` 核对完整声明与输入类型。Linux 无窗口入口为 `tools/iris-toon-probe/run.sh`，保留现有 Windows 入口；实测和未验收项见 `TOON_LIGHTING_REIMPLEMENTATION.md`。第二阶段的 `render/outline/OutlineCoverage` 以 2×2 独立覆盖率采样、同格式深度复制与预乘 alpha 合成描边，只写主颜色槽；`OutlineGlState` 恢复 FBO、MRT 路由、viewport、VAO、纹理和逐槽混合等状态。GUI/世界保留原宽度、距离淡出、LESS 与面部过滤规则。两平台关闭选项、断开连接和退出时释放资源，shader 清理亦释放，尺寸/深度格式变化按需重建。`OutlineCoverageProbe` 回读斜边亚像素覆盖、墙体遮挡、alpha、MRT、异常恢复及三种 texture 深度格式和 viewport 切换。眼睛发光为默认 0 的独立滑块，`ModelMaterial.isEye()` 识别明确眼部材质，主体以纹理色度/亮度遮罩保留眼白与黑瞳；外围辉光取决于光影包泛光。
+
 普通 Iris 实体路径在 `BaseModelInstance.setupShaderUniforms` 绑定游戏覆盖色与光照图（纹理单元 1/2），CPU/GPU 补齐整数 `iris_UV1=(0,10)`，不再用模型 lightMap 覆盖 Iris 输入。通用混合设置位于 Iris apply 之前，结束后清理程序覆盖并恢复阴影目标。`IrisEntityDiagnostics` 每程序记录一次光照、颜色乘数和属性/纹理信息；`OverlayProbe` 隔离验证覆盖色公式与常量坐标。关闭 Toon 后全黑的游戏实测和 Toon 整体偏亮的对照仍需新包验收。
 
 无主贴图材质由 `render/material/MaterialTextureLoader` 统一加载：空路径通过既有 JNI `GetMaterialDiffuse` 读取材质 RGBA，生成实例独占的 1×1 纹理，供 CPU/GPU 与各着色路径采样；非空路径加载失败仍显示缺图提示。两个后端的生命周期与构造失败清理会释放默认纹理，共享文件纹理继续按引用计数回收。默认纹理计入模型显存统计。

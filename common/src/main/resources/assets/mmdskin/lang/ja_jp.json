@@ -38,6 +38,8 @@
   "gui.mmdskin.mod_settings.toon_enabled.tooltip": "カートゥーンレンダリング効果を有効化（セルシェーディング、アウトライン、リムライト）",
   "gui.mmdskin.mod_settings.toon_levels": "シェードレベル",
   "gui.mmdskin.mod_settings.toon_levels.tooltip": "ライティングレベル数（2-5）、高いほど滑らかなグラデーション",
+  "gui.mmdskin.mod_settings.toon_eye_emission": "瞳の発光強度",
+  "gui.mmdskin.mod_settings.toon_eye_emission.tooltip": "0 で無効、100 が標準。瞳・虹彩の材質を識別し、黒い瞳孔と白目を維持します。周囲の光はシェーダーパックのブルーム設定に依存します。顔と共用のテクスチャや名前のない目は対象外です。",
   "gui.mmdskin.mod_settings.toon_rim_power": "リムパワー",
   "gui.mmdskin.mod_settings.toon_rim_power.tooltip": "リムライトのシャープさ（1-10）、高いほどエッジが鋭い",
   "gui.mmdskin.mod_settings.toon_rim_intensity": "リム強度",
