@@ -37,6 +37,7 @@ public class ConfigData {
 
     public boolean toonRenderingEnabled = false;
     public int toonLevels = 4;
+    public float toonTransitionSoftness = 1.2f;
     public float toonRimPower = 5.6f;
     public float toonRimIntensity = 0.02f;
     public float toonEyeEmission = 0.0f;
@@ -166,6 +167,8 @@ public class ConfigData {
         animationLodMediumUpdateInterval = Math.max(1, animationLodMediumUpdateInterval);
         animationLodFarUpdateInterval = Math.max(animationLodMediumUpdateInterval, animationLodFarUpdateInterval);
         toonLevels = Math.max(2, Math.min(5, toonLevels));
+        toonTransitionSoftness = Float.isFinite(toonTransitionSoftness)
+                ? clamp(toonTransitionSoftness, 0.0f, 2.0f) : 1.2f;
         toonRimPower = clamp(toonRimPower, 0.1f, 10.0f);
         toonRimIntensity = clamp(toonRimIntensity, 0.0f, 1.0f);
         toonEyeEmission = Float.isFinite(toonEyeEmission) ? clamp(toonEyeEmission, 0.0f, 3.0f) : 0.0f;

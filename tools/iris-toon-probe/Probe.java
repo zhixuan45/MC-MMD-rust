@@ -58,13 +58,13 @@ public final class Probe {
             int vanillaProgram = shader.getMainProgram();
             com.shiroha.mmdskin.render.outline.OutlineCoverageProbe.run(shader);
             ToonControlsProbe.run(shader, 0, null, new float[]{0,1,0});
-            for (String pack : List.of("ComplementaryShaders_v4.7.1.zip", "BSL_v8.4.02.2.zip")) {
+            for (String pack : List.of("ComplementaryShaders_v4.7.1.zip", "BSL_v8.4.02.2.zip", "BSL_v10.1.8.zip")) {
                 Path path = Path.of(args[0], pack);
                 Map<String, String> currentOptions = options(Path.of(path + ".txt"));
                 try (ZipFile zip = new ZipFile(path.toFile())) {
                     List<Map<String, String>> variants = new ArrayList<>();
                     variants.add(currentOptions);
-                    if (pack.startsWith("BSL")) {
+                    if (pack.equals("BSL_v8.4.02.2.zip")) {
                         for (String blend : List.of("0", "1")) {
                             for (String advanced : List.of("true", "false")) {
                                 for (String colored : List.of("true", "false")) {
@@ -80,7 +80,7 @@ public final class Probe {
                                 }
                             }
                         }
-                    } else {
+                    } else if (pack.startsWith("Complementary")) {
                         for (String advanced : List.of("true", "false")) {
                             Map<String, String> config = new HashMap<>(currentOptions);
                             config.put("ADV_MAT", advanced);

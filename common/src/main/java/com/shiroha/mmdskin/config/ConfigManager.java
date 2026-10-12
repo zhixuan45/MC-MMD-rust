@@ -82,6 +82,10 @@ public class ConfigManager {
         return provider != null ? provider.getToonOutlineWidth() : 0.0022f;
     }
 
+    public static float getToonTransitionSoftness() {
+        return provider != null ? provider.getToonTransitionSoftness() : 1.2f;
+    }
+
     public static float getToonRimPower() {
         return provider != null ? provider.getToonRimPower() : 5.6f;
     }

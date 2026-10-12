@@ -23,6 +23,10 @@ public class ToonConfig {
         return ConfigManager.getToonLevels();
     }
 
+    public float getTransitionSoftness() {
+        return ConfigManager.getToonTransitionSoftness();
+    }
+
     public float getRimPower() {
         return ConfigManager.getToonRimPower();
     }

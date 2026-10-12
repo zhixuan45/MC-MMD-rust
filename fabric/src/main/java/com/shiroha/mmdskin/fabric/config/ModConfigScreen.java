@@ -203,6 +203,15 @@ public class ModConfigScreen {
 
         toonCategory.addEntry(entryBuilder
             .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_transition_softness"),
+                (int) Math.round(data.toonTransitionSoftness * 100), 0, 200)
+            .setDefaultValue(120)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_transition_softness.tooltip"))
+            .setSaveConsumer(value -> data.toonTransitionSoftness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_eye_emission"),
                 (int) (data.toonEyeEmission * 100), 0, 300)
             .setDefaultValue(0)

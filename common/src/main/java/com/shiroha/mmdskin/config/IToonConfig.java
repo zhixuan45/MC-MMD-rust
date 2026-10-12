@@ -10,6 +10,8 @@ public interface IToonConfig {
 
     default int getToonLevels() { return 4; }
 
+    default float getToonTransitionSoftness() { return 1.2f; }
+
     default boolean isToonOutlineEnabled() { return true; }
 
     default float getToonOutlineWidth() { return 0.0022f; }

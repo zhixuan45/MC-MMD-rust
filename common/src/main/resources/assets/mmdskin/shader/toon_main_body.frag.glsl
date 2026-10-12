@@ -9,6 +9,7 @@ in float eyeMask;
 uniform sampler2D Sampler0;
 uniform float LightIntensity;
 uniform int ToonLevels;
+uniform float ToonTransitionSoftness;
 uniform float RimPower;
 uniform float RimIntensity;
 uniform vec3 ShadowColor;
@@ -32,15 +33,20 @@ float saturate(float value) {
     return clamp(value, 0.0, 1.0);
 }
 
-// 每档保留平坦区，仅在色阶交界按屏幕导数平滑。
+// 100% 内保留色块平坦区，更高柔和度继续扩宽交界。
 float toonDiffuseRamp(float ndl) {
     float steps = float(clamp(ToonLevels, 2, 5) - 1);
-    float width = clamp(fwidth(ndl), 0.002, 0.015);
+    float antialiasWidth = clamp(fwidth(ndl), 0.002, 0.015);
+    float width = max(antialiasWidth, clamp(ToonTransitionSoftness, 0.0, 2.0) * 0.45 / steps);
     float ramp = 0.0;
     for (int i = 0; i < 4; ++i) {
         if (float(i) >= steps) break;
         float boundary = (float(i) + 0.5) / steps;
-        ramp += smoothstep(boundary - width, boundary + width, ndl) / steps;
+        // 扩宽越过照度端点时归一化，保留最暗/最亮颜色。
+        float start = smoothstep(boundary - width, boundary + width, 0.0);
+        float end = smoothstep(boundary - width, boundary + width, 1.0);
+        float value = smoothstep(boundary - width, boundary + width, ndl);
+        ramp += (value - start) / (end - start) / steps;
     }
     return ramp;
 }

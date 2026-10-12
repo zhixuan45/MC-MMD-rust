@@ -32,6 +32,7 @@ public final class ToonControlsProbe {
             shader.setAlphaCutoff(.1f);
             shader.setEyeEmission(0);
             shader.setEyeMaterialMask(0);
+            shader.setTransitionSoftness(0);
             shader.setShadowColor(.6f,.7f,.8f);
             shader.setSpecular(32, 0);
             shader.setRimLight(3, 0);
@@ -58,6 +59,7 @@ public final class ToonControlsProbe {
                 System.out.println("PASS toon plateaus: path=" + (source > 0 ? "Complementary" : "vanilla") + " levels=" + colors.size());
             }
 
+            checkTransitions(shader, normals, light);
             shader.setToonLevels(3);
             float[] darkNormal = withDot(light, .1f);
             float[] baseline = sample(normals, darkNormal);
@@ -169,7 +171,56 @@ public final class ToonControlsProbe {
             GL46C.glDeleteVertexArrays(vao);
             shader.useMain();
             shader.setEyeMaterialMask(0);
+            shader.setTransitionSoftness(0);
         }
+    }
+
+    private static void checkTransitions(ToonShaderCpu shader, int normals, float[] light) {
+        for (int levels = 2; levels <= 5; levels++) {
+            shader.setToonLevels(levels);
+            float steps = levels - 1;
+            float boundary = .5f / steps;
+            float delta = .06f / steps;
+            shader.setTransitionSoftness(0);
+            float[] sharpLow = sample(normals, withDot(light, boundary - delta));
+            float[] sharpHigh = sample(normals, withDot(light, boundary + delta));
+            float[] darkEndpoint = sample(normals, withDot(light, 0));
+            float[] brightEndpoint = sample(normals, withDot(light, 1));
+            float sharpJump = distance(sharpLow, sharpHigh);
+            shader.setTransitionSoftness(.35f);
+            float[] softLow = sample(normals, withDot(light, boundary - delta));
+            float[] softHigh = sample(normals, withDot(light, boundary + delta));
+            float softJump = distance(softLow, softHigh);
+            check(softJump > .0001f && softJump < sharpJump * .85f, "35% 柔化须减小交界跳变: " + levels);
+            check(Math.abs(softLow[3] - sharpLow[3]) < .0001f, "柔化不能改变透明度");
+            shader.setTransitionSoftness(1);
+            float previousJump = distance(sample(normals, withDot(light, boundary - delta)),
+                    sample(normals, withDot(light, boundary + delta)));
+            check(previousJump < softJump, "100% 须进一步扩宽过渡: " + levels);
+            // 100% 内仍保留各档的平坦区。
+            for (int i = 0; i < levels; i++) {
+                float center = i / steps;
+                float[] a = sample(normals, withDot(light, Math.max(.0001f, center - .001f)));
+                float[] b = sample(normals, withDot(light, Math.min(.9999f, center + .001f)));
+                check(distance(a, b) < .0002f, "柔化不能抹掉色块平坦区: " + levels + "/" + i);
+            }
+            for (float softness : new float[]{1.2f, 2}) {
+                shader.setTransitionSoftness(softness);
+                float[] lower = sample(normals, withDot(light, boundary - delta));
+                float jump = distance(lower, sample(normals, withDot(light, boundary + delta)));
+                check(jump < previousJump, "超过 100% 须继续柔化，不能被截断: " + levels + "/" + softness);
+                check(distance(darkEndpoint, sample(normals, withDot(light, 0))) < .0002f,
+                        "扩宽过渡须保留最暗端点: " + levels);
+                check(distance(brightEndpoint, sample(normals, withDot(light, 1))) < .0002f,
+                        "扩宽过渡须保留最亮端点: " + levels);
+                check(Math.abs(lower[3] - sharpLow[3]) < .0001f, "扩展柔和度不能改变透明度");
+                previousJump = jump;
+            }
+            shader.setTransitionSoftness(0);
+            check(distance(sharpLow, sample(normals, withDot(light, boundary - delta))) < .0001f,
+                    "柔和度归零须恢复原像素: " + levels);
+        }
+        System.out.println("PASS toon transitions: 2-5 levels, 0/35/100/120/200 softness, plateaus through 100, endpoints/alpha, zero restores pixels");
     }
 
     private static int texture(int unit,int size,float[] data) {

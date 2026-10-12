@@ -51,6 +51,7 @@ public abstract class ToonShaderBase {
     protected int sampler0Location = -1;
     protected int lightIntensityLocation = -1;
     protected int toonLevelsLocation = -1;
+    protected int toonTransitionSoftnessLocation = -1;
     protected int rimPowerLocation = -1;
     protected int rimIntensityLocation = -1;
     protected int shadowColorLocation = -1;
@@ -190,6 +191,7 @@ public abstract class ToonShaderBase {
         sampler0Location = GL46C.glGetUniformLocation(mainProgram, "Sampler0");
         lightIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "LightIntensity");
         toonLevelsLocation = GL46C.glGetUniformLocation(mainProgram, "ToonLevels");
+        toonTransitionSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonTransitionSoftness");
         rimPowerLocation = GL46C.glGetUniformLocation(mainProgram, "RimPower");
         rimIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "RimIntensity");
         shadowColorLocation = GL46C.glGetUniformLocation(mainProgram, "ShadowColor");
@@ -329,6 +331,14 @@ public abstract class ToonShaderBase {
     public void setToonLevels(int levels) {
         if (toonLevelsLocation >= 0) {
             GL46C.glUniform1i(toonLevelsLocation, Math.max(2, Math.min(5, levels)));
+        }
+    }
+
+    /** 0 保留原抗锯齿宽度，最高支持 200% 过渡柔和度。 */
+    public void setTransitionSoftness(float softness) {
+        if (toonTransitionSoftnessLocation >= 0) {
+            float value = Float.isFinite(softness) ? Math.max(0, Math.min(2, softness)) : 1.2f;
+            GL46C.glUniform1f(toonTransitionSoftnessLocation, value);
         }
     }
 

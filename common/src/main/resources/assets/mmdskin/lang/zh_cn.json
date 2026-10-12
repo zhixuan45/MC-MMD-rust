@@ -66,6 +66,8 @@
   "gui.mmdskin.mod_settings.toon_enabled.tooltip": "启用卡通渲染效果（色阶化光照、描边、边缘光）",
   "gui.mmdskin.mod_settings.toon_levels": "色阶数量",
   "gui.mmdskin.mod_settings.toon_levels.tooltip": "光照色阶数量（2-5），数值越大过渡越平滑",
+  "gui.mmdskin.mod_settings.toon_transition_softness": "明暗过渡柔和度",
+  "gui.mmdskin.mod_settings.toon_transition_softness.tooltip": "0 保持当前硬边效果。超过 100% 后，柔和过渡范围会扩宽，平坦色块可能减少（0-200%）",
   "gui.mmdskin.mod_settings.toon_eye_emission": "眼睛发光强度",
   "gui.mmdskin.mod_settings.toon_eye_emission.tooltip": "0 关闭，100 为标准强度。识别瞳孔／虹膜材质，保留瞳孔与眼白；外围辉光取决于光影包的泛光设置。未命名或与脸共用贴图的眼睛不会自动发光。",
   "gui.mmdskin.mod_settings.toon_rim_power": "边缘光锐度",
