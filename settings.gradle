@@ -2,21 +2,16 @@ pluginManagement {
 	repositories {
 		gradlePluginPortal()
 		maven {
-			name = 'Architectury'
-			url = 'https://maven.architectury.dev/'
-		}
-		maven {
 			name = 'Fabric'
 			url = 'https://maven.fabricmc.net/'
-		}
-		// Loom 的插件依赖仍需 Forge 仓库。
-		maven {
-			name = 'Forge'
-			url = 'https://maven.minecraftforge.net/'
 		}
 		maven {
 			name = 'NeoForged'
 			url = 'https://maven.neoforged.net/releases'
+		}
+		maven {
+			name = 'Forge'
+			url = 'https://maven.minecraftforge.net/'
 		}
 		mavenCentral()
 	}
@@ -32,10 +27,6 @@ dependencyResolutionManagement {
 		maven {
 			name = 'Fabric'
 			url = 'https://maven.fabricmc.net/'
-		}
-		maven {
-			name = 'Architectury'
-			url = 'https://maven.architectury.dev/'
 		}
 		maven { url = 'https://maven.shedaniel.me/' }
 		maven { url = 'https://maven.terraformersmc.com/releases/' }

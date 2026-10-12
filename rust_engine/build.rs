@@ -89,6 +89,11 @@ fn main() {
         build.flag("-fno-rtti");
     }
 
+    // Android 使用 NDK libc++，与随包加载的 libc++_shared.so 一致。
+    if target.contains("android") {
+        build.cpp_link_stdlib("c++_shared");
+    }
+
     for file in &cpp_files {
         build.file(file);
     }
@@ -98,14 +103,7 @@ fn main() {
     // 告知 cargo 链接静态库
     println!("cargo:rustc-link-lib=static=bullet3");
 
-    // MSVC 需要链接 C++ 运行时
-    if target.contains("msvc") {
-        // cc crate 自动处理
-    } else if target.contains("apple") {
-        println!("cargo:rustc-link-lib=c++");
-    } else {
-        println!("cargo:rustc-link-lib=stdc++");
-    }
+    // 其他目标的 C++ 运行时由 cc 按目标平台选择。
 
     // 重新编译条件
     println!("cargo:rerun-if-changed={}", wrapper_dir);

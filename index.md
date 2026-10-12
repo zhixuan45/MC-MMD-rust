@@ -1,6 +1,6 @@
 # MC-MMD-Rust 项目架构与核心索引
 
-本项目是一个将 MMD（MikuMikuDance）及 VRM 模型生态深度整合进 Minecraft 的高表现力客户端/服务端模组。工程采用 Architectury 多平台架构，上层对接现代 Minecraft 加载器生态（Fabric 与 NeoForge，并向下兼容 1.20.1 Forge 主干），底层深度集成基于 Rust 与 C++（Bullet3）自研的高性能原生物理与蒙皮计算引擎 `rust_engine`。通过 JNI 句柄路由与 Direct ByteBuffer 零拷贝管道，在保证 Minecraft 原版管线与光影兼容性的同时，实现了高帧率、高拟真的次时代角色渲染与布料物理表现。
+本项目是一个将 MMD（MikuMikuDance）及 VRM 模型生态深度整合进 Minecraft 的高表现力客户端/服务端模组。工程采用原生 Multiloader 构建体系，上层对接 Fabric Loom 与 NeoForge ModDevGradle，历史 Forge 1.20.1 代码保留作为移植参照；底层深度集成基于 Rust 与 C++（Bullet3）自研的高性能原生物理与蒙皮计算引擎 `rust_engine`。通过 JNI 句柄路由与 Direct ByteBuffer 零拷贝管道，在保证 Minecraft 原版管线与光影兼容性的同时，实现了高帧率、高拟真的次时代角色渲染与布料物理表现。
 
 ---
 
@@ -12,7 +12,7 @@
 
 中间业务层以 `common` 模块为核心，基于六边形架构（Hexagonal Ports）组织。它对下将繁杂的 JNI 调用拆解为细粒度的运行时端口，屏蔽原生层细节并支持无环境 Mock；对横向统一调度双分支渲染管线（CPU 蒙皮与 GPU 计算着色器蒙皮），实施 Blaze3D 渲染状态保护、第一人称拓扑动态裁切、多人联机模型同步以及显存预算治理；对上为各平台加载器提供统一的客户端生命周期调度与渲染委托。
 
-外层加载器包含 `fabric`、`neoforge` 以及历史保留的 `forge` 模块。各端仅保留最小限度的平台特异性逻辑，利用 Architectury Loom 与 Shadow 构建流水线，将网络载荷、按键绑定、生物渲染接管与 Mixin 注入精准桥接至 `common` 中枢，实现了 90% 以上业务逻辑的跨平台零重复。
+外层加载器包含参与当前构建的 `fabric`、`neoforge` 以及历史保留的 `forge` 代码。各端仅保留最小限度的平台特异性逻辑，利用 Fabric Loom、NeoForge ModDevGradle 与 Shadow 构建流水线，将网络载荷、按键绑定、生物渲染接管与 Mixin 注入精准桥接至 `common` 中枢。
 
 ```
 +---------------------------------------------------------------------------------+
@@ -77,7 +77,7 @@ Java 端与 Rust 端的内存安全依靠句柄路由机制保障。Rust 端使�
 
 ## 3. 通用核心层：common 业务与渲染中枢
 
-`common` 模块构建在 Architectury 之上，屏蔽了底层平台细节，内聚了模组绝大部分的图形渲染、玩法机制与数据同步逻辑。
+`common` 模块使用 Fabric Loom 提供 Minecraft 官方映射的编译环境，业务层不依赖 Architectury API，内聚了模组绝大部分的图形渲染、玩法机制与数据同步逻辑。NeoForge 编译、开发运行与 Shadow 发布包直接消费 common 的 Mojmap classes/resources 输出。
 
 ### 核心包组织划分
 - `com.shiroha.mmdskin`：通用引导入口 `MmdSkin`、客户端总入口 `MmdSkinClient` 与跨平台原生库安全加载器 `NativeLibraryLoader`。
@@ -127,10 +127,12 @@ JNI 相机数据仍为 32 字节、旋转为弧度，`stage/client/camera/StageC
 
 ## 4. 多平台适配层与构建体系
 
-项目通过 Gradle 与 Architectury 构建矩阵，高效驱动跨平台构建与原生依赖打包。
+项目通过 Gradle、Fabric Loom 与 NeoForge ModDevGradle 驱动双加载器构建与原生依赖打包。
 
 ### 构建体系与流水线（build.gradle）
-根构建脚本自动化调度原生库的构建流转：首先自动检出指定 commit 的 Bullet3 源码；随后调用本地 Cargo 工具链执行 `cargo build --release` 编译 `rust_engine`；最后将编译产物归档至 `build/generated/native-resources/natives/<os-arch>/` 中并打包进 Jar。`settings.gradle` 统筹 `common`、`fabric` 与 `neoforge` 三大子模块，通过 Shadow 插件将 `common` 字节码及 MP3 音频解码库私有化阴影重定位（Relocate），最终由 Loom 输出包含 Mojang 正规映射表的发布包。
+根构建脚本先准备固定 commit 的 Bullet3，再调用 Cargo 增量执行 `cargo build --release --lib`，避免已有旧动态库绕过重编译；产物同步到 `build/generated/native-resources/natives/<os-arch>/`。CI 通过 `-PnativeResourcesPath=build/ci-native-resources` 指定同次工作流汇集的原生库，此时不调用本机 Cargo；缺失或空原生库会失败。`settings.gradle` 统筹 `common`、`fabric` 与 `neoforge`。两端通过 Shadow 合并 common 与重定位 MP3 解码库；Fabric 再由 Loom 输出 Intermediary 包，NeoForge 保持 Mojmap。NeoForge 开发运行另用 `additionalRuntimeClasspath` 加入 jlayer。
+
+`.github/workflows/build-mod.yml` 保留 Windows x64/ARM64、Linux x64/ARM64/LoongArch64/RISC-V64、macOS x64/ARM64、Android ARM64/AMD64 十个原生目标。`tools/ci/prepare_bullet.py` 读取根构建脚本中的固定版本；`tools/ci/native_ci.py` 校验二进制架构、汇集原生库并检查最终 Fabric/NeoForge Jar。Android 使用 NDK `c++_shared`，随原生库携带 `libc++_shared.so`。跨平台成功以实际 Actions 结果为准，本机 Windows 构建不代替其它平台验证。
 
 ### 平台入口与事件挂载差异
 - Fabric 端：通用入口 `MmdSkinFabric` 注册网络载荷，客户端入口 `MmdSkinFabricClient` 挂载 `FabricClientRuntimeHooks`，监听 ClientTick、进退服与 HudRender 事件；按键通过 `KeyBindingHelper` 注册；生物实体替换通过 Fabric API 的 `EntityRendererRegistry` 统一替换。

@@ -1,11 +1,7 @@
 // Fabric 平台构建脚本 - 负责 Fabric 平台的依赖装配、阴影打包与重映射
 plugins {
+	id 'fabric-loom'
 	id 'com.gradleup.shadow'
-}
-
-architectury {
-	platformSetupLoomIde()
-	fabric()
 }
 
 loom {
@@ -30,23 +26,30 @@ loom {
 }
 
 configurations {
-	common
-	shadowCommon
-	shadowBundle
+	common {
+		canBeResolved = true
+		canBeConsumed = false
+	}
+	shadowCommon {
+		canBeResolved = true
+		canBeConsumed = false
+	}
+	shadowBundle {
+		canBeResolved = true
+		canBeConsumed = false
+	}
 	compileClasspath.extendsFrom common
 	runtimeClasspath.extendsFrom common
 	developmentFabric.extendsFrom common
 }
 
 dependencies {
+	minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+	mappings loom.officialMojangMappings()
+
 	// Fabric 核心平台与 API
 	modImplementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_version}"
-
-	// Architectury API
-	modImplementation("dev.architectury:architectury-fabric:${rootProject.architectury_version}") {
-		exclude group: "net.fabricmc.fabric-api"
-	}
 
 	// Cloth Config API
 	modApi("me.shedaniel.cloth:cloth-config-fabric:${rootProject.cloth_config_version}") {
@@ -58,7 +61,7 @@ dependencies {
 
 	// Common 模块依赖与阴影打包
 	common(project(path: ":common", configuration: "namedElements")) { transitive false }
-	shadowCommon(project(path: ":common", configuration: "transformProductionFabric")) { transitive false }
+	shadowCommon(project(path: ":common", configuration: "namedElements")) { transitive false }
 
 	// MP3 解码依赖私有化重定位
 	common("javazoom:jlayer:1.0.1") { transitive = false }
@@ -66,6 +69,8 @@ dependencies {
 }
 
 processResources {
+	dependsOn rootProject.tasks.named("prepareNativeResources")
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	def replaceProperties = [
 		minecraft_version: rootProject.minecraft_version,
 		mod_id: rootProject.mod_id,
@@ -80,10 +85,11 @@ processResources {
 	filesMatching("fabric.mod.json") {
 		expand replaceProperties
 	}
+
+	from project(':common').sourceSets.main.resources
 }
 
 shadowJar {
-	exclude "architectury.common.json"
 	configurations = [project.configurations.shadowCommon, project.configurations.shadowBundle]
 	archiveClassifier.set("dev-shadow")
 	relocate "javazoom", "com.shiroha.mmdskin.shadow.javazoom"
@@ -114,13 +120,5 @@ sourcesJar {
 components.java {
 	withVariantsFromConfiguration(project.configurations.shadowRuntimeElements) {
 		skip()
-	}
-}
-
-sourceSets {
-	main {
-		resources {
-			exclude 'assets/mmdskin/lang/*.json'
-		}
 	}
 }
