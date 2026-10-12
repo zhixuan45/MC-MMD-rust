@@ -4,6 +4,7 @@ in vec2 texCoord0;
 in vec3 viewNormal;
 in vec3 viewPos;
 in vec3 viewLightDir;
+in float eyeMask;
 
 uniform sampler2D Sampler0;
 uniform float LightIntensity;
@@ -16,6 +17,7 @@ uniform float SpecularIntensity;
 uniform float AlphaCutoff;
 uniform float GlobalAlpha;
 uniform float EyeEmission;
+uniform float EyeMaterialMask;
 uniform bool UsePackLighting;
 uniform vec2 ToonLightmap;
 uniform bool ToonGenericEnvironment;
@@ -99,11 +101,9 @@ void main() {
         finalColor = shadeToonSurface(albedo, normal, lightDir, viewPos,
                 vec3(max(LightIntensity, 0.0)), ramp);
     }
-    // 色度与亮度遮罩保留眼白和黑瞳；只对当前眼部子网格上传强度。
-    float bright = max(albedo.r, max(albedo.g, albedo.b));
-    float chroma = bright - min(albedo.r, min(albedo.g, albedo.b));
-    float irisMask = smoothstep(0.08, 0.35, chroma) * smoothstep(0.15, 0.55, bright);
-    float emission = irisMask * clamp(EyeEmission, 0.0, 3.0);
+    // 合并眼瞳遮罩与线性空间发光。
+    float emissionMask = EyeMaterialMask < 0.0 ? 0.0 : max(saturate(eyeMask), saturate(EyeMaterialMask));
+    float emission = emissionMask * clamp(EyeEmission, 0.0, 3.0);
     if (emission > 0.0) {
         // 发光在线性空间相加，避免被输出的 gamma 转换再次指数放大，影响自动曝光。
         vec3 linearColor = pow(max(finalColor, vec3(0.0)), vec3(2.2));

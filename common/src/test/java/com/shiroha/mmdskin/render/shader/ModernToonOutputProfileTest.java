@@ -43,6 +43,24 @@ class ModernToonOutputProfileTest {
     }
 
     @Test
+    void adaptsModernShadowSamplerForCoreGlsl() {
+        String fragment = "uniform sampler2DShadow shadowtex0;\nvec2 texCoord;\n"
+                + "vec3 ViewToPlayer(vec3 p) { return p; }\n"
+                + MODERN_CONTRACT.replace("vec3 finalDiffuse = vec3(1.0);",
+                        "vec3 finalDiffuse = vec3(1.0); float shadow = shadow2D(shadowtex0, vec3(0.5)).r;")
+                + "\nvoid main() {}\n";
+        String vertex = "void main() { sunVec = normalize(vec3(1.0)); }";
+
+        var profile = ToonOutputProfile.resolve("ComplementaryUnbound_r5.9.3", "gbuffers_entities",
+                fragment, vertex, new int[]{0, 3, 6, 4});
+
+        assertTrue(profile.isSupported(), profile.reason());
+        assertTrue(profile.lightingSource().contains("vec4 toonShadow2D(sampler2DShadow s, vec3 p)"));
+        assertTrue(profile.lightingSource().contains("toonShadow2D(shadowtex0, vec3(0.5))"));
+        assertFalse(profile.lightingSource().contains("shadow2D("));
+    }
+
+    @Test
     void routesOutlineToColorSlotAfterMultiDigitTargets() {
         String source = MODERN_CONTRACT.replace("DRAWBUFFERS:0364", "RENDERTARGETS:13,3,6,4,0")
                 .replace("gl_FragData[0] = color;", "gl_FragData[4] = color;") + """

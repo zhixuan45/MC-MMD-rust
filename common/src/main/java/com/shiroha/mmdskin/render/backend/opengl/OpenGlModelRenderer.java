@@ -11,6 +11,7 @@ import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
 import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
+import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import com.shiroha.mmdskin.render.pipeline.LightingHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKind;
@@ -510,11 +511,13 @@ final class OpenGlModelRenderer {
     }
 
     private static void drawSubMeshes(OpenGlModelInstance target, Minecraft minecraft) {
+        drawSubMeshes(target, minecraft, null);
+    }
+
+    private static void drawSubMeshes(OpenGlModelInstance target, Minecraft minecraft, ToonShaderBase eyeShader) {
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
-        boolean toonMain = OpenGlModelInstance.toonShaderCpu != null
-                && GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM) == OpenGlModelInstance.toonShaderCpu.getMainProgram();
         SubMeshDrawHelper.draw(
                 target.subMeshDataBuf,
                 target.subMeshCount,
@@ -523,9 +526,9 @@ final class OpenGlModelRenderer {
                 materialId -> target.mats[materialId].tex == 0 ? missingTextureId : target.mats[materialId].tex,
                 target::effectiveMaterialAlpha,
                 materialId -> {
-                    if (toonMain) {
-                        OpenGlModelInstance.toonShaderCpu.setEyeEmission(target.mats[materialId] != null && target.mats[materialId].isEye()
-                                ? OpenGlModelInstance.toonConfig.getEyeEmission() : 0.0f);
+                    if (eyeShader != null) {
+                        var material = target.mats[materialId];
+                        eyeShader.setEyeMaterialMask(material == null ? 0.0f : material.eyeEmissionMaskMode());
                     }
                 });
     }
@@ -691,11 +694,19 @@ final class OpenGlModelRenderer {
         OpenGlModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
                 irisShader, light.blockLight(), light.skyLight());
 
-        drawSubMeshes(target, minecraft);
-
-        if (posLoc != -1) GL46C.glDisableVertexAttribArray(posLoc);
-        if (norLoc != -1) GL46C.glDisableVertexAttribArray(norLoc);
-        if (uvLoc != -1) GL46C.glDisableVertexAttribArray(uvLoc);
+        try {
+            target.bindEyeEmission(OpenGlModelInstance.toonShaderCpu, target.vertexCount,
+                    OpenGlModelInstance.toonConfig.getEyeEmission());
+            drawSubMeshes(target, minecraft, OpenGlModelInstance.toonShaderCpu);
+        } finally {
+            try {
+                target.clearEyeEmission(OpenGlModelInstance.toonShaderCpu);
+            } finally {
+                if (posLoc != -1) GL46C.glDisableVertexAttribArray(posLoc);
+                if (norLoc != -1) GL46C.glDisableVertexAttribArray(norLoc);
+                if (uvLoc != -1) GL46C.glDisableVertexAttribArray(uvLoc);
+            }
+        }
     }
 
     private static float effectiveOutlineAlpha(OpenGlModelInstance target, int materialId, float baseAlpha) {

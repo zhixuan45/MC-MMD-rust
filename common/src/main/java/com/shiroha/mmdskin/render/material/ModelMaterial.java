@@ -19,6 +19,12 @@ public class ModelMaterial {
 
     private Boolean cachedIsFacialFeature;
     private Boolean cachedIsEye;
+    private Float cachedEyeEmissionMaskMode;
+
+    public float eyeEmissionMaskMode() {
+        if (cachedEyeEmissionMaskMode == null) cachedEyeEmissionMaskMode = EyeMaterialMask.classify(name);
+        return cachedEyeEmissionMaskMode;
+    }
 
     public boolean isEye() {
         if (cachedIsEye == null) {

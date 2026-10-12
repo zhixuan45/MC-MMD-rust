@@ -27,6 +27,7 @@ final class GpuSkinningModelLifecycle {
         total += (long) target.vertexCount * 8 * 2;
         total += (long) target.vertexCount * 12 * 2;
         total += (long) ShaderConstants.MAX_BONES * 64;
+        total += target.getEyeEmissionVramUsage();
         if (target.vertexMorphCount > 0) {
             total += target.nativeBackendPort().getGpuMorphOffsetsSize(target.nativeModelHandle());
             total += (long) target.vertexMorphCount * 4;

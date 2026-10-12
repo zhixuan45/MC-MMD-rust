@@ -1,6 +1,7 @@
 param(
     [string]$Instance = 'D:\minecraft\.minecraft\versions\1.21.1-NeoForge_21.1.252',
-    [string]$Jdk = 'C:\Program Files\Zulu\zulu-21'
+    [string]$Jdk = 'C:\Program Files\Zulu\zulu-21',
+    [string]$EyeAssetData = ''
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -25,12 +26,16 @@ foreach ($taskRelative in @('common/build/classes/java/main','common/build/resou
 }
 $taskClasspath.Add($taskIris.FullName)
 $taskClasspath.Add($taskJcpp)
+$taskJoml = Get-ChildItem -LiteralPath (Join-Path $taskCache 'org.joml/joml') -Recurse -Filter 'joml-*.jar' |
+    Where-Object { $_.Name -notmatch 'sources|javadoc' } | Select-Object -First 1
+if (!$taskJoml) { throw '缺少 JOML 运行依赖' }
+$taskClasspath.Add($taskJoml.FullName)
 foreach ($taskModule in @('lwjgl','lwjgl-glfw','lwjgl-opengl')) {
     Get-ChildItem -LiteralPath (Join-Path $taskCache "org.lwjgl/$taskModule/3.3.3") -Recurse -Filter '*.jar' |
         Where-Object { $_.Name -eq "$taskModule-3.3.3.jar" -or $_.Name -eq "$taskModule-3.3.3-natives-windows.jar" } |
         ForEach-Object { $taskClasspath.Add($_.FullName) }
 }
-foreach ($taskDependency in @('org.apache.logging.log4j/log4j-api','org.apache.logging.log4j/log4j-core','org.slf4j/slf4j-api','com.google.guava/guava')) {
+foreach ($taskDependency in @('org.apache.logging.log4j/log4j-api','org.apache.logging.log4j/log4j-core','org.slf4j/slf4j-api','com.google.guava/guava','com.google.code.gson/gson')) {
     $taskDependencyPath = Join-Path $taskCache $taskDependency
     $taskVersion = Get-ChildItem -LiteralPath $taskDependencyPath -Directory | Sort-Object Name -Descending | Select-Object -First 1
     Get-ChildItem -LiteralPath $taskVersion.FullName -Recurse -Filter '*.jar' |
@@ -42,9 +47,22 @@ $taskJava = Join-Path $Jdk 'bin/java.exe'
 $taskJavac = Join-Path $Jdk 'bin/javac.exe'
 Push-Location $taskRoot
 try {
-    $taskSources = @('Probe.java','OverlayProbe.java','LightingProbe.java','ToonControlsProbe.java','UniformBridgeProbe.java','OutlineCoverageProbe.java') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+    $taskSources = @('Probe.java','ModernPackProbe.java','OverlayProbe.java','LightingProbe.java','ToonControlsProbe.java','UniformBridgeProbe.java','OutlineCoverageProbe.java') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+    if ($EyeAssetData) {
+        $taskSources += @('EyeAssetProbe.java','EyeEmissionBufferProbe.java') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+    }
+    $taskSources += @(
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ToonOutputProfile.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ComplementaryToonLighting.java')
+    )
     & $taskJavac -proc:none -encoding UTF-8 -cp $taskCp -d $taskProbeDir $taskSources
     if ($LASTEXITCODE -ne 0) { throw '探针编译失败' }
     & $taskJava -cp "$taskProbeDir;$taskCp" Probe (Join-Path $Instance 'shaderpacks')
     if ($LASTEXITCODE -ne 0) { throw '探针验证失败' }
+    if ($EyeAssetData) {
+        & $taskJava -cp "$taskProbeDir;$taskCp" EyeEmissionBufferProbe
+        if ($LASTEXITCODE -ne 0) { throw '眼瞳缓冲核验失败' }
+        & $taskJava -cp "$taskProbeDir;$taskCp" com.shiroha.mmdskin.render.shader.EyeAssetProbe $EyeAssetData
+        if ($LASTEXITCODE -ne 0) { throw '真实眼瞳资产核验失败' }
+    }
 } finally { Pop-Location }

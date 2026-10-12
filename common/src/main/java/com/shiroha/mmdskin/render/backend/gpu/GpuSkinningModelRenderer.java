@@ -21,6 +21,7 @@ import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.SkinningComputeShader;
 import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
+import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.TextureManager;
@@ -487,11 +488,19 @@ final class GpuSkinningModelRenderer {
             GpuSkinningModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
                     irisShader, light.blockLight(), light.skyLight());
 
-            drawAllSubMeshes(target, minecraft);
-
-            if (toonPosLoc != -1) GL46C.glDisableVertexAttribArray(toonPosLoc);
-            if (toonNorLoc != -1) GL46C.glDisableVertexAttribArray(toonNorLoc);
-            if (uvLoc != -1) GL46C.glDisableVertexAttribArray(uvLoc);
+            try {
+                target.bindEyeEmission(GpuSkinningModelInstance.toonShaderCpu, target.vertexCount,
+                        GpuSkinningModelInstance.toonConfig.getEyeEmission());
+                drawAllSubMeshes(target, minecraft, GpuSkinningModelInstance.toonShaderCpu);
+            } finally {
+                try {
+                    target.clearEyeEmission(GpuSkinningModelInstance.toonShaderCpu);
+                } finally {
+                    if (toonPosLoc != -1) GL46C.glDisableVertexAttribArray(toonPosLoc);
+                    if (toonNorLoc != -1) GL46C.glDisableVertexAttribArray(toonNorLoc);
+                    if (uvLoc != -1) GL46C.glDisableVertexAttribArray(uvLoc);
+                }
+            }
 
             if (GpuSkinningModelInstance.toonConfig.isOutlineEnabled()) {
                 renderOutlinePass(target);
@@ -515,11 +524,13 @@ final class GpuSkinningModelRenderer {
     }
 
     private static void drawAllSubMeshes(GpuSkinningModelInstance target, Minecraft minecraft) {
+        drawAllSubMeshes(target, minecraft, null);
+    }
+
+    private static void drawAllSubMeshes(GpuSkinningModelInstance target, Minecraft minecraft, ToonShaderBase eyeShader) {
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
-        boolean toonMain = GpuSkinningModelInstance.toonShaderCpu != null
-                && GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM) == GpuSkinningModelInstance.toonShaderCpu.getMainProgram();
         SubMeshDrawHelper.draw(
                 target.subMeshDataBuf,
                 target.subMeshCount,
@@ -528,9 +539,9 @@ final class GpuSkinningModelRenderer {
                 materialId -> target.mats[materialId].tex == 0 ? missingTextureId : target.mats[materialId].tex,
                 target::effectiveMaterialAlpha,
                 materialId -> {
-                    if (toonMain) {
-                        GpuSkinningModelInstance.toonShaderCpu.setEyeEmission(target.mats[materialId] != null && target.mats[materialId].isEye()
-                                ? GpuSkinningModelInstance.toonConfig.getEyeEmission() : 0.0f);
+                    if (eyeShader != null) {
+                        var material = target.mats[materialId];
+                        eyeShader.setEyeMaterialMask(material == null ? 0.0f : material.eyeEmissionMaskMode());
                     }
                 });
     }

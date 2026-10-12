@@ -94,6 +94,7 @@ final class OpenGlModelLifecycle {
         total += (long) target.vertexCount * 12 * 2;
         total += (long) target.vertexCount * 16;
         total += (long) target.vertexCount * 8 * 3;
+        total += target.getEyeEmissionVramUsage();
         // 每个无主贴图材质持有一个 1×1 RGBA 默认纹理。
         for (var material : target.mats) {
             if (material != null && material.ownsTexture && material.tex > 0) total += 4;

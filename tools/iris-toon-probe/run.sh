@@ -49,7 +49,7 @@ javac -proc:none -encoding UTF-8 -cp "$task_cp" -d build/iris-toon-probe/classes
     common/src/main/java/com/shiroha/mmdskin/config/{ConfigManager,IRenderConfig,IToonConfig,IPhysicsConfig,IVRConfig,PhysicsCollisionStabilityMode,PaperDollPosition,PaperDollDisplayMode,PaperDollRotationMode}.java \
     "$task_shader_dir"/ToonConfig.java \
     "$task_shader_dir"/{ShaderCompiler,ToonOutputProfile,ComplementaryToonLighting,BslToonLighting,GenericToonLighting,ToonUniformBridge,ToonShaderBase,ToonShaderCpu}.java \
-    tools/iris-toon-probe/{Probe,OverlayProbe,LightingProbe,ToonControlsProbe,UniformBridgeProbe,OutlineCoverageProbe,EnvironmentFallbackProbe,EglProbe}.java
+    tools/iris-toon-probe/{Probe,ModernPackProbe,OverlayProbe,LightingProbe,ToonControlsProbe,UniformBridgeProbe,OutlineCoverageProbe,EnvironmentFallbackProbe,EglProbe}.java
 EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 \
     MESA_SHADER_CACHE_DIR="$task_root/build/iris-toon-probe/mesa-cache" \
     java -cp "build/iris-toon-probe/classes:$task_cp" EglProbe "$task_packs"

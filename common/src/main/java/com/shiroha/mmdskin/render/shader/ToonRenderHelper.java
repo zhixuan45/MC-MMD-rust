@@ -51,6 +51,7 @@ public class ToonRenderHelper {
         shader.setAlphaCutoff(ALPHA_CUTOFF);
         shader.setGlobalAlpha(globalAlpha);
         shader.setEyeEmission(0.0f);
+        shader.setEyeMaterialMask(0.0f);
     }
 
     public static void prepareRenderState(int vao) {

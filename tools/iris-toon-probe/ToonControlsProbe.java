@@ -31,6 +31,7 @@ public final class ToonControlsProbe {
             shader.setGlobalAlpha(.5f);
             shader.setAlphaCutoff(.1f);
             shader.setEyeEmission(0);
+            shader.setEyeMaterialMask(0);
             shader.setShadowColor(.6f,.7f,.8f);
             shader.setSpecular(32, 0);
             shader.setRimLight(3, 0);
@@ -93,6 +94,10 @@ public final class ToonControlsProbe {
             float[] unlit = sample(normals,half);
             check(Math.max(unlit[0],Math.max(unlit[1],unlit[2])) < .01f, "黑暗处不能靠高光变成白色");
             check(Math.abs(unlit[3] - .4f) < .0001f, "纹理和全局 alpha 各乘一次");
+            int eyeMask = GL46C.glGetAttribLocation(shader.getMainProgram(), "EyeMask");
+            check(eyeMask >= 0, "主体必须接入眼瞳顶点遮罩");
+            GL46C.glDisableVertexAttribArray(eyeMask);
+            GL46C.glVertexAttrib1f(eyeMask, 1);
             shader.setEyeEmission(.5f);
             float[] glow = sample(normals,half);
             changed(unlit, glow, "眼睛发光滑块");
@@ -102,13 +107,40 @@ public final class ToonControlsProbe {
             check(Math.abs(strongerGlow[3]-.4f)<.0001f, "发光不能改变透明度");
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D,albedo);
             GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D,0,0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,new float[]{1,1,1,.8f});
+            GL46C.glVertexAttrib1f(eyeMask, 0);
             float[] sclera = sample(normals,half);
             check(Math.max(sclera[0],Math.max(sclera[1],sclera[2])) < .01f, "眼白不能自发光");
+            GL46C.glVertexAttrib1f(eyeMask, 1);
+            float[] eyeHighlight = sample(normals,half);
+            check(eyeHighlight[0] > 1, "眼内白色高光必须参与发光");
             GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D,0,0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,new float[]{.01f,.02f,.01f,.8f});
+            shader.setEyeEmission(0);
+            float[] pupilUnlit = sample(normals,half);
+            shader.setEyeEmission(2);
             float[] pupil = sample(normals,half);
-            check(Math.max(pupil[0],Math.max(pupil[1],pupil[2])) < .01f, "黑瞳不能自发光");
+            // 亮度在线性空间核对，兼容光影输出编码。
+            check(Math.abs(linear(pupil[1], source) - linear(pupilUnlit[1], source) - Math.pow(.02, 2.2) * 2) < .00001,
+                    "黑瞳必须按原贴图发光，不能被色度/亮度阈值裁掉");
+            GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D,0,0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,new float[]{.25f,.25f,.25f,.8f});
+            shader.setEyeEmission(0);
+            float[] greyUnlit = sample(normals,half);
+            shader.setEyeEmission(2);
+            float[] greyIris = sample(normals,half);
+            check(Math.abs(linear(greyIris[0], source) - linear(greyUnlit[0], source) - Math.pow(.25, 2.2) * 2) < .00001,
+                    "灰色眼瞳不能被色度阈值排除");
+            // 头骨绑定的独立瞳材质也须发光；排除材质即使有眼骨也不发光。
+            GL46C.glVertexAttrib1f(eyeMask, 0);
+            shader.setEyeMaterialMask(1);
+            float[] materialIris = sample(normals,half);
+            check(distance(materialIris,greyIris) < .00001f, "独立瞳材质须补足无眼骨权重");
+            GL46C.glVertexAttrib1f(eyeMask, 1);
+            shader.setEyeMaterialMask(-1);
+            float[] excluded = sample(normals,half);
+            check(distance(excluded,greyUnlit) < .00001f, "镜片/眼白排除须覆盖眼骨遮罩");
+            shader.setEyeMaterialMask(0);
             GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D,0,0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,new float[]{.4f,.5f,.7f,.8f});
             shader.setEyeEmission(0);
+            GL46C.glVertexAttrib1f(eyeMask, 0);
             shader.useOutline();
             int outline = shader.getOutlineProgram();
             GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(outline,"ProjMat"),false,matrix);
@@ -124,7 +156,7 @@ public final class ToonControlsProbe {
             shader.setOutlineColor(0,0,0);
             changed(white,sample(normals,new float[]{0,0,-1}),"描边 RGB");
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR,"参数探针 GL 错误");
-            System.out.println("PASS toon controls: shadow RGB, specular strength/power, rim strength/power, dark highlights, eye emission strength/sclera/pupil, alpha, white outline");
+            System.out.println("PASS toon controls: shadow RGB, specular strength/power, rim strength/power, dark highlights, full eye emission/black pupil/white highlight/grey iris/sclera exclusion/material fallback/lens exclusion, alpha, white outline");
         } finally {
             GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER,0);
             GL46C.glBindVertexArray(0);
@@ -136,6 +168,7 @@ public final class ToonControlsProbe {
             GL46C.glDeleteBuffers(uvs);
             GL46C.glDeleteVertexArrays(vao);
             shader.useMain();
+            shader.setEyeMaterialMask(0);
         }
     }
 
@@ -186,6 +219,10 @@ public final class ToonControlsProbe {
 
     private static void changed(float[] a,float[] b,String option) {
         check(distance(a,b) > .002f,"设置没有改变实际像素: " + option);
+    }
+
+    private static double linear(float value, int source) {
+        return source > 0 ? Math.max(value, 0) : Math.pow(Math.max(value, 0), 2.2);
     }
 
     private static void check(boolean value,String message) {

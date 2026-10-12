@@ -29,6 +29,7 @@ final class ComplementaryToonLighting {
                 .replaceAll("(?m)^\\s*(?:flat\\s+)?in\\s+(vec[234]\\s+[^;]+;)", "$1")
                 .replaceAll("\\btexture2D\\b", "texture")
                 .replaceAll("\\btexture2DLod\\b", "textureLod");
+        source = adaptShadowSampler(source);
         // 半透明程序包含旧固定管线雾函数；即使调用被优化掉，也须能在 core GLSL 中解析。
         if (source.contains("gl_Fog.")) {
             source = "uniform float iris_FogStart;\nuniform float iris_FogEnd;\n" + source
@@ -42,7 +43,7 @@ final class ComplementaryToonLighting {
         String tail = moveInitializers(source.substring(inputs), after);
         // 保留阴影采样偏移的连续法线，仅对采样后的直射光权重分档。
         tail = MODERN_DIFFUSE.matcher(tail).replaceAll("shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
-        return head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
+        return shadowSamplerWrapper() + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + "\nupVec = normalize(gbufferModelView[1].xyz);\n"
                 + "northVec = normalize(gbufferModelView[2].xyz); eastVec = normalize(gbufferModelView[0].xyz);\n"
                 + "sunVec = " + sun.group(1) + ";\n"
@@ -73,8 +74,8 @@ final class ComplementaryToonLighting {
         source = source.substring(0, main.start()).replaceAll("(?m)^\\s*#(?:version|extension|line)[^\\n]*", "")
                 .replaceAll("\\btexture\\b", "ToonPackTexture")
                 .replaceAll("\\btexture2D\\b", "texture")
-                .replaceAll("\\btexture2DLod\\b", "textureLod")
-                .replaceAll("\\bshadow2D\\b", "toonShadow2D");
+                .replaceAll("\\btexture2DLod\\b", "textureLod");
+        source = adaptShadowSampler(source);
         // 太阳与上方向沿用原顶点程序的矩阵，不能依赖被手部程序优化掉的逆矩阵。
         if (!Pattern.compile("\\buniform\\s+mat4\\s+[^;]*\\bgbufferModelView\\b[^;]*;").matcher(source).find()) {
             source = "uniform mat4 gbufferModelView;\n" + source;
@@ -93,8 +94,7 @@ final class ComplementaryToonLighting {
             // Nether 只有环境光；其它未知漫反射形式不套用此适配。
             return "";
         }
-        return "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(texture(s, p)); }\n"
-                + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
+        return shadowSamplerWrapper() + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + sunSetup + "\nnormal = n; texCoord = texCoord0; lmCoord = ToonLightmap; color = vec4(1.0);\n"
                 + after + "\nlmCoord.x -= max(lmCoord.x - 0.825, 0.0) * 0.75;\n"
                 + "float ndl = clamp(dot(n, lightVec) * 1.01 - 0.01, 0.0, 1.0);\n"
@@ -106,6 +106,14 @@ final class ComplementaryToonLighting {
                 + "GetLighting(lit, shadow, lightAlbedo, p, length(p), world, lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
                 + "vec3 illumination = pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2));\n"
                 + "return shadeToonSurface(raw, n, lightVec, p, illumination, band);\n}\n";
+    }
+
+    private static String adaptShadowSampler(String source) {
+        return source.replaceAll("\\bshadow2D\\b", "toonShadow2D");
+    }
+
+    private static String shadowSamplerWrapper() {
+        return "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(texture(s, p)); }\n";
     }
 
     static String clean(String source) {

@@ -34,6 +34,7 @@ public abstract class ToonShaderBase {
     private float outputFar = 1.0f;
     private int mainOutputMatrixLocation = -1, mainOutputFarLocation = -1;
     private int eyeEmissionLocation = -1;
+    private int eyeMaterialMaskLocation = -1;
     private int outlinePremultipliedLocation = -1;
     private int outlineColorSlot;
 
@@ -162,6 +163,11 @@ public abstract class ToonShaderBase {
         if (eyeEmissionLocation >= 0) GL46C.glUniform1f(eyeEmissionLocation, value);
     }
 
+    /** 设置当前材质的眼部发光遮罩模式。 */
+    public void setEyeMaterialMask(float value) {
+        if (eyeMaterialMaskLocation >= 0) GL46C.glUniform1f(eyeMaterialMaskLocation, value);
+    }
+
     private void trimVariants() {
         // 限制不同布局占用的 GPU 程序数，保留无光影变体。
         var iterator = variants.entrySet().iterator();
@@ -198,6 +204,7 @@ public abstract class ToonShaderBase {
         mainOutputFarLocation = GL46C.glGetUniformLocation(mainProgram, "ToonFar");
         eyeEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "EyeEmission");
         genericLighting.select(mainProgram);
+        eyeMaterialMaskLocation = GL46C.glGetUniformLocation(mainProgram, "EyeMaterialMask");
         outlinePremultipliedLocation = GL46C.glGetUniformLocation(outlineProgram, "Premultiplied");
 
         outlineProjMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ProjMat");

@@ -136,6 +136,7 @@ public final class Probe {
                     }
                 }
             }
+            ModernPackProbe.run(Path.of(args[0]));
             if (!shader.selectOutputProfile(ToonOutputProfile.vanilla()) || shader.getMainProgram() != vanillaProgram) {
                 throw new AssertionError("切换回无光影时未复用原程序");
             }
@@ -149,7 +150,7 @@ public final class Probe {
         }
     }
 
-    private static String include(ZipFile zip, String entryName, Map<String, String> options) throws Exception {
+    static String include(ZipFile zip, String entryName, Map<String, String> options) throws Exception {
         var entry = zip.getEntry(entryName);
         if (entry == null) throw new IllegalArgumentException("找不到 include: " + entryName);
         String source;
@@ -184,7 +185,7 @@ public final class Probe {
         return expanded.toString();
     }
 
-    private static Map<String, String> options(Path path) throws Exception {
+    static Map<String, String> options(Path path) throws Exception {
         Properties properties = new Properties();
         if (Files.exists(path)) try (var stream = Files.newInputStream(path)) { properties.load(stream); }
         Map<String, String> result = new HashMap<>();

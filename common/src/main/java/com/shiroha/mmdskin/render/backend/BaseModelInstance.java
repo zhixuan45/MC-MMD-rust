@@ -12,6 +12,8 @@ import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.pipeline.LivingEntityModelStateHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.policy.WorldRenderPolicy;
+import com.shiroha.mmdskin.render.shader.EyeEmissionBuffer;
+import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import com.shiroha.mmdskin.texture.runtime.TextureRepository;
 import com.mojang.blaze3d.platform.Window;
@@ -43,6 +45,8 @@ public abstract class BaseModelInstance implements ModelInstance {
     protected NativeRenderBackendPort nativeRenderBackendPort;
     protected long model;
     protected String modelDir;
+    private EyeEmissionBuffer eyeEmissionBuffer;
+    private boolean eyeEmissionInitialized;
     private String cachedModelName;
 
     protected long lastUpdateTime = -1;
@@ -136,6 +140,32 @@ public abstract class BaseModelInstance implements ModelInstance {
             throw new IllegalStateException("nativeRenderBackendPort has not been initialized");
         }
         return nativeRenderBackendPort;
+    }
+
+    public final void bindEyeEmission(ToonShaderBase shader, int vertexCount, float strength) {
+        if (strength > 0.0f && !eyeEmissionInitialized) {
+            eyeEmissionInitialized = true;
+            eyeEmissionBuffer = EyeEmissionBuffer.create(backendPort(), model, vertexCount);
+        }
+        shader.setEyeEmission(strength);
+        if (eyeEmissionBuffer != null) {
+            eyeEmissionBuffer.bind(shader.getMainProgram());
+        } else {
+            EyeEmissionBuffer.unbind(shader.getMainProgram());
+        }
+    }
+
+    public final void clearEyeEmission(ToonShaderBase shader) {
+        try {
+            if (eyeEmissionBuffer != null) eyeEmissionBuffer.clearBinding(shader.getMainProgram());
+            else EyeEmissionBuffer.unbind(shader.getMainProgram());
+        } finally {
+            shader.setEyeMaterialMask(0.0f);
+        }
+    }
+
+    public final long getEyeEmissionVramUsage() {
+        return eyeEmissionBuffer == null ? 0L : eyeEmissionBuffer.byteSize();
     }
 
     @Override
@@ -358,9 +388,16 @@ public abstract class BaseModelInstance implements ModelInstance {
     }
 
     protected void disposeModelHandle() {
-        if (model != 0) {
-            backendPort().deleteModel(model);
-            model = 0;
+        EyeEmissionBuffer buffer = eyeEmissionBuffer;
+        eyeEmissionBuffer = null;
+        eyeEmissionInitialized = false;
+        try {
+            if (buffer != null) buffer.close();
+        } finally {
+            if (model != 0) {
+                backendPort().deleteModel(model);
+                model = 0;
+            }
         }
     }
 
