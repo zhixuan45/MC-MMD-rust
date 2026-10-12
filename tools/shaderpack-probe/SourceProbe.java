@@ -61,6 +61,8 @@ public final class SourceProbe {
                             if (!profile.isSupported()) throw new AssertionError(label + ": " + profile.reason());
                             if (pack.toLowerCase(Locale.ROOT).contains("complementary") && profile.lightingSource().isEmpty())
                                 throw new AssertionError(label + ": missing lighting");
+                            if (pack.toLowerCase(Locale.ROOT).contains("bsl") && profile.lightingSource().isEmpty())
+                                throw new AssertionError(label + ": missing BSL lighting");
                             for (String pass : List.of("main", "outline")) {
                                 String body = Files.readString(Path.of("common/src/main/resources/assets/mmdskin/shader/toon_" + pass + "_body.frag.glsl"));
                                 String generated = body.replace("/* TOON_OUTPUT_DECLARATIONS */", profile.fragmentDeclarations())

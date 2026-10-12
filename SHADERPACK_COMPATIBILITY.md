@@ -29,6 +29,9 @@ BSL_v10.1.8.zip                    36b0a50ff7918bf10e9422c401d93779f9d0088a26ace
 - 5.x 的 colortex3 是 `1 - translucentMult`，colortex6 是材质数据，colortex4 是世界空间法线。非 PBR 的 Toon 模型输出原包中性的实体材质标记 254/255、零光滑度与零反射天空因子。
 - 半透明实体的 colortex13 为 `sqrt(length(viewPos) / far)`。解析同时支持 `DRAWBUFFERS` 和带多位目标编号的 `RENDERTARGETS`；主体同步视图逆矩阵和远平面；沿用 PR #7 的独立颜色描边 pass，避免修改材质缓冲。描边颜色采用与主体相同的编码，并支持覆盖率合成的预乘 alpha。
 - BSL 10.x 的 `entityMask` 随 alpha 变化，发光实体使用独立标记；保留混合模式的线性/平方根编码和 colortex1 体积光颜色。
+- BSL 的 `GetLighting` 复用原包的阴影坐标变形、日夜/天气/维度颜色、动态手持灯与彩色方块光，直射光在阴影采样后应用 Toon 色阶。下界不要求原程序已优化掉的太阳 uniform。
+- 输出布局已确认时，照明源码提取、编译或 uniform 同步失败会回退到通用环境光，保留 Toon 色阶、高光、边缘光与描边。通用层读取可选的标准 Iris 太阳方向、雾色与天气，结合游戏天空/方块光等级；缺失或类型不匹配的输入每帧恢复默认值。它不猜测其它光影的阴影纹理变形，也不猜测未确认的材质缓冲格式。
+- 瞳孔发光在线性颜色空间与受光颜色相加，眼白和黑瞳遮罩保持不变，避免发光强度随 gamma 编码被指数放大。自动曝光仍会响应画面中的 HDR 发光区域。
 - 相同布局下不同透明度输出也参与程序缓存键，防止重载设置后复用错误变体。
 
 ## 验证与复现
@@ -54,3 +57,11 @@ PROBE_CP='/absolute/path/iris.jar:/absolute/path/jcpp.jar:/absolute/path/log4j-a
 ```
 
 生成的预处理源码和验证文件仅写入忽略的 `build/shaderpack-probe/`。这些检查不覆盖真实 Minecraft 场景、所有光影设置、GPU 驱动及第三方模组组合。MMD 模型继续使用中性的 PBR 输出；未为其添加光影材质贴图解析。
+
+通用照明回退的实际 Java/GL 路由可单独复现：
+
+```bash
+bash tools/iris-toon-probe/run.sh --environment /absolute/path/iris.jar /absolute/path/lwjgl-egl-3.3.3.jar
+```
+
+该探针验证可选输入和错误类型、缺失参数、照明编译失败、变体缓存、GUI 与发光控制。设置 `PROBE_BSL_SOURCES` 为上述 BSL 源码探针生成的 `sources` 目录，还会验证生产 BSL 照明的白天、夜晚、洞穴、火把、雨天及不透明遮挡；遮挡时同步设置两张阴影深度图，避免把不透明方块误模拟成透光材质。`PROBE_NATIVE_DIR` 可指定未放入 Gradle 缓存的 LWJGL Linux 原生 JAR 目录。

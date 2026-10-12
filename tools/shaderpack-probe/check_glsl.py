@@ -172,7 +172,7 @@ for root in sys.argv[1:]:
             fragment = pathlib.Path(label + "." + render_pass + ".glsl").read_text()
             vertex = pathlib.Path("common/src/main/resources/assets/mmdskin/shader/toon_" + render_pass + "_body.vert.glsl").read_text()
             generated = program(vertex, fragment, label + " " + render_pass)
-            if render_pass == "main" and "complementary" in profile:
+            if render_pass == "main":
                 # Mirrors the production bridge's requirement: every active pack uniform exists in the original.
                 for name in re.findall(r"\buniform\s+\w+\s+(\w+)", fragment):
                     if name.startswith("Toon") or name in {

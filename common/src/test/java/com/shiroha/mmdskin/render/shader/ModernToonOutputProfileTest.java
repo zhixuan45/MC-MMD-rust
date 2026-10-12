@@ -112,8 +112,10 @@ class ModernToonOutputProfileTest {
             assertTrue(other.id().startsWith("bsl:"));
         }
         String unverified = BSL_COLOR + "/* DRAWBUFFERS:0 */";
-        assertFalse(ToonOutputProfile.resolve("BSL_v10.1.8.zip", "gbuffers_entities", unverified,
-                "void main() {}", new int[]{0}).isSupported());
+        var generic = ToonOutputProfile.resolve("other-pack.zip", "gbuffers_entities", unverified,
+                "void main() {}", new int[]{0});
+        assertTrue(generic.isSupported());
+        assertTrue(generic.lightingSource().isEmpty());
     }
 
     @Test
@@ -162,10 +164,11 @@ class ModernToonOutputProfileTest {
     }
 
     @Test
-    void requiresVerifiedModernLightingWhenVertexSourceIsProvided() {
+    void preservesVerifiedOutputWhenNativeLightingCannotBeExtracted() {
         var profile = ToonOutputProfile.resolve("ComplementaryUnbound_r5.9.3", "gbuffers_entities",
                 MODERN_CONTRACT, "void main() {}", new int[]{0, 3, 6, 4});
-        assertFalse(profile.isSupported());
-        assertTrue(profile.reason().contains("光照函数"));
+        assertTrue(profile.isSupported(), profile.reason());
+        assertTrue(profile.lightingSource().isEmpty());
+        assertTrue(profile.fragmentWriter().contains("254.0 / 255.0"));
     }
 }

@@ -109,11 +109,9 @@ public final class ToonOutputProfile {
                 + ":" + colorEncoding + ":" + layout;
         String lighting = family == Family.COMPLEMENTARY_MODERN
                 ? ComplementaryToonLighting.createModern(fragmentSource, vertexSource)
-                : family == Family.COMPLEMENTARY ? ComplementaryToonLighting.create(fragmentSource, vertexSource) : "";
-        if ((family == Family.COMPLEMENTARY || family == Family.COMPLEMENTARY_MODERN)
-                && vertexSource != null && lighting.isEmpty()) {
-            return unsupported("Complementary 光照函数或太阳方向契约未确认");
-        }
+                : family == Family.COMPLEMENTARY ? ComplementaryToonLighting.create(fragmentSource, vertexSource)
+                : BslToonLighting.create(fragmentSource, vertexSource, kind == Program.HAND);
+        // 输出协议已确认时，光照提取失败只降级照明，不丢弃 Toon 风格。
         // 设置和维度改变后，光照源码也必须参与变体缓存键。
         id += ":out-" + Integer.toUnsignedString(outputs.hashCode(), 16);
         if (!lighting.isEmpty()) id += ":light-" + Integer.toUnsignedString(lighting.hashCode(), 16);
@@ -140,10 +138,8 @@ public final class ToonOutputProfile {
             }
             if (parameters.length == 13 && parameters[0].startsWith("inoutvec3")
                     && parameters[2].startsWith("vec3")) return Family.BSL;
-            return null;
         }
-        // 仅解析输出时允许无光照函数的契约片段；游戏提供顶点源码时必须确认光照签名。
-        if (vertex != null) return null;
+        // 原包光照签名未知时仍可逐槽验证输出，随后使用通用环境光。
         for (Family candidate : new Family[]{Family.BSL, Family.COMPLEMENTARY}) {
             boolean matches = true;
             for (int slot = 0; slot < targets.length; slot++) {
@@ -370,6 +366,12 @@ public final class ToonOutputProfile {
     public String fragmentDeclarations() { return fragmentDeclarations; }
     public String fragmentWriter() { return fragmentWriter; }
     public String lightingSource() { return lightingSource; }
+
+    public ToonOutputProfile withoutPackLighting() {
+        if (!supported || lightingSource.isEmpty()) return this;
+        return new ToonOutputProfile(true, id + ":generic-light", reason,
+                fragmentDeclarations, fragmentWriter, "");
+    }
 
     private enum Family { COMPLEMENTARY, COMPLEMENTARY_MODERN, BSL }
     private enum Program { ENTITIES, HAND, GLOWING }

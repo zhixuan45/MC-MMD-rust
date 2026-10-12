@@ -18,6 +18,11 @@ uniform float GlobalAlpha;
 uniform float EyeEmission;
 uniform bool UsePackLighting;
 uniform vec2 ToonLightmap;
+uniform bool ToonGenericEnvironment;
+uniform bool ToonHasEnvironmentDirection;
+uniform vec3 ToonEnvironmentDirection;
+uniform vec3 ToonEnvironmentSkyTint;
+uniform float ToonEnvironmentWeather;
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
@@ -61,6 +66,20 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
 
 /* TOON_LIGHTING */
 
+vec3 applyGenericEnvironment(vec3 raw, vec3 n, vec3 p, vec3 fallbackDirection) {
+    vec3 light = ToonHasEnvironmentDirection ? ToonEnvironmentDirection : fallbackDirection;
+    vec2 levels = clamp((ToonLightmap * 256.0 - 8.0) / 240.0, 0.0, 1.0);
+    float blockWeight = levels.x * levels.x;
+    float skyWeight = levels.y * levels.y;
+    float total = max(blockWeight + skyWeight, 0.0001);
+    vec3 tint = (ToonEnvironmentSkyTint * skyWeight * ToonEnvironmentWeather
+              + vec3(1.0, 0.82, 0.65) * blockWeight) / total;
+    // 没有有效光照等级时沿用场景的最低亮度，不能把 GUI 或暗处置为未定义颜色。
+    if (blockWeight + skyWeight < 0.0001) tint = vec3(1.0);
+    return shadeToonSurface(raw, n, light, p, tint * max(LightIntensity, 0.0),
+            toonDiffuseRamp(saturate(dot(n, light))));
+}
+
 void main() {
     vec4 texColor = texture(Sampler0, texCoord0);
     if (texColor.a < AlphaCutoff) {
@@ -74,6 +93,8 @@ void main() {
     vec3 finalColor;
     if (UsePackLighting) {
         finalColor = applyPackLighting(albedo, normal, viewPos);
+    } else if (ToonGenericEnvironment) {
+        finalColor = applyGenericEnvironment(albedo, normal, viewPos, lightDir);
     } else {
         finalColor = shadeToonSurface(albedo, normal, lightDir, viewPos,
                 vec3(max(LightIntensity, 0.0)), ramp);
@@ -82,7 +103,13 @@ void main() {
     float bright = max(albedo.r, max(albedo.g, albedo.b));
     float chroma = bright - min(albedo.r, min(albedo.g, albedo.b));
     float irisMask = smoothstep(0.08, 0.35, chroma) * smoothstep(0.15, 0.55, bright);
-    finalColor += albedo * irisMask * clamp(EyeEmission, 0.0, 3.0);
+    float emission = irisMask * clamp(EyeEmission, 0.0, 3.0);
+    if (emission > 0.0) {
+        // 发光在线性空间相加，避免被输出的 gamma 转换再次指数放大，影响自动曝光。
+        vec3 linearColor = pow(max(finalColor, vec3(0.0)), vec3(2.2));
+        linearColor += pow(max(albedo, vec3(0.0)), vec3(2.2)) * emission;
+        finalColor = pow(linearColor, vec3(1.0 / 2.2));
+    }
     float finalAlpha = texColor.a * clamp(GlobalAlpha, 0.0, 1.0);
     if (finalAlpha < 0.001) {
         discard;

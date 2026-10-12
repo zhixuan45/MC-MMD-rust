@@ -133,11 +133,12 @@ class ToonOutputProfileTest {
     }
 
     @Test
-    void shouldRejectUnverifiedComplementaryLightingEvenWithKnownOutputs() {
+    void shouldUseGenericLightingWhenColorOutputIsVerifiedWithoutNativeLighting() {
         String fragment = "albedo.rgb = pow(albedo.rgb, vec3(2.2)); /* DRAWBUFFERS:0 */ gl_FragData[0] = albedo;";
         ToonOutputProfile profile = ToonOutputProfile.resolve("ComplementaryShaders_v4.7.1", "gbuffers_entities",
                 fragment, "void main() {}", new int[]{0});
-        assertFalse(profile.isSupported());
-        assertTrue(profile.reason().contains("光照函数"));
+        assertTrue(profile.isSupported());
+        assertTrue(profile.lightingSource().isEmpty());
+        assertTrue(profile.fragmentWriter().contains("pow(max(color"));
     }
 }

@@ -29,6 +29,7 @@ public final class LightingProbe {
     }
 
     public static void run(ToonShaderCpu shader, ToonOutputProfile profile) {
+        boolean bsl = profile.id().startsWith("bsl:");
         int target = shader.getMainProgram();
         List<Uniform> uniforms = activePackUniforms(target, profile.lightingSource());
         // 位置由另一程序独立分配，不能直接复用 Iris 的 location。
@@ -42,6 +43,7 @@ public final class LightingProbe {
         int albedo = colorTexture(0);
         List<Integer> packTextures = new ArrayList<>();
         int shadowTexture = 0;
+        int opaqueShadowTexture = 0;
         GL46C.glUseProgram(source);
         int unit = 4;
         for (Uniform uniform : uniforms) {
@@ -51,12 +53,14 @@ public final class LightingProbe {
                 case "ivec2" -> GL46C.glUniform2i(location, 240, 240);
                 case "vec3" -> GL46C.glUniform3f(location, .5f, .5f, .5f);
                 case "int" -> GL46C.glUniform1i(location, 0);
-                case "float" -> GL46C.glUniform1f(location, uniform.name().equals("screenBrightness") ? .5f : 0);
+                case "float" -> GL46C.glUniform1f(location, uniform.name().equals("screenBrightness") ? .5f
+                        : uniform.name().equals("shadowFade") ? 1 : 0);
                 case "sampler2D", "sampler2DShadow" -> {
                     int texture = uniform.type().equals("sampler2DShadow") ? depthTexture(unit) : colorTexture(unit);
                     GL46C.glUniform1i(location, unit++);
                     packTextures.add(texture);
                     if (uniform.name().equals("shadowtex0")) shadowTexture = texture;
+                    if (uniform.name().equals("shadowtex1")) opaqueShadowTexture = texture;
                 }
                 default -> throw new AssertionError("探针缺少 uniform 类型: " + uniform);
             }
@@ -88,10 +92,11 @@ public final class LightingProbe {
         float[] torch = sample(shader, source, sourceIdentity, .25f, 0, 15, 0);
         float[] rain = sample(shader, source, sourceIdentity, .25f, 1, 0, 15);
         if (shadowTexture > 0) {
-            GL46C.glActiveTexture(GL46C.GL_TEXTURE4);
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + GL46C.glGetUniformi(source, GL46C.glGetUniformLocation(source, "shadowtex0")));
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, shadowTexture);
             GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, new float[]{0});
         }
+        if (bsl && opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 0);
         float[] shadow = sample(shader, source, sourceIdentity, .25f, 0, 0, 15);
         System.out.printf("Lighting linear pixels: day=%s night=%s cave=%s torch=%s rain=%s shadow=%s%n",
                 Arrays.toString(day), Arrays.toString(night), Arrays.toString(cave), Arrays.toString(torch), Arrays.toString(rain), Arrays.toString(shadow));
@@ -101,17 +106,19 @@ public final class LightingProbe {
         check(luminance(day) > luminance(shadow), "阴影图应降低直射光");
         check(luminance(day) > luminance(rain), "降雨应影响直射光");
         if (shadowTexture > 0) {
-            GL46C.glActiveTexture(GL46C.GL_TEXTURE4);
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + GL46C.glGetUniformi(source, GL46C.glGetUniformLocation(source, "shadowtex0")));
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, shadowTexture);
             GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, new float[]{1});
         }
+        if (bsl && opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
         GL46C.glUseProgram(source);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "sunAngle"), .25f);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeAngle"), .25f);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrengthS"), 0);
         var rotation = Pattern.compile("sunPathRotation\\s*=\\s*([-0-9.]+)").matcher(profile.lightingSource());
         check(rotation.find(), "太阳旋转参数");
         double angle = Math.toRadians(Double.parseDouble(rotation.group(1)));
-        ToonControlsProbe.run(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
+        if (!bsl) ToonControlsProbe.run(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
         check(!shader.setEnvironmentLighting(0, 15, 15), "GUI/无 Iris 应关闭包内光照");
         GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, 0);
         GL46C.glDeleteFramebuffers(fbo);
@@ -130,7 +137,10 @@ public final class LightingProbe {
     private static float[] sample(ToonShaderCpu shader, int source, Object identity, float angle, float rain, int block, int sky) {
         GL46C.glUseProgram(source);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "sunAngle"), angle);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeAngle"), angle);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeBrightness"), angle < .5f ? 1 : 0);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrengthS"), rain);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrength"), rain);
         shader.useMain();
         check(shader.setEnvironmentLighting(source, identity, block, sky), "实际包光照 uniform 同步失败");
         GL46C.glClearColor(0, 0, 0, 0);
@@ -142,12 +152,21 @@ public final class LightingProbe {
         return pixel;
     }
 
+    private static void setShadowDepth(int source, String name, int texture, float depth) {
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + GL46C.glGetUniformi(source, GL46C.glGetUniformLocation(source, name)));
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
+        GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, new float[]{depth});
+    }
+
     private static List<Uniform> activePackUniforms(int program, String source) {
         List<Uniform> uniforms = new ArrayList<>();
-        var matcher = Pattern.compile("uniform\\s+(\\w+)\\s+(\\w+)\\s*;").matcher(source);
+        var matcher = Pattern.compile("uniform\\s+(\\w+)\\s+([^;]+);").matcher(source);
         while (matcher.find()) {
-            if (GL46C.glGetUniformLocation(program, matcher.group(2)) >= 0) {
-                uniforms.add(new Uniform(matcher.group(2).equals("ToonPackTexture") ? "texture" : matcher.group(2), matcher.group(1)));
+            for (String variable : matcher.group(2).split(",")) {
+                String name = variable.trim();
+                if (GL46C.glGetUniformLocation(program, name) >= 0) {
+                    uniforms.add(new Uniform(name.equals("ToonPackTexture") ? "texture" : name, matcher.group(1)));
+                }
             }
         }
         return uniforms;

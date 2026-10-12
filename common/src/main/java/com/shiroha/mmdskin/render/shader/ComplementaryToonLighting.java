@@ -108,12 +108,12 @@ final class ComplementaryToonLighting {
                 + "return shadeToonSurface(raw, n, lightVec, p, illumination, band);\n}\n";
     }
 
-    private static String clean(String source) {
+    static String clean(String source) {
         return COMMENTS.matcher(source).replaceAll(" ");
     }
 
     /** 非常量全局初值必须在 sunVec 和当前片段输入赋值以后执行。 */
-    private static String moveInitializers(String source, StringBuilder initialization) {
+    static String moveInitializers(String source, StringBuilder initialization) {
         StringBuilder output = new StringBuilder();
         int depth = 0, start = 0;
         for (int i = 0; i < source.length(); i++) {

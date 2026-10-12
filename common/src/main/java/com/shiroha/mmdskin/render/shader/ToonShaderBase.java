@@ -26,6 +26,7 @@ public abstract class ToonShaderBase {
     private final Set<String> failedVariants = new HashSet<>();
     private String activeProfile;
     private ToonUniformBridge lightingBridge;
+    private final GenericToonLighting genericLighting = new GenericToonLighting();
     private int packLightingLocation = -1;
     private int lightmapLocation = -1;
     private boolean lightingSyncWarned;
@@ -87,6 +88,14 @@ public abstract class ToonShaderBase {
     }
 
     public boolean selectOutputProfile(ToonOutputProfile profile) {
+        boolean knownFailure = failedVariants.contains(profile.id());
+        if (selectProfileVariant(profile)) return true;
+        if (!profile.isSupported() || profile.lightingSource().isEmpty()) return false;
+        if (!knownFailure) logger.warn("Toon 原包照明编译失败，保留输出协议并使用通用环境光: {}", profile.id());
+        return selectProfileVariant(profile.withoutPackLighting());
+    }
+
+    private boolean selectProfileVariant(ToonOutputProfile profile) {
         if (!profile.isSupported()) return false;
         String key = profile.id();
         if (initialized && key.equals(activeProfile)) return true;
@@ -188,6 +197,7 @@ public abstract class ToonShaderBase {
         mainOutputMatrixLocation = GL46C.glGetUniformLocation(mainProgram, "ToonViewToWorld");
         mainOutputFarLocation = GL46C.glGetUniformLocation(mainProgram, "ToonFar");
         eyeEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "EyeEmission");
+        genericLighting.select(mainProgram);
         outlinePremultipliedLocation = GL46C.glGetUniformLocation(outlineProgram, "Premultiplied");
 
         outlineProjMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ProjMat");
@@ -235,6 +245,7 @@ public abstract class ToonShaderBase {
     }
 
     public boolean setEnvironmentLighting(int originalProgram, Object shaderIdentity, int blockLight, int skyLight) {
+        genericLighting.upload(originalProgram, shaderIdentity);
         // 5.x 的主体反射法线在世界空间；描边通过独立颜色 pass 合成，不写材质缓冲。
         if (mainOutputMatrixLocation >= 0 || mainOutputFarLocation >= 0) {
             readOutputUniforms(originalProgram);
@@ -243,7 +254,7 @@ public abstract class ToonShaderBase {
         boolean copied = lightingBridge != null && lightingBridge.copy(originalProgram, mainProgram, shaderIdentity);
         if (!copied && lightingBridge != null && originalProgram > 0 && packLightingLocation >= 0 && !lightingSyncWarned) {
             lightingSyncWarned = true;
-            logger.warn("Toon 环境光 uniform 同步失败，使用基础亮度路径: profile={}, sourceProgram={}, reason={}",
+            logger.warn("Toon 环境光 uniform 同步失败，保留 Toon 并使用通用环境光: profile={}, sourceProgram={}, reason={}",
                     activeProfile, originalProgram, lightingBridge.failureReason());
         }
         if (packLightingLocation >= 0) GL46C.glUniform1i(packLightingLocation, copied ? 1 : 0);

@@ -31,7 +31,8 @@ public final class EglProbe {
             try {
                 if (!eglMakeCurrent(display, surface, surface, context)) fail("eglMakeCurrent");
                 GL.createCapabilities();
-                Probe.run(args);
+                if (args.length == 1 && args[0].equals("--environment")) EnvironmentFallbackProbe.run();
+                else Probe.run(args);
             } finally {
                 eglMakeCurrent(display, NULL, NULL, NULL);
                 eglDestroyContext(display, context);

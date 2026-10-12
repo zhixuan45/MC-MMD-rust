@@ -18,6 +18,7 @@ task_javac=${JAVA_HOME:+$JAVA_HOME/bin/}javac
 "$task_javac" -proc:none -encoding UTF-8 -cp "$PROBE_CP" -d "$task_run/classes" \
     common/src/main/java/com/shiroha/mmdskin/render/shader/ToonOutputProfile.java \
     common/src/main/java/com/shiroha/mmdskin/render/shader/ComplementaryToonLighting.java \
+    common/src/main/java/com/shiroha/mmdskin/render/shader/BslToonLighting.java \
     tools/shaderpack-probe/SourceProbe.java
 "$task_java" -cp "$task_run/classes:$PROBE_CP" SourceProbe "$task_run/sources" "${task_packs[@]}"
 XDG_CACHE_HOME="$task_run/cache" python3 tools/shaderpack-probe/check_glsl.py "$task_run/sources"
