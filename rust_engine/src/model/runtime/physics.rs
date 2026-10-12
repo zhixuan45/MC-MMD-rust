@@ -74,7 +74,12 @@ impl MmdModel {
                 .collect()
         };
 
-        physics.build_physics(&all_rigid_bodies, &all_joints, &bind_bone_transforms);
+        physics.build_physics_with_bone_names(
+            &all_rigid_bodies,
+            &all_joints,
+            &bind_bone_transforms,
+            &bone_names,
+        );
         physics.configure_embedded_body_contacts(&bone_names, &bone_parents);
         physics.set_tail_bone_names(&bone_names, &bone_parents);
         physics.set_tail_physics_options(self.tail_idle_lift, self.tail_movement_boost);

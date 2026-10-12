@@ -1,6 +1,7 @@
 use super::*;
 
 use glam::Vec3;
+use mmd::pmx::joint::{Joint as PmxJoint, JointType};
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyShape};
 
 fn body(name: &str, universal: &str, group: u8, raw_mask: u16, mode: RigidBodyMode) -> PmxRigidBody {
@@ -25,6 +26,37 @@ fn body(name: &str, universal: &str, group: u8, raw_mask: u16, mode: RigidBodyMo
 
 fn stable_plan(bodies: &[PmxRigidBody], eligible: &[bool]) -> GarmentContactPlan {
     build_garment_contact_plan(bodies, eligible, true, CollisionStabilityMode::Stable)
+}
+
+fn body_on_bone(mut body: PmxRigidBody, bone_index: i32) -> PmxRigidBody {
+    body.bone_index = bone_index;
+    body
+}
+
+fn joint(a: i32, b: i32) -> PmxJoint {
+    PmxJoint {
+        local_name: "裙根".into(),
+        universal_name: String::new(),
+        type_: JointType::Spring6DOF,
+        rigid_body_a_index: a,
+        rigid_body_b_index: b,
+        position: [0.0; 3],
+        rotation: [0.0; 3],
+        position_min: [0.0; 3],
+        position_max: [0.0; 3],
+        rotation_min: [0.0; 3],
+        rotation_max: [0.0; 3],
+        position_spring: [0.0; 3],
+        rotation_spring: [0.0; 3],
+    }
+}
+
+fn garment_flags(
+    bodies: &[PmxRigidBody],
+    joints: &[PmxJoint],
+    bone_names: &[String],
+) -> Vec<bool> {
+    super::super::mmd_rigid_body::garment_contact_body_flags(bodies, joints, bone_names)
 }
 
 #[test]
@@ -92,6 +124,109 @@ fn strict_and_collision_disabled_preserve_authored_masks() {
         assert!(plan.allowed_pairs.is_empty());
         assert!(plan.forced_ignore_pairs.is_empty());
     }
+}
+
+#[test]
+fn stable_and_relaxed_expand_real_lower_bodies_but_not_upper_bound_g_shell() {
+    let mut anchor = body_on_bone(
+        body("下半身", "", 0, 0x0000, RigidBodyMode::Static),
+        1,
+    );
+    anchor.shape = RigidBodyShape::Capsule;
+    anchor.size = [0.77, 0.45, 0.0];
+    let bodies = [
+        body_on_bone(
+            body("G-下半身", "", 5, 0xFFFF, RigidBodyMode::Static),
+            0,
+        ),
+        anchor,
+        body_on_bone(body("下半身+", "", 0, 0x0000, RigidBodyMode::Static), 1),
+        body_on_bone(body("下半身++", "", 0, 0x0000, RigidBodyMode::Static), 1),
+        body_on_bone(body("左大腿", "", 0, 0x0000, RigidBodyMode::Static), 2),
+        body_on_bone(
+            body(
+                "Synthesized_Glutes_Collider",
+                "",
+                0,
+                0x0000,
+                RigidBodyMode::Static,
+            ),
+            3,
+        ),
+        body_on_bone(
+            body("q_0_14", "Skirt_0_14", 2, 0xFF01, RigidBodyMode::DynamicWithBonePosition),
+            4,
+        ),
+    ];
+    let joints = [joint(1, 6)];
+    let names = ["上半身", "下半身", "左足", "腰", "q_0_14"]
+        .map(str::to_owned);
+    let eligible = garment_flags(&bodies, &joints, &names);
+
+    // 稳定模式只拒绝实绑上身的误标体，真实骨盆、大腿和臀壳仍可补碰撞。
+    assert_eq!(eligible, [false, true, true, true, true, true, false]);
+    for mode in [CollisionStabilityMode::Stable, CollisionStabilityMode::Relaxed] {
+        let plan = build_garment_contact_plan(&bodies, &eligible, true, mode);
+        assert!(!plan.allowed_pairs.contains(&(0, 6)));
+        for body_index in 1..=5 {
+            assert!(plan.allowed_pairs.contains(&(body_index, 6)));
+            assert_ne!(plan.effective_masks[body_index] & (1 << 2), 0);
+        }
+        assert_eq!(plan.effective_masks[0], 0xFFFF);
+    }
+}
+
+#[test]
+fn known_upper_bound_pair_keeps_authored_collision_without_new_extension() {
+    let bodies = [
+        body_on_bone(body("G-下半身", "", 5, 0xFFFF, RigidBodyMode::Static), 0),
+        body_on_bone(body("q_0_14", "Skirt_0_14", 2, 0xFFFF, RigidBodyMode::Dynamic), 1),
+    ];
+    let names = ["上半身", "q_0_14"].map(str::to_owned);
+    let eligible = garment_flags(&bodies, &[], &names);
+    let plan = stable_plan(&bodies, &eligible);
+
+    assert_eq!(eligible, [false, false]);
+    assert!(plan.allowed_pairs.is_empty());
+    assert!(plan.forced_ignore_pairs.is_empty());
+    assert_eq!(plan.effective_masks, [0xFFFF, 0xFFFF]);
+}
+
+#[test]
+fn empty_or_unknown_bone_names_keep_legacy_eligibility_but_invalid_index_is_rejected() {
+    let cases = [
+        (0, Vec::<String>::new(), true),
+        (0, vec!["未知锚点".to_owned()], true),
+        (-1, vec!["下半身".to_owned()], false),
+        (2, vec!["下半身".to_owned()], false),
+    ];
+    for (bone_index, names, expected) in cases {
+        let bodies = [
+            body_on_bone(body("G-下半身", "", 5, 0xFFFF, RigidBodyMode::Static), bone_index),
+            body("q_0_14", "Skirt_0_14", 2, 0xFF01, RigidBodyMode::Dynamic),
+        ];
+        assert_eq!(garment_flags(&bodies, &[], &names), [expected, false]);
+    }
+}
+
+#[test]
+fn strict_keeps_g_and_skirt_authored_masks_unchanged() {
+    let bodies = [
+        body_on_bone(body("G-下半身", "", 5, 0xFFFF, RigidBodyMode::Static), 0),
+        body_on_bone(body("q_0_14", "Skirt_0_14", 2, 0xFF01, RigidBodyMode::Dynamic), 1),
+    ];
+    let names = ["上半身", "q_0_14"].map(str::to_owned);
+    let eligible = garment_flags(&bodies, &[], &names);
+    let plan = build_garment_contact_plan(
+        &bodies,
+        &eligible,
+        true,
+        CollisionStabilityMode::Strict,
+    );
+
+    assert_eq!(plan.effective_masks, [0xFFFF, 0xFF01]);
+    assert!(plan.allowed_pairs.is_empty());
+    assert!(plan.forced_ignore_pairs.is_empty());
 }
 
 

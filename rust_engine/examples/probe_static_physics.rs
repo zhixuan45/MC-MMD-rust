@@ -100,9 +100,9 @@ fn run(path: &str, label: &str, collision: bool, fps: f32, mode: CollisionStabil
         .map(|b| Mat4::from_translation(b.initial_position))
         .collect();
     let mut physics = MMDPhysics::new().expect("物理世界创建失败");
-    physics.build_physics(&model.rigid_bodies, &model.joints, &bind);
+    let names: Vec<_> = model.bone_manager.links().map(|b| b.name.clone()).collect();
+    physics.build_physics_with_bone_names(&model.rigid_bodies, &model.joints, &bind, &names);
     if !env::args().any(|arg| arg == "--raw-body-contacts") {
-        let names: Vec<_> = model.bone_manager.links().map(|b| b.name.clone()).collect();
         let parents: Vec<_> = model.bone_manager.links().map(|b| b.parent_index).collect();
         let filtered = physics.configure_embedded_body_contacts(&names, &parents);
         println!("BODY_CONTACT_FILTER pairs={filtered}");

@@ -164,6 +164,17 @@ impl MMDPhysics {
         pmx_joints: &[PmxJoint],
         bone_transforms: &[Mat4],
     ) {
+        self.build_physics_with_bone_names(pmx_rigid_bodies, pmx_joints, bone_transforms, &[]);
+    }
+
+    /// 模型运行时提供骨名，避免仅按刚体名扩大裙摆碰撞。
+    pub fn build_physics_with_bone_names(
+        &mut self,
+        pmx_rigid_bodies: &[PmxRigidBody],
+        pmx_joints: &[PmxJoint],
+        bone_transforms: &[Mat4],
+        bone_names: &[String],
+    ) {
         let config = get_config();
         let active_gravity_y = self.active_debug_config.gravity_y.get();
         self.active_debug_config = ActivePhysicsDebugConfig::from_config(&config);
@@ -175,7 +186,7 @@ impl MMDPhysics {
         // 按整个模型的碰撞用途分类，避免把动态链的静态关节锚点误当成人体碰撞壳。
         let body_collider_flags = body_collider_scale_flags(pmx_rigid_bodies, pmx_joints);
         // 兼容裙摆的资格独立于 PMX 原始掩码，避免漏配掩码导致补碰撞永远无法生效。
-        let garment_body_flags = garment_contact_body_flags(pmx_rigid_bodies, pmx_joints);
+        let garment_body_flags = garment_contact_body_flags(pmx_rigid_bodies, pmx_joints, bone_names);
         let garment_contact_plan = build_garment_contact_plan(
             pmx_rigid_bodies,
             &garment_body_flags,

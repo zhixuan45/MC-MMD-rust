@@ -90,6 +90,7 @@ pub fn body_collider_scale_flags(rigid_bodies: &[PmxRigidBody], joints: &[PmxJoi
 pub(super) fn garment_contact_body_flags(
     rigid_bodies: &[PmxRigidBody],
     joints: &[PmxJoint],
+    bone_names: &[String],
 ) -> Vec<bool> {
     let has_garment = rigid_bodies
         .iter()
@@ -102,9 +103,32 @@ pub(super) fn garment_contact_body_flags(
                 && body.mode == RigidBodyMode::Static
                 && is_lower_body_collider(body)
                 && is_pelvis_or_thigh_collider(body)
+                && garment_body_bone_is_compatible(body, bone_names)
                 && !is_dedicated_kinematic_stub(index, rigid_bodies, joints)
         })
         .collect()
+}
+
+/// 刚体名可能误称下半身；已知上身骨不能触发额外裙摆碰撞。
+fn garment_body_bone_is_compatible(body: &PmxRigidBody, bone_names: &[String]) -> bool {
+    if bone_names.is_empty() {
+        return true; // 无骨骼元数据的低级调用保留原分类。
+    }
+    let Some(name) = usize::try_from(body.bone_index)
+        .ok()
+        .and_then(|index| bone_names.get(index))
+    else {
+        return false;
+    };
+    // 不认识的有效骨名沿用原刚体分类，避免丢掉自定义骨盆支持。
+    let name = name.to_lowercase();
+    !has_non_skirt_local_semantics(&name)
+        && ![
+            "上半身", "上体", "upperbody", "upper_body", "spine", "torso", "頭", "头",
+            "head", "首", "颈", "頸", "neck", "肩", "shoulder",
+        ]
+        .iter()
+        .any(|part| name.contains(part))
 }
 
 pub(super) fn is_lower_body_collider(body: &PmxRigidBody) -> bool {
@@ -713,7 +737,7 @@ mod tests {
         skirt.un_collision_group_flag = 0x0000;
 
         let bodies = vec![collider, skirt];
-        let flags = garment_contact_body_flags(&bodies, &[]);
+        let flags = garment_contact_body_flags(&bodies, &[], &[]);
         assert_eq!(flags, [true, false]);
     }
 
@@ -744,7 +768,7 @@ mod tests {
             rotation_spring: [0.0; 3],
         };
 
-        assert_eq!(garment_contact_body_flags(&[collider, skirt], &[joint]), [true, false]);
+        assert_eq!(garment_contact_body_flags(&[collider, skirt], &[joint], &[]), [true, false]);
     }
 
     #[test]
@@ -781,7 +805,7 @@ mod tests {
         let bodies = vec![collider, anchor, skirt];
         assert!(is_dynamic_chain_anchor(1, &bodies, std::slice::from_ref(&joint)));
         assert_eq!(
-            garment_contact_body_flags(&bodies, std::slice::from_ref(&joint)),
+            garment_contact_body_flags(&bodies, std::slice::from_ref(&joint), &[]),
             [true, false, false]
         );
     }
