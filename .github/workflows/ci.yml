@@ -1,0 +1,118 @@
+name: CI (Minecraft 1.21.1)
+
+on:
+  push:
+    branches: ['feat/1.21.1-neoforge']
+  pull_request:
+    branches: ['feat/1.21.1-neoforge']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Checkout pinned Bullet source
+        run: python tools/ci/prepare_bullet.py
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_engine -> target
+
+      - name: Test Rust library
+        run: cargo test --lib --manifest-path rust_engine/Cargo.toml
+
+      - name: Build Linux x64 native library
+        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml
+
+      - name: Verify and stage Linux x64 native library
+        run: |
+          python tools/ci/native_ci.py artifact --arch linux-x64 --binary rust_engine/target/release/libmmd_engine.so
+          mkdir -p build/ci-native-resources/natives/linux-x64
+          cp build/ci-native-artifact/libmmd_engine.so build/ci-native-resources/natives/linux-x64/
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Fabric and NeoForge and run Java tests
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon --stacktrace -PnativeResourcesPath=build/ci-native-resources
+
+      - name: Verify packaged Linux x64 native library
+        run: |
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          native = Path('build/ci-native-resources/natives/linux-x64/libmmd_engine.so').read_bytes()
+          for loader, metadata in [('fabric', 'fabric.mod.json'), ('neoforge', 'META-INF/neoforge.mods.toml')]:
+              jars = [path for path in Path(f'{loader}/build/libs').glob('mmdskin-*.jar')
+                      if not any(token in path.name for token in ('-dev', '-sources', '-universal'))]
+              if len(jars) != 1:
+                  raise SystemExit(f'Expected one {loader} release JAR, found {len(jars)}')
+              with zipfile.ZipFile(jars[0]) as jar:
+                  for member in (metadata, 'com/shiroha/mmdskin/MmdSkinClient.class'):
+                      if not jar.read(member):
+                          raise SystemExit(f'{jars[0]} contains empty {member}')
+                  if jar.read('natives/linux-x64/libmmd_engine.so') != native:
+                      raise SystemExit(f'{jars[0]} does not contain the CI native library unchanged')
+              print(f'Verified {jars[0]}')
+          PY
+
+      - name: Upload Fabric Linux x64 mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmdskin-fabric-1.21.1-linux-x64
+          path: |
+            fabric/build/libs/mmdskin-fabric-*.jar
+            !fabric/build/libs/*-dev*.jar
+            !fabric/build/libs/*-sources*.jar
+            !fabric/build/libs/*-universal*.jar
+          if-no-files-found: error
+
+      - name: Upload NeoForge Linux x64 mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmdskin-neoforge-1.21.1-linux-x64
+          path: |
+            neoforge/build/libs/mmdskin-neoforge-*.jar
+            !neoforge/build/libs/*-dev*.jar
+            !neoforge/build/libs/*-sources*.jar
+            !neoforge/build/libs/*-universal*.jar
+          if-no-files-found: error
+
+      - name: Upload Java test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-test-reports-1.21.1
+          path: |
+            common/build/reports/tests/
+            common/build/test-results/
+          if-no-files-found: ignore

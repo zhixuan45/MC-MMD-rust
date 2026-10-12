@@ -260,14 +260,14 @@ EntityPlayer/
 ### 前置要求
 
 - Rust 1.70+（用于 rust_engine）
-- JDK 17+（用于 Minecraft mod）
+- JDK 21（用于 Minecraft 1.21.1 的 Fabric / NeoForge mod）
 - Gradle 8.x
 
 ### 构建 rust_engine
 
 ```bash
-cd rust_engine
-cargo build --release
+python tools/ci/prepare_bullet.py
+cargo build --release --lib --manifest-path rust_engine/Cargo.toml
 ```
 
 ### 构建 Minecraft Mod
@@ -275,6 +275,11 @@ cargo build --release
 ```bash
 ./gradlew build
 ```
+
+### GitHub Actions
+
+- `CI (Minecraft 1.21.1)` 在推送到 `feat/1.21.1-neoforge`、向该分支提交 PR 或手动运行时执行 Rust 单元测试、Java 测试，以及 Fabric / NeoForge 构建。可下载的 CI JAR 包含本次构建的 Linux x64 原生库，仅供 Linux x64 使用；Java 测试报告也会上传。
+- `Build & Release` 用于完整的十平台打包。需要 Windows、macOS、Android 或其他架构时，在 Actions 中手动运行该工作流并选择 `feat/1.21.1-neoforge`；推送 `v*` 标签时会构建并发布完整产物。
 
 ## 许可证
 
