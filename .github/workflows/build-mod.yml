@@ -2,10 +2,18 @@ name: Build & Release
 
 on:
   push:
+    branches: ['feat/1.21.1-neoforge']
     tags:
       - 'v*'
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -97,6 +105,7 @@ jobs:
 
   build-rust-linux-x64:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -109,6 +118,13 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_engine -> target
+
+      - name: Test Rust library
+        run: cargo test --lib --manifest-path rust_engine/Cargo.toml
 
       - name: Build Linux x64 SO
         run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml
@@ -409,6 +425,7 @@ jobs:
   build-java:
     needs: [build-rust-windows-x64, build-rust-windows-arm64, build-rust-linux-x64, build-rust-linux-arm64, build-rust-linux-loongarch64, build-rust-linux-riscv64, build-rust-macos-x64, build-rust-macos-arm64, build-rust-android-arm64, build-rust-android-amd64]
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -440,13 +457,13 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew build --no-daemon -PnativeResourcesPath=build/ci-native-resources
+      - name: Build Fabric and NeoForge and run Java tests
+        run: ./gradlew build --no-daemon --stacktrace -PnativeResourcesPath=build/ci-native-resources
 
       - name: Verify packaged natives and create universal JAR copies
         run: python tools/ci/native_ci.py package --staged build/ci-native-resources
@@ -486,6 +503,16 @@ jobs:
           name: mmdskin-neoforge-${{ steps.version.outputs.mod_version }}-universal
           path: neoforge/build/libs/*-universal.jar
           if-no-files-found: error
+
+      - name: Upload Java test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-test-reports-1.21.1
+          path: |
+            common/build/reports/tests/
+            common/build/test-results/
+          if-no-files-found: ignore
 
   # ==================== 统一发布 ====================
   release:
