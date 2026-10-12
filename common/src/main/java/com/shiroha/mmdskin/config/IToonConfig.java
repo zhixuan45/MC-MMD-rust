@@ -14,6 +14,8 @@ public interface IToonConfig {
 
     default boolean isToonOutlineEnabled() { return true; }
 
+    default boolean isToonOutlineFollowLighting() { return true; }
+
     default float getToonOutlineWidth() { return 0.0022f; }
 
     default float getToonRimPower() { return 5.6f; }

@@ -81,6 +81,8 @@
   "gui.mmdskin.mod_settings.toon_specular_intensity.tooltip": "Specular highlight brightness (0-100%)",
   "gui.mmdskin.mod_settings.toon_outline": "Enable Outline",
   "gui.mmdskin.mod_settings.toon_outline.tooltip": "Add outline stroke effect to the model",
+  "gui.mmdskin.mod_settings.toon_outline_follow_lighting": "Outline Follows Main Lighting",
+  "gui.mmdskin.mod_settings.toon_outline_follow_lighting.tooltip": "When enabled, the outline follows the model's light and shadow; when disabled, it keeps the original solid color",
   "gui.mmdskin.mod_settings.toon_outline_width": "Outline Width",
   "gui.mmdskin.mod_settings.toon_outline_width.tooltip": "Outline thickness (1-100)",
   "gui.mmdskin.mod_settings.toon_outline_r": "Outline R",

@@ -7,9 +7,12 @@ layout(location = 2) in vec2 UV0;
 uniform mat4 ProjMat;
 uniform mat4 ModelViewMat;
 uniform float OutlineWidth;
+uniform vec3 LightDir;
 
 out vec3 viewNormal;
 out vec3 viewPos;
+out vec3 surfaceViewPos;
+out vec3 viewLightDir;
 out vec2 texCoord0;
 
 void main() {
@@ -28,10 +31,11 @@ void main() {
         float distanceFade = clamp(1.0 - (viewDepth - 25.0) / 15.0, 0.0, 1.0);
         expansion = OutlineWidth * outlineScale * distanceFade;
     }
+    surfaceViewPos = vPos.xyz;
     vPos.xyz += transformedNormal * expansion;
-
     gl_Position = ProjMat * vPos;
     viewNormal = transformedNormal;
+    viewLightDir = normalize(normalMatrix * normalize(LightDir));
     viewPos = vPos.xyz;
     texCoord0 = UV0;
 }

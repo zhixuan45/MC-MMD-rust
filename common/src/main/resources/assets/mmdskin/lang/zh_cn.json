@@ -84,6 +84,8 @@
   "gui.mmdskin.mod_settings.toon_specular_intensity.tooltip": "高光亮度（0-100%）",
   "gui.mmdskin.mod_settings.toon_outline": "启用描边",
   "gui.mmdskin.mod_settings.toon_outline.tooltip": "为模型添加轮廓描边效果",
+  "gui.mmdskin.mod_settings.toon_outline_follow_lighting": "描边跟随主体光照",
+  "gui.mmdskin.mod_settings.toon_outline_follow_lighting.tooltip": "开启后描边会随主体明暗变化；关闭后保持原有纯色描边",
   "gui.mmdskin.mod_settings.toon_outline_width": "描边宽度",
   "gui.mmdskin.mod_settings.toon_outline_width.tooltip": "描边粗细（1-100）",
   "gui.mmdskin.mod_settings.toon_outline_r": "描边色 R",

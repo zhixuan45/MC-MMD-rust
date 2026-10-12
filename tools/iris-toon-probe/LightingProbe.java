@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 /** 在实际 Toon 程序中验证包内环境色、阴影与 uniform 同步。 */
 public final class LightingProbe {
     private record Uniform(String name, String type) {}
+    private record LightingCase(String name, float angle, float rain, int block, int sky, float shadowDepth) {}
 
     /** 原包编译后的 uniform 不能因优化缺失，否则游戏中会整条回退。 */
     public static void checkPackProgram(ToonShaderCpu shader, ToonOutputProfile profile, String vertex, String fragment) {
@@ -32,6 +33,13 @@ public final class LightingProbe {
         boolean bsl = profile.id().startsWith("bsl:");
         int target = shader.getMainProgram();
         List<Uniform> uniforms = activePackUniforms(target, profile.lightingSource());
+        List<LightingCase> scenes = List.of(
+                new LightingCase("day", .25f, 0, 0, 15, 1),
+                new LightingCase("night", .75f, 0, 0, 15, 1),
+                new LightingCase("cave", .25f, 0, 0, 0, 1),
+                new LightingCase("torch", .25f, 0, 15, 0, 1),
+                new LightingCase("rain", .25f, 1, 0, 15, 1),
+                new LightingCase("shadow", .25f, 0, 0, 15, 0));
         // 位置由另一程序独立分配，不能直接复用 Iris 的 location。
         int source = uniformSource(uniforms);
         Object sourceIdentity = new Object();
@@ -84,32 +92,37 @@ public final class LightingProbe {
         shader.setShadowColor(.65f, .7f, .8f);
         shader.setGlobalAlpha(1);
         shader.setAlphaCutoff(.1f);
+        shader.setTransitionSoftness(1.2f);
+        shader.setLightDirection(.35f, .85f, -.4f);
+        shader.setLightIntensity(.7f);
         GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
         GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, albedo);
-        float[] day = sample(shader, source, sourceIdentity, .25f, 0, 0, 15);
-        float[] night = sample(shader, source, sourceIdentity, .75f, 0, 0, 15);
-        float[] cave = sample(shader, source, sourceIdentity, .25f, 0, 0, 0);
-        float[] torch = sample(shader, source, sourceIdentity, .25f, 0, 15, 0);
-        float[] rain = sample(shader, source, sourceIdentity, .25f, 1, 0, 15);
-        if (shadowTexture > 0) {
-            GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + GL46C.glGetUniformi(source, GL46C.glGetUniformLocation(source, "shadowtex0")));
-            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, shadowTexture);
-            GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, new float[]{0});
+        float[][] bodyPixels = new float[scenes.size()][];
+        float[][] outlinePixels = new float[scenes.size()][];
+        for (int i = 0; i < scenes.size(); i++) {
+            LightingCase scene = scenes.get(i);
+            if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, scene.shadowDepth());
+            if (bsl && opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, scene.shadowDepth());
+            bodyPixels[i] = sample(shader, source, sourceIdentity, scene);
+            outlinePixels[i] = sampleOutline(shader, source, sourceIdentity, scene);
+            System.out.printf("Lighting %s profile=%s body=%s outline=%s%n", scene.name(), profile.id(),
+                    Arrays.toString(bodyPixels[i]), Arrays.toString(outlinePixels[i]));
         }
-        if (bsl && opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 0);
-        float[] shadow = sample(shader, source, sourceIdentity, .25f, 0, 0, 15);
-        System.out.printf("Lighting linear pixels: day=%s night=%s cave=%s torch=%s rain=%s shadow=%s%n",
-                Arrays.toString(day), Arrays.toString(night), Arrays.toString(cave), Arrays.toString(torch), Arrays.toString(rain), Arrays.toString(shadow));
+        float[] day = bodyPixels[0], night = bodyPixels[1], cave = bodyPixels[2];
+        float[] torch = bodyPixels[3], rain = bodyPixels[4], shadow = bodyPixels[5];
+        float[] outlineDay = outlinePixels[0], outlineNight = outlinePixels[1], outlineCave = outlinePixels[2];
+        float[] outlineTorch = outlinePixels[3], outlineRain = outlinePixels[4], outlineShadow = outlinePixels[5];
         check(luminance(day) > luminance(night) * 1.5f, "白天应明显亮于夜晚");
         check(luminance(torch) > luminance(cave) * 2, "火把应照亮洞穴");
         check(torch[0] > torch[2], "火把应保留暖色");
         check(luminance(day) > luminance(shadow), "阴影图应降低直射光");
         check(luminance(day) > luminance(rain), "降雨应影响直射光");
-        if (shadowTexture > 0) {
-            GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + GL46C.glGetUniformi(source, GL46C.glGetUniformLocation(source, "shadowtex0")));
-            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, shadowTexture);
-            GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, new float[]{1});
-        }
+        check(luminance(outlineDay) > luminance(outlineNight) * 1.5f, "描边应随昼夜照明变化");
+        check(luminance(outlineTorch) > luminance(outlineCave) * 2, "描边应随洞穴火把光变化");
+        check(outlineTorch[0] > outlineTorch[2], "描边火把光应保留暖色");
+        check(luminance(outlineDay) > luminance(outlineShadow), "描边应受阴影图影响");
+        check(luminance(outlineDay) > luminance(outlineRain), "描边应受降雨影响");
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 1);
         if (bsl && opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
         GL46C.glUseProgram(source);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "sunAngle"), .25f);
@@ -132,21 +145,52 @@ public final class LightingProbe {
         GL46C.glDeleteVertexArrays(vao);
         GL46C.glDeleteProgram(source);
         check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "光照探针 GL 状态");
-        System.out.println("PASS lighting: production shader, uniform bridge, daylight/night/cave/torch/rain/shadow, GUI reset");
+        System.out.println("PASS lighting: production body/outline shaders, profile encoding, daylight/night/cave/torch/rain/shadow, GUI reset");
     }
 
-    private static float[] sample(ToonShaderCpu shader, int source, Object identity, float angle, float rain, int block, int sky) {
-        GL46C.glUseProgram(source);
-        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "sunAngle"), angle);
-        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeAngle"), angle);
-        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeBrightness"), angle < .5f ? 1 : 0);
-        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrengthS"), rain);
-        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrength"), rain);
+    private static float[] sample(ToonShaderCpu shader, int source, Object identity, LightingCase scene) {
+        prepareScene(source, scene);
         shader.useMain();
-        check(shader.setEnvironmentLighting(source, identity, block, sky), "实际包光照 uniform 同步失败");
+        check(shader.setEnvironmentLighting(source, identity, scene.block(), scene.sky()), "实际包光照 uniform 同步失败");
+        draw(shader.getMainProgram());
+        return readPixel();
+    }
+
+    private static float[] sampleOutline(ToonShaderCpu shader, int source, Object identity, LightingCase scene) {
+        prepareScene(source, scene);
+        shader.useMain();
+        check(shader.setEnvironmentLighting(source, identity, scene.block(), scene.sky()), "描边光照 uniform 同步失败");
+        shader.useOutline();
+        shader.setOutlineFollowLighting(true);
+        int program = shader.getOutlineProgram();
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(program, "ProjMat"), false, identity());
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(program, "ModelViewMat"), false, identity());
+        shader.setOutlineWidth(0);
+        shader.setOutlineColor(.8f, .7f, .6f);
+        shader.setOutlineAlpha(1);
+        shader.setOutlineAlphaCutoff(.1f);
+        shader.setOutlineUseTextureAlpha(false);
+        draw(program);
+        return readPixel();
+    }
+
+    private static void prepareScene(int source, LightingCase scene) {
+        GL46C.glUseProgram(source);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "sunAngle"), scene.angle());
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeAngle"), scene.angle());
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeBrightness"), scene.angle() < .5f ? 1 : 0);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrengthS"), scene.rain());
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrength"), scene.rain());
+    }
+
+    private static void draw(int program) {
+        GL46C.glUseProgram(program);
         GL46C.glClearColor(0, 0, 0, 0);
         GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT);
         GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 3);
+    }
+
+    private static float[] readPixel() {
         float[] pixel = new float[4];
         GL46C.glReadPixels(8, 8, 1, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT, pixel);
         for (float value : pixel) check(Float.isFinite(value), "光照不能产生 NaN/Inf");

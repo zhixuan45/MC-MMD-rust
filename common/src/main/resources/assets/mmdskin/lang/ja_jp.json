@@ -56,6 +56,8 @@
   "gui.mmdskin.mod_settings.toon_specular_intensity.tooltip": "スペキュラハイライトの明るさ（0-100%）",
   "gui.mmdskin.mod_settings.toon_outline": "アウトラインを有効化",
   "gui.mmdskin.mod_settings.toon_outline.tooltip": "モデルにアウトライン効果を追加",
+  "gui.mmdskin.mod_settings.toon_outline_follow_lighting": "アウトラインを本体の光に合わせる",
+  "gui.mmdskin.mod_settings.toon_outline_follow_lighting.tooltip": "有効にするとアウトラインが本体の明暗に合わせて変化します。無効にすると従来の単色アウトラインを維持します",
   "gui.mmdskin.mod_settings.toon_outline_width": "アウトライン幅",
   "gui.mmdskin.mod_settings.toon_outline_width.tooltip": "アウトラインの太さ（1-100）",
   "gui.mmdskin.mod_settings.toon_outline_r": "アウトラインR",

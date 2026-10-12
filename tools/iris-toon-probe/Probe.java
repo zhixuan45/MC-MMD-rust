@@ -29,6 +29,15 @@ public final class Probe {
     private static final Pattern BUFFERS = Pattern.compile("/\\*\\s*DRAWBUFFERS:([0-9]+)\\s*\\*/");
     private static int checked;
 
+    static void checkSelectedProfile(ToonShaderCpu shader, ToonOutputProfile profile) throws Exception {
+        // 兼容回退不能冒充原包照明已通过编译。
+        var selected = com.shiroha.mmdskin.render.shader.ToonShaderBase.class.getDeclaredField("activeProfile");
+        selected.setAccessible(true);
+        if (!profile.id().equals(selected.get(shader))) {
+            throw new AssertionError("实际使用了光照回退: " + profile.id());
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         if (!GLFW.glfwInit()) throw new IllegalStateException("无法初始化 GLFW");
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
@@ -114,17 +123,22 @@ public final class Probe {
                                 if (pack.startsWith("Complementary")) {
                                     Files.writeString(Path.of("build/iris-toon-probe/vertex.glsl"), vertex);
                                     String body = Files.readString(Path.of("common/src/main/resources/assets/mmdskin/shader/toon_main_body.frag.glsl"));
+                                    String surface = Files.readString(Path.of("common/src/main/resources/assets/mmdskin/shader/toon_surface_lighting.glsl"));
                                     Files.writeString(Path.of("build/iris-toon-probe/combined.glsl"), body
+                                            .replace("/* TOON_SURFACE_LIGHTING */", surface)
                                             .replace("/* TOON_OUTPUT_DECLARATIONS */", profile.fragmentDeclarations())
                                             .replace("/* TOON_OUTPUT_WRITER */", profile.fragmentWriter())
-                                            .replace("/* TOON_LIGHTING */", profile.lightingSource()));
+                                            .replace("/* TOON_LIGHTING */", profile.lightingSource().isEmpty()
+                                                    ? "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }"
+                                                    : profile.lightingSource()));
                                 }
                                 if (!profile.isSupported()) throw new AssertionError(pack + "/" + program + "/" + variant + ": " + profile.reason());
                                 if (!shader.selectOutputProfile(profile)) throw new AssertionError("主/描边编译失败: " + profile.id());
+                                checkSelectedProfile(shader, profile);
                                 if (pack.startsWith("Complementary")) {
                                     LightingProbe.checkPackProgram(shader, profile, vertex, source);
                                 }
-                                if (pack.startsWith("Complementary") && variant == 0
+                                if (!profile.lightingSource().isEmpty() && variant == 0
                                         && dimension.equals("world0") && program.equals("gbuffers_entities")) {
                                     LightingProbe.run(shader, profile);
                                 }

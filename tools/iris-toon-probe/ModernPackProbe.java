@@ -50,6 +50,7 @@ public final class ModernPackProbe {
                             throw new AssertionError(dimension + "/" + program + " 主/描边编译失败: " + profile.id());
                         }
                         checked++;
+                        Probe.checkSelectedProfile(shader, profile);
                         System.out.println("PASS modern " + dimension + "/" + program + " main+outline -> " + profile.id());
                     } finally {
                         shader.cleanup();

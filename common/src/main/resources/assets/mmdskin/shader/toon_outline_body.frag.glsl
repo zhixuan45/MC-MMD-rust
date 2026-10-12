@@ -2,6 +2,8 @@
 
 in vec3 viewNormal;
 in vec3 viewPos;
+in vec3 surfaceViewPos;
+in vec3 viewLightDir;
 in vec2 texCoord0;
 
 uniform vec3 OutlineColor;
@@ -11,9 +13,11 @@ uniform sampler2D Sampler0;
 uniform bool UseTextureAlpha;
 uniform float AlphaCutoff;
 uniform bool Premultiplied;
+uniform bool FollowLighting;
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
+/* TOON_SURFACE_LIGHTING */
 
 void main() {
     // 纹理只提供遮罩，描边颜色仍然独立。
@@ -33,6 +37,18 @@ void main() {
     }
 
     vec3 finalOutline = OutlineColor;
+    if (FollowLighting) {
+        // 使用原表面的位置采样阴影，避免外扩外壳造成光照漏边。
+        vec3 lightDir = normalize(viewLightDir);
+        if (UsePackLighting) {
+            finalOutline = applyPackLighting(OutlineColor, normal, surfaceViewPos);
+        } else if (ToonGenericEnvironment) {
+            finalOutline = applyGenericEnvironment(OutlineColor, normal, surfaceViewPos, lightDir);
+        } else {
+            finalOutline = shadeToonSurface(OutlineColor, normal, lightDir, surfaceViewPos,
+                    vec3(max(LightIntensity, 0.0)), toonDiffuseRamp(saturate(dot(normal, lightDir))));
+        }
+    }
 
     // OutlineAlpha 已包含全局透明度，避免在描边中重复相乘。
     float finalAlpha = OutlineAlpha * edge * coverage;

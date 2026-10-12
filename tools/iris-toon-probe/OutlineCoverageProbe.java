@@ -24,6 +24,8 @@ public final class OutlineCoverageProbe {
             public float getToonOutlineR() { return 1; }
             public float getToonOutlineG() { return 1; }
             public float getToonOutlineB() { return 1; }
+            // 合成基线固定纯色，光照变化由独立像素探针验证。
+            public boolean isToonOutlineFollowLighting() { return false; }
         });
         int fbo = GL46C.glGenFramebuffers();
         int main = texture(SIZE, null), meta = texture(SIZE, null);

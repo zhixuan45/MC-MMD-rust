@@ -63,6 +63,10 @@ public class ToonConfig {
         return ConfigManager.isToonOutlineEnabled();
     }
 
+    public boolean isOutlineFollowLighting() {
+        return ConfigManager.isToonOutlineFollowLighting();
+    }
+
     public float getOutlineWidth() {
         return ConfigManager.getToonOutlineWidth();
     }

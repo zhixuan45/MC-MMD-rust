@@ -8,6 +8,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigDataTest {
     @Test
@@ -100,6 +101,26 @@ class ConfigDataTest {
         loaded.toonTransitionSoftness = -1.0f;
         loaded.save(configDir);
         assertEquals(0.0f, ConfigData.load(configDir).toonTransitionSoftness, 0.0001f);
+    }
+
+    @Test
+    void toonOutlineFollowLightingDefaultsAndPersistsFalse(@TempDir Path configDir) throws Exception {
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("config.json"), "{\"toonOutlineEnabled\":true}");
+        ConfigData loaded = ConfigData.load(configDir);
+        assertTrue(loaded.toonOutlineFollowLighting);
+        assertTrue(new TestConfig(loaded).isToonOutlineFollowLighting());
+
+        loaded.toonOutlineFollowLighting = false;
+        loaded.save(configDir);
+        ConfigData roundTrip = ConfigData.load(configDir);
+        assertFalse(roundTrip.toonOutlineFollowLighting);
+        ConfigManager.init(new TestConfig(roundTrip));
+        try {
+            assertFalse(ConfigManager.isToonOutlineFollowLighting());
+        } finally {
+            ConfigManager.init(null);
+        }
     }
 
     @Test

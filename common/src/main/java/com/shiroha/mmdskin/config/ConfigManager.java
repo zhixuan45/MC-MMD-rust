@@ -78,6 +78,10 @@ public class ConfigManager {
         return provider != null ? provider.isToonOutlineEnabled() : true;
     }
 
+    public static boolean isToonOutlineFollowLighting() {
+        return provider != null ? provider.isToonOutlineFollowLighting() : true;
+    }
+
     public static float getToonOutlineWidth() {
         return provider != null ? provider.getToonOutlineWidth() : 0.0022f;
     }

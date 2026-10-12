@@ -47,6 +47,8 @@ public class ConfigData {
     public float toonSpecularPower = 96.0f;
     public float toonSpecularIntensity = 0.015f;
     public boolean toonOutlineEnabled = true;
+    /** 描边默认跟随主体光照。 */
+    public boolean toonOutlineFollowLighting = true;
     public float toonOutlineWidth = 0.0022f;
     public float toonOutlineR = 0.06f;
     public float toonOutlineG = 0.08f;

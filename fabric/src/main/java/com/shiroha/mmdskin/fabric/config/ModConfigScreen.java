@@ -290,6 +290,15 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_follow_lighting"),
+                data.toonOutlineFollowLighting)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline_follow_lighting.tooltip"))
+            .setSaveConsumer(value -> data.toonOutlineFollowLighting = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_outline_width"),
                 (int) (data.toonOutlineWidth * 1000), 1, 100)

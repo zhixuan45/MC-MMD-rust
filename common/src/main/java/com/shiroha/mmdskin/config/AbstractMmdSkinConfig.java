@@ -37,6 +37,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonSpecularPower() { return data.toonSpecularPower; }
     @Override public float getToonSpecularIntensity() { return data.toonSpecularIntensity; }
     @Override public boolean isToonOutlineEnabled() { return data.toonOutlineEnabled; }
+    @Override public boolean isToonOutlineFollowLighting() { return data.toonOutlineFollowLighting; }
     @Override public float getToonOutlineWidth() { return data.toonOutlineWidth; }
     @Override public float getToonOutlineR() { return data.toonOutlineR; }
     @Override public float getToonOutlineG() { return data.toonOutlineG; }

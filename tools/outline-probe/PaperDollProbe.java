@@ -148,6 +148,7 @@ public final class PaperDollProbe {
         GL46C.glEnable(GL46C.GL_CULL_FACE);
         GL46C.glCullFace(GL46C.GL_FRONT);
         GL46C.glUseProgram(program);
+        GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "FollowLighting"), 0);
         float[] projection = perspectiveMatrix(1.04719755f, 0.1f, 100f);
         float[] modelView = translation(0, 0, -depth);
         GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(program, "ProjMat"), false, projection);
@@ -276,6 +277,7 @@ public final class PaperDollProbe {
         GL46C.glReadPixels(0, 0, BUFFER_SIZE, BUFFER_SIZE, GL46C.GL_RGBA, GL46C.GL_UNSIGNED_BYTE, baseMask);
 
         GL46C.glUseProgram(outlineProgram);
+        GL46C.glUniform1i(GL46C.glGetUniformLocation(outlineProgram, "FollowLighting"), 0);
         matrices.upload(outlineProgram);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(outlineProgram, "OutlineWidth"), width);
         GL46C.glUniform3f(GL46C.glGetUniformLocation(outlineProgram, "OutlineColor"), 0, 0, 0);
@@ -321,10 +323,13 @@ public final class PaperDollProbe {
     private static int createOutlineProgram(String variant, boolean sourceSnapshot) throws Exception {
         Path root = Path.of("common/src/main/resources/assets/mmdskin/shader");
         String vertex = Files.readString(root.resolve("toon_outline_body.vert.glsl")).replace("\r\n", "\n");
+        String surfaceLighting = Files.readString(root.resolve("toon_surface_lighting.glsl"));
         String fragment = Files.readString(root.resolve("toon_outline_body.frag.glsl"))
                 .replace("\r\n", "\n")
                 .replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location=0) out vec4 color;")
-                .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { color=vec4(c,alpha); }");
+                .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { color=vec4(c,alpha); }")
+                .replace("/* TOON_SURFACE_LIGHTING */", surfaceLighting)
+                .replace("/* TOON_LIGHTING */", "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }");
         if (sourceSnapshot) {
             vertex = legacyPerspectiveExpansion(vertex);
             fragment = fragment.replace("    // 正交投影的视线不随屏幕位置与 GUI 图层深度改变。\n"

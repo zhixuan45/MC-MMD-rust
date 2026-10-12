@@ -21,9 +21,12 @@ public final class Probe {
             GL.createCapabilities();
             Path shaders = Path.of("common/src/main/resources/assets/mmdskin/shader");
             String vertex = Files.readString(shaders.resolve("toon_outline_body.vert.glsl"));
+            String surfaceLighting = Files.readString(shaders.resolve("toon_surface_lighting.glsl"));
             String fragment = Files.readString(shaders.resolve("toon_outline_body.frag.glsl"))
                     .replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location=0) out vec4 color;")
-                    .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { color=vec4(c,alpha); }");
+                    .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { color=vec4(c,alpha); }")
+                    .replace("/* TOON_SURFACE_LIGHTING */", surfaceLighting)
+                    .replace("/* TOON_LIGHTING */", "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }");
             int program = GL46C.glCreateProgram();
             int vs = compile(GL46C.GL_VERTEX_SHADER, vertex);
             int fs = compile(GL46C.GL_FRAGMENT_SHADER, fragment);
@@ -32,6 +35,7 @@ public final class Probe {
             GL46C.glLinkProgram(program);
             check(GL46C.glGetProgrami(program, GL46C.GL_LINK_STATUS) != 0, GL46C.glGetProgramInfoLog(program));
             GL46C.glUseProgram(program);
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "FollowLighting"), 0);
             check(GL46C.glGetUniformLocation(program, "Sampler0") >= 0, "透明遮罩必须采样当前材质");
             check(GL46C.glGetAttribLocation(program, "UV0") >= 0, "遮罩必须使用主体 UV");
             check(GL46C.glGetUniformLocation(program, "OutlineAlpha") >= 0, "逐子网格 alpha 必须存在");
