@@ -119,6 +119,7 @@ public final class LightingProbe {
         check(rotation.find(), "太阳旋转参数");
         double angle = Math.toRadians(Double.parseDouble(rotation.group(1)));
         if (!bsl) ToonControlsProbe.run(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
+        shader.useMain();
         check(!shader.setEnvironmentLighting(0, 15, 15), "GUI/无 Iris 应关闭包内光照");
         GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, 0);
         GL46C.glDeleteFramebuffers(fbo);

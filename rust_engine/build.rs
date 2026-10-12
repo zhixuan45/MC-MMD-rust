@@ -100,10 +100,8 @@ fn main() {
 
     build.compile("bullet3");
 
-    // 告知 cargo 链接静态库
-    println!("cargo:rustc-link-lib=static=bullet3");
-
-    // 其他目标的 C++ 运行时由 cc 按目标平台选择。
+    // cc 已按 bullet3 -> C++ 运行时的顺序输出链接指令。
+    // 再追加 bullet3 会使 Cargo 去重后把它移到 stdc++ 后面，破坏 Linux 链接顺序。
 
     // 重新编译条件
     println!("cargo:rerun-if-changed={}", wrapper_dir);
