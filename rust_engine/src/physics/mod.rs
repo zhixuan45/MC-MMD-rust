@@ -3,6 +3,7 @@
 use glam::{Mat4, Vec3};
 
 pub(crate) mod body_collider_synthesis;
+mod body_part;
 pub mod bullet_ffi;
 pub mod collision_topology;
 pub mod config;
