@@ -268,6 +268,7 @@ public class TextureRepository {
     public static class Texture {
         public int tex;
         public boolean hasAlpha;
+        public boolean hasTranslucentPixels;
         public long vramSize;
         final AtomicInteger refCount = new AtomicInteger(0);
         volatile long lastReleaseTime;

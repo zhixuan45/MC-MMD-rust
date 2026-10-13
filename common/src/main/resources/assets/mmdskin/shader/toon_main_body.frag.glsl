@@ -8,7 +8,11 @@ in float eyeMask;
 
 uniform sampler2D Sampler0;
 uniform float AlphaCutoff;
-uniform float GlobalAlpha;
+uniform vec4 MaterialColor;
+uniform vec3 MaterialSpecular;
+uniform float MaterialSpecularPower;
+uniform int AlphaPass; // 0: 全部（阴影），1: 实心，2: 半透明
+#define TOON_MATERIAL_LIGHTING
 uniform float EyeEmission;
 uniform float EyeMaterialMask;
 
@@ -18,11 +22,15 @@ uniform float EyeMaterialMask;
 
 void main() {
     vec4 texColor = texture(Sampler0, texCoord0);
-    if (texColor.a < AlphaCutoff) {
+    float finalAlpha = texColor.a * MaterialColor.a;
+    if (finalAlpha < AlphaCutoff) {
         discard;
     }
 
-    vec3 albedo = texColor.rgb;
+    if (AlphaPass == 1 && finalAlpha < 0.999) discard;
+    if (AlphaPass == 2 && finalAlpha >= 0.999) discard;
+
+    vec3 albedo = texColor.rgb * MaterialColor.rgb;
     vec3 normal = normalize(viewNormal);
     vec3 lightDir = normalize(viewLightDir);
     float ramp = toonDiffuseRamp(saturate(dot(normal, lightDir)));
@@ -44,7 +52,6 @@ void main() {
         linearColor += pow(max(albedo, vec3(0.0)), vec3(2.2)) * emission;
         finalColor = pow(linearColor, vec3(1.0 / 2.2));
     }
-    float finalAlpha = texColor.a * clamp(GlobalAlpha, 0.0, 1.0);
     if (finalAlpha < 0.001) {
         discard;
     }

@@ -15,7 +15,7 @@ import org.lwjgl.opengl.GL46C;
 public class ToonRenderHelper {
 
     private static final ToonConfig toonConfig = ToonConfig.getInstance();
-    private static final float ALPHA_CUTOFF = 0.1f;
+    private static final float ALPHA_CUTOFF = 0.001f;
 
     public static void setupToonUniforms(ToonShaderBase shader, float lightIntensity, Vector3f lightDirection) {
         setupToonUniforms(shader, lightIntensity, lightDirection, 1.0f);

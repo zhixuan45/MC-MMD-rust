@@ -447,6 +447,33 @@ public final class NativeRuntimeBridge implements
     }
 
     @Override
+    public float[] getMaterialAmbientColor(long modelHandle, int materialIndex) {
+        return readMaterialColor(nativeFunc().GetMaterialAmbient(modelHandle, materialIndex),
+                new float[] {0.5f, 0.5f, 0.5f});
+    }
+
+    @Override
+    public float[] getMaterialSpecularColor(long modelHandle, int materialIndex) {
+        return readMaterialColor(nativeFunc().GetMaterialSpecular(modelHandle, materialIndex),
+                new float[] {0.0f, 0.0f, 0.0f});
+    }
+
+    @Override
+    public float getMaterialSpecularPower(long modelHandle, int materialIndex) {
+        return nativeFunc().GetMaterialSpecularPower(modelHandle, materialIndex);
+    }
+
+    private float[] readMaterialColor(long address, float[] fallback) {
+        if (address != 0L) {
+            ByteBuffer buffer = ByteBuffer.allocateDirect(fallback.length * Float.BYTES)
+                    .order(ByteOrder.nativeOrder());
+            nativeFunc().CopyDataToByteBuffer(buffer, address, buffer.capacity());
+            buffer.asFloatBuffer().get(fallback);
+        }
+        return fallback;
+    }
+
+    @Override
     public boolean isMaterialVisible(long modelHandle, int materialIndex) {
         return nativeFunc().IsMaterialVisible(modelHandle, materialIndex);
     }

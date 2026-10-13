@@ -525,6 +525,9 @@ final class OpenGlModelRenderer {
                 target.indexType,
                 materialId -> target.mats[materialId].tex == 0 ? missingTextureId : target.mats[materialId].tex,
                 target::effectiveMaterialAlpha,
+                target.mats,
+                target.materialMorphData(),
+                IrisCompat.isRenderingShadows(),
                 materialId -> {
                     if (eyeShader != null) {
                         var material = target.mats[materialId];

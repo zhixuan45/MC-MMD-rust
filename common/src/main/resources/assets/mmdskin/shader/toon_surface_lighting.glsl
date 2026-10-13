@@ -44,16 +44,28 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
     vec3 halfVector = light + view;
     float specAngle = saturate(dot(n, halfVector / max(length(halfVector), 0.0001)));
     // 以半高宽切出高光色块，幂次只控制色块面积。
-    float spec = pow(specAngle, max(SpecularPower, 1.0));
+    float power = max(SpecularPower, 1.0);
+#ifdef TOON_MATERIAL_LIGHTING
+    power = max(MaterialSpecularPower * power / 96.0, 1.0);
+#endif
+    float spec = pow(specAngle, power);
     float specWidth = clamp(fwidth(spec), 0.005, 0.05);
     float highlight = smoothstep(0.5 - specWidth, 0.5 + specWidth, spec);
     float litMask = smoothstep(0.0, 0.1, ramp);
+#ifdef TOON_MATERIAL_LIGHTING
+    surface = max(vec3(0.0), surface + MaterialSpecular * highlight * SpecularIntensity * litMask);
+#else
     surface = mix(surface, vec3(1.0), saturate(highlight * SpecularIntensity * litMask));
+#endif
 
     float rim = pow(1.0 - saturate(dot(view, n)), max(RimPower, 0.1));
     float rimWidth = clamp(fwidth(rim), 0.005, 0.05);
     float rimBand = smoothstep(0.5 - rimWidth, 0.5 + rimWidth, rim);
+#ifdef TOON_MATERIAL_LIGHTING
+    surface = mix(surface, MaterialColor.rgb, saturate(rimBand * RimIntensity));
+#else
     surface = mix(surface, vec3(1.0), saturate(rimBand * RimIntensity));
+#endif
     // 光照只乘一次；高光与边缘光在暗处同样衰减。
     return surface * max(illumination, vec3(0.0));
 }

@@ -14,4 +14,16 @@ public interface NativeModelLoadPort {
     default float[] getMaterialDiffuseColor(long modelHandle, int materialIndex) {
         return new float[] {1.0f, 1.0f, 1.0f, 1.0f};
     }
+
+    default float[] getMaterialAmbientColor(long modelHandle, int materialIndex) {
+        return new float[] {0.5f, 0.5f, 0.5f};
+    }
+
+    default float[] getMaterialSpecularColor(long modelHandle, int materialIndex) {
+        return new float[] {0.0f, 0.0f, 0.0f};
+    }
+
+    default float getMaterialSpecularPower(long modelHandle, int materialIndex) {
+        return 0.0f;
+    }
 }

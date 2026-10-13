@@ -374,6 +374,10 @@ public abstract class BaseModelInstance implements ModelInstance {
         materialMorphResultsByteBuffer.rewind();
     }
 
+    public final ByteBuffer materialMorphData() {
+        return materialMorphResultsByteBuffer;
+    }
+
     private static final int MATERIAL_MORPH_STRIDE_FLOATS = 56;
     private static final int MATERIAL_MORPH_MUL_ALPHA_OFFSET = 3;
     private static final int MATERIAL_MORPH_ADD_ALPHA_OFFSET = 28 + 3;
