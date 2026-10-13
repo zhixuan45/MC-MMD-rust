@@ -89,6 +89,12 @@ final class VanillaEntityProbe {
             SubMeshDrawHelper.draw(submesh,1,4,GL46C.GL_UNSIGNED_INT,i->atlas,(i,a)->a,new ModelMaterial[]{material},null,false,i->{});
             GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
             expect(pixel[3],.625f,"intentional material alpha still multiplies texture alpha");
+            GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+            submesh.putFloat(12,.05f);
+            SubMeshDrawHelper.draw(submesh,1,4,GL46C.GL_UNSIGNED_INT,i->atlas,(i,a)->a,new ModelMaterial[]{material},null,false,i->{});
+            GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
+            expect(pixel[3],.05f+128/255f*.05f*.95f,"authored material alpha below .1 remains visible");
+            if(pixel[3]<.06f)throw new AssertionError("low material alpha discarded");
             submesh.putFloat(12,1);
             // The solid pass must not write depth for a fractional texel. Otherwise
             // a translucent front triangle hides the opaque surface behind it.
@@ -102,6 +108,15 @@ final class VanillaEntityProbe {
             expect(pixel[3],1,"opaque rear provides full coverage");
             System.out.println("PASS full vanilla mixed atlas front translucent / rear opaque="+java.util.Arrays.toString(pixel));
             GL46C.glDeleteTextures(inverseAtlas);
+            int softAtlas=texture(2,1,new byte[]{(byte)255,0,0,(byte)5, 0,0,(byte)255,(byte)255});
+            material.tex=softAtlas;shader.setSampler("Sampler0",softAtlas);shader.apply();
+            GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+            SubMeshDrawHelper.draw(submesh,1,4,GL46C.GL_UNSIGNED_INT,i->softAtlas,(i,a)->a,new ModelMaterial[]{material},null,false,i->{});
+            GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
+            if(Math.abs(pixel[0]-5/255f)>.004f)throw new AssertionError("low texture alpha discarded: "+pixel[0]);
+            expect(pixel[2],250/255f,"soft front texel blends with rear opaque surface");
+            GL46C.glDeleteTextures(softAtlas);
+            System.out.println("PASS authored low material/texture alpha survives vanilla entity cutoff");
             checkNativeMaterials(shader,uvs,submesh);
             checkTriangleOrder(shader,positions,uvs);
             if(GL46C.glGetError()!=GL46C.GL_NO_ERROR)throw new AssertionError("full vanilla probe GL error");
