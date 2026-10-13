@@ -31,7 +31,9 @@ final class TextureGpuLoader {
             buf.rewind();
             uploadPixels(width, height, hasAlpha, buf);
             configureTexture();
-            return buildTexture(texId, width, height, hasAlpha);
+            TextureRepository.Texture texture = buildTexture(texId, width, height, hasAlpha);
+            texture.hasTranslucentPixels = hasTranslucentPixels(buf, hasAlpha);
+            return texture;
         } catch (RuntimeException | Error e) {
             deleteGlTexture(texId);
             throw e;
@@ -65,7 +67,9 @@ final class TextureGpuLoader {
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
             uploadPixels(pre.width, pre.height, pre.hasAlpha, pre.pixelData());
             configureTexture();
-            return buildTexture(texId, pre.width, pre.height, pre.hasAlpha);
+            TextureRepository.Texture texture = buildTexture(texId, pre.width, pre.height, pre.hasAlpha);
+            texture.hasTranslucentPixels = hasTranslucentPixels(pre.pixelData(), pre.hasAlpha);
+            return texture;
         } catch (RuntimeException | Error e) {
             deleteGlTexture(texId);
             throw e;
@@ -87,7 +91,9 @@ final class TextureGpuLoader {
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
             uploadPixels(1, 1, true, pixel);
             configureTexture();
-            return buildTexture(texId, 1, 1, true);
+            TextureRepository.Texture texture = buildTexture(texId, 1, 1, true);
+            texture.hasTranslucentPixels = hasTranslucentPixels(pixel, true);
+            return texture;
         } catch (RuntimeException | Error e) {
             deleteGlTexture(texId);
             throw e;
@@ -101,6 +107,15 @@ final class TextureGpuLoader {
             deleteGlTexture(tex.tex);
             tex.tex = 0;
         }
+    }
+
+    static boolean hasTranslucentPixels(ByteBuffer pixels, boolean hasAlpha) {
+        if (!hasAlpha) return false;
+        for (int i = pixels.position() + 3; i < pixels.limit(); i += 4) {
+            int alpha = Byte.toUnsignedInt(pixels.get(i));
+            if (alpha > 0 && alpha < 255) return true;
+        }
+        return false;
     }
 
     static void deleteGlTexture(int texId) {

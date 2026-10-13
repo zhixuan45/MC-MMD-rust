@@ -13,11 +13,15 @@ public final class MaterialTextureLoader {
     public static ModelMaterial loadMaterial(NativeModelLoadPort port, long modelHandle,
                                               int materialIndex, List<String> textureKeys) {
         ModelMaterial material = new ModelMaterial();
+        material.diffuse = port.getMaterialDiffuseColor(modelHandle, materialIndex);
+        material.ambient = port.getMaterialAmbientColor(modelHandle, materialIndex);
+        material.specular = port.getMaterialSpecularColor(modelHandle, materialIndex);
+        material.specularPower = port.getMaterialSpecularPower(modelHandle, materialIndex);
         String path = port.getMaterialTexturePath(modelHandle, materialIndex);
         material.texturePath = path == null ? "" : path;
         if (path == null || path.isEmpty()) {
             TextureRepository.Texture texture = TextureRepository.createMaterialColorTexture(
-                    port.getMaterialDiffuseColor(modelHandle, materialIndex));
+                    new float[] {1.0f, 1.0f, 1.0f, 1.0f});
             material.tex = texture.tex;
             material.hasAlpha = texture.hasAlpha;
             material.ownsTexture = true;
@@ -26,6 +30,7 @@ public final class MaterialTextureLoader {
             if (texture != null) {
                 material.tex = texture.tex;
                 material.hasAlpha = texture.hasAlpha;
+                material.hasTranslucentPixels = texture.hasTranslucentPixels;
                 TextureRepository.addRef(path);
                 textureKeys.add(path);
             }

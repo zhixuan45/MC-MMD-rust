@@ -16,6 +16,11 @@ public class ModelMaterial {
     public String name = "";
     public String texturePath = "";
     public boolean ownsTexture = false;
+    public float[] diffuse = {1.0f, 1.0f, 1.0f, 1.0f};
+    public float[] ambient = {0.5f, 0.5f, 0.5f};
+    public float[] specular = {0.0f, 0.0f, 0.0f};
+    public float specularPower;
+    public boolean hasTranslucentPixels;
 
     private Boolean cachedIsFacialFeature;
 

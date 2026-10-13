@@ -507,7 +507,10 @@ final class GpuSkinningModelRenderer {
                 target.indexElementSize,
                 target.indexType,
                 materialId -> target.mats[materialId].tex == 0 ? missingTextureId : target.mats[materialId].tex,
-                target::effectiveMaterialAlpha
+                target::effectiveMaterialAlpha,
+                target.mats,
+                target.materialMorphData(),
+                IrisCompat.isRenderingShadows()
         );
     }
 

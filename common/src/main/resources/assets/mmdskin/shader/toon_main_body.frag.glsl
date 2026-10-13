@@ -14,7 +14,10 @@ uniform vec3 ShadowColor;
 uniform float SpecularPower;
 uniform float SpecularIntensity;
 uniform float AlphaCutoff;
-uniform float GlobalAlpha;
+uniform vec4 MaterialColor;
+uniform vec3 MaterialSpecular;
+uniform float MaterialSpecularPower;
+uniform int AlphaPass; // 0: 全部（阴影），1: 实心，2: 半透明
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
@@ -25,11 +28,14 @@ float saturate(float value) {
 
 void main() {
     vec4 texColor = texture(Sampler0, texCoord0);
-    if (texColor.a < AlphaCutoff) {
+    float finalAlpha = texColor.a * MaterialColor.a;
+    if (finalAlpha < AlphaCutoff) {
         discard;
     }
+    if (AlphaPass == 1 && finalAlpha < 0.999) discard;
+    if (AlphaPass == 2 && finalAlpha >= 0.999) discard;
 
-    vec3 albedo = texColor.rgb;
+    vec3 albedo = texColor.rgb * MaterialColor.rgb;
     vec3 normal = normalize(viewNormal);
     vec3 lightDir = normalize(viewLightDir);
     vec3 viewDir = normalize(-viewPos);
@@ -65,17 +71,17 @@ void main() {
 
     vec3 halfDir = normalize(lightDir + viewDir);
     float specAngle = saturate(dot(normal, halfDir));
-    float specular = pow(specAngle, max(SpecularPower, 1.0));
-    float specThreshold = mix(0.82, 0.96, clamp(SpecularPower / 96.0, 0.0, 1.0));
+    float materialPower = max(MaterialSpecularPower * max(SpecularPower, 1.0) / 96.0, 1.0);
+    float specular = pow(specAngle, materialPower);
+    float specThreshold = mix(0.82, 0.96, clamp(materialPower / 96.0, 0.0, 1.0));
     float specBand = smoothstep(specThreshold - 0.02, specThreshold + 0.02, specular);
     float specMask = step(0.5, halfLambert);
-    finalColor += vec3(1.0) * specBand * SpecularIntensity * specMask * 0.5;
+    finalColor = max(vec3(0.0), finalColor + MaterialSpecular * specBand * SpecularIntensity * specMask * 0.5);
 
     float fresnel = 1.0 - saturate(dot(viewDir, normal));
     float rim = pow(fresnel, max(RimPower, 1.0));
     float rimEdge = smoothstep(0.7, 0.9, rim);
     float rimMask = 1.0 - toonRamp;
-    float finalAlpha = texColor.a * clamp(GlobalAlpha, 0.0, 1.0);
     if (finalAlpha < 0.001) {
         discard;
     }
