@@ -66,6 +66,9 @@ public class ConfigData {
     public boolean physicsKinematicFilter = false;
     /** 刚体接触碰撞开关；默认开启以遵循 PMX 碰撞组并防止衣物穿模。 */
     public boolean physicsCollisionEnabled = true;
+    /** 仅为缺少身体支撑的模型自动补充碰撞刚体。 */
+    public boolean physicsAutoUpperBodyColliders = true;
+    public boolean physicsAutoLowerBodyColliders = true;
     /** 默认忽略关节图距离不超过 2 的内部碰撞，减少接触与关节约束竞争。 */
     public PhysicsCollisionStabilityMode physicsCollisionStabilityMode =
             PhysicsCollisionStabilityMode.STABLE;

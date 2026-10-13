@@ -524,6 +524,24 @@ public class ModConfigScreen {
             .build());
 
         physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_auto_upper_body_colliders"),
+                data.physicsAutoUpperBodyColliders)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_auto_upper_body_colliders.tooltip"))
+            .setSaveConsumer(value -> data.physicsAutoUpperBodyColliders = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_auto_lower_body_colliders"),
+                data.physicsAutoLowerBodyColliders)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_auto_lower_body_colliders.tooltip"))
+            .setSaveConsumer(value -> data.physicsAutoLowerBodyColliders = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.physics_static_collider_scale"),
                 (int) (data.physicsStaticColliderScale * 100), 10, 150)

@@ -26,6 +26,10 @@ public interface IPhysicsConfig {
 
     default boolean isPhysicsCollisionEnabled() { return true; }
 
+    default boolean isPhysicsAutoUpperBodyColliders() { return true; }
+
+    default boolean isPhysicsAutoLowerBodyColliders() { return true; }
+
     default PhysicsCollisionStabilityMode getPhysicsCollisionStabilityMode() {
         return PhysicsCollisionStabilityMode.STABLE;
     }

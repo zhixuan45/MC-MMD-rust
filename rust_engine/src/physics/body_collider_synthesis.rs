@@ -1,301 +1,317 @@
-//! 身体跟骨碰撞体自动合成与物理回写前动态骨骼几何推离保护。
-//!
-//! 1. 为缺失上身/胸部碰撞刚体的模型（如 Grass Wonder 等）自动合成保守的跟骨碰撞体；
-//! 2. 在物理模拟回写骨骼前，对所有动态骨骼（头发、披发、袖子、飘带等）执行几何推离，
-//!    彻底防止末端在极限动作下穿透胸腔与身躯内部。
+//! 为真正缺失的身体区域补充跟骨碰撞体；保留模型原生支持，避免初始嵌入。
 
 use glam::{Mat4, Vec3};
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode, RigidBodyShape};
 
-use super::mmd_rigid_body::{MmdRigidBodyData, PhysicsMode};
+use super::bullet_ffi::{BulletRigidBody, BulletShape, BulletWorld};
+use super::mmd_rigid_body::{
+    effective_collision_shape_size_with_static_scale, is_lower_body_collider, MmdRigidBodyData,
+    PhysicsMode,
+};
 
-/// 上半身碰撞体保守胶囊体半径（单位：MMD 局部单位）。
-pub const SYNTHESIZED_CHEST_RADIUS: f32 = 0.85;
-/// 上半身碰撞体胶囊体高度。
-pub const SYNTHESIZED_CHEST_HEIGHT: f32 = 1.1;
-/// 头部碰撞球保守半径。
-#[allow(dead_code)]
-pub const SYNTHESIZED_HEAD_RADIUS: f32 = 0.75;
-/// 颈部碰撞球保守半径。
-pub const SYNTHESIZED_NECK_RADIUS: f32 = 0.45;
-/// 骨盆/下半身碰撞体保守胶囊体半径。
-pub const SYNTHESIZED_PELVIS_RADIUS: f32 = 0.70;
-/// 骨盆/下半身碰撞体胶囊体横向跨度。
-pub const SYNTHESIZED_PELVIS_HEIGHT: f32 = 0.60;
-/// 臀部后弧面保形胶囊体保守半径。
-pub const SYNTHESIZED_GLUTES_RADIUS: f32 = 0.45;
-/// 臀部后弧面保形胶囊体横向跨度。
-pub const SYNTHESIZED_GLUTES_WIDTH: f32 = 0.50;
+mod lower_body;
+mod upper_body;
 
-/// 检测模型中是否包含裙摆物理刚体。
-pub fn has_skirt_rigid_bodies(rigid_bodies: &[PmxRigidBody]) -> bool {
-    const SKIRT_PARTS: &[&str] = &[
-        "裙",
-        "スカート",
-        "skirt",
-        "petticoat",
-        "下装",
-        "下衣",
-        "裾",
-        "摆",
-        "衣摆",
-        "后摆",
-        "下摆",
-        "cloak",
-        "cape",
-    ];
-    rigid_bodies.iter().any(|rb| {
-        if rb.mode == RigidBodyMode::Static {
+#[derive(Clone, Copy)]
+enum BodyRegion {
+    Upper,
+    Neck,
+    Lower,
+}
+
+impl BodyRegion {
+    fn names(self) -> &'static [&'static str] {
+        match self {
+            Self::Upper => &["上半身", "upperbody", "upper_body", "chest", "spine", "胸"],
+            Self::Neck => &["首", "neck", "頸", "颈"],
+            Self::Lower => &[
+                "下半身",
+                "腰",
+                "pelvis",
+                "hips",
+                "hip",
+                "waist",
+                "lowerbody",
+                "body_blocker",
+                "glutes",
+                "buttock",
+                "臀",
+                "尻",
+            ],
+        }
+    }
+
+    fn matches(self, name: &str) -> bool {
+        let name = name.to_lowercase();
+        self.names().iter().any(|part| name_matches(&name, part))
+    }
+
+    fn minimum_radius(self) -> f32 {
+        match self {
+            Self::Upper => 0.4,
+            Self::Neck => 0.2,
+            Self::Lower => 0.45,
+        }
+    }
+}
+
+fn name_matches(name: &str, part: &str) -> bool {
+    if !part.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return name.contains(part);
+    }
+    name.split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|token| {
+            token
+                .strip_prefix(part)
+                .is_some_and(|suffix| suffix.chars().all(|c| c.is_ascii_digit()))
+        })
+}
+
+fn valid_shape(body: &PmxRigidBody) -> bool {
+    body.size
+        .iter()
+        .chain(&body.position)
+        .chain(&body.rotation)
+        .all(|v| v.is_finite())
+        && match body.shape {
+            RigidBodyShape::Sphere => body.size[0] > 0.0,
+            RigidBodyShape::Capsule => body.size[0] > 0.0 && body.size[1] >= 0.0,
+            RigidBodyShape::Box => body.size.iter().all(|v| *v > 0.0),
+        }
+}
+
+fn support_radius(body: &PmxRigidBody) -> f32 {
+    match body.shape {
+        RigidBodyShape::Sphere | RigidBodyShape::Capsule => body.size[0],
+        RigidBodyShape::Box => body.size[0].min(body.size[2]),
+    }
+}
+
+fn accessory_name(name: &str) -> bool {
+    let name = name.to_lowercase();
+    // Explicit body blockers can belong to a tail rig and still support the body.
+    if name.contains("body_blocker") {
+        return false;
+    }
+    [
+        "anchor",
+        "アンカー",
+        "锚",
+        "飾",
+        "饰",
+        "accessory",
+        "ribbon",
+        "蝴蝶",
+        "袖",
+        "sleeve",
+        "tail",
+        "尻尾",
+        "hair",
+        "髪",
+        "髮",
+        "发",
+        "braid",
+        "shoe",
+        "鞋",
+    ]
+    .iter()
+    .any(|part| name.contains(part))
+}
+
+fn has_region(bodies: &[PmxRigidBody], names: &[impl AsRef<str>], region: BodyRegion) -> bool {
+    bodies.iter().any(|body| {
+        if body.mode != RigidBodyMode::Static
+            || !valid_shape(body)
+            || support_radius(body) < region.minimum_radius()
+            || accessory_name(&body.local_name)
+            || accessory_name(&body.universal_name)
+        {
             return false;
         }
-        let local = rb.local_name.to_lowercase();
-        let universal = rb.universal_name.to_lowercase();
-        SKIRT_PARTS
-            .iter()
-            .any(|part| local.contains(part) || universal.contains(part))
+        let bone_name = usize::try_from(body.bone_index)
+            .ok()
+            .and_then(|i| names.get(i))
+            .map(|name| name.as_ref());
+        // Recognized bones take priority over misleading rigid-body template names.
+        if let Some(name) = bone_name {
+            if accessory_name(name) {
+                return false;
+            }
+            if [BodyRegion::Upper, BodyRegion::Neck, BodyRegion::Lower]
+                .into_iter()
+                .any(|r| r.matches(name))
+            {
+                return region.matches(name);
+            }
+        }
+        region.matches(&body.local_name) || region.matches(&body.universal_name)
     })
 }
 
-/// 检测模型中是否已具有有效的臀部后弧面跟骨支撑碰撞体。
-pub fn has_posterior_glutes_collider(rigid_bodies: &[PmxRigidBody], waist_bone_idx: usize) -> bool {
-    const GLUTES_PARTS: &[&str] = &[
-        "glutes", "butt", "buttock", "尻", "臀", "hip_rear", "hip_back",
-    ];
-    rigid_bodies.iter().any(|rb| {
-        if rb.mode != RigidBodyMode::Static {
-            return false;
-        }
-        let local = rb.local_name.to_lowercase();
-        let universal = rb.universal_name.to_lowercase();
-        if GLUTES_PARTS
-            .iter()
-            .any(|part| local.contains(part) || universal.contains(part))
-        {
-            return true;
-        }
-        if rb.bone_index == waist_bone_idx as i32 {
-            let max_dim = match rb.shape {
-                RigidBodyShape::Sphere => rb.size[0],
-                RigidBodyShape::Box => rb.size[0].max(rb.size[1]).max(rb.size[2]),
-                RigidBodyShape::Capsule => rb.size[0].max(rb.size[1]),
-            };
-            let rear_extent = rb.position[2] + max_dim;
-            if rear_extent >= 0.8 && !local.contains("tail") && !universal.contains("tail") {
-                return true;
-            }
+#[cfg(test)]
+fn has_upper_body_collider(bodies: &[PmxRigidBody]) -> bool {
+    has_region(bodies, &[] as &[String], BodyRegion::Upper)
+}
+
+#[cfg(test)]
+fn has_lower_body_collider(bodies: &[PmxRigidBody]) -> bool {
+    has_region(bodies, &[] as &[String], BodyRegion::Lower)
+}
+
+/// Positions are right-handed model-space bone positions. PMX/Bullet uses -Z.
+/// Fill only a missing chest, neck or pelvis. An existing lower-body collider
+/// already supplies support: never add a second fixed-offset glutes collider.
+pub(crate) struct BodyColliderFillPlan {
+    upper: Vec<PmxRigidBody>,
+    lower: Vec<PmxRigidBody>,
+}
+
+/// Only inspect PMX metadata and compose candidate data. No Bullet objects are allocated.
+pub(crate) fn detect_missing_body_colliders(
+    bodies: &[PmxRigidBody],
+    names: &[impl AsRef<str>],
+    positions: &[[f32; 3]],
+) -> BodyColliderFillPlan {
+    BodyColliderFillPlan {
+        upper: upper_body::detect(bodies, names, positions),
+        lower: lower_body::detect(bodies, names, positions),
+    }
+}
+
+/// Apply each detected region independently, checking actual shapes before admission.
+pub(crate) fn apply_body_collider_fill(
+    plan: BodyColliderFillPlan,
+    authored: &[PmxRigidBody],
+    fill_upper: bool,
+    fill_lower: bool,
+) -> Vec<PmxRigidBody> {
+    if super::config::get_config().debug_log {
+        log::info!("[Bullet3][BODY_COLLIDER_FILL_PLAN] upper_candidates={} lower_candidates={} apply_upper={} apply_lower={}",
+            plan.upper.len(), plan.lower.len(), fill_upper, fill_lower);
+    }
+    let mut result = Vec::new();
+    if fill_upper {
+        result.extend(upper_body::apply(plan.upper, authored));
+    }
+    if fill_lower {
+        result.extend(lower_body::apply(plan.lower, authored));
+    }
+    result
+}
+
+fn apply_candidates(candidates: Vec<PmxRigidBody>, authored: &[PmxRigidBody]) -> Vec<PmxRigidBody> {
+    candidates.into_iter().filter(|candidate| {
+        if candidate_is_clear(candidate, authored) == Some(true) { return true; }
+        if super::config::get_config().debug_log {
+            log::info!("[Bullet3][BODY_COLLIDER_FILL_SKIP] name={} reason=initial_overlap_or_unavailable_probe", candidate.local_name);
         }
         false
-    })
+    }).collect()
 }
 
-/// 检测模型中是否已经具有有效的胸部/上半身跟骨碰撞体。
-pub fn has_upper_body_collider(rigid_bodies: &[PmxRigidBody]) -> bool {
-    const UPPER_NAMES: &[&str] = &["胸", "chest", "bust", "上半身", "upperbody", "spine"];
-    rigid_bodies.iter().any(|rb| {
-        if rb.mode != RigidBodyMode::Static {
-            return false;
-        }
-        let local = rb.local_name.to_lowercase();
-        let universal = rb.universal_name.to_lowercase();
-        let max_dim = match rb.shape {
-            RigidBodyShape::Sphere => rb.size[0],
-            RigidBodyShape::Box => rb.size[0].max(rb.size[1]).max(rb.size[2]),
-            RigidBodyShape::Capsule => rb.size[0].max(rb.size[1]),
-        };
-        // 尺寸需大于 0.4，排除仅用于关节锚定的微小 anchor 点
-        max_dim >= 0.4
-            && UPPER_NAMES
-                .iter()
-                .any(|name| local.contains(name) || universal.contains(name))
-    })
+struct ColliderSpec {
+    region: BodyRegion,
+    name: &'static str,
+    bones: &'static [&'static str],
+    shape: RigidBodyShape,
+    size: [f32; 3],
+    rotation: [f32; 3],
 }
 
-/// 检测模型中是否已经具有有效的下半身/骨盆跟骨碰撞体（排除了仅用于尾巴等特定部件的微小锚点刚体）。
-pub fn has_lower_body_collider(rigid_bodies: &[PmxRigidBody]) -> bool {
-    const LOWER_NAMES: &[&str] = &[
-        "下半身",
-        "腰",
-        "pelvis",
-        "hip",
-        "waist",
-        "lowerbody",
-        "thigh",
-        "body_blocker",
-        "blocker",
-    ];
-    rigid_bodies.iter().any(|rb| {
-        if rb.mode != RigidBodyMode::Static {
-            return false;
-        }
-        let local = rb.local_name.to_lowercase();
-        let universal = rb.universal_name.to_lowercase();
-        let is_blocker = local.contains("blocker") || universal.contains("blocker");
-        // 排除尾巴链上的微小锚点刚体（但保留身体阻挡体 body_blocker）
-        if (local.contains("tail") || universal.contains("tail")) && !is_blocker {
-            return false;
-        }
-        let max_dim = match rb.shape {
-            RigidBodyShape::Sphere => rb.size[0],
-            RigidBodyShape::Box => rb.size[0].max(rb.size[1]).max(rb.size[2]),
-            RigidBodyShape::Capsule => rb.size[0].max(rb.size[1]),
-        };
-        // 尺寸需大于等于 0.45，排除仅为骨骼线的极细碰撞体和微小锚点
-        max_dim >= 0.45
-            && LOWER_NAMES
-                .iter()
-                .any(|name| local.contains(name) || universal.contains(name))
-    })
-}
-
-/// 为缺失上身或下身碰撞体的模型自动合成保守的跟骨碰撞刚体。
-pub fn synthesize_missing_body_colliders(
-    rigid_bodies: &[PmxRigidBody],
-    bone_names: &[impl AsRef<str>],
-    bone_positions: &[[f32; 3]],
-) -> Vec<PmxRigidBody> {
-    let mut synthesized = Vec::new();
-
-    // 1. 上半身碰撞体合成（胸部与颈部）
-    if !has_upper_body_collider(rigid_bodies) {
-        // 查找胸部/上半身骨骼
-        let chest_bone_idx = find_bone_index(
-            bone_names,
-            &["上半身2", "上半身", "chest", "spine", "胸", "upperbody"],
-        );
-        if let Some(idx) = chest_bone_idx {
-            let pos = bone_positions.get(idx).copied().unwrap_or([0.0; 3]);
-            synthesized.push(PmxRigidBody {
-                local_name: "Synthesized_Chest_Collider".to_owned(),
-                universal_name: "Synthesized_Chest_Collider".to_owned(),
-                bone_index: idx as i32,
-                group: 0, // PMX 组 0（通用身体组），允许与全部动态刚体碰撞
-                un_collision_group_flag: 0xFFFF,
-                shape: RigidBodyShape::Capsule,
-                size: [SYNTHESIZED_CHEST_RADIUS, SYNTHESIZED_CHEST_HEIGHT, 0.0],
-                position: pos,
-                rotation: [0.0; 3],
-                mass: 0.0,
-                move_attenuation: 0.0,
-                rotation_attenuation: 0.0,
-                repulsion: 0.0,
-                friction: 0.5,
-                mode: RigidBodyMode::Static,
-            });
-        }
-
-        // 查找颈部骨骼
-        let neck_bone_idx = find_bone_index(bone_names, &["首", "neck", "頸"]);
-        if let Some(idx) = neck_bone_idx {
-            let pos = bone_positions.get(idx).copied().unwrap_or([0.0; 3]);
-            synthesized.push(PmxRigidBody {
-                local_name: "Synthesized_Neck_Collider".to_owned(),
-                universal_name: "Synthesized_Neck_Collider".to_owned(),
-                bone_index: idx as i32,
-                group: 0,
-                un_collision_group_flag: 0xFFFF,
-                shape: RigidBodyShape::Sphere,
-                size: [SYNTHESIZED_NECK_RADIUS, 0.0, 0.0],
-                position: pos,
-                rotation: [0.0; 3],
-                mass: 0.0,
-                move_attenuation: 0.0,
-                rotation_attenuation: 0.0,
-                repulsion: 0.0,
-                friction: 0.5,
-                mode: RigidBodyMode::Static,
-            });
-        }
+fn detect_region(
+    spec: ColliderSpec,
+    bodies: &[PmxRigidBody],
+    names: &[impl AsRef<str>],
+    positions: &[[f32; 3]],
+) -> Option<PmxRigidBody> {
+    if has_region(bodies, names, spec.region) {
+        return None;
     }
-
-    // 2. 下半身/骨盆碰撞体合成：必须优先锁定到「腰」骨骼，避免下半身动画旋转时导致裙摆鼓起或内陷
-    if !has_lower_body_collider(rigid_bodies) {
-        let pelvis_bone_idx = find_bone_index(
-            bone_names,
-            &[
-                "腰",
-                "waist",
-                "pelvis",
-                "hips",
-                "hip",
-                "下半身",
-                "lowerbody",
-            ],
-        );
-        if let Some(idx) = pelvis_bone_idx {
-            let pos = bone_positions.get(idx).copied().unwrap_or([0.0; 3]);
-            synthesized.push(PmxRigidBody {
-                local_name: "Synthesized_Pelvis_Collider".to_owned(),
-                universal_name: "Synthesized_Pelvis_Collider".to_owned(),
-                bone_index: idx as i32,
-                group: 0, // PMX 组 0（通用身体组），绝不被裙摆 mask 过滤
-                un_collision_group_flag: 0xFFFF,
-                shape: RigidBodyShape::Capsule,
-                size: [SYNTHESIZED_PELVIS_RADIUS, SYNTHESIZED_PELVIS_HEIGHT, 0.0],
-                position: pos,
-                rotation: [0.0, 0.0, std::f32::consts::FRAC_PI_2], // 横向胶囊体匹配骨盆宽
-                mass: 0.0,
-                move_attenuation: 0.0,
-                rotation_attenuation: 0.0,
-                repulsion: 0.0,
-                friction: 0.5,
-                mode: RigidBodyMode::Static,
-            });
-        }
-    }
-
-    // 3. 裙摆臀部后弧面支撑碰撞体合成：
-    // 当模型具有动态裙摆且缺少后部臀部碰撞体时，为腰部合成平滑横向胶囊体支撑，
-    // 把 BL/BR 侧后裙片从内部平滑托起，防止在重力下过度向内凹折形成尖锐橄榄形。
-    if has_skirt_rigid_bodies(rigid_bodies) {
-        let waist_bone_idx = find_bone_index(
-            bone_names,
-            &[
-                "腰",
-                "waist",
-                "pelvis",
-                "hips",
-                "hip",
-                "下半身",
-                "lowerbody",
-            ],
-        );
-        if let Some(idx) = waist_bone_idx {
-            if !has_posterior_glutes_collider(rigid_bodies, idx) {
-                let pos = bone_positions.get(idx).copied().unwrap_or([0.0; 3]);
-                synthesized.push(PmxRigidBody {
-                    local_name: "Synthesized_Glutes_Collider".to_owned(),
-                    universal_name: "Synthesized_Glutes_Collider".to_owned(),
-                    bone_index: idx as i32,
-                    group: 0,
-                    un_collision_group_flag: 0xFFFF,
-                    shape: RigidBodyShape::Capsule,
-                    size: [SYNTHESIZED_GLUTES_RADIUS, SYNTHESIZED_GLUTES_WIDTH, 0.0],
-                    position: [pos[0], pos[1] - 0.15, (-pos[2]) + 0.55],
-                    rotation: [0.0, 0.0, std::f32::consts::FRAC_PI_2],
-                    mass: 0.0,
-                    move_attenuation: 0.0,
-                    rotation_attenuation: 0.0,
-                    repulsion: 0.0,
-                    friction: 0.5,
-                    mode: RigidBodyMode::Static,
-                });
-            }
-        }
-    }
-
-    synthesized
+    let index = find_bone_index(names, spec.bones)?;
+    let pos = positions
+        .get(index)
+        .filter(|p| p.iter().all(|v| v.is_finite()))?;
+    let candidate = PmxRigidBody {
+        local_name: spec.name.to_owned(),
+        universal_name: spec.name.to_owned(),
+        bone_index: index as i32,
+        group: 0,
+        un_collision_group_flag: u16::MAX,
+        shape: spec.shape,
+        size: spec.size,
+        position: [pos[0], pos[1], -pos[2]],
+        rotation: spec.rotation,
+        mass: 0.0,
+        move_attenuation: 0.0,
+        rotation_attenuation: 0.0,
+        repulsion: 0.0,
+        friction: 0.5,
+        mode: RigidBodyMode::Static,
+    };
+    Some(candidate)
 }
 
-fn find_bone_index(bone_names: &[impl AsRef<str>], candidates: &[&str]) -> Option<usize> {
-    for candidate in candidates {
-        for (i, name) in bone_names.iter().enumerate() {
-            let lower = name.as_ref().to_lowercase();
-            if lower == *candidate || lower.contains(candidate) {
-                return Some(i);
+fn find_bone_index(names: &[impl AsRef<str>], candidates: &[&str]) -> Option<usize> {
+    for exact in [true, false] {
+        for candidate in candidates {
+            if let Some(index) = names.iter().position(|name| {
+                let name = name.as_ref().to_lowercase();
+                !accessory_name(&name)
+                    && if exact {
+                        name == *candidate
+                    } else {
+                        name_matches(&name, candidate)
+                    }
+            }) {
+                return Some(index);
             }
         }
     }
     None
+}
+
+// Field order keeps shapes alive until their bodies are destroyed.
+struct ProbeBody {
+    body: BulletRigidBody,
+    _shape: BulletShape,
+}
+
+fn probe_body(body: &PmxRigidBody, size: [f32; 3]) -> Option<ProbeBody> {
+    let data = MmdRigidBodyData::from_pmx(body, None, size);
+    let shape = MmdRigidBodyData::create_shape(body, size)?;
+    let body = data.create_rigid_body(body, &shape)?;
+    Some(ProbeBody {
+        body,
+        _shape: shape,
+    })
+}
+
+fn candidate_is_clear(candidate: &PmxRigidBody, authored: &[PmxRigidBody]) -> Option<bool> {
+    let size = effective_collision_shape_size_with_static_scale(
+        candidate,
+        super::config::get_config().static_collider_scale,
+        is_lower_body_collider(candidate),
+    );
+    let mut probes = vec![probe_body(candidate, size)?];
+    for body in authored
+        .iter()
+        .filter(|body| body.mode != RigidBodyMode::Static && valid_shape(body))
+    {
+        probes.push(probe_body(body, body.size)?);
+    }
+    // Declared after probes, so the world is destroyed before referenced bodies.
+    let world = BulletWorld::new(0.0, 0.0, 0.0)?;
+    for (i, probe) in probes.iter().enumerate() {
+        let (group, mask) = if i == 0 { (1, 2) } else { (2, 1) };
+        world.add_rigid_body(&probe.body, group, mask);
+    }
+    world.detect_collisions();
+    Some(
+        !world
+            .contact_manifolds()
+            .iter()
+            .any(|c| c.contact_count > 0 && c.max_penetration_depth > 1e-4),
+    )
 }
 
 /// 身体碰撞体在世界空间中的几何描述。
