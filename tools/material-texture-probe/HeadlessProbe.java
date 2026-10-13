@@ -72,6 +72,7 @@ public final class HeadlessProbe {
             RenderSystem.initRenderThread();
             System.out.println("GL="+GL46C.glGetString(GL46C.GL_VERSION));
             run();
+            VanillaEntityProbe.run();
             eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
             eglDestroyContext(display,context); eglDestroySurface(display,surface);
         } finally { eglTerminate(display); }

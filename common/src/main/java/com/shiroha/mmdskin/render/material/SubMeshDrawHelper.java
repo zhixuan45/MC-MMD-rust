@@ -40,7 +40,8 @@ public final class SubMeshDrawHelper {
         boolean previousDepthMask = GL46C.glGetBoolean(GL46C.GL_DEPTH_WRITEMASK);
         boolean hasTranslucentDraws = false;
         MaterialRenderState state = new MaterialRenderState();
-        try (MaterialShaderBinding binding = new MaterialShaderBinding()) {
+        try (EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
+             MaterialShaderBinding binding = new MaterialShaderBinding()) {
             // 不透明部分先写深度，半透明部分随后按 PMX 材质顺序混合。
             // Toon 对同一贴图的实心与半透明像素也分开，避免黑睫毛的实心部分丢失遮挡。
             for (int pass = 0; pass < (shadowPass ? 1 : 3); pass++) {

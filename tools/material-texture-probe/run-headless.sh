@@ -19,5 +19,7 @@ EOF
 cd "$task_root"
 "${GRADLE_COMMAND:-./gradlew}" :common:compileJava :common:writeMaterialProbeClasspath -I "$probe_tmp/classpath.gradle"
 probe_cp="$(cat "$MMD_PROBE_CLASSPATH_FILE"):$LWJGL_EGL_JAR"
-javac -proc:none -encoding UTF-8 -cp "$probe_cp" -d "$probe_tmp" tools/material-texture-probe/HeadlessProbe.java
-EGL_PLATFORM=surfaceless MESA_SHADER_CACHE_DIR="$probe_tmp/mesa-cache" java -cp "$probe_tmp:$probe_cp" probe.HeadlessProbe
+javac -proc:none -encoding UTF-8 -cp "$probe_cp" -d "$probe_tmp" tools/material-texture-probe/HeadlessProbe.java tools/material-texture-probe/VanillaEntityProbe.java
+probe_args=()
+if [[ -n "${MMD_PROBE_MODEL:-}" ]]; then probe_args+=("-Dmmd.probe.model=$MMD_PROBE_MODEL"); fi
+EGL_PLATFORM=surfaceless MESA_SHADER_CACHE_DIR="$probe_tmp/mesa-cache" java "${probe_args[@]}" -cp "$probe_tmp:$probe_cp" probe.HeadlessProbe

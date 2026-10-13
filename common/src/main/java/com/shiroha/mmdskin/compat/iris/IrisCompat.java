@@ -23,6 +23,13 @@ public class IrisCompat {
         return shader != null && shader.getClass().getName().startsWith("net.irisshaders.iris.");
     }
 
+    /** 只对已确认的颜色输出契约提供像素透明度分通道。 */
+    public static int entityColorOutputSlot(net.minecraft.client.renderer.ShaderInstance shader) {
+        if (!isIrisProgram(shader)) return 0;
+        var profile = IrisToonMetadata.read(shader).profile();
+        return profile.isSupported() ? profile.colorOutputSlot() : -1;
+    }
+
     /** clear 同时重置原版程序缓存；Iris 阴影通道还须恢复原目标。 */
     public static void clearProgram(net.minecraft.client.renderer.ShaderInstance shader,
                                     int shadowDraw, int shadowRead) {
