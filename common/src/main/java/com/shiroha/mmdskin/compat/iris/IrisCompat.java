@@ -23,10 +23,10 @@ public class IrisCompat {
         return shader != null && shader.getClass().getName().startsWith("net.irisshaders.iris.");
     }
 
-    /** Iris clear 会绑定主目标，阴影通道须恢复原目标。 */
+    /** clear 同时重置原版程序缓存；Iris 阴影通道还须恢复原目标。 */
     public static void clearProgram(net.minecraft.client.renderer.ShaderInstance shader,
                                     int shadowDraw, int shadowRead) {
-        if (!isIrisProgram(shader)) return;
+        if (shader == null) return;
         try {
             shader.clear();
         } finally {

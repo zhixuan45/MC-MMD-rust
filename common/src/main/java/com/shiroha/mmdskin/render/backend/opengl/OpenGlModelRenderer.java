@@ -227,18 +227,25 @@ final class OpenGlModelRenderer {
         RenderSystem.enableBlend();
         RenderSystem.enableDepthTest();
         RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
+                GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
         boolean shadowPass = IrisCompat.isRenderingShadows();
         int shadowDraw = shadowPass ? GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING) : -1;
         int shadowRead = shadowPass ? GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING) : -1;
-        ShaderInstance irisShader = null;
+        ShaderInstance activeShader = null;
         try {
             // 普通混合先设置，随后由 Iris 应用各 G-buffer 的覆盖规则。
             if (!bindActiveShader(target, deliverStack)) return;
             ShaderInstance currentShader = RenderSystem.getShader();
-            if (IrisCompat.isIrisProgram(currentShader) && currentShader.getId() == target.shaderProgram) {
-                irisShader = currentShader;
+            if (currentShader != null && currentShader.getId() == target.shaderProgram) {
+                activeShader = currentShader;
+            }
+            if (!IrisCompat.isIrisProgram(activeShader)) {
+                RenderSystem.enableBlend();
+                RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA,
+                        GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE,
+                        GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
             }
             target.updateLocation(target.shaderProgram);
             uploadDynamicBuffers(target, light.blockLight(), light.skyLight(), light.skyDarken(), irisActive);
@@ -246,14 +253,14 @@ final class OpenGlModelRenderer {
             bindStandardAttributes(target);
             bindCustomShaderAttributes(target);
             // GUI/纸娃娃使用原版实体 shader，不能注入 Iris 世界实体属性。
-            if (!guiScene && irisShader != null) bindIrisAttributes(target);
-            IrisEntityDiagnostics.record(irisShader, light);
+            if (!guiScene && IrisCompat.isIrisProgram(activeShader)) bindIrisAttributes(target);
+            IrisEntityDiagnostics.record(activeShader, light);
             drawSubMeshes(target, minecraft);
         } finally {
             try {
                 clearStandardRenderState(target);
             } finally {
-                IrisCompat.clearProgram(irisShader, shadowDraw, shadowRead);
+                IrisCompat.clearProgram(activeShader, shadowDraw, shadowRead);
             }
         }
     }
@@ -269,6 +276,7 @@ final class OpenGlModelRenderer {
             target.shaderProgram = mcShader.getId();
             target.setUniforms(mcShader, deliverStack);
             mcShader.apply();
+            GlStateManager._glUseProgram(target.shaderProgram);
             return true;
         }
 
@@ -381,14 +389,14 @@ final class OpenGlModelRenderer {
         if (target.sampler0Location != -1) {
             GL46C.glUniform1i(target.sampler0Location, 0);
         }
-        boolean irisProgram = IrisCompat.isIrisProgram(RenderSystem.getShader())
+        boolean minecraftProgram = RenderSystem.getShader() != null
                 && RenderSystem.getShader().getId() == target.shaderProgram;
-        if (!irisProgram && target.sampler1Location != -1) {
+        if (!minecraftProgram && target.sampler1Location != -1) {
             RenderSystem.activeTexture(GL46C.GL_TEXTURE1);
             RenderSystem.bindTexture(target.lightMapMaterial.tex);
             GL46C.glUniform1i(target.sampler1Location, 1);
         }
-        if (!irisProgram && target.sampler2Location != -1) {
+        if (!minecraftProgram && target.sampler2Location != -1) {
             RenderSystem.activeTexture(GL46C.GL_TEXTURE2);
             RenderSystem.bindTexture(target.lightMapMaterial.tex);
             GL46C.glUniform1i(target.sampler2Location, 2);
@@ -425,6 +433,10 @@ final class OpenGlModelRenderer {
             GL46C.glEnableVertexAttribArray(target.uv1Location);
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.uv1BufferObject);
             GL46C.glVertexAttribIPointer(target.uv1Location, 2, GL46C.GL_INT, 0, 0);
+            if (RenderSystem.getShader() != null && RenderSystem.getShader().getId() == target.shaderProgram) {
+                GL46C.glVertexAttribIPointer(target.uv1Location, 2, GL46C.GL_INT, 0, target.vertexCount * 8L);
+                GL46C.glVertexAttribDivisor(target.uv1Location, 1);
+            }
         }
 
         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
@@ -543,7 +555,10 @@ final class OpenGlModelRenderer {
         if (target.positionLocation != -1) GL46C.glDisableVertexAttribArray(target.positionLocation);
         if (target.normalLocation != -1) GL46C.glDisableVertexAttribArray(target.normalLocation);
         if (target.uv0Location != -1) GL46C.glDisableVertexAttribArray(target.uv0Location);
-        if (target.uv1Location != -1) GL46C.glDisableVertexAttribArray(target.uv1Location);
+        if (target.uv1Location != -1) {
+            GL46C.glDisableVertexAttribArray(target.uv1Location);
+            GL46C.glVertexAttribDivisor(target.uv1Location, 0);
+        }
         if (target.uv2Location != -1) GL46C.glDisableVertexAttribArray(target.uv2Location);
         if (target.colorLocation != -1) GL46C.glDisableVertexAttribArray(target.colorLocation);
         if (target.K_positionLocation != -1) GL46C.glDisableVertexAttribArray(target.K_positionLocation);
@@ -583,7 +598,8 @@ final class OpenGlModelRenderer {
         RenderSystem.enableBlend();
         RenderSystem.enableDepthTest();
         RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
+                GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
         ShaderInstance currentShader = RenderSystem.getShader();
         // Iris 全局开启不代表 GUI 当前 shader 是 Iris 实体程序。
