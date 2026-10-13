@@ -106,3 +106,29 @@ Iris 仅对现有元数据解析确认的颜色输出契约启用此变体；额
 alpha=0.5。可选 `MMD_PROBE_MODEL` 还通过生产 JNI 加载原 PMX，使用 `顔`、`Skin`、
 `hair00`、`hair01` 的实际扩散/环境色及原贴图进行相同的重叠遮挡检查；这四组均通过。
 这些检查使用测试三角形与原模型材质，未声称已经完成整个模型的游戏内截图验收。
+
+## 原模型完整网格离屏实渲染
+
+新增 `FullModelPreview`：通过生产 JNI 读取原 PMX 的完整位置、法线、UV、索引、
+子网格和材质，用生产纹理加载器与 `SubMeshDrawHelper` 在 EGL/Mesa 中实际绘制，
+输出三渲二开启/关闭的 1024×1024 正面和 35° 侧面 PNG。普通模式使用完整的
+Minecraft 1.21.1 原版实体 shader，Toon 使用生产 `ToonShaderCpu`。
+这是 CPU 蒙皮零时刻姿态、无物理/描边/光影包的离屏画面，并非游戏世界截图。
+
+```sh
+MMD_PROBE_MODEL=/path/to/original.pmx MMD_PREVIEW_OUTPUT=/path/to/output \
+LWJGL_EGL_JAR=/path/to/lwjgl-egl-3.3.3.jar GRADLE_COMMAND=/path/to/gradle \
+  bash tools/material-texture-probe/run-headless.sh
+```
+
+该验证发现上轮 `MaterialShaderBinding` 仅在 Toon uniform 分支上传 AlphaPass，
+普通顶点颜色分支漏传。现在两个分支均上传。新增反向遮挡回归：前方红色 texel
+alpha=128/255，后方蓝色 texel alpha=1；修正前红通道为 `.75294`，
+修正后为 `[.50196, 0, .49804, 1]`，半透明前层只混合一次且能看到实心后层。
+
+**实际画面仍有未解决的刘海分块，不能将该 PR 视为整个模型已验收通过。**
+同一头发贴图的实心和半透明像素均保留，但原始三角形顺序仍影响重叠的半透明
+表面。预览工具可单独加 JVM 参数 `-Dmmd.preview.sort=true` 做每个子网格内的
+三角形由远到近排序诊断；原模型诊断画面的分块明显减少。这仅用于定位，
+没有加入生产 CPU/GPU 绘制逻辑，也未解决跨材质、相交三角形或游戏内光影合成。
+模型/原贴图和输出 PNG 均未加入仓库。

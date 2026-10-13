@@ -89,6 +89,18 @@ final class VanillaEntityProbe {
             GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
             expect(pixel[3],.625f,"intentional material alpha still multiplies texture alpha");
             submesh.putFloat(12,1);
+            // The solid pass must not write depth for a fractional texel. Otherwise
+            // a translucent front triangle hides the opaque surface behind it.
+            int inverseAtlas=texture(2,1,new byte[]{(byte)255,0,0,(byte)128, 0,0,(byte)255,(byte)255});
+            material.tex=inverseAtlas;shader.setSampler("Sampler0",inverseAtlas);shader.apply();
+            GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+            SubMeshDrawHelper.draw(submesh,1,4,GL46C.GL_UNSIGNED_INT,i->inverseAtlas,(i,a)->a,new ModelMaterial[]{material},null,false,i->{});
+            GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
+            expect(pixel[0],128/255f,"fractional front texel blends once");
+            expect(pixel[2],127/255f,"opaque rear texel remains visible through fractional front");
+            expect(pixel[3],1,"opaque rear provides full coverage");
+            System.out.println("PASS full vanilla mixed atlas front translucent / rear opaque="+java.util.Arrays.toString(pixel));
+            GL46C.glDeleteTextures(inverseAtlas);
             checkNativeMaterials(shader,uvs,submesh);
             if(GL46C.glGetError()!=GL46C.GL_NO_ERROR)throw new AssertionError("full vanilla probe GL error");
             shader.clear();GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER,0);
