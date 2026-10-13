@@ -174,6 +174,14 @@ public class ConfigManager {
         return provider != null ? provider.isPhysicsCollisionEnabled() : true;
     }
 
+    public static boolean isPhysicsAutoUpperBodyColliders() {
+        return provider != null ? provider.isPhysicsAutoUpperBodyColliders() : true;
+    }
+
+    public static boolean isPhysicsAutoLowerBodyColliders() {
+        return provider != null ? provider.isPhysicsAutoLowerBodyColliders() : true;
+    }
+
     public static PhysicsCollisionStabilityMode getPhysicsCollisionStabilityMode() {
         return provider != null
                 ? provider.getPhysicsCollisionStabilityMode()

@@ -12,6 +12,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigDataTest {
     @Test
+    void bodyFillSwitchesDefaultForOldFilesAndPersistIndependently(@TempDir Path configDir)
+            throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{\"physicsEnabled\":true}");
+        ConfigData loaded = ConfigData.load(configDir);
+        assertTrue(loaded.physicsAutoUpperBodyColliders);
+        assertTrue(loaded.physicsAutoLowerBodyColliders);
+        loaded.physicsAutoUpperBodyColliders = false;
+        loaded.save(configDir);
+        loaded = ConfigData.load(configDir);
+        assertFalse(PhysicsConfigSnapshot.from(loaded).autoUpperBodyColliders());
+        assertTrue(PhysicsConfigSnapshot.from(loaded).autoLowerBodyColliders());
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            assertFalse(ConfigManager.isPhysicsAutoUpperBodyColliders());
+            assertTrue(ConfigManager.isPhysicsAutoLowerBodyColliders());
+            assertFalse(PhysicsConfigSnapshot.fromConfigManager().autoUpperBodyColliders());
+            assertTrue(PhysicsConfigSnapshot.fromConfigManager().autoLowerBodyColliders());
+        } finally {
+            ConfigManager.init(null);
+        }
+        loaded.physicsAutoUpperBodyColliders = true;
+        loaded.physicsAutoLowerBodyColliders = false;
+        loaded.save(configDir);
+        var second = PhysicsConfigSnapshot.from(ConfigData.load(configDir));
+        assertTrue(second.autoUpperBodyColliders());
+        assertFalse(second.autoLowerBodyColliders());
+    }
+
+    @Test
     void missingIssueLogFieldsDefaultToFalse(@TempDir Path configDir) throws Exception {
         Files.createDirectories(configDir);
         Files.writeString(configDir.resolve("config.json"), "{\"debugHudEnabled\":true}");

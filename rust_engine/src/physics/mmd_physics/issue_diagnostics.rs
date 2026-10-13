@@ -16,6 +16,10 @@ impl MMDPhysics {
     ) {
         let requested = crate::physics::config::get_config();
         let _ = writeln!(out,
+            "[MMD诊断][COLLIDER_FILL] active_upper={} active_lower={} requested_upper={} requested_lower={}",
+            self.active_debug_config.auto_upper_body_colliders, self.active_debug_config.auto_lower_body_colliders,
+            requested.auto_upper_body_colliders, requested.auto_lower_body_colliders);
+        let _ = writeln!(out,
             "[MMD诊断][COLLISION] model={} model_physics_enabled={} global_physics_enabled={} rebuild_pending={} active_collision={} active_joints={} active_stability={} active_gravity_y={:.4} active_static_collider_scale={:.4} requested_collision={} requested_joints={} requested_stability={} requested_gravity_y={:.4} requested_static_collider_scale={:.4} requested_filters={} applied_filters={} rejected_filters={} largest_component={} garment_extended={} garment_forced_ignore={} embedded_filtered={} sample=instantaneous",
             escape(model_name), enabled, requested.enabled, rebuild_pending, self.active_debug_config.collision_enabled,
             self.active_debug_config.joints_enabled, self.collision_stability_mode.as_str(),

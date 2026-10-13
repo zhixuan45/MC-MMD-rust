@@ -31,7 +31,7 @@ impl MmdModel {
             .map(|bone| Mat4::from_translation(bone.initial_position))
             .collect();
 
-        // 自动合成缺失的上身跟骨碰撞体（如 Grass Wonder 等模型），提供真实的物理阻挡面
+        // 检测仅生成上、下半身候选计划；应用阶段按各自开关做初始交叠检查。
         let bone_names: Vec<String> = self.bone_manager.links().map(|b| b.name.clone()).collect();
         let bone_parents: Vec<_> = self.bone_manager.links().map(|b| b.parent_index).collect();
         let bone_positions: Vec<[f32; 3]> = self
@@ -39,12 +39,18 @@ impl MmdModel {
             .links()
             .map(|b| b.initial_position.to_array())
             .collect();
-        let synthesized_colliders =
-            crate::physics::body_collider_synthesis::synthesize_missing_body_colliders(
-                &self.rigid_bodies,
-                &bone_names,
-                &bone_positions,
-            );
+        let config = crate::physics::config::get_config();
+        let fill_plan = crate::physics::body_collider_synthesis::detect_missing_body_colliders(
+            &self.rigid_bodies,
+            &bone_names,
+            &bone_positions,
+        );
+        let synthesized_colliders = crate::physics::body_collider_synthesis::apply_body_collider_fill(
+            fill_plan,
+            &self.rigid_bodies,
+            config.auto_upper_body_colliders,
+            config.auto_lower_body_colliders,
+        );
         let all_rigid_bodies: Vec<mmd::pmx::rigid_body::RigidBody> =
             if synthesized_colliders.is_empty() {
                 self.rigid_bodies.clone()

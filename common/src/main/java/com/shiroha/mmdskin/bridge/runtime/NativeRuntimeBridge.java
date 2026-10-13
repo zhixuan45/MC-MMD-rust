@@ -47,6 +47,8 @@ public final class NativeRuntimeBridge implements
                     physicsConfig.collisionStabilityMode().nativeValue(),
                     physicsConfig.staticColliderScale(),
                     physicsConfig.debugLog());
+            nativeFunc().SetBodyColliderFillConfig(
+                    physicsConfig.autoUpperBodyColliders(), physicsConfig.autoLowerBodyColliders());
         } catch (UnsatisfiedLinkError e) {
             logger.warn("物理配置 JNI 方法未找到，请重新编译 Rust 库");
         }

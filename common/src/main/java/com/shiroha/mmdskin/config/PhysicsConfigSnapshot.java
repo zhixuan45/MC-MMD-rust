@@ -16,6 +16,8 @@ public record PhysicsConfigSnapshot(
         boolean collisionEnabled,
         PhysicsCollisionStabilityMode collisionStabilityMode,
         float staticColliderScale,
+        boolean autoUpperBodyColliders,
+        boolean autoLowerBodyColliders,
         boolean debugLog) {
 
     public static PhysicsConfigSnapshot from(ConfigData data) {
@@ -35,6 +37,8 @@ public record PhysicsConfigSnapshot(
                         data.physicsCollisionStabilityMode,
                         PhysicsCollisionStabilityMode.STABLE),
                 data.physicsStaticColliderScale,
+                data.physicsAutoUpperBodyColliders,
+                data.physicsAutoLowerBodyColliders,
                 data.physicsDebugLog);
     }
 
@@ -53,6 +57,8 @@ public record PhysicsConfigSnapshot(
                 ConfigManager.isPhysicsCollisionEnabled(),
                 ConfigManager.getPhysicsCollisionStabilityMode(),
                 ConfigManager.getPhysicsStaticColliderScale(),
+                ConfigManager.isPhysicsAutoUpperBodyColliders(),
+                ConfigManager.isPhysicsAutoLowerBodyColliders(),
                 ConfigManager.isPhysicsDebugLog());
     }
 }

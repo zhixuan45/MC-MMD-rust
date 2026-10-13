@@ -342,6 +342,9 @@ public class NativeFunc {
         boolean debugLog
     );
 
+    /** 修改补充刚体设置，并让已加载模型在下一帧重建物理。 */
+    public native void SetBodyColliderFillConfig(boolean upperEnabled, boolean lowerEnabled);
+
     public native void SetFirstPersonMode(long model, boolean enabled);
 
     public native boolean IsFirstPersonMode(long model);

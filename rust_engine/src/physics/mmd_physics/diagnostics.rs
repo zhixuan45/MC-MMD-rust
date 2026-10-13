@@ -12,6 +12,8 @@ pub(super) struct ActivePhysicsDebugConfig {
     pub(super) kinematic_filter: bool,
     pub(super) inertia_strength: f32,
     pub(super) static_collider_scale: f32,
+    pub(super) auto_upper_body_colliders: bool,
+    pub(super) auto_lower_body_colliders: bool,
     pub(super) gravity_y: Cell<f32>,
 }
 
@@ -23,6 +25,8 @@ impl ActivePhysicsDebugConfig {
             kinematic_filter: config.kinematic_filter,
             inertia_strength: config.inertia_strength,
             static_collider_scale: config.static_collider_scale,
+            auto_upper_body_colliders: config.auto_upper_body_colliders,
+            auto_lower_body_colliders: config.auto_lower_body_colliders,
             gravity_y: Cell::new(config.gravity_y),
         }
     }

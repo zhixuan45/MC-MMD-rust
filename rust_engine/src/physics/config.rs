@@ -26,6 +26,10 @@ pub struct PhysicsConfig {
     pub joints_enabled: bool,
     /// 是否启用刚体接触碰撞；关闭时仍保留重力和关节模拟
     pub collision_enabled: bool,
+    /// 自动补充缺失的胸部、颈部碰撞刚体。
+    pub auto_upper_body_colliders: bool,
+    /// 自动补充缺失的骨盆碰撞刚体。
+    pub auto_lower_body_colliders: bool,
     /// 关节拓扑内部的成对碰撞稳定模式
     pub collision_stability_mode: CollisionStabilityMode,
     /// 是否禁用所有运动学刚体与动态刚体之间的碰撞（实验性）
@@ -48,6 +52,8 @@ impl Default for PhysicsConfig {
             max_angular_velocity: 20.0,
             joints_enabled: true,
             collision_enabled: true,
+            auto_upper_body_colliders: true,
+            auto_lower_body_colliders: true,
             collision_stability_mode: CollisionStabilityMode::Stable,
             kinematic_filter: false,
             static_collider_scale: super::mmd_rigid_body::STATIC_COLLISION_SHAPE_SCALE,

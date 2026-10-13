@@ -3296,6 +3296,8 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
         collision_stability_mode,
         kinematic_filter: kinematic_filter != 0,
         static_collider_scale: clamped_scale,
+        auto_upper_body_colliders: previous.auto_upper_body_colliders,
+        auto_lower_body_colliders: previous.auto_lower_body_colliders,
         debug_log: debug_log != 0,
     };
 
@@ -3328,6 +3330,33 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
             collision_stability_mode.as_str(),
             clamped_scale
         );
+    }
+}
+
+/// 分别设置上、下半身补充刚体，保留原 SetPhysicsConfig 的 JNI 参数布局。
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetBodyColliderFillConfig(
+    _env: JNIEnv,
+    _class: JClass,
+    upper_enabled: jboolean,
+    lower_enabled: jboolean,
+) {
+    let mut config = crate::physics::config::get_config();
+    let upper_enabled = upper_enabled != 0;
+    let lower_enabled = lower_enabled != 0;
+    if config.auto_upper_body_colliders == upper_enabled
+        && config.auto_lower_body_colliders == lower_enabled {
+        return;
+    }
+    config.auto_upper_body_colliders = upper_enabled;
+    config.auto_lower_body_colliders = lower_enabled;
+    crate::physics::config::set_config(config);
+    let models = MODELS.read().unwrap_or_else(|e| e.into_inner());
+    for model in models.values() {
+        model
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .request_physics_rebuild();
     }
 }
 

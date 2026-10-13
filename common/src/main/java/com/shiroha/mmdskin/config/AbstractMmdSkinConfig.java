@@ -53,6 +53,8 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isPhysicsJointsEnabled() { return data.physicsJointsEnabled; }
     @Override public boolean isPhysicsKinematicFilter() { return data.physicsKinematicFilter; }
     @Override public boolean isPhysicsCollisionEnabled() { return data.physicsCollisionEnabled; }
+    @Override public boolean isPhysicsAutoUpperBodyColliders() { return data.physicsAutoUpperBodyColliders; }
+    @Override public boolean isPhysicsAutoLowerBodyColliders() { return data.physicsAutoLowerBodyColliders; }
     @Override public PhysicsCollisionStabilityMode getPhysicsCollisionStabilityMode() {
         return data.physicsCollisionStabilityMode;
     }
