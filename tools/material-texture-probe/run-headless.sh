@@ -25,6 +25,9 @@ if [[ -n "${MMD_PROBE_MODEL:-}" ]]; then probe_args+=("-Dmmd.probe.model=$MMD_PR
 EGL_PLATFORM=surfaceless MESA_SHADER_CACHE_DIR="$probe_tmp/mesa-cache" java "${probe_args[@]}" -cp "$probe_tmp:$probe_cp" probe.HeadlessProbe
 if [[ -n "${MMD_PREVIEW_OUTPUT:-}" ]]; then
     : "${MMD_PROBE_MODEL:?Set MMD_PROBE_MODEL to the original PMX for a full preview}"
-    EGL_PLATFORM=surfaceless MESA_SHADER_CACHE_DIR="$probe_tmp/mesa-cache" java -cp "$probe_tmp:$probe_cp" \
+    preview_args=()
+    if [[ "${MMD_PREVIEW_GPU:-0}" == 1 ]]; then preview_args+=("-Dmmd.preview.gpuInput=true"); fi
+    if [[ "${MMD_PREVIEW_HEAD:-0}" == 1 ]]; then preview_args+=("-Dmmd.preview.head=true" "-Dmmd.preview.white=true"); fi
+    EGL_PLATFORM=surfaceless MESA_SHADER_CACHE_DIR="$probe_tmp/mesa-cache" java "${preview_args[@]}" -cp "$probe_tmp:$probe_cp" \
         probe.FullModelPreview "$MMD_PROBE_MODEL" "$MMD_PREVIEW_OUTPUT"
 fi

@@ -72,6 +72,7 @@ final class TextureGpuLoader {
                     configureTexture();
                     uploaded = buildTexture(texId, width, height, hasAlpha);
                     uploaded.hasTranslucentPixels = hasTranslucentPixels(buf, hasAlpha);
+                    if(hasAlpha)uploaded.alphaCoverage=TextureAlphaCoverage.fromRgba(buf,width,height);
                 } catch (RuntimeException | Error e) {
                     try {
                         deleteGlTexture(texId);
@@ -213,6 +214,7 @@ final class TextureGpuLoader {
             configureTexture();
             TextureRepository.Texture texture = buildTexture(texId, pre.width, pre.height, pre.hasAlpha);
             texture.hasTranslucentPixels = hasTranslucentPixels(pre.pixelData(), pre.hasAlpha);
+            if(pre.hasAlpha)texture.alphaCoverage=TextureAlphaCoverage.fromRgba(pre.pixelData(),pre.width,pre.height);
             return texture;
         } catch (RuntimeException | Error e) {
             deleteGlTexture(texId);

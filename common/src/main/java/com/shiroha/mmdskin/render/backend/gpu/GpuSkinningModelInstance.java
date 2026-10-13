@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.render.backend.BaseModelInstance;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
+import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
 import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.ShaderConstants;
@@ -28,6 +29,7 @@ import org.lwjgl.system.MemoryUtil;
 
 /** 文件职责：承载 GPU skinning 模型实例状态。 */
 public class GpuSkinningModelInstance extends BaseModelInstance {
+    final TranslucentDrawOrder translucentOrder = new TranslucentDrawOrder();
     static volatile SkinningComputeShader computeShader;
     static volatile ToonShaderCpu toonShaderCpu;
     static final ToonConfig toonConfig = ToonConfig.getInstance();

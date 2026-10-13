@@ -8,7 +8,10 @@ import com.shiroha.mmdskin.bridge.runtime.NativeTextureBridge;
 import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
+import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
+import com.shiroha.mmdskin.render.shader.SkinningComputeShader;
+import com.shiroha.mmdskin.render.shader.ShaderConstants;
 import com.shiroha.mmdskin.texture.runtime.TextureRepository;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.server.packs.PackResources;
@@ -69,7 +72,10 @@ public final class FullModelPreview {
         require(model!=0,"native PMX load");nf.SetPhysicsEnabled(model,false);nf.UpdateModel(model,0);
         TextureRepository.Init();TextureRepository.configureRuntimeCollaborators(new NativeTextureBridge());
         ToonShaderCpu toon=new ToonShaderCpu();
-        try(ShaderInstance vanilla=new ShaderInstance(resources(),"rendertype_entity_translucent",DefaultVertexFormat.NEW_ENTITY)) {
+        SkinningComputeShader compute=new SkinningComputeShader();
+        var gpuAuxiliary=new ArrayList<Integer>();
+        try(TranslucentDrawOrder order=new TranslucentDrawOrder();
+            ShaderInstance vanilla=new ShaderInstance(resources(),"rendertype_entity_translucent",DefaultVertexFormat.NEW_ENTITY)) {
             int vertexCount=(int)nf.GetVertexCount(model),indexCount=(int)nf.GetIndexCount(model);
             int indexSize=(int)nf.GetIndexElementSize(model);
             int indexType=indexSize==2?GL46C.GL_UNSIGNED_SHORT:indexSize==1?GL46C.GL_UNSIGNED_BYTE:GL46C.GL_UNSIGNED_INT;
@@ -82,16 +88,44 @@ public final class FullModelPreview {
                 float y=pos.getFloat(i*12+4),z=pos.getFloat(i*12+8);
                 minY=Math.min(minY,y);maxY=Math.max(maxY,y);minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z);
             }
-            float height=maxY-minY, centerY=minY+height*.865f, centerZ=(minZ+maxZ)*.5f;
+            float height=maxY-minY, centerY=minY+height*(Boolean.getBoolean("mmd.preview.head")?.895f:.865f), centerZ=(minZ+maxZ)*.5f;
             System.out.println("PMX vertices="+vertexCount+" indices="+indexCount+" y="+minY+".."+maxY+" z="+minZ+".."+maxZ);
             int positions=buffer(pos),normals=buffer(normal),uvs=buffer(uv);
+            if(Boolean.getBoolean("mmd.preview.gpuInput")) {
+                nf.InitGpuSkinningData(model);
+                ByteBuffer origPos=ByteBuffer.allocateDirect(vertexCount*12).order(ByteOrder.nativeOrder());
+                ByteBuffer origNor=ByteBuffer.allocateDirect(vertexCount*12).order(ByteOrder.nativeOrder());
+                ByteBuffer boneIdx=ByteBuffer.allocateDirect(vertexCount*16).order(ByteOrder.nativeOrder());
+                ByteBuffer boneWgt=ByteBuffer.allocateDirect(vertexCount*16).order(ByteOrder.nativeOrder());
+                ByteBuffer matrices=ByteBuffer.allocateDirect(ShaderConstants.MAX_BONES*64).order(ByteOrder.nativeOrder());
+                require(nf.CopyOriginalPositionsToBuffer(model,origPos,vertexCount)>0,"GPU original positions");
+                require(nf.CopyOriginalNormalsToBuffer(model,origNor,vertexCount)>0,"GPU original normals");
+                require(nf.CopyBoneIndicesToBuffer(model,boneIdx,vertexCount)>0,"GPU bone indices");
+                require(nf.CopyBoneWeightsToBuffer(model,boneWgt,vertexCount)>0,"GPU bone weights");
+                require(nf.CopySkinningMatricesToBuffer(model,matrices)>0,"GPU bone matrices");
+                int op=buffer(origPos),on=buffer(origNor),bi=buffer(boneIdx),bw=buffer(boneWgt),bm=buffer(matrices);
+                gpuAuxiliary.addAll(java.util.List.of(positions,normals,op,on,bi,bw,bm));
+                int[] outputs=SkinningComputeShader.createOutputBuffers(vertexCount);
+                positions=outputs[0];normals=outputs[1];
+                require(compute.init(),"production GPU compute shader initialization");
+                compute.dispatch(SkinningComputeShader.DispatchParams.withoutUvMorph(op,on,bi,bw,positions,normals,bm,0,0,vertexCount,0));
+                System.out.println("Production GPU compute skinning dispatched for original PMX, bones="+nf.GetBoneCount(model));
+            }
             int indices=GL46C.glGenBuffers();
             int vao=GL46C.glGenVertexArrays();GL46C.glBindVertexArray(vao);
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,indices);
             GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER,originalIndices,GL46C.GL_STATIC_DRAW);
             ModelMaterial[] materials=new ModelMaterial[(int)nf.GetMaterialCount(model)];
             var keys=new ArrayList<String>();var port=new NativeRuntimeBridge();
-            for(int i=0;i<materials.length;i++)materials[i]=MaterialTextureLoader.loadMaterial(port,model,i,keys);
+            for(int i=0;i<materials.length;i++) {
+                materials[i]=MaterialTextureLoader.loadMaterial(port,model,i,keys);
+                if(Boolean.getBoolean("mmd.preview.materials")) {
+                    var state=new com.shiroha.mmdskin.render.material.MaterialRenderState();
+                    state.resolve(materials[i],null,i,nf.GetMaterialAlpha(model,i));
+                    System.out.println(nf.GetMaterialName(model,i)+" tex="+materials[i].tex+" color="+java.util.Arrays.toString(state.color)
+                            +" alpha="+state.alpha+" spec="+java.util.Arrays.toString(state.specular)+" power="+state.specularPower+" both="+nf.GetMaterialBothFace(model,i));
+                }
+            }
             int count=(int)nf.GetSubMeshCount(model);
             ByteBuffer submeshes=ByteBuffer.allocateDirect(count*20).order(ByteOrder.nativeOrder());
             require(nf.BatchGetSubMeshData(model,submeshes,false)==count,"batch submesh count");
@@ -111,7 +145,7 @@ public final class FullModelPreview {
                 float distance=height*1.65f;
                 Matrix4f view=new Matrix4f().lookAt((float)Math.sin(rad)*distance,centerY,
                         centerZ+(float)Math.cos(rad)*distance,0,centerY,centerZ,0,1,0);
-                Matrix4f projection=new Matrix4f().perspective((float)Math.toRadians(12),1,height*.01f,height*5);
+                Matrix4f projection=new Matrix4f().perspective((float)Math.toRadians(Boolean.getBoolean("mmd.preview.head")?8:12),1,height*.01f,height*5);
                 if(Boolean.getBoolean("mmd.preview.sort")) {
                     ByteBuffer sorted=ByteBuffer.allocateDirect(originalIndices.capacity()).order(ByteOrder.nativeOrder());
                     sorted.put(originalIndices.duplicate()).clear();
@@ -134,7 +168,9 @@ public final class FullModelPreview {
                     GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER,sorted,GL46C.GL_STATIC_DRAW);
                 }
                 GL46C.glViewport(0,0,SIZE,SIZE);RenderSystem.depthMask(true);
-                GL46C.glClearColor(.72f,.79f,.87f,1);GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+                if(Boolean.getBoolean("mmd.preview.white"))GL46C.glClearColor(1,1,1,1);
+                else GL46C.glClearColor(.72f,.79f,.87f,1);
+                GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
                 RenderSystem.enableDepthTest();RenderSystem.depthFunc(GL46C.GL_LEQUAL);
                 RenderSystem.enableBlend();RenderSystem.blendFuncSeparate(770,771,1,771);
                 RenderSystem.setShaderColor(1,1,1,1);
@@ -166,8 +202,15 @@ public final class FullModelPreview {
                 int loc=GL46C.glGetAttribLocation(program,"UV1");if(loc>=0)GL46C.glVertexAttribI2i(loc,0,10);
                 loc=GL46C.glGetAttribLocation(program,"UV2");if(loc>=0)GL46C.glVertexAttribI2i(loc,240,240);
                 loc=GL46C.glGetAttribLocation(program,"EyeMask");if(loc>=0)GL46C.glVertexAttrib1f(loc,0);
-                SubMeshDrawHelper.draw(submeshes,count,indexSize,indexType,i->materials[i].tex,(i,a)->a,materials,null,false,i->{});
+                long started=System.nanoTime();
+                SubMeshDrawHelper.draw(submeshes,count,indexSize,indexType,i->materials[i].tex,(i,a)->a,materials,null,false,i->{},
+                        Boolean.getBoolean("mmd.preview.original")?null:order,
+                        new TranslucentDrawOrder.Inputs(Boolean.getBoolean("mmd.preview.gpuInput")?null:pos,
+                                positions,vertexCount,view.get(ByteBuffer.allocateDirect(64).order(ByteOrder.nativeOrder()).asFloatBuffer()),
+                                projection.get(ByteBuffer.allocateDirect(64).order(ByteOrder.nativeOrder()).asFloatBuffer()),0,false,
+                                Boolean.getBoolean("mmd.preview.gpuInput")?null:uv,uvs,0));
                 GL46C.glFinish();int error=GL46C.glGetError();require(error==0,"preview GL error "+error);
+                System.out.println("Draw time ms="+(System.nanoTime()-started)/1e6+" sorted runs="+order.drawCount());
                 Path file=output.resolve((isToon?"toon-on":"toon-off")+"-"+(angle==0?"front":"side")+".png");
                 save(file);System.out.println("Wrote "+file);
                 if(!isToon)vanilla.clear();
@@ -176,7 +219,11 @@ public final class FullModelPreview {
             GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER,0);
             GL46C.glDeleteBuffers(new int[]{positions,normals,uvs,indices});GL46C.glDeleteVertexArrays(vao);
             GL46C.glDeleteTextures(new int[]{color,overlay,lightmap});GL46C.glDeleteRenderbuffers(depth);GL46C.glDeleteFramebuffers(fbo);
-        } finally {toon.cleanup();TextureRepository.Cleanup();nf.DeleteModel(model);RenderSystem.setShader(()->null);}
+        } finally {
+            toon.cleanup();compute.cleanup();
+            for(int buffer:gpuAuxiliary)GL46C.glDeleteBuffers(buffer);
+            TextureRepository.Cleanup();nf.DeleteModel(model);RenderSystem.setShader(()->null);
+        }
     }
 
     private static ResourceProvider resources() {

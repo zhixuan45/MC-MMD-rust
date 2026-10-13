@@ -28,6 +28,7 @@ final class GpuSkinningModelLifecycle {
         total += (long) target.vertexCount * 12 * 2;
         total += (long) ShaderConstants.MAX_BONES * 64;
         total += target.getEyeEmissionVramUsage();
+        total += target.translucentOrder.vramBytes();
         if (target.vertexMorphCount > 0) {
             total += target.nativeBackendPort().getGpuMorphOffsetsSize(target.nativeModelHandle());
             total += (long) target.vertexMorphCount * 4;
@@ -78,7 +79,7 @@ final class GpuSkinningModelLifecycle {
         if (target.subMeshDataBuf != null) {
             javaRam += target.subMeshDataBuf.capacity();
         }
-        return rustRam + javaRam;
+        return rustRam + javaRam + target.translucentOrder.ramBytes();
     }
 
     static void dispose(GpuSkinningModelInstance target) {
@@ -88,6 +89,7 @@ final class GpuSkinningModelLifecycle {
 
         target.initialized = false;
         target.releaseBaseResources();
+        target.translucentOrder.close();
         MaterialTextureLoader.releaseOwnedTextures(target.mats);
 
         GL46C.glDeleteVertexArrays(target.vertexArrayObject);
