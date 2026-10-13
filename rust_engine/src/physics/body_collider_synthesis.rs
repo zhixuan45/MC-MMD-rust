@@ -22,7 +22,15 @@ enum BodyRegion {
 impl BodyRegion {
     fn names(self) -> &'static [&'static str] {
         match self {
-            Self::Upper => &["上半身", "upperbody", "upper_body", "chest", "spine", "胸"],
+            Self::Upper => &[
+                "上半身",
+                "upperbody",
+                "upper_body",
+                "chest",
+                "bust",
+                "spine",
+                "胸",
+            ],
             Self::Neck => &["首", "neck", "頸", "颈"],
             Self::Lower => &[
                 "下半身",
@@ -287,9 +295,12 @@ fn probe_body(body: &PmxRigidBody, size: [f32; 3]) -> Option<ProbeBody> {
 }
 
 fn candidate_is_clear(candidate: &PmxRigidBody, authored: &[PmxRigidBody]) -> Option<bool> {
+    // Runtime scaling also requires a colliding garment; a tail/accessory-only
+    // model keeps the full-size pelvis. Probe an envelope covering both that
+    // unscaled shape and any configured enlargement instead of assuming shrinkage.
     let size = effective_collision_shape_size_with_static_scale(
         candidate,
-        super::config::get_config().static_collider_scale,
+        super::config::get_config().static_collider_scale.max(1.0),
         is_lower_body_collider(candidate),
     );
     let mut probes = vec![probe_body(candidate, size)?];

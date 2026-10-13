@@ -65,6 +65,31 @@ fn detects_upper_body_collider_when_present() {
 }
 
 #[test]
+fn authored_bust_alias_prevents_duplicate_chest_with_custom_or_missing_bone() {
+    let names = ["custom_support", "上半身", "首"];
+    let positions = [[0.0, 12.0, 0.0], [0.0, 12.0, 0.0], [0.0, 15.0, 0.0]];
+    for bone_index in [0, -1, 10] {
+        for (local, universal) in [("bust", ""), ("custom_support", "bust")] {
+            let mut body = test_pmx_body(
+                local,
+                RigidBodyMode::Static,
+                RigidBodyShape::Capsule,
+                [0.8, 1.2, 0.0],
+            );
+            body.universal_name = universal.to_owned();
+            body.bone_index = bone_index;
+            let plan = detect_missing_body_colliders(&[body], &names, &positions);
+            assert_eq!(
+                plan.upper.len(),
+                1,
+                "bust must supply existing chest support"
+            );
+            assert_eq!(plan.upper[0].local_name, "Synthesized_Neck_Collider");
+        }
+    }
+}
+
+#[test]
 fn detects_lower_body_collider_when_present_or_absent() {
     let only_tail = vec![test_pmx_body(
         "Sp_Hi_Tail0_B_00_anchor",
