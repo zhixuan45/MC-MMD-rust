@@ -8,12 +8,13 @@ use glam::{Mat4, Quat, Vec3};
 use mmd::pmx::joint::Joint as PmxJoint;
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
+use super::body_part::{classify, BodyPart, HairKind};
 use super::bullet_ffi::{BulletConstraint, BulletRigidBody, BT_CONSTRAINT_STOP_ERP};
 use super::hair_parameters::{
     apply_back_hair_root_limit, apply_hair_chain_fallback, apply_wide_back_hair_root_fallback,
 };
 use super::joint_parameters::JointParameters;
-use super::mmd_rigid_body::{is_tail_dynamic_part, mmd_physics_rotation};
+use super::mmd_rigid_body::mmd_physics_rotation;
 
 /// 沿用既有 MMD Bullet 实现的限位纠偏比例，避免混入未经验证的参数实验。
 const JOINT_STOP_ERP: f32 = 0.475;
@@ -60,6 +61,30 @@ impl MmdJointData {
         rb_a_initial_transform: Mat4,
         rb_b_initial_transform: Mat4,
     ) -> Self {
+        Self::from_pmx_with_parts(
+            pmx_joint,
+            rb_a,
+            rb_b,
+            pmx_rb_a,
+            pmx_rb_b,
+            rb_a_initial_transform,
+            rb_b_initial_transform,
+            classify(pmx_rb_a, None),
+            classify(pmx_rb_b, None),
+        )
+    }
+
+    pub(super) fn from_pmx_with_parts(
+        pmx_joint: &PmxJoint,
+        rb_a: &BulletRigidBody,
+        rb_b: &BulletRigidBody,
+        pmx_rb_a: &PmxRigidBody,
+        pmx_rb_b: &PmxRigidBody,
+        rb_a_initial_transform: Mat4,
+        rb_b_initial_transform: Mat4,
+        part_a: BodyPart,
+        part_b: BodyPart,
+    ) -> Self {
         let position = Vec3::new(
             pmx_joint.position[0],
             pmx_joint.position[1],
@@ -78,23 +103,44 @@ impl MmdJointData {
             pmx_joint.position_spring,
             pmx_joint.rotation_spring,
         );
-        let _clamped_wide_root =
-            apply_wide_skirt_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
-        apply_wide_skirt_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
-
-        let clamped_wide_hair_root =
-            apply_wide_back_hair_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
-        apply_hair_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
-        if !clamped_wide_hair_root {
-            apply_back_hair_root_limit(
-                &mut parameters,
-                pmx_rb_a,
-                pmx_rb_b,
-                position,
-                rotation,
-                rb_b_initial_transform.w_axis.truncate(),
-                rb_a_initial_transform.w_axis.truncate(),
-            );
+        // Select one semantic family from the original PMX parameters. Rules cannot
+        // see springs inserted by another family, and ambiguous/accessory parts remain authored.
+        let skirt_root = (pmx_rb_a.mode == RigidBodyMode::Static
+            && part_a != BodyPart::HeadNeck
+            && part_b == BodyPart::Garment)
+            || (pmx_rb_b.mode == RigidBodyMode::Static
+                && part_b != BodyPart::HeadNeck
+                && part_a == BodyPart::Garment);
+        let hair_root = (pmx_rb_a.mode == RigidBodyMode::Static
+            && part_a == BodyPart::HeadNeck
+            && part_b == BodyPart::Hair(HairKind::Back))
+            || (pmx_rb_b.mode == RigidBodyMode::Static
+                && part_b == BodyPart::HeadNeck
+                && part_a == BodyPart::Hair(HairKind::Back));
+        if skirt_root {
+            let (anchor, skirt) = if pmx_rb_a.mode == RigidBodyMode::Static {
+                (pmx_rb_a, pmx_rb_b)
+            } else {
+                (pmx_rb_b, pmx_rb_a)
+            };
+            // Classification was already resolved with bone metadata.
+            apply_skirt_root_parameters(&mut parameters, anchor, skirt);
+        } else if part_a == BodyPart::Garment && part_b == BodyPart::Garment {
+            apply_wide_skirt_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
+        } else if hair_root {
+            if !apply_wide_back_hair_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b) {
+                apply_back_hair_root_limit(
+                    &mut parameters,
+                    pmx_rb_a,
+                    pmx_rb_b,
+                    position,
+                    rotation,
+                    rb_b_initial_transform.w_axis.truncate(),
+                    rb_a_initial_transform.w_axis.truncate(),
+                );
+            }
+        } else if part_a.is_hair() && part_b.is_hair() {
+            apply_hair_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
         }
 
         // frameA = rbA_initialTransform.inverse() * jointTransform
@@ -190,14 +236,25 @@ fn joint_rotation(rotation: [f32; 3]) -> Quat {
     mmd_physics_rotation(rotation)
 }
 
+#[cfg(test)]
 fn apply_wide_skirt_root_fallback(
+    parameters: &mut JointParameters,
+    body_a: &PmxRigidBody,
+    body_b: &PmxRigidBody,
+) -> bool {
+    if classify(body_b, None) != BodyPart::Garment {
+        return false;
+    }
+    apply_skirt_root_parameters(parameters, body_a, body_b)
+}
+
+fn apply_skirt_root_parameters(
     parameters: &mut JointParameters,
     body_a: &PmxRigidBody,
     body_b: &PmxRigidBody,
 ) -> bool {
     if body_a.mode != RigidBodyMode::Static
         || body_b.mode == RigidBodyMode::Static
-        || !is_skirt_body(body_b)
         || parameters.angular.iter().any(|axis| axis.spring_enabled)
     {
         return false;
@@ -272,6 +329,9 @@ fn apply_wide_skirt_chain_fallback(
 }
 
 fn skirt_grid_position(body: &PmxRigidBody) -> Option<(u32, u32)> {
+    if !is_skirt_body(body) {
+        return None;
+    }
     [&body.local_name, &body.universal_name]
         .into_iter()
         .find_map(|name| {
@@ -288,36 +348,7 @@ fn skirt_grid_position(body: &PmxRigidBody) -> Option<(u32, u32)> {
 }
 
 fn is_skirt_body(body: &PmxRigidBody) -> bool {
-    const PART_NAMES: &[&str] = &[
-        "裙",
-        "スカート",
-        "skirt",
-        "petticoat",
-        "下装",
-        "下衣",
-        "裾",
-        "摆",
-        "衣摆",
-        "后摆",
-        "下摆",
-        "风衣",
-        "外套",
-        "コート",
-        "coat",
-        "cloak",
-        "cape",
-        "燕尾",
-        "flap",
-    ];
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    // 尾巴具有独立动态链与旋转空间，不得作为裙摆应用单向内翻锁零或裙根硬弹簧
-    if is_tail_dynamic_part(body) {
-        return false;
-    }
-    PART_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
+    classify(body, None) == BodyPart::Garment
 }
 
 /// 计算两个刚体上的关节锚点在 Bullet 世界空间中的距离。
@@ -331,6 +362,10 @@ pub(crate) fn joint_anchor_position_error(
     let anchor_b = (body_b_transform * frame_b).w_axis.truncate();
     (anchor_a.distance(anchor_b), anchor_a, anchor_b)
 }
+
+#[cfg(test)]
+#[path = "joint_semantics_tests.rs"]
+mod semantics_tests;
 
 #[cfg(test)]
 mod tests {

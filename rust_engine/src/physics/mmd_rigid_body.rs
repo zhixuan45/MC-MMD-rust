@@ -124,8 +124,21 @@ fn garment_body_bone_is_compatible(body: &PmxRigidBody, bone_names: &[String]) -
     let name = name.to_lowercase();
     !has_non_skirt_local_semantics(&name)
         && ![
-            "上半身", "上体", "upperbody", "upper_body", "spine", "torso", "頭", "头",
-            "head", "首", "颈", "頸", "neck", "肩", "shoulder",
+            "上半身",
+            "上体",
+            "upperbody",
+            "upper_body",
+            "spine",
+            "torso",
+            "頭",
+            "头",
+            "head",
+            "首",
+            "颈",
+            "頸",
+            "neck",
+            "肩",
+            "shoulder",
         ]
         .iter()
         .any(|part| name.contains(part))
@@ -217,94 +230,15 @@ fn collides_with_skirt_dynamic_body(body: &PmxRigidBody, rigid_bodies: &[PmxRigi
 }
 
 pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
-    const PART_NAMES: &[&str] = &[
-        "裙",
-        "スカート",
-        "skirt",
-        "petticoat",
-        "下装",
-        "下衣",
-        "裾",
-        "摆",
-        "衣摆",
-        "后摆",
-        "下摆",
-        "风衣",
-        "外套",
-        "コート",
-        "coat",
-        "cloak",
-        "cape",
-        "燕尾",
-        "flap",
-    ];
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    // 尾巴具有独立动态特性，必须排除在裙摆下装分类之外
-    if is_tail_dynamic_part(body) || has_non_skirt_local_semantics(&local) {
-        return false;
-    }
-    PART_NAMES.iter().any(|part| local.contains(part))
-        || PART_NAMES.iter().any(|part| universal.contains(part))
+    super::body_part::classify(body, None) == super::body_part::BodyPart::Garment
 }
 
 pub(super) fn has_non_skirt_local_semantics(name: &str) -> bool {
-    const NON_SKIRT_PARTS: &[&str] = &[
-        "胸",
-        "乳",
-        "バスト",
-        "おっぱい",
-        "breast",
-        "bust",
-        "chest",
-        "shoe",
-        "shoes",
-        "heel",
-        "靴",
-        "くつ",
-        "鞋",
-        "accessory",
-        "accessories",
-        "アクセサリー",
-        "装飾",
-        "配件",
-        "附件",
-        "飾",
-        "饰",
-        "tassel",
-        "穗",
-        "穂",
-        "房穗",
-        "リボン",
-        "ribbon",
-        "bow",
-        "蝴蝶结",
-        "蝴蝶結",
-        "袖",
-        "sleeve",
-        "手臂",
-        "上臂",
-        "前臂",
-        "腕",
-        "upperarm",
-        "forearm",
-        "髪",
-        "髮",
-        "头发",
-        "頭髪",
-        "hair",
-    ];
-    NON_SKIRT_PARTS.iter().any(|part| name.contains(part)) || has_arm_token(name)
-}
-
-fn has_arm_token(name: &str) -> bool {
-    name.match_indices("arm").any(|(index, token)| {
-        let before = name[..index].chars().next_back();
-        let after = name[index + token.len()..].chars().next();
-        let is_separator =
-            |ch: Option<char>| ch.map_or(true, |value| !value.is_ascii_alphanumeric());
-        is_separator(before) || is_separator(after)
-    })
+    use super::body_part::{classify_name, BodyPart};
+    !matches!(
+        classify_name(&name.to_lowercase()),
+        BodyPart::Garment | BodyPart::Unknown
+    )
 }
 
 /// 尾巴是独立动态链，不能并入裙摆分类，否则跨部位碰撞无法单独诊断和过滤。
@@ -673,8 +607,6 @@ mod tests {
         assert_eq!(pmx_collision_mask(0x0000), 0x0000);
     }
 
-
-
     #[test]
     fn rigid_body_rotation_matches_pmx_yxz_composition() {
         let [x, y, z] = [0.31, -0.47, 0.83];
@@ -682,9 +614,6 @@ mod tests {
             Quat::from_rotation_y(y) * Quat::from_rotation_x(x) * Quat::from_rotation_z(z);
         assert!(rigid_body_rotation([x, y, z]).abs_diff_eq(expected, 1e-6));
     }
-
-
-
 
     fn test_rigid_body(shape: RigidBodyShape, size: [f32; 3]) -> RigidBody {
         RigidBody {
@@ -706,8 +635,6 @@ mod tests {
         }
     }
 
-
-
     #[test]
     fn static_capsule_only_shrinks_collision_radius() {
         let mut body = test_rigid_body(RigidBodyShape::Capsule, [1.0, 4.0, 0.0]);
@@ -717,11 +644,6 @@ mod tests {
             [super::STATIC_COLLISION_SHAPE_SCALE, 4.0, 0.0]
         );
     }
-
-
-
-
-
 
     #[test]
     fn garment_contact_body_is_eligible_even_when_pmx_mask_omits_skirt() {
@@ -768,7 +690,10 @@ mod tests {
             rotation_spring: [0.0; 3],
         };
 
-        assert_eq!(garment_contact_body_flags(&[collider, skirt], &[joint], &[]), [true, false]);
+        assert_eq!(
+            garment_contact_body_flags(&[collider, skirt], &[joint], &[]),
+            [true, false]
+        );
     }
 
     #[test]
@@ -803,13 +728,14 @@ mod tests {
             rotation_spring: [0.0; 3],
         };
         let bodies = vec![collider, anchor, skirt];
-        assert!(is_dynamic_chain_anchor(1, &bodies, std::slice::from_ref(&joint)));
+        assert!(is_dynamic_chain_anchor(
+            1,
+            &bodies,
+            std::slice::from_ref(&joint)
+        ));
         assert_eq!(
             garment_contact_body_flags(&bodies, std::slice::from_ref(&joint), &[]),
             [true, false, false]
         );
     }
-
-
-
 }

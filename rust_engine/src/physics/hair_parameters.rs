@@ -1,186 +1,43 @@
 //! PMX 头发物理参数规范化与约束保护。
 //!
-//! 提供头发各部位（后发、前发、侧发）的高精度识别，后发根部防向前翻折穿胸的几何约束，
-//! 以及长发多节链条的累计角度预算控制与弹簧回正兜底。
+//! 由共用部位分类选择后发根部保护或恢复弹簧，保留作者配置的头发角度范围。
 
 use glam::{Quat, Vec3};
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
+#[cfg(test)]
+use super::body_part::{classify, BodyPart, HairKind};
 use super::joint_parameters::JointParameters;
-use super::mmd_rigid_body::is_tail_dynamic_part;
 
 /// 宽松零弹簧头发根关节的判定阈值（45°）。
 const WIDE_HAIR_ROOT_ANGLE: f32 = std::f32::consts::FRAC_PI_4;
-/// 后发根部兜底旋转范围（±20°）。
-const HAIR_ROOT_FALLBACK_ANGLE: f32 = 20.0_f32.to_radians();
 /// 后发根部兜底旋转刚度（X: 俯仰, Y: 偏航, Z: 侧滚）。
 const HAIR_ROOT_FALLBACK_STIFFNESS: [f32; 3] = [16.0, 10.0, 14.0];
 
 /// 宽松零弹簧头发子链关节的判定阈值（30°）。
 const WIDE_HAIR_CHAIN_ANGLE: f32 = 30.0_f32.to_radians();
-/// 长发链单节兜底旋转范围（±14°）。
-const HAIR_CHAIN_FALLBACK_ANGLE: f32 = 14.0_f32.to_radians();
 /// 长发链单节兜底弹簧刚度。
 const HAIR_CHAIN_FALLBACK_STIFFNESS: f32 = 10.0;
 
-/// 判断刚体是否属于头发部件（支持日文、繁体中文、简体中文和英文命名）。
+/// 饰品优先于头发；无明确方位的头发不自动归为后发。
+#[cfg(test)]
 pub fn is_hair_body(body: &PmxRigidBody) -> bool {
-    const HAIR_NAMES: &[&str] = &[
-        // 日文
-        "髪",
-        "ツインテール",
-        "ポニーテール",
-        "おさげ",
-        "アホ毛",
-        // 繁体中文
-        "髮",
-        "馬尾",
-        "雙馬尾",
-        "辮",
-        "長髮",
-        "頭髮",
-        "髮飾",
-        // 简体中文
-        "发",
-        "马尾",
-        "双马尾",
-        "辫",
-        "长发",
-        "头发",
-        "呆毛",
-        // 英文与通用
-        "hair",
-        "twintail",
-        "ponytail",
-        "braid",
-        "bangs",
-        "ahoge",
-        "毛",
-    ];
-    // 尾巴具有独立动态链，必须排除在头发分类之外
-    if is_tail_dynamic_part(body) {
-        return false;
-    }
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    HAIR_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
+    classify(body, None).is_hair()
 }
 
-/// 判断刚体是否属于后发（背部披发、马尾、长发辫等）。
+#[cfg(test)]
 pub fn is_back_hair_body(body: &PmxRigidBody) -> bool {
-    if !is_hair_body(body) {
-        return false;
-    }
-    // 排除明确属于前发或侧发的部件
-    if is_front_hair_body(body) || is_side_hair_body(body) {
-        return false;
-    }
-    const BACK_HAIR_NAMES: &[&str] = &[
-        // 日文
-        "後髪",
-        "後ろ",
-        "うしろ",
-        "ポニーテール",
-        "ツインテール",
-        "テール",
-        // 繁体中文
-        "後髮",
-        "后髮",
-        "馬尾",
-        "雙馬尾",
-        "長髮",
-        // 简体中文
-        "后发",
-        "马尾",
-        "双马尾",
-        "长发",
-        // 英文与通用
-        "back",
-        "rear",
-        "ponytail",
-        "twintail",
-        "tail_hair",
-        "hair_back",
-    ];
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    BACK_HAIR_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
-        || (!local.contains("前")
-            && !local.contains("front")
-            && !local.contains("横")
-            && !local.contains("側")
-            && !local.contains("侧")
-            && !local.contains("side"))
+    classify(body, None) == BodyPart::Hair(HairKind::Back)
 }
 
-/// 判断刚体是否属于前发（刘海）。
+#[cfg(test)]
 pub fn is_front_hair_body(body: &PmxRigidBody) -> bool {
-    const FRONT_HAIR_NAMES: &[&str] = &[
-        "前髪",
-        "前髮",
-        "前发",
-        "front",
-        "bangs",
-        "まえがみ",
-        "hair_front",
-        "fronthair",
-    ];
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    FRONT_HAIR_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
+    classify(body, None) == BodyPart::Hair(HairKind::Front)
 }
 
-/// 判断刚体是否属于侧发（鬓角、麻花辫）。
+#[cfg(test)]
 pub fn is_side_hair_body(body: &PmxRigidBody) -> bool {
-    const SIDE_HAIR_NAMES: &[&str] = &[
-        "横髪",
-        "横髮",
-        "横发",
-        "側髮",
-        "侧发",
-        "サイド",
-        "side",
-        "おさげ",
-        "braid",
-        "よこがみ",
-        "hair_side",
-        "sidehair",
-    ];
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    SIDE_HAIR_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
-}
-
-/// 判断刚体是否属于头部或上半身跟骨碰撞体。
-#[allow(dead_code)]
-pub fn is_head_or_upper_body_collider(body: &PmxRigidBody) -> bool {
-    const UPPER_NAMES: &[&str] = &[
-        "頭",
-        "头",
-        "head",
-        "首",
-        "neck",
-        "上半身",
-        "chest",
-        "bust",
-        "胸",
-        "肩",
-        "shoulder",
-        "spine",
-    ];
-    let local = body.local_name.to_lowercase();
-    let universal = body.universal_name.to_lowercase();
-    UPPER_NAMES
-        .iter()
-        .any(|part| local.contains(part) || universal.contains(part))
+    classify(body, None) == BodyPart::Hair(HairKind::Side)
 }
 
 /// 提取一对刚体中的（静态跟骨刚体, 动态后发刚体, 静态刚体世界位置, 动态刚体世界位置）。
@@ -190,15 +47,9 @@ fn resolve_static_and_dynamic_back_hair<'a>(
     pos_a: Vec3,
     pos_b: Vec3,
 ) -> Option<(&'a PmxRigidBody, &'a PmxRigidBody, Vec3, Vec3)> {
-    if body_a.mode == RigidBodyMode::Static
-        && body_b.mode != RigidBodyMode::Static
-        && is_back_hair_body(body_b)
-    {
+    if body_a.mode == RigidBodyMode::Static && body_b.mode != RigidBodyMode::Static {
         Some((body_a, body_b, pos_a, pos_b))
-    } else if body_b.mode == RigidBodyMode::Static
-        && body_a.mode != RigidBodyMode::Static
-        && is_back_hair_body(body_a)
-    {
+    } else if body_b.mode == RigidBodyMode::Static && body_a.mode != RigidBodyMode::Static {
         Some((body_b, body_a, pos_b, pos_a))
     } else {
         None
@@ -207,7 +58,7 @@ fn resolve_static_and_dynamic_back_hair<'a>(
 
 /// 为后发根部关节施加防向前穿胸的偏向几何约束。
 ///
-/// 支持 (Static, Dynamic) 与 (Dynamic, Static) 双向刚体定义。
+/// 调用方已确认后发与头/颈锚点；支持 A/B 双向顺序。
 pub fn apply_back_hair_root_limit(
     parameters: &mut JointParameters,
     body_a: &PmxRigidBody,
@@ -249,16 +100,27 @@ pub fn apply_back_hair_root_limit(
     let score_x = axis_x.cross(center_offset).dot(outward);
     let score_z = axis_z.cross(center_offset).dot(outward);
 
+    // Bullet legacy 6DOF returns the inverse XYZ angle of frameA^-1 * frameB.
+    // Rotating dynamic B therefore negates the geometric sign; rotating A does not.
+
     if score_x.abs() > 1e-4 {
-        parameters.angular[0].restrict_inward_rotation(score_x > 0.0);
+        parameters.angular[0].restrict_inward_rotation(if body_a.mode == RigidBodyMode::Static {
+            score_x < 0.0
+        } else {
+            score_x > 0.0
+        });
     }
 
     if score_z.abs() > 1e-4 {
-        parameters.angular[2].restrict_inward_rotation(score_z > 0.0);
+        parameters.angular[2].restrict_inward_rotation(if body_a.mode == RigidBodyMode::Static {
+            score_z < 0.0
+        } else {
+            score_z > 0.0
+        });
     }
 }
 
-/// 为未配置旋转弹簧且旋转范围过宽的后发根部关节施加兜底弹簧和安全限位。
+/// 为宽范围、零弹簧的后发根部补恢复弹簧，保留作者的补偿角度空间。
 ///
 /// 支持刚体 A/B 双向顺序。
 pub fn apply_wide_back_hair_root_fallback(
@@ -267,11 +129,8 @@ pub fn apply_wide_back_hair_root_fallback(
     body_b: &PmxRigidBody,
 ) -> bool {
     let is_static_dynamic = (body_a.mode == RigidBodyMode::Static
-        && body_b.mode != RigidBodyMode::Static
-        && is_back_hair_body(body_b))
-        || (body_b.mode == RigidBodyMode::Static
-            && body_a.mode != RigidBodyMode::Static
-            && is_back_hair_body(body_a));
+        && body_b.mode != RigidBodyMode::Static)
+        || (body_b.mode == RigidBodyMode::Static && body_a.mode != RigidBodyMode::Static);
 
     if !is_static_dynamic || parameters.angular.iter().any(|axis| axis.spring_enabled) {
         return false;
@@ -291,14 +150,14 @@ pub fn apply_wide_back_hair_root_fallback(
         .iter_mut()
         .zip(HAIR_ROOT_FALLBACK_STIFFNESS)
     {
-        axis.clamp_symmetric_rotation(HAIR_ROOT_FALLBACK_ANGLE);
+        // 仰头需要反向补偿父骨旋转；保留作者范围，仅补恢复弹簧。
         axis.install_fallback_spring(stiffness);
     }
 
     true
 }
 
-/// 为长发链条中的动态子关节提供单节角度预算与回正弹簧兜底。
+/// 为已分类的头发动态子关节补恢复弹簧，不套统一单节角度预算。
 pub fn apply_hair_chain_fallback(
     parameters: &mut JointParameters,
     body_a: &PmxRigidBody,
@@ -306,8 +165,6 @@ pub fn apply_hair_chain_fallback(
 ) -> bool {
     if body_a.mode == RigidBodyMode::Static
         || body_b.mode == RigidBodyMode::Static
-        || !is_hair_body(body_a)
-        || !is_hair_body(body_b)
         || parameters.angular.iter().any(|axis| axis.spring_enabled)
     {
         return false;
@@ -323,7 +180,7 @@ pub fn apply_hair_chain_fallback(
 
     for axis in &mut parameters.angular {
         if axis.lower <= axis.upper && axis.upper - axis.lower > 1e-6 {
-            axis.clamp_symmetric_rotation(HAIR_CHAIN_FALLBACK_ANGLE);
+            // 不按链节数假设累计角度预算；保留作者范围。
             axis.install_fallback_spring(HAIR_CHAIN_FALLBACK_STIFFNESS);
         }
     }
@@ -395,7 +252,7 @@ mod tests {
         assert!(is_hair_body(&side_hair_tc));
         assert!(is_side_hair_body(&side_hair_tc));
         assert!(is_hair_body(&ponytail_tc));
-        assert!(is_hair_body(&hair_deco_tc));
+        assert!(!is_hair_body(&hair_deco_tc));
 
         // 简体测试
         assert!(is_hair_body(&back_hair_sc));
@@ -426,8 +283,8 @@ mod tests {
         for (axis, expected_stiffness) in params.angular.iter().zip(HAIR_ROOT_FALLBACK_STIFFNESS) {
             assert!(axis.spring_enabled);
             assert!((axis.stiffness - expected_stiffness).abs() < 1e-5);
-            assert!((axis.lower - (-HAIR_ROOT_FALLBACK_ANGLE)).abs() < 1e-5);
-            assert!((axis.upper - HAIR_ROOT_FALLBACK_ANGLE).abs() < 1e-5);
+            assert!((axis.lower + wide_angle).abs() < 1e-5);
+            assert!((axis.upper - wide_angle).abs() < 1e-5);
         }
     }
 }
