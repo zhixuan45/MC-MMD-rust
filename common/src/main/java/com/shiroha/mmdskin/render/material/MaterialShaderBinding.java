@@ -20,7 +20,8 @@ final class MaterialShaderBinding implements AutoCloseable {
         materialSpecular = GL46C.glGetUniformLocation(program, "MaterialSpecular");
         materialPower = GL46C.glGetUniformLocation(program, "MaterialSpecularPower");
         alphaPass = GL46C.glGetUniformLocation(program, "AlphaPass");
-        colorModulator = GL46C.glGetUniformLocation(program, "ColorModulator");
+        int modulator = GL46C.glGetUniformLocation(program, "ColorModulator");
+        colorModulator = modulator >= 0 ? modulator : GL46C.glGetUniformLocation(program, "iris_ColorModulator");
         if (colorModulator >= 0) GL46C.glGetUniformfv(program, colorModulator, previousModulator);
         int color = GL46C.glGetAttribLocation(program, "Color");
         int irisColor = GL46C.glGetAttribLocation(program, "iris_Color");
@@ -45,7 +46,6 @@ final class MaterialShaderBinding implements AutoCloseable {
             if (materialSpecular >= 0) GL46C.glUniform3f(materialSpecular,
                     state.specular[0], state.specular[1], state.specular[2]);
             if (materialPower >= 0) GL46C.glUniform1f(materialPower, state.specularPower);
-            if (alphaPass >= 0) GL46C.glUniform1i(alphaPass, pass);
         } else {
             boolean hasColorAttribute = false;
             for (int location : attributes) {
@@ -60,6 +60,7 @@ final class MaterialShaderBinding implements AutoCloseable {
                     previousModulator[2] * (hasColorAttribute ? 1.0f : state.color[2]),
                     hasColorAttribute ? 1.0f : state.alpha);
         }
+        if (alphaPass >= 0) GL46C.glUniform1i(alphaPass, pass);
     }
 
     @Override

@@ -62,6 +62,7 @@ final class TextureGpuLoader {
             ByteBuffer buf = NATIVE_BUFFER_ALLOCATOR.allocate(size);
             try {
                 int texId = 0;
+                int previousTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
                 try {
                     texId = GL46C.glGenTextures();
                     GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
@@ -78,6 +79,8 @@ final class TextureGpuLoader {
                         addSuppressed(e, cleanupError);
                     }
                     throw e;
+                } finally {
+                    GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTexture);
                 }
             } finally {
                 NATIVE_BUFFER_ALLOCATOR.free(buf);
@@ -202,6 +205,7 @@ final class TextureGpuLoader {
 
     static TextureRepository.Texture uploadPredecoded(TextureRepository.PredecodedTexture pre) {
         int texId = 0;
+        int previousTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
         try {
             texId = GL46C.glGenTextures();
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texId);
@@ -214,6 +218,7 @@ final class TextureGpuLoader {
             deleteGlTexture(texId);
             throw e;
         } finally {
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTexture);
             pre.release();
         }
     }
@@ -221,6 +226,7 @@ final class TextureGpuLoader {
     static TextureRepository.Texture createColorTexture(float[] color) {
         ByteBuffer pixel = MemoryUtil.memAlloc(4);
         int texId = 0;
+        int previousTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
         try {
             texId = GL46C.glGenTextures();
             for (int i = 0; i < 4; i++) {
@@ -238,6 +244,7 @@ final class TextureGpuLoader {
             deleteGlTexture(texId);
             throw e;
         } finally {
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTexture);
             MemoryUtil.memFree(pixel);
         }
     }

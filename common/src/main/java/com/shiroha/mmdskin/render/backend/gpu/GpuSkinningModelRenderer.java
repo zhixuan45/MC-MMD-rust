@@ -256,7 +256,10 @@ final class GpuSkinningModelRenderer {
         if (target.positionLocation != -1) GL46C.glDisableVertexAttribArray(target.positionLocation);
         if (target.normalLocation != -1) GL46C.glDisableVertexAttribArray(target.normalLocation);
         if (target.uv0Location != -1) GL46C.glDisableVertexAttribArray(target.uv0Location);
-        if (target.uv1Location != -1) GL46C.glDisableVertexAttribArray(target.uv1Location);
+        if (target.uv1Location != -1) {
+            GL46C.glDisableVertexAttribArray(target.uv1Location);
+            GL46C.glVertexAttribDivisor(target.uv1Location, 0);
+        }
         if (target.uv2Location != -1) GL46C.glDisableVertexAttribArray(target.uv2Location);
         if (target.colorLocation != -1) GL46C.glDisableVertexAttribArray(target.colorLocation);
         if (target.I_positionLocation != -1) GL46C.glDisableVertexAttribArray(target.I_positionLocation);
@@ -293,7 +296,8 @@ final class GpuSkinningModelRenderer {
         RenderSystem.enableBlend();
         RenderSystem.enableDepthTest();
         RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
+                GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
         boolean shadowPass = IrisCompat.isRenderingShadows();
         int shadowDraw = shadowPass ? GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING) : -1;
@@ -302,6 +306,13 @@ final class GpuSkinningModelRenderer {
             // 保留 Iris 按缓冲设置的混合状态，不能在 apply 后重置。
             target.setUniforms(shader, deliverStack);
             shader.apply();
+            GlStateManager._glUseProgram(target.shaderProgram);
+            if (!IrisCompat.isIrisProgram(shader)) {
+                RenderSystem.enableBlend();
+                RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA,
+                        GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE,
+                        GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+            }
             target.updateLocation(target.shaderProgram);
             if (target.modelViewLocation != -1) {
                 RenderSystem.glUniformMatrix4(target.modelViewLocation, false, target.modelViewMatBuff);
@@ -374,7 +385,8 @@ final class GpuSkinningModelRenderer {
         if (target.uv1Location != -1) {
             GL46C.glEnableVertexAttribArray(target.uv1Location);
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, target.uv1BufferObject);
-            GL46C.glVertexAttribIPointer(target.uv1Location, 2, GL46C.GL_INT, 0, 0);
+            GL46C.glVertexAttribIPointer(target.uv1Location, 2, GL46C.GL_INT, 0, target.vertexCount * 8L);
+            GL46C.glVertexAttribDivisor(target.uv1Location, 1);
         }
         if (irisEntityScene && target.I_positionLocation != -1) {
             GL46C.glEnableVertexAttribArray(target.I_positionLocation);
@@ -443,7 +455,8 @@ final class GpuSkinningModelRenderer {
         RenderSystem.enableBlend();
         RenderSystem.enableDepthTest();
         RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
-        RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
+        RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
+                GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
         ShaderInstance currentShader = RenderSystem.getShader();
         ShaderInstance irisShader = irisEntityScene && IrisCompat.isIrisProgram(currentShader)

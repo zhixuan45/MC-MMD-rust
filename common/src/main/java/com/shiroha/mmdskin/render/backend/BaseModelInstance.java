@@ -2,8 +2,6 @@ package com.shiroha.mmdskin.render.backend;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.compat.iris.IrisCompat;
-import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
-import com.shiroha.mmdskin.player.render.InventoryRenderScope;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.debug.client.ModelIssueDiagnostics;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
@@ -468,17 +466,13 @@ public abstract class BaseModelInstance implements ModelInstance {
         if (shader.LINE_WIDTH != null)
             shader.LINE_WIDTH.set(RenderSystem.getShaderLineWidth());
 
-        boolean guiScene = PaperDollRenderScope.isActive() || InventoryRenderScope.isActive();
-        if (IrisCompat.isIrisProgram(shader) && !guiScene) {
-            // Iris 的 1/2 号纹理分别是覆盖色与游戏光照图。
-            var renderer = Minecraft.getInstance().gameRenderer;
-            renderer.overlayTexture().setupOverlayColor();
-            renderer.lightTexture().turnOnLightLayer();
-        } else {
-            shader.setSampler("Sampler1", lightMapTex);
-            shader.setSampler("Sampler2", lightMapTex);
-            RenderSystem.setShaderTexture(1, lightMapTex);
-            RenderSystem.setShaderTexture(2, lightMapTex);
+        // 原版和 Iris 实体接口一致：1 是覆盖色，2 是光照，不能混用模型贴图。
+        var renderer = Minecraft.getInstance().gameRenderer;
+        renderer.overlayTexture().setupOverlayColor();
+        renderer.lightTexture().turnOnLightLayer();
+        if (!IrisCompat.isIrisProgram(shader)) {
+            shader.setSampler("Sampler1", RenderSystem.getShaderTexture(1));
+            shader.setSampler("Sampler2", RenderSystem.getShaderTexture(2));
         }
     }
 
