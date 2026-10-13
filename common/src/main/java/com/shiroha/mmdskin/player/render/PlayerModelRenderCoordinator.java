@@ -61,6 +61,7 @@ final class PlayerModelRenderCoordinator {
                 || (isVr && FirstPersonManager.isVrEyeCameraActive()));
         boolean reusePreparedFirstPersonPose = !isVr
                 && selection.isLocalPlayer()
+                && !inventoryRender
                 && model instanceof BaseModelInstance baseModel
                 && baseModel.hasPreparedFirstPersonPose();
 

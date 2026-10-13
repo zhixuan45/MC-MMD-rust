@@ -4,6 +4,7 @@ import com.shiroha.mmdskin.config.RuntimeConfigPort;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
 import com.shiroha.mmdskin.neoforge.YsmCompat;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
+import com.shiroha.mmdskin.player.runtime.FrontViewCameraManager;
 import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import net.minecraft.client.Camera;
 import net.minecraft.util.Mth;
@@ -30,6 +31,24 @@ public abstract class CameraMixin {
     // NeoForge 增补接口直接同步 roll 字段和相机基向量。
     @Shadow(remap = false)
     protected abstract void setRotation(float yaw, float pitch, float roll);
+
+    @Shadow
+    public abstract Vec3 getPosition();
+
+    // 在第三人称距离和墙体裁剪前校正起点，只改变前视镜头高度。
+    @Inject(method = "setup", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/Camera;setPosition(DDD)V", ordinal = 0, shift = At.Shift.AFTER))
+    private void mmdskin$alignFrontViewPivot(BlockGetter level, Entity entity, boolean detached,
+                                            boolean mirrored, float partialTick, CallbackInfo ci) {
+        if (!detached || !mirrored || MMDCameraController.getInstance().isActive()) return;
+        if (entity instanceof LivingEntity living && YsmCompat.isYsmModelActive(living)
+                && !YsmCompat.isDisableSelfModel()) return;
+        Double height = FrontViewCameraManager.getPivotHeight(entity);
+        if (height != null) {
+            Vec3 pivot = getPosition();
+            setPosition(pivot.x, height, pivot.z);
+        }
+    }
 
     @Inject(method = "setup", at = @At("TAIL"))
     private void onSetup(BlockGetter level, Entity entity, boolean detached, boolean mirrored, float partialTick, CallbackInfo ci) {

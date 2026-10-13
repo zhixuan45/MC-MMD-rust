@@ -84,8 +84,13 @@ public abstract class BaseModelInstance implements ModelInstance {
      * 在 Camera.setup 前计算一次本地第一人称姿态。
      */
     public boolean prepareFirstPersonPose(LivingEntity entity, float entityYaw, float tickDelta) {
+        return prepareCameraPose(entity, entityYaw, tickDelta, RenderScene.FIRST_PERSON);
+    }
+
+    /** 相机和正式世界绘制复用同帧姿态，避免重复推进动画。 */
+    public boolean prepareCameraPose(LivingEntity entity, float entityYaw, float tickDelta, RenderScene scene) {
         firstPersonPoseState.beginPreparation();
-        if (entity == null || model == 0 || !isReady()) {
+        if (entity == null || model == 0 || !isReady() || scene == null || !scene.isWorldScene()) {
             return false;
         }
 
@@ -98,7 +103,7 @@ public abstract class BaseModelInstance implements ModelInstance {
                 entity,
                 entityYaw,
                 tickDelta,
-                RenderScene.FIRST_PERSON,
+                scene,
                 getModelName(),
                 stagePlaying,
                 vrActive);
@@ -259,7 +264,8 @@ public abstract class BaseModelInstance implements ModelInstance {
                                      Vector3f entityTrans, float tickDelta, PoseStack mat,
                                      int packedLight, RenderScene context, WorldRenderPolicy.Decision worldDecision) {
         boolean stagePlaying = MMDCameraController.getInstance().isStagePlayingModel(model);
-        boolean reusePreparedPose = firstPersonPoseState.isPrepared();
+        boolean reusePreparedPose = firstPersonPoseState.isPrepared()
+                && context != null && context.isWorldScene();
 
         applyPhysicsState(worldDecision.physicsEnabled());
 
@@ -383,7 +389,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         return (baseAlpha * mulAlpha + addAlpha) * globalAlpha;
     }
 
-    protected float getModelScale() {
+    public float getModelScale() {
         return MODEL_SCALE * com.shiroha.mmdskin.config.ModelConfigManager.getConfig(getModelName()).modelScale;
     }
 

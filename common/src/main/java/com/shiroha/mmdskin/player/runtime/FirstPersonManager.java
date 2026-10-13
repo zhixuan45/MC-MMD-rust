@@ -98,6 +98,7 @@ public final class FirstPersonManager {
      */
     public static void prepareCameraFrame(float partialTick) {
         discardPreparedFirstPersonPose();
+        FrontViewCameraManager.clear();
 
         Minecraft minecraft = Minecraft.getInstance();
         AbstractClientPlayer player = minecraft.player;
@@ -113,6 +114,7 @@ public final class FirstPersonManager {
                 || InventoryRenderHelper.isInventoryScreen()
                 || isStageCameraActive()) {
             deactivateDesktopCameraState();
+            FrontViewCameraManager.prepare(partialTick, modelPort);
             return;
         }
 
@@ -305,6 +307,7 @@ public final class FirstPersonManager {
 
     public static void reset() {
         discardPreparedFirstPersonPose();
+        FrontViewCameraManager.clear();
         activeDesktopFirstPerson = false;
         activeVrEyeCamera = false;
         trackedModelHandle = 0;
