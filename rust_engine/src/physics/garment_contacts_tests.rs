@@ -230,4 +230,68 @@ fn strict_keeps_g_and_skirt_authored_masks_unchanged() {
 }
 
 
+#[test]
+fn authored_skirt_group_route_does_not_expand_forbidden_body_pairs() {
+    let bodies = [
+        body("腰小", "", 0, 0xFFFF, RigidBodyMode::Static),
+        body("腰大", "", 0, 0x0200, RigidBodyMode::Static),
+        body("腰中", "", 0, 0xFF7F, RigidBodyMode::Static),
+        body("裙片", "", 7, 0xEF7F, RigidBodyMode::Dynamic),
+        body("裙片另一段", "", 7, 0xFF7E, RigidBodyMode::Dynamic),
+        body("hair", "", 9, 0xEDFF, RigidBodyMode::Dynamic),
+    ];
+    let eligible = [true, true, true, false, false, false];
+    let authored_masks = bodies
+        .iter()
+        .map(|body| body.un_collision_group_flag)
+        .collect::<Vec<_>>();
+
+    for mode in [CollisionStabilityMode::Stable, CollisionStabilityMode::Relaxed] {
+        let plan = build_garment_contact_plan(&bodies, &eligible, true, mode);
+
+        assert_eq!(plan.effective_masks, authored_masks);
+        assert_eq!(plan.allowed_pairs, vec![(0, 3)]);
+        assert!(plan.forced_ignore_pairs.is_empty());
+    }
+}
+
+#[test]
+fn one_sided_masks_do_not_count_as_an_authored_skirt_body_route() {
+    let bodies = [
+        body("腰小", "", 0, 0xFF7F, RigidBodyMode::Static),
+        body("腰大", "", 0, 0x0200, RigidBodyMode::Static),
+        body("裙片", "", 7, 0xFF7E, RigidBodyMode::Dynamic),
+        body("裙片另一段", "", 7, 0xEF7F, RigidBodyMode::Dynamic),
+    ];
+    let eligible = [true, true, false, false];
+    let plan = stable_plan(&bodies, &eligible);
+
+    // 每对只有一侧掩码允许，不能据此认定作者已配置身体碰撞通路。
+    assert_eq!(plan.allowed_pairs, vec![(0, 2), (0, 3), (1, 2), (1, 3)]);
+    assert_eq!(plan.effective_masks, vec![0xFFFF, 0x0280, 0xFF7F, 0xEF7F]);
+}
+
+#[test]
+fn authored_and_missing_skirt_groups_are_handled_independently() {
+    let bodies = [
+        body("腰小", "", 0, 0xFFFF, RigidBodyMode::Static),
+        body("腰大", "", 0, 0x0200, RigidBodyMode::Static),
+        body("腰中", "", 0, 0xFF7F, RigidBodyMode::Static),
+        body("裙组7片", "", 7, 0xEF7F, RigidBodyMode::Dynamic),
+        body("裙组7另一段", "", 7, 0xFF7E, RigidBodyMode::Dynamic),
+        body("腰新组", "", 0, 0x0000, RigidBodyMode::Static),
+        body("裙组9片", "", 9, 0x0000, RigidBodyMode::Dynamic),
+        body("hair", "", 9, 0xEDFF, RigidBodyMode::Dynamic),
+    ];
+    let plan = stable_plan(&bodies, &[true, true, true, false, false, true, false, false]);
+
+    assert_eq!(plan.allowed_pairs, vec![(0, 3), (0, 6), (1, 6), (2, 6), (5, 6)]);
+    assert_eq!(
+        plan.effective_masks,
+        vec![0xFFFF, 0x0200, 0xFF7F, 0xEF7F, 0xFF7E, 0x0200, 0x0001, 0xEDFF]
+    );
+    assert_eq!(plan.forced_ignore_pairs, vec![(5, 7)]);
+}
+
+
 

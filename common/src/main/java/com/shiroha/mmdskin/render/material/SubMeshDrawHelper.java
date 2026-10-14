@@ -55,7 +55,8 @@ public final class SubMeshDrawHelper {
         int originalIndices=GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING);
         MaterialRenderState state = new MaterialRenderState();
         try (EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
-             MaterialShaderBinding binding = new MaterialShaderBinding()) {
+             MaterialShaderBinding binding = new MaterialShaderBinding();
+             SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
             boolean sorted=!shadowPass && order!=null && geometry!=null
                     && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,alphaResolver);
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
@@ -95,6 +96,7 @@ public final class SubMeshDrawHelper {
                             }
                         }
                         binding.apply(state, shadowPass || pass == 2 ? 0 : pass + 1);
+                        sphere.apply(material, state);
 
                         if (bothFace) {
                             RenderSystem.disableCull();
@@ -123,6 +125,15 @@ public final class SubMeshDrawHelper {
             // 恢复默认的面剔除状态，防止污染后续实体渲染。
             RenderSystem.enableCull();
         }
+    }
+
+    private static boolean hasSphere(ModelMaterial[] materials) {
+        // 没有球面层的模型不做额外的采样器枚举和纹理状态查询。
+        for (ModelMaterial material : materials) {
+            if (material != null && material.sphereTex > 0
+                    && (material.sphereMode == 1 || material.sphereMode == 2)) return true;
+        }
+        return false;
     }
 
 }

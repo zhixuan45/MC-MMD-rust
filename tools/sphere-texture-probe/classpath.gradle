@@ -1,0 +1,10 @@
+gradle.projectsEvaluated {
+    def common = gradle.rootProject.project(':common')
+    common.tasks.register('writeSphereProbeClasspath') {
+        doLast {
+            def output = rootProject.file('build/sphere-texture-probe/classpath.txt')
+            output.parentFile.mkdirs()
+            output.text = common.sourceSets.main.runtimeClasspath.asPath
+        }
+    }
+}

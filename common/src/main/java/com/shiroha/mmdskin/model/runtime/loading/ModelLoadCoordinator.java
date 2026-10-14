@@ -234,11 +234,16 @@ public final class ModelLoadCoordinator {
             int materialCount = runtimeAccessPort.getMaterialCount(modelHandle);
             for (int i = 0; i < materialCount; i++) {
                 String texturePath = runtimeAccessPort.getMaterialTexturePath(modelHandle, i);
-                if (texturePath == null || texturePath.isEmpty()) {
-                    continue;
+                if (texturePath != null && !texturePath.isEmpty()) {
+                    runtimeAccessPort.preloadTexture(texturePath, "diffuse",
+                            "preload modelHandle=" + modelHandle + " materialIndex=" + i);
                 }
-                runtimeAccessPort.preloadTexture(texturePath, "diffuse",
-                        "preload modelHandle=" + modelHandle + " materialIndex=" + i);
+                int mode = runtimeAccessPort.getMaterialSphereTextureMode(modelHandle, i);
+                String sphere = runtimeAccessPort.getMaterialSphereTexturePath(modelHandle, i);
+                if ((mode == 1 || mode == 2) && sphere != null && !sphere.isEmpty()) {
+                    runtimeAccessPort.preloadTexture(sphere, "sphere",
+                            "preload modelHandle=" + modelHandle + " materialIndex=" + i);
+                }
             }
             runtimeAccessPort.preloadTexture(modelDir + "/lightMap.png", "light-map",
                     "preload modelHandle=" + modelHandle);

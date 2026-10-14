@@ -29,6 +29,11 @@ public final class ToonControlsProbe {
             shader.setLightIntensity(.7f);
             shader.setSampler0(0);
             shader.setGlobalAlpha(.5f);
+            // 与生产逐材质输入一致；GlobalAlpha 已由 MaterialColor.a 合并。
+            int program = shader.getMainProgram();
+            GL46C.glUniform4f(GL46C.glGetUniformLocation(program, "MaterialColor"), 1, 1, 1, .5f);
+            GL46C.glUniform3f(GL46C.glGetUniformLocation(program, "MaterialSpecular"), 1, 1, 1);
+            GL46C.glUniform1f(GL46C.glGetUniformLocation(program, "MaterialSpecularPower"), 96);
             shader.setAlphaCutoff(.1f);
             shader.setEyeEmission(0);
             shader.setEyeMaterialMask(0);

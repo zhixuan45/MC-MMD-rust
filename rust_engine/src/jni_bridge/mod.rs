@@ -2,6 +2,7 @@
 
 mod animation_handle;
 mod issue_diagnostics;
+mod material_sphere;
 mod model_handle;
 mod native_func;
 mod render_view;

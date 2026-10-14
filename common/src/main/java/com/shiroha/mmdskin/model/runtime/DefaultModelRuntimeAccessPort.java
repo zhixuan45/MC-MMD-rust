@@ -67,6 +67,16 @@ public final class DefaultModelRuntimeAccessPort implements ModelRuntimeAccessPo
     }
 
     @Override
+    public String getMaterialSphereTexturePath(long modelHandle, int materialIndex) {
+        return nativeModelLoadPort.getMaterialSphereTexturePath(modelHandle, materialIndex);
+    }
+
+    @Override
+    public int getMaterialSphereTextureMode(long modelHandle, int materialIndex) {
+        return nativeModelLoadPort.getMaterialSphereTextureMode(modelHandle, materialIndex);
+    }
+
+    @Override
     public void setMaterialVisible(long modelHandle, int materialIndex, boolean visible) {
         nativeModelPort.setMaterialVisible(modelHandle, materialIndex, visible);
     }

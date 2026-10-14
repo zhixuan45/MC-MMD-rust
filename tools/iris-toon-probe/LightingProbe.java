@@ -91,6 +91,8 @@ public final class LightingProbe {
         shader.setToonLevels(3);
         shader.setShadowColor(.65f, .7f, .8f);
         shader.setGlobalAlpha(1);
+        // 生产材质现在显式上传颜色，探针也必须给出相同输入。
+        GL46C.glUniform4f(GL46C.glGetUniformLocation(target, "MaterialColor"), 1, 1, 1, 1);
         shader.setAlphaCutoff(.1f);
         shader.setTransitionSoftness(1.2f);
         shader.setLightDirection(.35f, .85f, -.4f);

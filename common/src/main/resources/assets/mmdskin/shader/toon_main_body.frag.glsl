@@ -7,6 +7,10 @@ in vec3 viewLightDir;
 in float eyeMask;
 
 uniform sampler2D Sampler0;
+uniform sampler2D SphereTexture;
+uniform int SphereMode;
+uniform vec4 SphereMul;
+uniform vec4 SphereAdd;
 uniform float AlphaCutoff;
 uniform vec4 MaterialColor;
 uniform vec3 MaterialSpecular;
@@ -42,6 +46,16 @@ void main() {
     } else {
         finalColor = shadeToonSurface(albedo, normal, lightDir, viewPos,
                 vec3(max(LightIntensity, 0.0)), ramp);
+    }
+    if (SphereMode == 1 || SphereMode == 2) {
+        // 纹理解码已经翻转 Y；视空间法线映射让球面效果随视角变化。
+        vec2 halfTexel = 0.5 / vec2(textureSize(SphereTexture, 0));
+        vec2 sphereUv = clamp(normal.xy * 0.5 + 0.5, halfTexel, vec2(1.0) - halfTexel);
+        vec3 sphereColor = texture(SphereTexture, sphereUv).rgb;
+        sphereColor = mix(vec3(1.0), sphereColor * SphereMul.rgb, SphereMul.a);
+        sphereColor = clamp(sphereColor + (sphereColor - vec3(1.0)) * SphereAdd.a, 0.0, 1.0) + SphereAdd.rgb;
+        // SPA 可叠加在黑色主贴图上，贴图 alpha 不改变 PMX 表面透明度。
+        finalColor = SphereMode == 1 ? finalColor * sphereColor : finalColor + sphereColor;
     }
     // 合并眼瞳遮罩与线性空间发光。
     float emissionMask = EyeMaterialMask < 0.0 ? 0.0 : max(saturate(eyeMask), saturate(EyeMaterialMask));

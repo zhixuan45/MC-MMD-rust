@@ -119,6 +119,7 @@ pub fn load_pmx<P: AsRef<Path>>(path: P) -> Result<MmdModel> {
             edge_scale: mat.edge_scale,
             texture_index: mat.texture_index,
             environment_index: mat.environment_index,
+            environment_blend_mode: mat.environment_blend_mode as u8,
             toon_index: match mat.toon {
                 mmd::pmx::material::Toon::Texture(idx) => idx,
                 mmd::pmx::material::Toon::Internal(idx) => -(idx as i32) - 1,

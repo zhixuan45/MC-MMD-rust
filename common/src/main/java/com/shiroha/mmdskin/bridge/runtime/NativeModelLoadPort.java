@@ -11,6 +11,14 @@ public interface NativeModelLoadPort {
 
     String getMaterialTexturePath(long modelHandle, int materialIndex);
 
+    default String getMaterialSphereTexturePath(long modelHandle, int materialIndex) {
+        return "";
+    }
+
+    default int getMaterialSphereTextureMode(long modelHandle, int materialIndex) {
+        return 0;
+    }
+
     default float[] getMaterialDiffuseColor(long modelHandle, int materialIndex) {
         return new float[] {1.0f, 1.0f, 1.0f, 1.0f};
     }

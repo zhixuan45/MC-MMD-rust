@@ -435,6 +435,16 @@ public final class NativeRuntimeBridge implements
     }
 
     @Override
+    public String getMaterialSphereTexturePath(long modelHandle, int materialIndex) {
+        return nativeFunc().GetMaterialSpTex(modelHandle, materialIndex);
+    }
+
+    @Override
+    public int getMaterialSphereTextureMode(long modelHandle, int materialIndex) {
+        return nativeFunc().GetMaterialSpTextureMode(modelHandle, materialIndex);
+    }
+
+    @Override
     public float[] getMaterialDiffuseColor(long modelHandle, int materialIndex) {
         long address = nativeFunc().GetMaterialDiffuse(modelHandle, materialIndex);
         float[] color = new float[] {1.0f, 1.0f, 1.0f, 1.0f};

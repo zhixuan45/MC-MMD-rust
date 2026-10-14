@@ -85,7 +85,10 @@ public class NativeFunc {
 
     public native long GetMaterialTextureAddFactor(long model, long pos);
 
-    public native int GetMaterialSpTextureMode(long model, long pos);
+    public int GetMaterialSpTextureMode(long model, long pos) {
+        GetInst(); // 先确保原生库已加载。
+        return com.shiroha.mmdskin.bridge.runtime.SphereMaterialNative.getMode(model, Math.toIntExact(pos));
+    }
 
     public native long GetMaterialSpTextureMulFactor(long model, long pos);
 

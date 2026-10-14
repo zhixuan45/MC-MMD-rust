@@ -63,6 +63,26 @@ class MaterialRenderStateTest {
         assertEquals(0, state.alpha);
     }
 
+    @Test
+    void sphereMorphPreservesSeparateFactorsAndSurfaceAlpha() {
+        ByteBuffer morphs = identityMorphs(2);
+        int base = 56 * Float.BYTES;
+        morphs.putFloat(base + 20 * Float.BYTES, 0.2f);
+        morphs.putFloat(base + 23 * Float.BYTES, 0.3f);
+        morphs.putFloat(base + 48 * Float.BYTES, 0.4f);
+        morphs.putFloat(base + 51 * Float.BYTES, 0.5f);
+        MaterialRenderState state = new MaterialRenderState();
+        state.resolve(new ModelMaterial(), morphs, 1, 0.6f);
+        assertArrayEquals(new float[] {0.2f, 1, 1, 0.3f}, state.sphereMul);
+        assertArrayEquals(new float[] {0.4f, 0, 0, 0.5f}, state.sphereAdd);
+        assertEquals(0.6f, state.alpha);
+        state.resolve(new ModelMaterial(), morphs, 0, 0.6f);
+        assertArrayEquals(new float[] {1, 1, 1, 1}, state.sphereMul);
+        assertArrayEquals(new float[] {0, 0, 0, 0}, state.sphereAdd);
+        state.resolve(new ModelMaterial(), morphs, 2, 0.6f);
+        assertArrayEquals(new float[] {1, 1, 1, 1}, state.sphereMul);
+    }
+
     private static ByteBuffer identityMorphs(int count) {
         ByteBuffer morphs = ByteBuffer.allocate(count * 56 * Float.BYTES).order(ByteOrder.nativeOrder());
         for (int material = 0; material < count; material++) {

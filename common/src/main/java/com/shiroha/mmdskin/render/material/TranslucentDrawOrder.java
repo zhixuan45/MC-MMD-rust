@@ -91,6 +91,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
 
     private record Batch(
             int texture,
+            int sphereMaterial,
             boolean cull,
             boolean hasAlpha,
             boolean hasTranslucent,
@@ -142,6 +143,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
         int eyeLocation = GL46C.glGetUniformLocation(program, "EyeEmission");
         boolean eye = eyeLocation >= 0 && GL46C.glGetUniformf(program, eyeLocation) > 0;
         boolean splitPixels = GL46C.glGetUniformLocation(program, "AlphaPass") >= 0;
+        boolean sphere = GL46C.glGetUniformLocation(program, "SphereMode") >= 0;
         // Pack entity shaders may deform vertices or derive alpha beyond the diffuse atlas.
         // Own Toon programs have the known MaterialColor/texture-alpha formula.
         boolean packEntity =
@@ -161,6 +163,9 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             var batch =
                     new Batch(
                             material.tex,
+                            // 球面模式及 morph 属于逐材质状态，不能只按主贴图合并。
+                            sphere && material.sphereTex > 0 && (material.sphereMode == 1 || material.sphereMode == 2)
+                                    ? source.getInt(s * 20) : -1,
                             source.get(s * 20 + 17) == 0,
                             material.hasAlpha,
                             material.hasTranslucentPixels,

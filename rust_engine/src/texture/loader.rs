@@ -1,6 +1,6 @@
 //! 纹理加载
 
-use image::{DynamicImage, GenericImageView};
+use image::{DynamicImage, GenericImageView, ImageReader};
 use std::path::Path;
 
 use super::Texture;
@@ -9,15 +9,22 @@ use crate::{MmdError, Result};
 /// 从文件加载纹理
 pub fn load_texture<P: AsRef<Path>>(path: P) -> Result<Texture> {
     let path = path.as_ref();
-    let img = image::open(path).map_err(|e| {
-        MmdError::Texture(format!(
-            "Failed to load texture path={} error={}",
-            bounded_path(path),
-            e
-        ))
-    })?;
+    let reader = ImageReader::open(path)
+        .and_then(|reader| reader.with_guessed_format())
+        .map_err(|error| texture_error(path, error))?;
+    let img = reader
+        .decode()
+        .map_err(|error| texture_error(path, error))?;
 
     Ok(texture_from_image(img))
+}
+
+fn texture_error(path: &Path, error: impl std::fmt::Display) -> MmdError {
+    MmdError::Texture(format!(
+        "Failed to load texture path={} error={}",
+        bounded_path(path),
+        error
+    ))
 }
 
 fn bounded_path(path: &Path) -> String {
@@ -85,8 +92,10 @@ pub fn load_texture_from_memory(data: &[u8]) -> Result<Texture> {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_texture, load_texture_from_memory};
+    use super::load_texture;
+    use image::{DynamicImage, ImageFormat, Rgb, Rgba};
     use std::fs;
+    use std::io::Cursor;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -118,6 +127,36 @@ mod tests {
         };
         assert!(message.contains(&path.to_string_lossy().to_string()));
         assert!(message.contains("os error 2") || message.contains("No such file"));
+    }
+
+    #[test]
+    fn renamed_png_spa_texture_is_decoded_by_content() {
+        let mut encoded = Cursor::new(Vec::new());
+        DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(1, 1, Rgba([12, 34, 56, 255])))
+            .write_to(&mut encoded, ImageFormat::Png)
+            .unwrap();
+        let path = write_temp_with_extension("spa", encoded.get_ref());
+
+        let texture = load_texture(&path).expect("PNG content with SPA extension should load");
+        let _ = fs::remove_file(&path);
+
+        assert_eq!((texture.width, texture.height), (1, 1));
+        assert_eq!(&texture.data[..3], &[12, 34, 56]);
+    }
+
+    #[test]
+    fn renamed_bmp_sph_texture_is_decoded_by_content() {
+        let mut encoded = Cursor::new(Vec::new());
+        DynamicImage::ImageRgb8(image::RgbImage::from_pixel(1, 1, Rgb([78, 90, 123])))
+            .write_to(&mut encoded, ImageFormat::Bmp)
+            .unwrap();
+        let path = write_temp_with_extension("sph", encoded.get_ref());
+
+        let texture = load_texture(&path).expect("BMP content with SPH extension should load");
+        let _ = fs::remove_file(&path);
+
+        assert_eq!((texture.width, texture.height), (1, 1));
+        assert_eq!(&texture.data[..3], &[78, 90, 123]);
     }
 
     fn dds_texture(fourcc: &str, linear_size: u32, block: &[u8]) -> Vec<u8> {
@@ -164,6 +203,22 @@ mod tests {
             "mmd_engine_dds_test_{}_{}.dds",
             std::process::id(),
             nanos
+        ));
+        fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    fn write_temp_with_extension(extension: &str, bytes: &[u8]) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        path.push(format!(
+            "mmd_engine_sphere_test_{}_{}.{}",
+            std::process::id(),
+            nanos,
+            extension
         ));
         fs::write(&path, bytes).unwrap();
         path

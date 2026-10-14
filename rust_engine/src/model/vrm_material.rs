@@ -69,6 +69,7 @@ fn convert_single_material(
         edge_scale,
         texture_index,
         environment_index: -1,
+        environment_blend_mode: 0,
         toon_index: -1,
         draw_flags,
     }

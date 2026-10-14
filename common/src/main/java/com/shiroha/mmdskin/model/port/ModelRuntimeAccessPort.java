@@ -19,6 +19,10 @@ public interface ModelRuntimeAccessPort {
 
     String getMaterialTexturePath(long modelHandle, int materialIndex);
 
+    default String getMaterialSphereTexturePath(long modelHandle, int materialIndex) { return ""; }
+
+    default int getMaterialSphereTextureMode(long modelHandle, int materialIndex) { return 0; }
+
     void setMaterialVisible(long modelHandle, int materialIndex, boolean visible);
 
     void preloadTexture(String texturePath);

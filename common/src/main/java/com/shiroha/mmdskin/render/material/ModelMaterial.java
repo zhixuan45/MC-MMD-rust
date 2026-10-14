@@ -16,6 +16,9 @@ public class ModelMaterial {
     public boolean hasAlpha = false;
     public String name = "";
     public String texturePath = "";
+    public int sphereTex;
+    public int sphereMode; // PMX: 0 禁用，1 SPH 乘法，2 SPA 加法，3 扩展 UV。
+    public String sphereTexturePath = "";
     public boolean ownsTexture = false;
     public float[] diffuse = {1.0f, 1.0f, 1.0f, 1.0f};
     public float[] ambient = {0.5f, 0.5f, 0.5f};

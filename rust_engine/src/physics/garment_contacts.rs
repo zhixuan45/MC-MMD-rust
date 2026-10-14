@@ -1,4 +1,4 @@
-//! 仅为裙摆与骨盆/大腿补齐 PMX 双向碰撞组位。
+//! 为没有原生身体碰撞通路的裙摆组补碰撞，保留作者的选择性禁碰。
 
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
@@ -29,19 +29,46 @@ pub(super) fn build_garment_contact_plan(
         return plan;
     }
 
+    let eligible_body = |index: usize, body: &PmxRigidBody| {
+        body.mode == RigidBodyMode::Static
+            && eligible_body_colliders.get(index).copied().unwrap_or(false)
+            && is_pelvis_or_thigh_collider(body)
+    };
+    // 同组任一裙片已有双向身体通路，就保留整组各段的独立掩码。
+    // 大小壳可能属于同一组，仅靠组号或尺寸无法识别作者意图。
+    let mut authored_body_routes = [false; 16];
+    for garment in bodies
+        .iter()
+        .filter(|body| body.mode != RigidBodyMode::Static && is_skirt_or_lower_garment(body))
+    {
+        if bodies.iter().enumerate().any(|(index, body)| {
+            eligible_body(index, body)
+                && masks_allow_pair(
+                    garment,
+                    garment.un_collision_group_flag,
+                    body,
+                    body.un_collision_group_flag,
+                )
+        }) {
+            authored_body_routes[garment.group.min(15) as usize] = true;
+        }
+    }
+
     for (garment_index, garment) in bodies.iter().enumerate() {
         if garment.mode == RigidBodyMode::Static || !is_skirt_or_lower_garment(garment) {
             continue;
         }
         for (body_index, body) in bodies.iter().enumerate() {
-            if body_index == garment_index
-                || body.mode != RigidBodyMode::Static
-                || !eligible_body_colliders
-                    .get(body_index)
-                    .copied()
-                    .unwrap_or(false)
-                || !is_pelvis_or_thigh_collider(body)
-            {
+            if body_index == garment_index || !eligible_body(body_index, body) {
+                continue;
+            }
+            let originally_enabled = masks_allow_pair(
+                garment,
+                garment.un_collision_group_flag,
+                body,
+                body.un_collision_group_flag,
+            );
+            if authored_body_routes[garment.group.min(15) as usize] && !originally_enabled {
                 continue;
             }
             plan.effective_masks[garment_index] |= 1u16 << body.group.min(15);
