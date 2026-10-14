@@ -294,8 +294,12 @@ pub(super) fn classify_name(name: &str) -> BodyPart {
             "下衣",
             "裾",
             "衣摆",
+            "衣擺",
             "后摆",
+            "後擺",
             "下摆",
+            "下擺",
+            "下襬",
             "风衣",
             "外套",
             "コート",
@@ -370,6 +374,9 @@ mod tests {
     fn genuine_garments_and_unqualified_hair_keep_their_distinct_roles() {
         for name in [
             "裙_1_2",
+            "下擺_1_2",
+            "衣擺_1_2",
+            "後擺_1_2",
             "スカート_1_2",
             "Skirt_0_1",
             "Sp_Hi_MSkirt0_F_00_skirt_physics",
