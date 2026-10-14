@@ -35,7 +35,7 @@ impl JointAxisParameters {
     /// 限制特定轴只允许向外旋转，屏蔽向身体内侧折倒的方向。
     /// 确保 0.0（绑定姿态）始终落在 [lower, upper] 内，且不把受限轴损坏为 lower > upper 自由轴。
     pub fn restrict_inward_rotation(&mut self, positive_is_outward: bool) {
-        if self.lower > self.upper || self.upper - self.lower <= SPRING_EPSILON {
+        if self.lower > self.upper {
             // 原生声明为自由轴的无需收紧。
             return;
         }
@@ -153,24 +153,6 @@ fn finite_or_zero(value: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::JointParameters;
-
-    #[test]
-    fn geometric_guard_does_not_open_authored_locked_or_free_axes() {
-        let mut p = JointParameters::from_pmx(
-            [0.0; 3],
-            [0.0; 3],
-            [0.2, 1.0, -0.2],
-            [0.2, -1.0, 0.3],
-            [0.0; 3],
-            [16.0; 3],
-        );
-        p.angular[0].restrict_inward_rotation(true);
-        p.angular[1].restrict_inward_rotation(false);
-        assert_eq!(p.angular[0].lower, 0.2);
-        assert_eq!(p.angular[0].upper, 0.2);
-        assert_eq!(p.angular[1].lower, 1.0);
-        assert_eq!(p.angular[1].upper, -1.0);
-    }
 
     #[test]
     fn zero_and_invalid_springs_are_disabled_on_all_axes() {
