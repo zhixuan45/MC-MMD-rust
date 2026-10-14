@@ -6,6 +6,7 @@ import com.shiroha.mmdskin.compat.iris.IrisCompat;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL46C;
 import org.lwjgl.system.MemoryUtil;
+import com.shiroha.mmdskin.texture.runtime.TextureAlphaCoverage;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -48,7 +49,19 @@ public final class TranslucentDrawOrder implements AutoCloseable {
     private int uvSource = -1;
     private int[] sourceIndices = new int[0];
     private long[] keys = new long[0];
-    private int[] triangleStarts = new int[0], triangleOwners = new int[0];
+    private int[] candidateStarts = new int[0], candidateOwners = new int[0];
+    private int[] candidateVertices = new int[0];
+    private int candidateCount, candidateVertexCount;
+    private int candidateSourceBuffer = -1, candidateSourceBytes = -1, candidateIndexSize = -1;
+    private long candidateIndexRevision = Long.MIN_VALUE;
+    private int candidateVertexLimit = -1, candidateSubmeshCount = -1;
+    private int candidateUvBuffer = -1;
+    private ByteBuffer candidateUvObject;
+    private long candidateUvRevision = Long.MIN_VALUE;
+    private boolean candidateCoverageSafe, candidateValid;
+    private int[] candidateMaterialIds = new int[0], candidateFirsts = new int[0], candidateCounts = new int[0];
+    private boolean[] candidateVisible = new boolean[0], candidateActive = new boolean[0], candidateIncludeOpaque = new boolean[0];
+    private TextureAlphaCoverage[] candidateCoverage = new TextureAlphaCoverage[0];
     private int[] batches = new int[0];
     private boolean[] includeOpaque = new boolean[0];
     private float[] vertexDepths = new float[0];
@@ -82,6 +95,12 @@ public final class TranslucentDrawOrder implements AutoCloseable {
     public int drawCount() {
         return drawCount;
     }
+
+    private int candidateBuildCount;
+
+    public int candidateBuildCount() { return candidateBuildCount; }
+    public int candidateTriangleCount() { return candidateCount; }
+    public int candidateVertexCount() { return candidateVertexCount; }
 
     public boolean prepare(
             Inputs inputs,
@@ -137,7 +156,11 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             batches[s] = batchIds.computeIfAbsent(batch, k -> batchIds.size());
             includeOpaque[s] = !splitPixels || state.alpha < MaterialRenderState.OPAQUE_ALPHA;
         }
-        if (triangles == 0) return false;
+        if (triangles == 0) {
+            candidateCount = candidateVertexCount = drawCount = 0;
+            candidateValid = false;
+            return false;
+        }
         int original = GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING);
         int previousRead = GL46C.glGetInteger(GL46C.GL_COPY_READ_BUFFER_BINDING);
         try {
@@ -145,11 +168,12 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             int bytes =
                     GL46C.glGetBufferParameteri(GL46C.GL_COPY_READ_BUFFER, GL46C.GL_BUFFER_SIZE);
             long revision = inputs.dynamicIndices() ? inputs.geometryRevision() : 0;
-            if (original != sourceBuffer
+            boolean indicesReloaded = original != sourceBuffer
                     || bytes != sourceBytes
                     || indexSize != sourceIndexSize
                     || inputs.dynamicIndices()
-                    || revision != indexRevision) {
+                    || revision != indexRevision;
+            if (indicesReloaded) {
                 ByteBuffer data = MemoryUtil.memAlloc(bytes);
                 try {
                     GL46C.glGetBufferSubData(GL46C.GL_COPY_READ_BUFFER, 0, data);
@@ -171,6 +195,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 sourceBytes = bytes;
                 sourceIndexSize = indexSize;
                 indexRevision = revision;
+                candidateValid = false;
             }
             ByteBuffer positions = inputs.positions();
             if (positions == null) {
@@ -208,11 +233,11 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 }
                 uvs = gpuUvs;
             }
-            if (keys.length < triangles) {
-                keys = new long[triangles];
-                triangleStarts = new int[triangles];
-                triangleOwners = new int[triangles];
+            if (!candidateCacheMatches(inputs, source, count, bytes, indexSize, coverageSafe, batches, includeOpaque, materials)) {
+                buildCandidates(inputs, source, count, materials,
+                        batches, includeOpaque, coverageSafe, uvs, bytes);
             }
+            if (keys.length < candidateCount) keys = new long[candidateCount];
             float mx = inputs.modelView().get(2),
                     my = inputs.modelView().get(6),
                     mz = inputs.modelView().get(10);
@@ -226,7 +251,8 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                             : new Matrix4f()
                                     .set(inputs.projection())
                                     .mul(new Matrix4f().set(inputs.modelView()));
-            for (int v = 0; v < inputs.vertexCount(); v++) {
+            for (int i = 0; i < candidateVertexCount; i++) {
+                int v = candidateVertices[i];
                 float x = positions.getFloat(v * 12),
                         y = positions.getFloat(v * 12 + 4),
                         z = positions.getFloat(v * 12 + 8);
@@ -247,53 +273,32 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 }
             }
             int used = 0;
-            for (int s = 0; s < count; s++) {
-                if (batches[s] < 0) continue;
-                int first = source.getInt(s * 20 + 4), n = source.getInt(s * 20 + 8);
-                var coverage = materials[source.getInt(s * 20)].alphaCoverage;
-                for (int t = 0; t + 2 < n; t += 3) {
-                    int start = first + t;
-                    float z = 0;
-                    int outside = 63;
-                    for (int v = 0; v < 3; v++) {
-                        int id = sourceIndices[start + v];
-                        if (id < 0 || id >= inputs.vertexCount())
-                            throw new IllegalArgumentException("Invalid model vertex " + id);
-                        z += vertexDepths[id];
-                        outside &= clipCodes[id];
-                    }
-                    if (outside != 0) continue;
-                    if (coverageSafe && coverage != null && uvs != null) {
-                        int a = sourceIndices[start] * 8,
-                                b = sourceIndices[start + 1] * 8,
-                                c = sourceIndices[start + 2] * 8;
-                        if (!coverage.mayBlend(
-                                uvs.getFloat(a),
-                                uvs.getFloat(a + 4),
-                                uvs.getFloat(b),
-                                uvs.getFloat(b + 4),
-                                uvs.getFloat(c),
-                                uvs.getFloat(c + 4),
-                                includeOpaque[s])) continue;
-                    }
-                    int bits = Float.floatToIntBits(z);
-                    int ordered = bits ^ ((bits >> 31) & 0x7fffffff);
-                    // Stable ties retain author ordering for coincident facial surfaces.
-                    keys[used] = ((long) ordered << 32) | (used & 0xffffffffL);
-                    triangleStarts[used] = start;
-                    triangleOwners[used] = s;
-                    used++;
+            for (int candidate = 0; candidate < candidateCount; candidate++) {
+                int start = candidateStarts[candidate];
+                float z = 0;
+                int outside = 63;
+                for (int v = 0; v < 3; v++) {
+                    int id = sourceIndices[start + v];
+                    z += vertexDepths[id];
+                    outside &= clipCodes[id];
                 }
+                if (outside != 0) continue;
+                int bits = Float.floatToIntBits(z);
+                int ordered = bits ^ ((bits >> 31) & 0x7fffffff);
+                // Stable ties retain author ordering for coincident facial surfaces.
+                keys[used] = ((long) ordered << 32) | (candidate & 0xffffffffL);
+                used++;
             }
-            Arrays.sort(keys, 0, used);
+            // 仅并行处理 CPU 深度键；OpenGL 操作仍在渲染线程。
+            Arrays.parallelSort(keys, 0, used);
             sortedIndices = resize(sortedIndices, Math.max(4, used * 12));
             submeshes = resize(submeshes, Math.max(20, used * 20));
             drawCount = 0;
             int previousOwner = -1;
             for (int t = 0; t < used; t++) {
                 int ordinal = (int) keys[t],
-                        owner = triangleOwners[ordinal],
-                        start = triangleStarts[ordinal];
+                        owner = candidateOwners[ordinal],
+                        start = candidateStarts[ordinal];
                 for (int v = 0; v < 3; v++)
                     sortedIndices.putInt((t * 3 + v) * 4, sourceIndices[start + v]);
                 if (previousOwner >= 0 && batches[owner] == batches[previousOwner])
@@ -339,6 +344,110 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 && (state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasAlpha);
     }
 
+    private boolean candidateCacheMatches(
+            Inputs inputs, ByteBuffer source, int count, int bytes, int indexSize,
+            boolean coverageSafe, int[] currentBatches, boolean[] currentIncludeOpaque,
+            ModelMaterial[] materials) {
+        if (!candidateValid
+                || candidateSourceBuffer != sourceBuffer || candidateSourceBytes != bytes
+                || candidateIndexSize != indexSize || candidateIndexRevision != indexRevision
+                || candidateVertexLimit != inputs.vertexCount() || candidateSubmeshCount != count
+                || candidateUvBuffer != inputs.uvBuffer() || candidateUvObject != inputs.uvs()
+                || candidateUvRevision != inputs.uvRevision()
+                || candidateCoverageSafe != coverageSafe) return false;
+        for (int s = 0; s < count; s++) {
+            int base = s * 20;
+            int id = source.getInt(base);
+            boolean active = currentBatches[s] >= 0;
+            var coverage = id >= 0 && id < materials.length ? materials[id].alphaCoverage : null;
+            if (candidateMaterialIds[s] != id
+                    || candidateFirsts[s] != source.getInt(base + 4)
+                    || candidateCounts[s] != source.getInt(base + 8)
+                    || candidateVisible[s] != (source.get(base + 16) != 0)
+                    || candidateActive[s] != active
+                    || (active && candidateIncludeOpaque[s] != currentIncludeOpaque[s])
+                    || candidateCoverage[s] != coverage) return false;
+        }
+        return true;
+    }
+
+    private void buildCandidates(
+            Inputs inputs, ByteBuffer source, int count,
+            ModelMaterial[] materials,
+            int[] currentBatches, boolean[] currentIncludeOpaque,
+            boolean coverageSafe, ByteBuffer uvs, int bytes) {
+        candidateValid = false;
+        if (candidateMaterialIds.length < count) {
+            candidateMaterialIds = new int[count];
+            candidateFirsts = new int[count];
+            candidateCounts = new int[count];
+            candidateVisible = new boolean[count];
+            candidateActive = new boolean[count];
+            candidateIncludeOpaque = new boolean[count];
+            candidateCoverage = new TextureAlphaCoverage[count];
+        }
+        boolean[] referenced = new boolean[inputs.vertexCount()];
+        int maxTriangles = 0;
+        for (int s = 0; s < count; s++) {
+            int base = s * 20, id = source.getInt(base);
+            boolean active = currentBatches[s] >= 0;
+            candidateMaterialIds[s] = id;
+            candidateFirsts[s] = source.getInt(base + 4);
+            candidateCounts[s] = source.getInt(base + 8);
+            candidateVisible[s] = source.get(base + 16) != 0;
+            candidateActive[s] = active;
+            candidateIncludeOpaque[s] = active && currentIncludeOpaque[s];
+            candidateCoverage[s] = id >= 0 && id < materials.length ? materials[id].alphaCoverage : null;
+            if (active) maxTriangles += source.getInt(base + 8) / 3;
+        }
+        int[] starts = new int[maxTriangles], owners = new int[maxTriangles];
+        int used = 0, referencedCount = 0;
+        for (int s = 0; s < count; s++) {
+            if (!candidateActive[s]) continue;
+            int first = candidateFirsts[s], n = candidateCounts[s];
+            var coverage = candidateCoverage[s];
+            for (int t = 0; t + 2 < n; t += 3) {
+                int start = first + t;
+                int a = sourceIndices[start], b = sourceIndices[start + 1], c = sourceIndices[start + 2];
+                // Validate every active source triangle, including triangles later rejected by UV bounds.
+                if (a < 0 || a >= inputs.vertexCount()) throw new IllegalArgumentException("Invalid model vertex " + a);
+                if (b < 0 || b >= inputs.vertexCount()) throw new IllegalArgumentException("Invalid model vertex " + b);
+                if (c < 0 || c >= inputs.vertexCount()) throw new IllegalArgumentException("Invalid model vertex " + c);
+                if (coverageSafe && coverage != null && uvs != null) {
+                    int ua = a * 8, ub = b * 8, uc = c * 8;
+                    if (!coverage.mayBlend(uvs.getFloat(ua), uvs.getFloat(ua + 4),
+                            uvs.getFloat(ub), uvs.getFloat(ub + 4),
+                            uvs.getFloat(uc), uvs.getFloat(uc + 4), candidateIncludeOpaque[s])) continue;
+                }
+                starts[used] = start;
+                owners[used] = s;
+                used++;
+                if (!referenced[a]) { referenced[a] = true; referencedCount++; }
+                if (!referenced[b]) { referenced[b] = true; referencedCount++; }
+                if (!referenced[c]) { referenced[c] = true; referencedCount++; }
+            }
+        }
+        candidateStarts = Arrays.copyOf(starts, used);
+        candidateOwners = Arrays.copyOf(owners, used);
+        candidateVertices = new int[referencedCount];
+        int out = 0;
+        for (int v = 0; v < referenced.length; v++) if (referenced[v]) candidateVertices[out++] = v;
+        candidateCount = used;
+        candidateVertexCount = referencedCount;
+        candidateSourceBuffer = sourceBuffer;
+        candidateSourceBytes = bytes;
+        candidateIndexSize = sourceIndexSize;
+        candidateIndexRevision = indexRevision;
+        candidateVertexLimit = inputs.vertexCount();
+        candidateSubmeshCount = count;
+        candidateUvBuffer = inputs.uvBuffer();
+        candidateUvObject = inputs.uvs();
+        candidateUvRevision = inputs.uvRevision();
+        candidateCoverageSafe = coverageSafe;
+        candidateValid = true;
+        candidateBuildCount++;
+    }
+
     private static ByteBuffer resize(ByteBuffer buffer, int size) {
         if (buffer == null || buffer.capacity() < size) {
             if (buffer != null) MemoryUtil.memFree(buffer);
@@ -354,8 +463,14 @@ public final class TranslucentDrawOrder implements AutoCloseable {
 
     public long ramBytes() {
         return (long) sourceIndices.length * 4
-                + (long) keys.length * 16
+                + (long) keys.length * Long.BYTES
                 + (long) batches.length * 4
+                + (long) candidateStarts.length * 4
+                + (long) candidateOwners.length * 4
+                + (long) candidateVertices.length * 4
+                + (long) candidateMaterialIds.length * 12
+                + (long) candidateVisible.length * 3
+                + (long) candidateCoverage.length * 8
                 + (long) vertexDepths.length * 8
                 + (gpuPositions == null ? 0 : gpuPositions.capacity())
                 + (sortedIndices == null ? 0 : sortedIndices.capacity())
@@ -375,11 +490,20 @@ public final class TranslucentDrawOrder implements AutoCloseable {
         gpuPositions = gpuUvs = sortedIndices = submeshes = null;
         sourceIndices = new int[0];
         keys = new long[0];
-        triangleStarts = triangleOwners = batches = clipCodes = new int[0];
+        candidateStarts = candidateOwners = candidateVertices = batches = clipCodes = new int[0];
         vertexDepths = new float[0];
         includeOpaque = new boolean[0];
         drawCount = 0;
         sourceBuffer = sourceBytes = sourceIndexSize = positionSource = uvSource = -1;
         indexRevision = positionRevision = uvRevision = Long.MIN_VALUE;
+        candidateCount = candidateVertexCount = 0;
+        candidateValid = false;
+        candidateSourceBuffer = candidateSourceBytes = candidateIndexSize = candidateVertexLimit = candidateSubmeshCount = candidateUvBuffer = -1;
+        candidateUvObject = null;
+        candidateUvRevision = Long.MIN_VALUE;
+        candidateMaterialIds = candidateFirsts = candidateCounts = new int[0];
+        candidateVisible = candidateActive = candidateIncludeOpaque = new boolean[0];
+        candidateCoverage = new TextureAlphaCoverage[0];
+        candidateBuildCount = 0;
     }
 }

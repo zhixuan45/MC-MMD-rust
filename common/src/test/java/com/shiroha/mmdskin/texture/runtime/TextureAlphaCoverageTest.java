@@ -41,4 +41,35 @@ class TextureAlphaCoverageTest {
         var coverage = TextureAlphaCoverage.fromRgba(rgba, 64, 64);
         assertTrue(coverage.mayBlend(.2f, .3f, .3f, .3f, .2f, .4f, false));
     }
+
+    @Test
+    void rejectsDistantTransparencyInsideTheSameCoarseTile() {
+        ByteBuffer rgba = ByteBuffer.allocate(64 * 64 * 4);
+        for (int p = 0; p < 64 * 64; p++) rgba.put(p * 4 + 3, (byte) 255);
+        rgba.put((20 * 64 + 20) * 4 + 3, (byte) 0);
+        var coverage = TextureAlphaCoverage.fromRgba(rgba, 64, 64);
+        assertFalse(coverage.mayBlend(.41f, .42f, .43f, .42f, .41f, .44f, false));
+        assertTrue(coverage.mayBlend(.30f, .31f, .32f, .31f, .30f, .33f, false));
+    }
+
+    @Test
+    void honorsBitWordBoundariesAndNonSquareTextures() {
+        ByteBuffer rgba = ByteBuffer.allocate(130 * 35 * 4);
+        for (int p = 0; p < 130 * 35; p++) rgba.put(p * 4 + 3, (byte) 255);
+        rgba.put((17 * 130 + 64) * 4 + 3, (byte) 128);
+        var coverage = TextureAlphaCoverage.fromRgba(rgba, 130, 35);
+        assertTrue(coverage.mayBlend(63f / 130, .48f, 65f / 130, .48f, 64f / 130, .5f, false));
+        assertFalse(coverage.mayBlend(.6f, .48f, .62f, .48f, .6f, .5f, false));
+    }
+
+    @Test
+    void constantAlphaTexturesRespectMaterialAlphaAndRepeatedUvs() {
+        ByteBuffer rgba = ByteBuffer.allocate(8 * 8 * 4);
+        for (int p = 0; p < 64; p++) rgba.put(p * 4 + 3, (byte) 255);
+        var solid = TextureAlphaCoverage.fromRgba(rgba, 8, 8);
+        assertFalse(solid.mayBlend(-1, 0, 2, 1, 0, 2, false));
+        assertTrue(solid.mayBlend(-1, 0, 2, 1, 0, 2, true));
+        var empty = TextureAlphaCoverage.fromRgba(ByteBuffer.allocate(8 * 8 * 4), 8, 8);
+        assertFalse(empty.mayBlend(.2f, .3f, .4f, .3f, .2f, .4f, true));
+    }
 }

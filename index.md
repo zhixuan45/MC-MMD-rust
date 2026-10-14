@@ -102,6 +102,8 @@ Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度�
 
 普通 Iris 实体路径在 `BaseModelInstance.setupShaderUniforms` 绑定游戏覆盖色与光照图（纹理单元 1/2），CPU/GPU 补齐整数 `iris_UV1=(0,10)`，不再用模型 lightMap 覆盖 Iris 输入。通用混合设置位于 Iris apply 之前，结束后清理程序覆盖并恢复阴影目标。`IrisEntityDiagnostics` 每程序记录一次光照、颜色乘数和属性/纹理信息；`OverlayProbe` 隔离验证覆盖色公式与常量坐标。关闭 Toon 后全黑的游戏实测和 Toon 整体偏亮的对照仍需新包验收。
 
+`render/material/TranslucentDrawOrder` 缓存透明候选拓扑与唯一引用顶点，稳定 UV 时复用筛选结果；当帧仍重算视锥和深度，并用 CPU 并行排序保留全局三角形顺序。动态第一人称索引、UV、可见性、材质 alpha 资格和覆盖对象变化使缓存失效。`texture/runtime/TextureAlphaCoverage` 使用粗块及像素位图保守细化 UV 包围盒，保留线性采样边界、材质透明度和外部 Iris 程序回退。GPU 位置同步回读和逐分组绘制仍存在；TDA 系列只读审计、局部优化计划及验证记录位于 `Logs/translucent-perf-20261014/`，不能以微基准替代 BSL 游戏帧率验收。
+
 无主贴图材质由 `render/material/MaterialTextureLoader` 统一加载：空路径通过既有 JNI `GetMaterialDiffuse` 读取材质 RGBA，生成实例独占的 1×1 纹理，供 CPU/GPU 与各着色路径采样；非空路径加载失败仍显示缺图提示。两个后端的生命周期与构造失败清理会释放默认纹理，共享文件纹理继续按引用计数回收。默认纹理计入模型显存统计。
 
 `texture/runtime/TextureGpuLoader` 在解码、内存复制和 GL 上传异常时通过 `finally` 释放 native handle、临时 buffer 和失败的 GL texture；`TextureRepository` 对不存在的可选预加载路径跳过解码，运行时仍按既有规则回退。失败诊断携带 path、diffuse/light-map 类型和模型/材质上下文，并有界去重。
