@@ -255,6 +255,9 @@ fn apply_skirt_root_parameters(
 ) -> bool {
     if body_a.mode != RigidBodyMode::Static
         || body_b.mode == RigidBodyMode::Static
+        // The Rin-era workaround only belongs to the explicitly named
+        // Dynamic Skirt_row_column grid, never to unrelated authored PMX skirts.
+        || skirt_grid_position(body_b).is_none()
         || parameters.angular.iter().any(|axis| axis.spring_enabled)
     {
         return false;
@@ -329,22 +332,18 @@ fn apply_wide_skirt_chain_fallback(
 }
 
 fn skirt_grid_position(body: &PmxRigidBody) -> Option<(u32, u32)> {
-    if !is_skirt_body(body) {
+    // This parser authorizes a specific legacy workaround, not garment
+    // classification. Do not infer it from a broad "裙" substring or an
+    // English exporter alias. Mode-2 cloth keeps its authored joint budget.
+    if !is_skirt_body(body) || body.mode != RigidBodyMode::Dynamic {
         return None;
     }
-    [&body.local_name, &body.universal_name]
-        .into_iter()
-        .find_map(|name| {
-            let mut parts = name.rsplit('_');
-            let column = parts.next()?.parse().ok()?;
-            let row = parts.next()?.parse().ok()?;
-            let prefix = parts.next()?;
-            if prefix.contains('裙') || prefix.eq_ignore_ascii_case("skirt") {
-                Some((row, column))
-            } else {
-                None
-            }
-        })
+    let mut parts = body.local_name.rsplit('_');
+    let column = parts.next()?.parse().ok()?;
+    let row = parts.next()?.parse().ok()?;
+    let prefix = parts.next()?;
+    (parts.next().is_none() && prefix.eq_ignore_ascii_case("skirt"))
+        .then_some((row, column))
 }
 
 fn is_skirt_body(body: &PmxRigidBody) -> bool {
