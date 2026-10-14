@@ -30,6 +30,26 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             ByteBuffer uvs,
             int uvBuffer,
             long uvRevision) {
+        public static Inputs cpu(
+                ByteBuffer positions, int positionBuffer, int vertexCount,
+                FloatBuffer modelView, FloatBuffer projection, long geometryRevision,
+                boolean dynamicIndices, ByteBuffer uvs, int uvBuffer, boolean hasUvMorph) {
+            return new Inputs(positions, positionBuffer, vertexCount, modelView, projection,
+                    geometryRevision, dynamicIndices, uvs, uvBuffer,
+                    hasUvMorph ? geometryRevision : 0);
+        }
+
+        public static Inputs gpu(
+                int positionBuffer, int vertexCount, FloatBuffer modelView, FloatBuffer projection,
+                long geometryRevision, boolean dynamicIndices, ByteBuffer baseUvs,
+                int baseUvBuffer, int skinnedUvBuffer, boolean hasUvMorph) {
+            // A compute UV buffer exists even without UV morphs; its allocation is not a revision.
+            return new Inputs(null, positionBuffer, vertexCount, modelView, projection,
+                    geometryRevision, dynamicIndices, hasUvMorph ? null : baseUvs,
+                    hasUvMorph ? skinnedUvBuffer : baseUvBuffer,
+                    hasUvMorph ? geometryRevision : 0);
+        }
+
         public Inputs(
                 ByteBuffer positions,
                 int positionBuffer,

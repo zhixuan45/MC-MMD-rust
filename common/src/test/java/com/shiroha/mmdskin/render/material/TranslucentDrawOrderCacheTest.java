@@ -1,6 +1,9 @@
 package com.shiroha.mmdskin.render.material;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.shiroha.mmdskin.texture.runtime.TextureAlphaCoverage;
@@ -51,6 +54,70 @@ class TranslucentDrawOrderCacheTest {
         boolean[] includeOpaque = {false};
         build(order, inputs, submeshes, materials, batches, includeOpaque, true, uvs);
         return new Fixture(order, inputs, submeshes, uvs, materials, batches, includeOpaque);
+    }
+
+    @Test
+    void staticGpuUvsReuseCoverageDespiteAllocatedComputeBufferAndAnimationUpdates() throws Exception {
+        Fixture f = fixture();
+        var first = backendInputs(f, true, false, 1);
+        assertSame(f.uvs(), first.uvs());
+        assertEquals(22, first.uvBuffer());
+        assertEquals(0, first.uvRevision());
+        build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
+                f.includeOpaque(), true, f.uvs());
+        int builds = f.order().candidateBuildCount();
+        for (long revision = 2; revision <= 120; revision++) {
+            var next = backendInputs(f, true, false, revision);
+            assertEquals(revision, next.geometryRevision());
+            assertTrue(matches(f, next, f.submeshes(), f.materials(), f.batches(), f.includeOpaque()));
+        }
+        assertEquals(builds, f.order().candidateBuildCount());
+    }
+
+    @Test
+    void staticCpuUvsReuseCoverageAcrossAnimationUpdates() throws Exception {
+        Fixture f = fixture();
+        var first = backendInputs(f, false, false, 1);
+        build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
+                f.includeOpaque(), true, f.uvs());
+        var next = backendInputs(f, false, false, 2);
+        assertSame(f.inputs().positions(), next.positions());
+        assertEquals(2, next.geometryRevision());
+        assertEquals(0, next.uvRevision());
+        assertTrue(matches(f, next, f.submeshes(), f.materials(), f.batches(), f.includeOpaque()));
+    }
+
+    @Test
+    void animatedGpuUvsUseComputeOutputAndInvalidateCoverage() throws Exception {
+        Fixture f = fixture();
+        var first = backendInputs(f, true, true, 1);
+        assertNull(first.uvs());
+        assertEquals(33, first.uvBuffer());
+        build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
+                f.includeOpaque(), true, f.uvs());
+        var next = backendInputs(f, true, true, 2);
+        assertEquals(2, next.uvRevision());
+        assertFalse(matches(f, next, f.submeshes(), f.materials(), f.batches(), f.includeOpaque()));
+    }
+
+    @Test
+    void animatedCpuUvsInvalidateCoverage() throws Exception {
+        Fixture f = fixture();
+        var first = backendInputs(f, false, true, 1);
+        build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
+                f.includeOpaque(), true, f.uvs());
+        var next = backendInputs(f, false, true, 2);
+        assertEquals(2, next.uvRevision());
+        assertFalse(matches(f, next, f.submeshes(), f.materials(), f.batches(), f.includeOpaque()));
+    }
+
+    private static TranslucentDrawOrder.Inputs backendInputs(
+            Fixture f, boolean gpu, boolean hasUvMorph, long revision) {
+        return gpu
+                ? TranslucentDrawOrder.Inputs.gpu(11, 3, nullSafeMatrix(), null, revision,
+                        false, f.uvs(), 22, 33, hasUvMorph)
+                : TranslucentDrawOrder.Inputs.cpu(f.inputs().positions(), 11, 3,
+                        nullSafeMatrix(), null, revision, false, f.uvs(), 22, hasUvMorph);
     }
 
     @Test
