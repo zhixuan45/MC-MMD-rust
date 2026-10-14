@@ -25,6 +25,10 @@ class TranslucentDrawOrderCacheTest {
             boolean[] includeOpaque) {}
 
     private Fixture fixture() throws Exception {
+        return fixture(false);
+    }
+
+    private Fixture fixture(boolean translucent) throws Exception {
         ByteBuffer positions = ByteBuffer.allocate(3 * 12);
         ByteBuffer uvs = ByteBuffer.allocate(3 * 8);
         uvs.putFloat(0, .2f); uvs.putFloat(4, .2f);
@@ -40,7 +44,7 @@ class TranslucentDrawOrderCacheTest {
 
         ModelMaterial material = new ModelMaterial();
         material.hasAlpha = true;
-        material.alphaCoverage = coverage();
+        material.alphaCoverage = coverage(translucent);
         ModelMaterial[] materials = {material};
         var inputs = new TranslucentDrawOrder.Inputs(
                 positions, 11, 3, nullSafeMatrix(), null, 1, false, uvs, 22, 1);
@@ -58,13 +62,14 @@ class TranslucentDrawOrderCacheTest {
 
     @Test
     void staticGpuUvsReuseCoverageDespiteAllocatedComputeBufferAndAnimationUpdates() throws Exception {
-        Fixture f = fixture();
+        Fixture f = fixture(true);
         var first = backendInputs(f, true, false, 1);
         assertSame(f.uvs(), first.uvs());
         assertEquals(22, first.uvBuffer());
         assertEquals(0, first.uvRevision());
         build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
                 f.includeOpaque(), true, f.uvs());
+        assertEquals(1, f.order().candidateTriangleCount());
         int builds = f.order().candidateBuildCount();
         for (long revision = 2; revision <= 120; revision++) {
             var next = backendInputs(f, true, false, revision);
@@ -76,10 +81,11 @@ class TranslucentDrawOrderCacheTest {
 
     @Test
     void staticCpuUvsReuseCoverageAcrossAnimationUpdates() throws Exception {
-        Fixture f = fixture();
+        Fixture f = fixture(true);
         var first = backendInputs(f, false, false, 1);
         build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
                 f.includeOpaque(), true, f.uvs());
+        assertEquals(1, f.order().candidateTriangleCount());
         var next = backendInputs(f, false, false, 2);
         assertSame(f.inputs().positions(), next.positions());
         assertEquals(2, next.geometryRevision());
@@ -89,12 +95,13 @@ class TranslucentDrawOrderCacheTest {
 
     @Test
     void animatedGpuUvsUseComputeOutputAndInvalidateCoverage() throws Exception {
-        Fixture f = fixture();
+        Fixture f = fixture(true);
         var first = backendInputs(f, true, true, 1);
         assertNull(first.uvs());
         assertEquals(33, first.uvBuffer());
         build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
                 f.includeOpaque(), true, f.uvs());
+        assertEquals(1, f.order().candidateTriangleCount());
         var next = backendInputs(f, true, true, 2);
         assertEquals(2, next.uvRevision());
         assertFalse(matches(f, next, f.submeshes(), f.materials(), f.batches(), f.includeOpaque()));
@@ -102,10 +109,11 @@ class TranslucentDrawOrderCacheTest {
 
     @Test
     void animatedCpuUvsInvalidateCoverage() throws Exception {
-        Fixture f = fixture();
+        Fixture f = fixture(true);
         var first = backendInputs(f, false, true, 1);
         build(f.order(), first, f.submeshes(), f.materials(), f.batches(),
                 f.includeOpaque(), true, f.uvs());
+        assertEquals(1, f.order().candidateTriangleCount());
         var next = backendInputs(f, false, true, 2);
         assertEquals(2, next.uvRevision());
         assertFalse(matches(f, next, f.submeshes(), f.materials(), f.batches(), f.includeOpaque()));
@@ -191,8 +199,12 @@ class TranslucentDrawOrderCacheTest {
     }
 
     private static TextureAlphaCoverage coverage() {
+        return coverage(false);
+    }
+
+    private static TextureAlphaCoverage coverage(boolean translucent) {
         ByteBuffer pixels = ByteBuffer.allocate(8 * 8 * 4);
-        for (int i = 0; i < 64; i++) pixels.put(i * 4 + 3, (byte) 255);
+        for (int i = 0; i < 64; i++) pixels.put(i * 4 + 3, (byte) (translucent ? 128 : 255));
         return TextureAlphaCoverage.fromRgba(pixels, 8, 8);
     }
 
