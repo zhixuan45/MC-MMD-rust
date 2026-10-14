@@ -32,6 +32,7 @@ public final class MaterialTextureLoader {
                 material.tex = texture.tex;
                 material.hasAlpha = texture.hasAlpha;
                 material.hasTranslucentPixels = texture.hasTranslucentPixels;
+                material.alphaCoverage = texture.alphaCoverage;
                 TextureRepository.addRef(path);
                 textureKeys.add(path);
             }

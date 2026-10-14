@@ -8,7 +8,7 @@ use mmd::pmx::{
     rigid_body::{RigidBody, RigidBodyMode},
 };
 
-use super::body_part::{classify, BodyPart};
+use super::mmd_rigid_body::is_skirt_or_lower_garment;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Owner {
@@ -31,13 +31,7 @@ pub(super) fn grouped_chains(
                 && Vec3::from_array(body.position).is_finite()
                 && Vec3::from_array(body.position).length_squared().is_finite()
                 && Vec3::from_array(body.rotation).is_finite()
-                && classify(
-                    body,
-                    usize::try_from(body.bone_index)
-                        .ok()
-                        .and_then(|i| names.get(i))
-                        .map(String::as_str),
-                ) == BodyPart::Garment
+                && is_skirt_or_lower_garment(body)
                 && skirt_family(body).is_some()
                 && valid_attachment(body.bone_index, names, parents)
         })

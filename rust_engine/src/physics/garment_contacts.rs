@@ -2,11 +2,8 @@
 
 use mmd::pmx::rigid_body::{RigidBody as PmxRigidBody, RigidBodyMode};
 
-#[cfg(test)]
-use super::body_part::classify;
-use super::body_part::BodyPart;
 use super::collision_topology::CollisionStabilityMode;
-use super::mmd_rigid_body::is_pelvis_or_thigh_collider;
+use super::mmd_rigid_body::{is_pelvis_or_thigh_collider, is_skirt_or_lower_garment};
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(super) struct GarmentContactPlan {
@@ -15,29 +12,11 @@ pub(super) struct GarmentContactPlan {
     pub forced_ignore_pairs: Vec<(usize, usize)>,
 }
 
-#[cfg(test)]
 pub(super) fn build_garment_contact_plan(
     bodies: &[PmxRigidBody],
     eligible_body_colliders: &[bool],
     collision_enabled: bool,
     stability_mode: CollisionStabilityMode,
-) -> GarmentContactPlan {
-    let parts: Vec<_> = bodies.iter().map(|b| classify(b, None)).collect();
-    build_garment_contact_plan_with_parts(
-        bodies,
-        eligible_body_colliders,
-        collision_enabled,
-        stability_mode,
-        &parts,
-    )
-}
-
-pub(super) fn build_garment_contact_plan_with_parts(
-    bodies: &[PmxRigidBody],
-    eligible_body_colliders: &[bool],
-    collision_enabled: bool,
-    stability_mode: CollisionStabilityMode,
-    parts: &[BodyPart],
 ) -> GarmentContactPlan {
     let mut plan = GarmentContactPlan {
         effective_masks: bodies
@@ -51,9 +30,7 @@ pub(super) fn build_garment_contact_plan_with_parts(
     }
 
     for (garment_index, garment) in bodies.iter().enumerate() {
-        if garment.mode == RigidBodyMode::Static
-            || parts.get(garment_index) != Some(&BodyPart::Garment)
-        {
+        if garment.mode == RigidBodyMode::Static || !is_skirt_or_lower_garment(garment) {
             continue;
         }
         for (body_index, body) in bodies.iter().enumerate() {

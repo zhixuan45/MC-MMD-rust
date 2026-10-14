@@ -6,6 +6,7 @@ import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
 import com.shiroha.mmdskin.render.material.MaterialRenderState;
 import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
+import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
 import com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridge;
 import com.shiroha.mmdskin.bridge.runtime.NativeTextureBridge;
 import com.shiroha.mmdskin.texture.runtime.TextureRepository;
@@ -88,6 +89,12 @@ final class VanillaEntityProbe {
             SubMeshDrawHelper.draw(submesh,1,4,GL46C.GL_UNSIGNED_INT,i->atlas,(i,a)->a,new ModelMaterial[]{material},null,false,i->{});
             GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
             expect(pixel[3],.625f,"intentional material alpha still multiplies texture alpha");
+            GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+            submesh.putFloat(12,.05f);
+            SubMeshDrawHelper.draw(submesh,1,4,GL46C.GL_UNSIGNED_INT,i->atlas,(i,a)->a,new ModelMaterial[]{material},null,false,i->{});
+            GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
+            expect(pixel[3],.05f+128/255f*.05f*.95f,"authored material alpha below .1 remains visible");
+            if(pixel[3]<.06f)throw new AssertionError("low material alpha discarded");
             submesh.putFloat(12,1);
             // The solid pass must not write depth for a fractional texel. Otherwise
             // a translucent front triangle hides the opaque surface behind it.
@@ -101,7 +108,17 @@ final class VanillaEntityProbe {
             expect(pixel[3],1,"opaque rear provides full coverage");
             System.out.println("PASS full vanilla mixed atlas front translucent / rear opaque="+java.util.Arrays.toString(pixel));
             GL46C.glDeleteTextures(inverseAtlas);
+            int softAtlas=texture(2,1,new byte[]{(byte)255,0,0,(byte)5, 0,0,(byte)255,(byte)255});
+            material.tex=softAtlas;shader.setSampler("Sampler0",softAtlas);shader.apply();
+            GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+            SubMeshDrawHelper.draw(submesh,1,4,GL46C.GL_UNSIGNED_INT,i->softAtlas,(i,a)->a,new ModelMaterial[]{material},null,false,i->{});
+            GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
+            if(Math.abs(pixel[0]-5/255f)>.004f)throw new AssertionError("low texture alpha discarded: "+pixel[0]);
+            expect(pixel[2],250/255f,"soft front texel blends with rear opaque surface");
+            GL46C.glDeleteTextures(softAtlas);
+            System.out.println("PASS authored low material/texture alpha survives vanilla entity cutoff");
             checkNativeMaterials(shader,uvs,submesh);
+            checkTriangleOrder(shader,positions,uvs);
             if(GL46C.glGetError()!=GL46C.GL_NO_ERROR)throw new AssertionError("full vanilla probe GL error");
             shader.clear();GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER,0);
             GL46C.glDeleteTextures(new int[]{atlas,overlay,lightmap,output});GL46C.glDeleteRenderbuffers(depth);
@@ -162,6 +179,78 @@ final class VanillaEntityProbe {
 
     private static void expect(float actual,float expected,String name) {
         if(Math.abs(actual-expected)>.012f)throw new AssertionError(name+": "+actual+" != "+expected);
+    }
+
+    private static void checkTriangleOrder(ShaderInstance shader,int positions,int uvs) {
+        GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER,positions);
+        float[] frontRed={-1,-1,0,3,-1,0,-1,3,0,-1,-1,-.5f,3,-1,-.5f,-1,3,-.5f};
+        GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER,frontRed,GL46C.GL_STATIC_DRAW);
+        shader.PROJECTION_MATRIX.set(new Matrix4f().scaling(1,1,-1));
+        int atlas=texture(2,1,new byte[]{(byte)255,0,0,(byte)128,0,0,(byte)255,(byte)128});
+        int red=texture(1,1,new byte[]{(byte)255,0,0,(byte)255});
+        int blue=texture(1,1,new byte[]{0,0,(byte)255,(byte)128});
+        int originalIndices=GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING);
+        int oldRead=GL46C.glGetInteger(GL46C.GL_COPY_READ_BUFFER_BINDING);
+        ByteBuffer views=ByteBuffer.allocateDirect(64).order(ByteOrder.nativeOrder());
+        new Matrix4f().get(views.asFloatBuffer());
+        ByteBuffer draws=ByteBuffer.allocateDirect(40).order(ByteOrder.nativeOrder());
+        draws.putInt(0).putInt(0).putInt(6).putFloat(1).put((byte)1).put((byte)1).putShort((short)0);
+        ModelMaterial[] materials={new ModelMaterial(),new ModelMaterial()};
+        for(var material:materials) {material.hasAlpha=true;material.hasTranslucentPixels=true;}
+        materials[0].tex=atlas;
+        try(TranslucentDrawOrder order=new TranslucentDrawOrder()) {
+            for(int mode=0;mode<6;mode++) {
+                if(mode==0) {
+                    GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER,uvs);
+                    GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER,new float[]{.25f,.5f,.25f,.5f,.25f,.5f,.75f,.5f,.75f,.5f,.75f,.5f},GL46C.GL_STATIC_DRAW);
+                    materials[0].tex=atlas;shader.setSampler("Sampler0",atlas);
+                } else if(mode==1) {
+                    // Distinct materials and a uniform alpha combine with texture alpha.
+                    materials[0].tex=red;materials[1].tex=blue;
+                    draws.putInt(8,3).putFloat(12,.5f);
+                    draws.position(20).putInt(1).putInt(3).putInt(3).putFloat(1).put((byte)1).put((byte)1).putShort((short)0);
+                    shader.setSampler("Sampler0",red);
+                } else if(mode==2) {
+                    // Read new GPU-buffer geometry at a new revision; blue is now in front.
+                    float[] frontBlue=frontRed.clone();
+                    for(int v=0;v<6;v++)frontBlue[v*3+2]=v<3?-.5f:0;
+                    GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER,positions);
+                    GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER,frontBlue,GL46C.GL_STATIC_DRAW);
+                } else if(mode==3) {
+                    GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER,positions);
+                    GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER,frontRed,GL46C.GL_STATIC_DRAW);
+                }
+                int indexSize=mode==3?2:mode>=4?1:4;
+                int indexType=mode==3?GL46C.GL_UNSIGNED_SHORT:mode>=4?GL46C.GL_UNSIGNED_BYTE:GL46C.GL_UNSIGNED_INT;
+                if(mode>=3) {
+                    ByteBuffer data=ByteBuffer.allocateDirect(6*indexSize).order(ByteOrder.nativeOrder());
+                    for(int v=0;v<6;v++) {
+                        int id=mode==5?(v+3)%6:v;
+                        if(indexSize==2)data.putShort((short)id);else data.put((byte)id);
+                    }
+                    data.flip();GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,originalIndices);
+                    GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER,data,GL46C.GL_STATIC_DRAW);
+                }
+                shader.apply();RenderSystem.enableBlend();RenderSystem.blendFuncSeparate(770,771,1,771);
+                GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+                // GPU inputs deliberately have no CPU position/UV mirror.
+                SubMeshDrawHelper.draw(draws,mode==0?1:2,indexSize,indexType,i->materials[i].tex,(i,a)->a,
+                        materials,null,false,i->{},order,
+                        new TranslucentDrawOrder.Inputs(null,positions,6,views.asFloatBuffer(),null,mode>=3?2:mode==2?1:0,mode==5,
+                                null,uvs,0));
+                float[] pixel=new float[4];GL46C.glReadPixels(0,0,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,pixel);
+                float a=128/255f;
+                boolean blueFront=mode==2 || mode==5;
+                expect(pixel[0],mode==0?a:blueFront?.5f*(1-a):.5f,"sorted red contribution mode="+mode);
+                expect(pixel[2],mode==0?a*(1-a):blueFront?a:a*.5f,"sorted blue contribution mode="+mode);
+                expect(pixel[3],mode==0?1-(1-a)*(1-a):.5f+a*.5f,"sorted original alpha mode="+mode);
+                if(GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING)!=originalIndices
+                        || GL46C.glGetInteger(GL46C.GL_COPY_READ_BUFFER_BINDING)!=oldRead
+                        || GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM)!=shader.getId())
+                    throw new AssertionError("sorted draw leaked GL bindings");
+                System.out.println("PASS sorted translucent triangle mode="+mode+" "+java.util.Arrays.toString(pixel));
+            }
+        } finally {GL46C.glDeleteTextures(new int[]{atlas,red,blue});}
     }
 
     private static int texture(int w,int h,byte[] pixels) {

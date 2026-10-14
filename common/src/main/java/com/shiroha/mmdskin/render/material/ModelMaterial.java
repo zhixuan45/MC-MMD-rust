@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.material;
 
 import java.util.Locale;
+import com.shiroha.mmdskin.texture.runtime.TextureAlphaCoverage;
 
 /** MMD 模型材质定义。 */
 public class ModelMaterial {
@@ -21,6 +22,7 @@ public class ModelMaterial {
     public float[] specular = {0.0f, 0.0f, 0.0f};
     public float specularPower;
     public boolean hasTranslucentPixels;
+    public TextureAlphaCoverage alphaCoverage;
 
     private Boolean cachedIsFacialFeature;
     private Boolean cachedIsEye;

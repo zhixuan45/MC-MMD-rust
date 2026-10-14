@@ -11,19 +11,18 @@ use mmd::pmx::joint::Joint as PmxJoint;
 use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
 
 use self::diagnostics::{ActivePhysicsDebugConfig, PhysicsDebugTelemetry};
-use super::body_part::{classify, BodyPart};
 use super::bullet_ffi::{self, BulletWorld};
 use super::collision_topology::{
     build_filter_plan, CollisionAabb, CollisionBody, CollisionFilterPlan, CollisionStabilityMode,
 };
 use super::config::get_config;
-use super::garment_contacts::build_garment_contact_plan_with_parts as build_garment_contact_plan;
+use super::garment_contacts::build_garment_contact_plan;
 use super::kinematic_target_filter::KinematicTargetFilter;
 use super::mmd_joint::MmdJointData;
 use super::mmd_rigid_body::{
     body_collider_scale_flags, classify_tail_dynamic,
     effective_collision_shape_size_with_static_scale, garment_contact_body_flags,
-    is_tail_dynamic_part, MmdRigidBodyData, PhysicsMode,
+    is_skirt_or_lower_garment, is_tail_dynamic_part, MmdRigidBodyData, PhysicsMode,
 };
 use super::physics_diagnostics::model_topology_signature;
 use super::tail_forces::TailForceState;
@@ -184,28 +183,15 @@ impl MMDPhysics {
         self.collision_stability_mode = config.collision_stability_mode;
         self.model_topology_signature = model_topology_signature(pmx_rigid_bodies, pmx_joints);
 
-        let body_parts: Vec<_> = pmx_rigid_bodies
-            .iter()
-            .map(|body| {
-                let bone_name = usize::try_from(body.bone_index)
-                    .ok()
-                    .and_then(|i| bone_names.get(i))
-                    .map(String::as_str);
-                classify(body, bone_name)
-            })
-            .collect();
-
         // 按整个模型的碰撞用途分类，避免把动态链的静态关节锚点误当成人体碰撞壳。
         let body_collider_flags = body_collider_scale_flags(pmx_rigid_bodies, pmx_joints);
         // 兼容裙摆的资格独立于 PMX 原始掩码，避免漏配掩码导致补碰撞永远无法生效。
-        let garment_body_flags =
-            garment_contact_body_flags(pmx_rigid_bodies, pmx_joints, bone_names);
+        let garment_body_flags = garment_contact_body_flags(pmx_rigid_bodies, pmx_joints, bone_names);
         let garment_contact_plan = build_garment_contact_plan(
             pmx_rigid_bodies,
             &garment_body_flags,
             config.collision_enabled,
             self.collision_stability_mode,
-            &body_parts,
         );
         self.garment_extension_pairs = garment_contact_plan.allowed_pairs.len();
         self.garment_rejected_pairs = garment_contact_plan.forced_ignore_pairs.len();
@@ -288,14 +274,13 @@ impl MMDPhysics {
                 .rigid_bodies
                 .iter()
                 .zip(pmx_rigid_bodies.iter())
-                .enumerate()
-                .map(|(index, (body, pmx_body))| CollisionBody {
+                .map(|(body, pmx_body)| CollisionBody {
                     group: body.group,
                     collision_mask: body.collision_mask,
                     is_dynamic: body.physics_mode != PhysicsMode::FollowBone,
-                    is_skirt: body_parts[index] == BodyPart::Garment,
+                    is_skirt: is_skirt_or_lower_garment(pmx_body),
                     is_tail: is_tail_dynamic_part(pmx_body),
-                    is_hair: body_parts[index].is_hair(),
+                    is_hair: super::hair_parameters::is_hair_body(pmx_body),
                     is_active: body.bullet_body.is_some(),
                     initial_aabb: body.collision_half_extents.and_then(|extents| {
                         CollisionAabb::from_transform(body.initial_transform, extents)
@@ -382,7 +367,7 @@ impl MMDPhysics {
                     }
                 };
 
-                let joint_data = MmdJointData::from_pmx_with_parts(
+                let joint_data = MmdJointData::from_pmx(
                     pmx_joint,
                     rb_a_body,
                     rb_b_body,
@@ -390,8 +375,6 @@ impl MMDPhysics {
                     &pmx_rigid_bodies[rb_b_idx],
                     rb_a_init,
                     rb_b_init,
-                    body_parts[rb_a_idx],
-                    body_parts[rb_b_idx],
                 );
 
                 // 先存入 Vec，再添加到世界

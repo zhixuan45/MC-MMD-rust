@@ -11,6 +11,7 @@ import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
+import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
 import com.shiroha.mmdskin.render.outline.OutlineRenderPass;
 import com.shiroha.mmdskin.render.outline.OutlineRenderDiagnostics;
 import com.shiroha.mmdskin.render.pipeline.LightingHelper;
@@ -559,7 +560,13 @@ final class GpuSkinningModelRenderer {
                         var material = target.mats[materialId];
                         eyeShader.setEyeMaterialMask(material == null ? 0.0f : material.eyeEmissionMaskMode());
                     }
-                });
+                }, target.translucentOrder,
+                TranslucentDrawOrder.Inputs.gpu(
+                        target.skinnedPositionsBuffer, target.vertexCount, target.modelViewMatBuff,
+                        target.projMatBuff, target.nativeUpdateRevisionValue(),
+                        GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING) == target.firstPersonIndexBufferObject,
+                        target.uv0Buffer, target.uv0BufferObject, target.skinnedUvBuffer,
+                        target.uvMorphCount > 0));
     }
 
     private static float effectiveOutlineAlpha(GpuSkinningModelInstance target, int materialId, float baseAlpha) {

@@ -1,4 +1,0 @@
-{"case":"continuous_locked_rows","candidate":false,"physics_hz":60,"initial_rows":3,"max_delta":0.0272222,"mean_delta":0.00325991}
-{"case":"continuous_locked_rows","candidate":true,"physics_hz":60,"initial_rows":6,"max_delta":0,"mean_delta":0}
-{"case":"continuous_locked_rows","candidate":false,"physics_hz":120,"initial_rows":3,"max_delta":0.00680542,"mean_delta":0.000907389}
-{"case":"continuous_locked_rows","candidate":true,"physics_hz":120,"initial_rows":6,"max_delta":0,"mean_delta":0}
