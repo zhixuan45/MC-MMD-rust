@@ -18,6 +18,7 @@ import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKin
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
+import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
 import com.shiroha.mmdskin.render.outline.OutlineRenderPass;
 import com.shiroha.mmdskin.render.outline.OutlineRenderDiagnostics;
 import net.minecraft.client.Minecraft;
@@ -545,7 +546,12 @@ final class OpenGlModelRenderer {
                         var material = target.mats[materialId];
                         eyeShader.setEyeMaterialMask(material == null ? 0.0f : material.eyeEmissionMaskMode());
                     }
-                });
+                }, target.translucentOrder,
+                new TranslucentDrawOrder.Inputs(
+                        target.posBuffer,target.vertexBufferObject,target.vertexCount,target.modelViewMatBuff,
+                        target.projMatBuff,target.nativeUpdateRevisionValue(),
+                        GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING)==target.firstPersonIndexBufferObject,
+                        target.uv0Buffer,target.texcoordBufferObject,target.nativeUpdateRevisionValue()));
     }
 
     private static void clearStandardRenderState(OpenGlModelInstance target) {

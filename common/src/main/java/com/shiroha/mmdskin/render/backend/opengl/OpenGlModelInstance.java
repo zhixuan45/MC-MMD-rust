@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.render.backend.BaseModelInstance;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
+import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.ShaderProvider;
 import com.shiroha.mmdskin.render.shader.ToonConfig;
@@ -93,6 +94,7 @@ public class OpenGlModelInstance extends BaseModelInstance {
     int cachedShaderProgram = -1;
     boolean hasUvMorph = false;
     int subMeshCount;
+    final TranslucentDrawOrder translucentOrder = new TranslucentDrawOrder();
     ByteBuffer subMeshDataBuf;
     int lastBlockBrightness = Integer.MIN_VALUE;
     int lastSkyBrightness = Integer.MIN_VALUE;

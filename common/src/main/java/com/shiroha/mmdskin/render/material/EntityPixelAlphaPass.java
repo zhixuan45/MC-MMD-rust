@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 final class EntityPixelAlphaPass implements AutoCloseable {
     private static final Pattern MAIN = Pattern.compile("void\\s+main\\s*\\(\\s*(?:void)?\\s*\\)\\s*\\{");
     private static final Pattern COMMENTS = Pattern.compile("/\\*.*?\\*/|//[^\\r\\n]*", Pattern.DOTALL);
+    private static final Pattern VANILLA_CUTOFF = Pattern.compile("(if\\s*\\(\\s*color\\.a\\s*<\\s*)0\\.10*(\\s*\\))");
     private static ShaderInstance cachedSource;
     private static int cachedProgram;
     private static List<Uniform> uniforms = List.of();
@@ -40,7 +41,7 @@ final class EntityPixelAlphaPass implements AutoCloseable {
             cachedSource = shader;
             try {
                 int slot = IrisCompat.entityColorOutputSlot(shader);
-                if (slot >= 0) cachedProgram = create(original, slot);
+                if (slot >= 0) cachedProgram = create(original, slot, !IrisCompat.isIrisProgram(shader));
             } catch (RuntimeException e) {
                 LogManager.getLogger().warn("实体像素 alpha 分通道初始化失败，保留原程序: {}", e.getMessage());
             }
@@ -56,7 +57,7 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         return scope;
     }
 
-    private static int create(int original, int colorSlot) {
+    private static int create(int original, int colorSlot, boolean vanilla) {
         String output = colorOutput(original, colorSlot);
         if (output == null) return 0;
         int[] shaders = new int[GL46C.glGetProgrami(original, GL46C.GL_ATTACHED_SHADERS)];
@@ -70,6 +71,14 @@ final class EntityPixelAlphaPass implements AutoCloseable {
             else return 0;
         }
         if (vertex == 0 || fragment == null) return 0;
+        if(vanilla) {
+            // The original entity cutout drops authored PMX alpha below .1. Match Toon's
+            // minimal coverage threshold only for this known vanilla program variant.
+            var cutoff=VANILLA_CUTOFF.matcher(fragment);
+            // A resource pack can replace the named core program. Keep its custom
+            // cutoff if the vanilla expression is absent, while retaining alpha passes.
+            if(cutoff.find())fragment=cutoff.replaceAll(m->m.group(1)+"0.001"+m.group(2));
+        }
         if (GL.getCapabilities().OpenGL43 && GL46C.glGetProgramInterfacei(original,
                 GL46C.GL_SHADER_STORAGE_BLOCK, GL46C.GL_ACTIVE_RESOURCES) != 0) return 0;
         String code = COMMENTS.matcher(fragment).replaceAll(m -> " ".repeat(m.group().length()));
