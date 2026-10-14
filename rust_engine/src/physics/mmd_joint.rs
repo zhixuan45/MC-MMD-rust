@@ -197,7 +197,8 @@ fn apply_wide_skirt_root_fallback(
 ) -> bool {
     if body_a.mode != RigidBodyMode::Static
         || body_b.mode == RigidBodyMode::Static
-        || !is_skirt_body(body_b)
+        // Only the explicitly named legacy dynamic grid uses this fallback.
+        || skirt_grid_position(body_b).is_none()
         || parameters.angular.iter().any(|axis| axis.spring_enabled)
     {
         return false;
@@ -272,19 +273,16 @@ fn apply_wide_skirt_chain_fallback(
 }
 
 fn skirt_grid_position(body: &PmxRigidBody) -> Option<(u32, u32)> {
-    [&body.local_name, &body.universal_name]
-        .into_iter()
-        .find_map(|name| {
-            let mut parts = name.rsplit('_');
-            let column = parts.next()?.parse().ok()?;
-            let row = parts.next()?.parse().ok()?;
-            let prefix = parts.next()?;
-            if prefix.contains('裙') || prefix.eq_ignore_ascii_case("skirt") {
-                Some((row, column))
-            } else {
-                None
-            }
-        })
+    // This parser authorizes a specific legacy workaround, not garment
+    // classification. Exporter aliases and mode-2 cloth keep authored limits.
+    if body.mode != RigidBodyMode::Dynamic || !is_skirt_body(body) {
+        return None;
+    }
+    let mut parts = body.local_name.rsplit('_');
+    let column = parts.next()?.parse().ok()?;
+    let row = parts.next()?.parse().ok()?;
+    let prefix = parts.next()?;
+    (parts.next().is_none() && prefix.eq_ignore_ascii_case("skirt")).then_some((row, column))
 }
 
 fn is_skirt_body(body: &PmxRigidBody) -> bool {
@@ -298,8 +296,12 @@ fn is_skirt_body(body: &PmxRigidBody) -> bool {
         "裾",
         "摆",
         "衣摆",
+        "衣擺",
         "后摆",
+        "後擺",
         "下摆",
+        "下擺",
+        "下襬",
         "风衣",
         "外套",
         "コート",
@@ -408,3 +410,7 @@ mod tests {
         assert_eq!(parameters.angular[2].stiffness, 20.8);
     }
 }
+
+#[cfg(test)]
+#[path = "skirt_joint_tests.rs"]
+mod skirt_joint_tests;

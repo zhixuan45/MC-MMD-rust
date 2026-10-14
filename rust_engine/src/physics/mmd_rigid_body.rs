@@ -227,8 +227,12 @@ pub(super) fn is_skirt_or_lower_garment(body: &PmxRigidBody) -> bool {
         "裾",
         "摆",
         "衣摆",
+        "衣擺",
         "后摆",
+        "後擺",
         "下摆",
+        "下擺",
+        "下襬",
         "风衣",
         "外套",
         "コート",
@@ -812,4 +816,17 @@ mod tests {
 
 
 
+
+    #[test]
+    fn traditional_chinese_garments_use_current_classifier() {
+        for name in ["下擺_1_2", "衣擺_1_2", "後擺_1_2", "下襬_1_2"] {
+            let mut body = test_rigid_body(RigidBodyShape::Sphere, [0.1, 0.0, 0.0]);
+            body.local_name = name.to_owned();
+            body.mode = RigidBodyMode::DynamicWithBonePosition;
+            assert!(super::is_skirt_or_lower_garment(&body), "{name}");
+
+            body.universal_name = std::mem::take(&mut body.local_name);
+            assert!(super::is_skirt_or_lower_garment(&body), "{name} alias");
+        }
+    }
 }
