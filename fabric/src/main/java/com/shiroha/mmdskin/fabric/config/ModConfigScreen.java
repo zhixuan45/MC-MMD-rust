@@ -12,6 +12,7 @@ import com.shiroha.mmdskin.config.UIConstants;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.entity.MobReplacementTargets;
 import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
+import com.shiroha.mmdskin.ui.about.AboutContent;
 import me.shedaniel.clothconfig2.api.ConfigBuilder;
 import me.shedaniel.clothconfig2.api.ConfigCategory;
 import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
@@ -41,6 +42,17 @@ public class ModConfigScreen {
 
         ConfigCategory renderCategory = builder.getOrCreateCategory(
             Component.translatable("gui.mmdskin.mod_settings.category.render"));
+
+        var about = entryBuilder.startSubCategory(Component.translatable("gui.mmdskin.about.title"));
+        for (Component detail : AboutContent.projectDetails()) {
+            about.add(entryBuilder.startTextDescription(detail).build());
+        }
+        var sponsors = entryBuilder.startSubCategory(Component.translatable("gui.mmdskin.about.sponsors"));
+        for (Component detail : AboutContent.sponsorDetails()) {
+            sponsors.add(entryBuilder.startTextDescription(detail).build());
+        }
+        about.add(sponsors.build());
+        renderCategory.addEntry(about.build());
 
         renderCategory.addEntry(entryBuilder
             .startBooleanToggle(

@@ -407,5 +407,15 @@
   "gui.mmdskin.maid_model_selector.no_results": "没有匹配的模型",
   "gui.mmdskin.maid_manager.scope": "列表只显示已验证为你的女仆。",
   "gui.mmdskin.maid.default_appearance": "恢复女仆默认外观",
-  "gui.mmdskin.maid_manager.empty": "本次会话中没有已验证的女仆"
+  "gui.mmdskin.maid_manager.empty": "本次会话中没有已验证的女仆",
+  "gui.mmdskin.about.title": "关于",
+  "gui.mmdskin.about.maintainers": "维护与更新：%s",
+  "gui.mmdskin.about.free": "本模组免费维护与更新，源代码公开。如果你是付费获取请退款。",
+  "gui.mmdskin.about.source": "免费源代码与官方仓库（点击打开）：",
+  "gui.mmdskin.about.license": "许可：以 CC BY-NC-SA 4.0 为基础，附加非商业及禁止 R18G 条款的自定义许可；原有 MIT 与第三方授权继续有效。",
+  "gui.mmdskin.about.license_link": "完整许可：",
+  "gui.mmdskin.about.restriction": "该模组禁止使用在R18G等相关场景。",
+  "gui.mmdskin.about.sponsors": "赞助者",
+  "gui.mmdskin.about.sponsors.empty": "感谢所有支持本项目的赞助者。",
+  "gui.mmdskin.about.click_link": "点击打开链接"
 }

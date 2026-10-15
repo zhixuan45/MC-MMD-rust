@@ -9,18 +9,22 @@ import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.UUID;
+
 /** 原版多行提示与确认按钮；关闭或切换世界不会误记为已确认。 */
 final class UsageNoticeScreen extends Screen {
     private static final Logger LOGGER = LogManager.getLogger();
     private final UsageNoticeConfig config;
+    private final UUID accountId;
     private MultiLineLabel message = MultiLineLabel.EMPTY;
     private MultiLineLabel error = MultiLineLabel.EMPTY;
     private int messageY;
     private int errorY;
 
-    UsageNoticeScreen(UsageNoticeConfig config) {
+    UsageNoticeScreen(UsageNoticeConfig config, UUID accountId) {
         super(Component.literal("模组使用须知"));
         this.config = config;
+        this.accountId = accountId;
     }
 
     @Override
@@ -37,7 +41,7 @@ final class UsageNoticeScreen extends Screen {
 
     private void confirm() {
         try {
-            config.acknowledge();
+            config.acknowledge(accountId);
             minecraft.setScreen(null);
         } catch (Exception exception) {
             LOGGER.error("保存模组使用须知确认记录失败", exception);

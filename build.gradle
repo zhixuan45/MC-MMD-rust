@@ -111,3 +111,11 @@ subprojects {
         }
     }
 }
+
+
+// 用户确认记录只属于本地账号，任何开发包或发布包都不得携带。
+subprojects {
+    tasks.withType(Jar).configureEach {
+        exclude "usage_notice.json", "**/usage_notice.json"
+    }
+}

@@ -358,5 +358,15 @@
   "gui.mmdskin.maid_model_selector.no_results": "一致するモデルがありません",
   "gui.mmdskin.maid_manager.scope": "所有者を確認できたメイドのみ表示します。",
   "gui.mmdskin.maid.default_appearance": "メイドの標準外見に戻す",
-  "gui.mmdskin.maid_manager.empty": "このセッションで確認済みのメイドはいません"
+  "gui.mmdskin.maid_manager.empty": "このセッションで確認済みのメイドはいません",
+  "gui.mmdskin.about.title": "このModについて",
+  "gui.mmdskin.about.maintainers": "保守・更新：%s",
+  "gui.mmdskin.about.free": "このModは無料で保守・更新され、ソースコードは公開されています。有料で入手した場合は返金を求めてください。",
+  "gui.mmdskin.about.source": "無料のソースコード・公式リポジトリ（クリックで開く）：",
+  "gui.mmdskin.about.license": "ライセンス：CC BY-NC-SA 4.0を基に、非営利・R18G利用禁止の条件を加えた独自ライセンスです。既存のMITおよび第三者のライセンスは引き続き有効です。",
+  "gui.mmdskin.about.license_link": "ライセンス全文：",
+  "gui.mmdskin.about.restriction": "このModをR18Gなどの関連シーンで使用することは禁止されています。",
+  "gui.mmdskin.about.sponsors": "スポンサー",
+  "gui.mmdskin.about.sponsors.empty": "このプロジェクトをご支援くださるすべての皆様に感謝します。",
+  "gui.mmdskin.about.click_link": "クリックしてリンクを開く"
 }
