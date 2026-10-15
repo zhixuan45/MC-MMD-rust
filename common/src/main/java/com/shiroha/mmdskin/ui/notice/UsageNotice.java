@@ -3,6 +3,9 @@ package com.shiroha.mmdskin.ui.notice;
 import com.shiroha.mmdskin.ui.config.UsageNoticeConfig;
 import net.minecraft.client.Minecraft;
 
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+
 /** 等待进入世界且加载界面关闭，再显示一次可持久确认的原版提示界面。 */
 public final class UsageNotice {
     public static final String REPOSITORY_URL = "https://github.com/zhixuan45/MC-MMD-rust";
@@ -19,8 +22,16 @@ public final class UsageNotice {
             config = new UsageNoticeConfig(minecraft.gameDirectory.toPath()
                     .resolve("config/mmdskin/usage_notice.json").toFile());
         }
-        if (!config.isAcknowledged()) {
-            minecraft.setScreen(new UsageNoticeScreen(config));
+        UUID accountId = currentAccountId(minecraft);
+        if (!config.isAcknowledged(accountId)) {
+            minecraft.setScreen(new UsageNoticeScreen(config, accountId));
         }
+    }
+    /** 使用启动账号，避免离线服务器分配不同的实体 UUID 导致反复提示。 */
+    public static UUID currentAccountId(Minecraft minecraft) {
+        UUID accountId = minecraft.getUser().getProfileId();
+        if (accountId != null) return accountId;
+        return UUID.nameUUIDFromBytes(("OfflinePlayer:" + minecraft.getUser().getName())
+                .getBytes(StandardCharsets.UTF_8));
     }
 }

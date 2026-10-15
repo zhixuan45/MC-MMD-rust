@@ -413,5 +413,15 @@
   "gui.mmdskin.maid_model_selector.no_results": "No matching models",
   "gui.mmdskin.maid_manager.scope": "Only maids verified as yours are listed.",
   "gui.mmdskin.maid.default_appearance": "Restore default maid appearance",
-  "gui.mmdskin.maid_manager.empty": "No verified maids in this session"
+  "gui.mmdskin.maid_manager.empty": "No verified maids in this session",
+  "gui.mmdskin.about.title": "About",
+  "gui.mmdskin.about.maintainers": "Maintained and updated by %s",
+  "gui.mmdskin.about.free": "This mod is maintained for free and its source is public. If you paid to obtain it, please request a refund.",
+  "gui.mmdskin.about.source": "Free source code and official repository (click to open):",
+  "gui.mmdskin.about.license": "License: a custom license based on CC BY-NC-SA 4.0 with noncommercial and no-R18G conditions. Existing MIT grants and third-party licenses remain in effect.",
+  "gui.mmdskin.about.license_link": "Full license:",
+  "gui.mmdskin.about.restriction": "Use of this mod in R18G or related scenarios is prohibited.",
+  "gui.mmdskin.about.sponsors": "Sponsors",
+  "gui.mmdskin.about.sponsors.empty": "Thank you to everyone who sponsors and supports this project.",
+  "gui.mmdskin.about.click_link": "Click to open link"
 }
