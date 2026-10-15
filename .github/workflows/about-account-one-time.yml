@@ -1,0 +1,79 @@
+name: One-time account notice and About verification
+
+on:
+  push:
+    branches: ['archived/1.20-vr']
+    paths: ['.github/workflows/about-account-one-time.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  java-and-packaging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: '1.21.1'
+            ref: '60d24e642f4dd8151990ac5387e949057ebd2930'
+            java: '21'
+            platform: 'neoforge'
+            exclude: ':prepareNativeResources'
+          - version: '1.20.1'
+            ref: '3f41bc1c1980e5deb3661b3b89643b487009e288'
+            java: '17'
+            platform: 'forge'
+            exclude: ':common:prepareNativeResources'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Place a simulated personal record in resources
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          target = Path("common/src/main/resources/config/mmdskin/usage_notice.json")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text('{"acknowledgedAccounts":["11111111-1111-4111-8111-111111111111"]}', encoding="utf-8")
+          PY
+      - name: Compile both loaders, run regression tests and build test JARs
+        run: bash gradlew :common:test --tests com.shiroha.mmdskin.ui.config.UsageNoticeConfigTest --tests com.shiroha.mmdskin.ui.about.SponsorCreditsTest :fabric:compileJava :${{ matrix.platform }}:compileJava :fabric:shadowJar :${{ matrix.platform }}:shadowJar -x ${{ matrix.exclude }} --stacktrace
+      - name: Verify personal records are excluded and sponsor credits are bundled
+        env:
+          NOTICE_CHECK_PLATFORM: ${{ matrix.platform }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import zipfile
+          from pathlib import Path
+          for module in ["fabric", os.environ["NOTICE_CHECK_PLATFORM"]]:
+              jars = list(Path(module, "build/libs").glob("*.jar"))
+              assert jars, f"No JARs built for {module}"
+              sponsor_archives = 0
+              for path in jars:
+                  with zipfile.ZipFile(path) as archive:
+                      names = archive.namelist()
+                      assert not any(name.rsplit("/", 1)[-1] == "usage_notice.json" for name in names), path
+                      resource = "assets/mmdskin/about/sponsors.json"
+                      if resource in names:
+                          assert json.loads(archive.read(resource)) == [], path
+                          sponsor_archives += 1
+                  print(f"Personal acknowledgement excluded: {path}")
+              assert sponsor_archives, f"Sponsor resource absent from {module} JARs"
+              print(f"Sponsor resource verified in {sponsor_archives} {module} JAR(s)")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: account-notice-tests-${{ matrix.version }}
+          path: common/build/reports/tests/test/
+          if-no-files-found: ignore
