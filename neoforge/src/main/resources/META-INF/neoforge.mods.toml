@@ -1,7 +1,7 @@
 # NeoForge 1.21.1 mods.toml 配置文件
 modLoader = "javafml"
 loaderVersion = "[4,)"
-license = "MIT"
+license = "LicenseRef-MC-MMD-NonCommercial-NoR18G-1.0"
 
 [[mixins]]
 config = "mmdskin-neoforge.mixins.json"

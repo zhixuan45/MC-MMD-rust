@@ -2,7 +2,7 @@
 
 在 Minecraft 1.20.1 中实现 MMD（MikuMikuDance）模型渲染和物理模拟的 Mod。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[许可：基于 CC BY-NC-SA 4.0 的非商业许可（禁止 R18G）](LICENSE)
 
 ## 功能特性
 
@@ -283,7 +283,15 @@ cargo build --release --lib --manifest-path rust_engine/Cargo.toml
 
 ## 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+本项目当前维护者享有或有权许可的新增及修改内容采用基于 **CC BY-NC-SA 4.0**、附加 **禁止 R18G 场景** 条件的自定义许可，详见 [LICENSE](LICENSE)。这不是未经修改的标准 CC BY-NC-SA 4.0，也不是 OSI 定义的开源软件许可；源代码仍免费公开。
+
+- 保留作者及上游署名、注明修改，限非商业性使用，改编内容以相同完整许可共享。
+- **该模组禁止使用在 R18G 等相关场景。**
+- 既有 MIT 授权与第三方许可继续有效，原 MIT 全文保留在 [LICENSE-MIT](LICENSE-MIT)；未修改的 CC 基础条文见 [LICENSE-CC-BY-NC-SA-4.0](LICENSE-CC-BY-NC-SA-4.0)。
+
+本模组由 **zhixuan45/shengxi** 免费维护与更新。如果你是付费获取请退款，免费源代码地址：<https://github.com/zhixuan45/MC-MMD-rust>。
+
+首次进入世界时，Fabric 和 NeoForge 客户端会显示免费来源及禁止 R18G 的两段提示。点击“确认”并成功保存后，同一游戏目录下切换世界、重连或重启均不再提示。确认记录位于 `config/mmdskin/usage_notice.json`；未确认、记录损坏或删除记录后会重新提示。
 
 ## 致谢
 
