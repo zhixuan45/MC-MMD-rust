@@ -314,6 +314,8 @@
   "gui.mmdskin.mod_settings.category.debug": "Debug Settings",
   "gui.mmdskin.mod_settings.debug_hud": "Performance Debug HUD",
   "gui.mmdskin.mod_settings.debug_hud.tooltip": "Show model memory/VRAM usage info on the top-left corner of the screen",
+  "gui.mmdskin.mod_settings.debug_gpu_log": "GPU Log",
+  "gui.mmdskin.mod_settings.debug_gpu_log.tooltip": "Periodically records GPU timing, buffer readbacks, transparency sorting and draw counts to latest.log to investigate rendering slowdowns. Summarizes every 5 seconds by default. Independent of the debug HUD and other logs; takes effect when saved.",
   "gui.mmdskin.mod_settings.debug_model_deformation_log": "Model Deformation Log",
   "gui.mmdskin.mod_settings.debug_model_deformation_log.tooltip": "Records model deformation data to latest.log every 2 seconds. Data only; it does not modify the model. Independent of the legacy physics debug log. Use for investigating a sunken back.",
   "gui.mmdskin.mod_settings.debug_side_physics_log": "Side-Part Physics Log",

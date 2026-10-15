@@ -41,7 +41,6 @@ public final class RenderPerformanceProfiler {
     private final Map<String, Long> profilingTotalsNanos = new LinkedHashMap<>();
     private final Map<String, Long> currentFrameTotalsNanos = new LinkedHashMap<>();
     private final Map<String, Integer> currentFrameCalls = new LinkedHashMap<>();
-    private final Map<String, Long> currentGpuTotalsNanos = new LinkedHashMap<>();
     private final Map<String, PerformanceSampleWindow> sectionWindows = new LinkedHashMap<>();
     private final PerformanceSampleWindow frameTimeWindow = new PerformanceSampleWindow(120);
     private final long[] currentTransferBytes = new long[TransferKind.values().length];
@@ -53,6 +52,9 @@ public final class RenderPerformanceProfiler {
     private long profiledFrameCount = 0L;
     private long profiledVisibleModels = 0L;
     private long profiledPhysicsModels = 0L;
+    private volatile boolean lastSamplingState;
+    private volatile boolean lastGpuLogState;
+    private volatile long samplingGeneration;
 
     private RenderPerformanceProfiler() {
         profilingTotalsNanos.put(SECTION_LIVING_STATE_SYNC, 0L);
@@ -70,8 +72,6 @@ public final class RenderPerformanceProfiler {
         }
         sectionWindows.put(GPU_SECTION_COMPUTE, new PerformanceSampleWindow(120));
         sectionWindows.put(GPU_SECTION_DRAW, new PerformanceSampleWindow(120));
-        currentGpuTotalsNanos.put(GPU_SECTION_COMPUTE, 0L);
-        currentGpuTotalsNanos.put(GPU_SECTION_DRAW, 0L);
     }
 
     public static RenderPerformanceProfiler get() {
@@ -95,8 +95,8 @@ public final class RenderPerformanceProfiler {
 
     /** GPU 查询结果会延迟若干帧返回，因此独立写入阶段窗口。 */
     public synchronized void recordGpuTime(String section, long elapsedNanos) {
-        if (currentGpuTotalsNanos.containsKey(section) && elapsedNanos >= 0L) {
-            currentGpuTotalsNanos.merge(section, elapsedNanos, Long::sum);
+        if (isSamplingEnabled() && (GPU_SECTION_COMPUTE.equals(section) || GPU_SECTION_DRAW.equals(section)) && elapsedNanos >= 0L) {
+            sectionWindows.get(section).record(elapsedNanos);
         }
     }
 
@@ -114,7 +114,7 @@ public final class RenderPerformanceProfiler {
 
     /** HUD 绘制边界用于采样实际呈现帧间隔，不参与 MMD 世界帧阶段累加。 */
     public synchronized void markPresentedFrame() {
-        if (!ConfigManager.isDebugHudEnabled()) {
+        if (!isSamplingEnabled()) {
             lastPresentedFrameNanos = 0L;
             return;
         }
@@ -142,12 +142,6 @@ public final class RenderPerformanceProfiler {
             sectionWindows.get(entry.getKey()).record(entry.getValue());
             entry.setValue(0L);
         }
-        for (Map.Entry<String, Long> entry : currentGpuTotalsNanos.entrySet()) {
-            if (entry.getValue() > 0L) {
-                sectionWindows.get(entry.getKey()).record(entry.getValue());
-            }
-            entry.setValue(0L);
-        }
         Map<String, Integer> frameCalls = Map.copyOf(currentFrameCalls);
         currentFrameCalls.replaceAll((section, count) -> 0);
         long[] frameTransferBytes = currentTransferBytes.clone();
@@ -155,7 +149,7 @@ public final class RenderPerformanceProfiler {
         java.util.Arrays.fill(currentTransferBytes, 0L);
         java.util.Arrays.fill(currentAvoidedUploadBytes, 0L);
         rebuildSnapshot(visibleModels, physicsModels, frameCalls, frameTransferBytes, frameAvoidedUploadBytes);
-        if (config.isPerformanceProfilingEnabled()) {
+        if (config.isPerformanceProfilingEnabled() || ConfigManager.isDebugGpuLogEnabled()) {
             maybeLogProfiling();
         }
     }
@@ -171,8 +165,34 @@ public final class RenderPerformanceProfiler {
                 new TransferSnapshot(transferBytes, avoidedUploadBytes));
     }
 
-    private boolean isSamplingEnabled() {
-        return config.isPerformanceProfilingEnabled() || ConfigManager.isDebugHudEnabled();
+    public boolean isSamplingEnabled() {
+        boolean gpuLog = ConfigManager.isDebugGpuLogEnabled();
+        boolean enabled = config.isPerformanceProfilingEnabled() || ConfigManager.isDebugHudEnabled() || gpuLog;
+        if (enabled != lastSamplingState || gpuLog != lastGpuLogState) resetSamplingWindows(enabled, gpuLog);
+        return enabled;
+    }
+
+    public long samplingGeneration() {
+        return samplingGeneration;
+    }
+
+    private void resetSamplingWindows(boolean enabled, boolean gpuLog) {
+        synchronized (this) {
+            if (enabled == lastSamplingState && gpuLog == lastGpuLogState) return;
+            lastSamplingState = enabled;
+            lastGpuLogState = gpuLog;
+            samplingGeneration++;
+            lastPresentedFrameNanos = 0L;
+            frameTimeWindow.clear();
+            for (PerformanceSampleWindow window : sectionWindows.values()) window.clear();
+            currentFrameTotalsNanos.replaceAll((section, value) -> 0L);
+            currentFrameCalls.replaceAll((section, value) -> 0);
+            java.util.Arrays.fill(currentTransferBytes, 0L);
+            java.util.Arrays.fill(currentAvoidedUploadBytes, 0L);
+            latestSnapshot = Snapshot.empty();
+            resetProfiling();
+        }
+        TranslucentDiagnostics.onSamplingReset();
     }
 
     private void maybeLogProfiling() {
@@ -189,6 +209,19 @@ public final class RenderPerformanceProfiler {
                 .append(", avgPhysics=")
                 .append(String.format("%.2f", profiledPhysicsModels / (double) profiledFrameCount));
 
+        PerformanceSampleWindow.Snapshot frame = frameTimeWindow.snapshot();
+        message.append(", presentedFrameSamples=").append(frame.count())
+                .append(", presentedFrameMedian=").append(String.format("%.3fms", frame.medianNanos() / 1_000_000.0d))
+                .append(", presentedFrameP95=").append(String.format("%.3fms", frame.p95Nanos() / 1_000_000.0d));
+        PerformanceSampleWindow.Snapshot nativeUpdate = sectionWindows.get(SECTION_NATIVE_MODEL_UPDATE).snapshot();
+        message.append(", nativeUpdateWorldFrame={samples:").append(nativeUpdate.count())
+                .append(",medianNs:").append(nativeUpdate.medianNanos())
+                .append(",p95Ns:").append(nativeUpdate.p95Nanos()).append('}');
+        if (ConfigManager.isDebugGpuLogEnabled()) {
+            appendGpuQuerySummary(message, GPU_SECTION_COMPUTE, "compute");
+            appendGpuQuerySummary(message, GPU_SECTION_DRAW, "draw");
+        }
+
         for (Map.Entry<String, Long> entry : profilingTotalsNanos.entrySet()) {
             double avgMs = entry.getValue() / 1_000_000.0d / profiledFrameCount;
             message.append(", ").append(entry.getKey()).append('=')
@@ -197,6 +230,12 @@ public final class RenderPerformanceProfiler {
 
         logger.info(message.toString());
         resetProfiling();
+    }
+
+    private void appendGpuQuerySummary(StringBuilder message, String name, String label) {
+        PerformanceSampleWindow.Snapshot query = sectionWindows.get(name).snapshot();
+        message.append(", gpuQuery").append(label).append("={samples:").append(query.count())
+                .append(",medianNs:").append(query.medianNanos()).append(",p95Ns:").append(query.p95Nanos()).append('}');
     }
 
     private void resetProfiling() {

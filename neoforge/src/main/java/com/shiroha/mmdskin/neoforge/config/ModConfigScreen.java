@@ -594,6 +594,14 @@ public class ModConfigScreen {
             .build());
 
         debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_gpu_log"),
+                data.debugGpuLog)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_gpu_log.tooltip"))
+            .setSaveConsumer(value -> data.debugGpuLog = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
             .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_model_deformation_log"),
                 data.debugModelDeformationLog)
             .setDefaultValue(false)

@@ -14,6 +14,8 @@ import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import com.shiroha.mmdskin.render.pipeline.LightingHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
+import com.shiroha.mmdskin.render.pipeline.GpuTimerQueryPool;
+import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKind;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.scene.RenderScene;
@@ -40,6 +42,29 @@ final class OpenGlModelRenderer {
     }
 
     static void render(OpenGlModelInstance target, Entity entityIn, float entityYaw, float entityPitch,
+                       Vector3f entityTrans, PoseStack deliverStack, int packedLight, RenderScene context) {
+        RenderPerformanceProfiler profiler = RenderPerformanceProfiler.get();
+        boolean samplingEnabled = profiler.isSamplingEnabled();
+        if (!samplingEnabled) GpuTimerQueryPool.releasePendingWhenSamplingDisabled();
+        try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
+                target.nativeModelHandle(), target.getModelName(), "CPU",
+                samplingEnabled ? sceneKey(context) : "OTHER")) {
+            renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, packedLight, context);
+        }
+    }
+
+    private static String sceneKey(RenderScene context) {
+        if (IrisCompat.isRenderingShadows()) return "SHADOW";
+        if (context == null) return "OTHER";
+        if (context.isFirstPerson()) return "FIRST_PERSON";
+        if (context.isPaperDoll()) return "PAPERDOLL";
+        if (context.isInventoryScene()) return "INVENTORY";
+        if (context.sceneType() == RenderScene.SceneType.ITEM) return "ITEM";
+        if (context.sceneType() == RenderScene.SceneType.WORLD) return "WORLD";
+        return "OTHER";
+    }
+
+    private static void renderInternal(OpenGlModelInstance target, Entity entityIn, float entityYaw, float entityPitch,
                        Vector3f entityTrans, PoseStack deliverStack, int packedLight, RenderScene context) {
         Minecraft minecraft = Minecraft.getInstance();
         boolean isGuiScene = context != null && context.isInventoryScene();
@@ -99,11 +124,13 @@ final class OpenGlModelRenderer {
         }
         float toonIntensity = isGuiScene ? 1.0f
                 : (IrisCompat.isIrisShaderActive() ? light.intensity() * 0.8f : light.intensity());
+        boolean drawQueryStarted = GpuTimerQueryPool.draw().begin();
         if (useToon) {
             long drawTimer = RenderPerformanceProfiler.get().startTimer();
             try {
                 renderToon(target, minecraft, light, toonIntensity, deliverStack, !isGuiScene);
             } finally {
+                if (drawQueryStarted) GpuTimerQueryPool.draw().end();
                 RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
             }
             return;
@@ -113,6 +140,7 @@ final class OpenGlModelRenderer {
         try {
             renderStandard(target, minecraft, light, deliverStack, isGuiScene);
         } finally {
+            if (drawQueryStarted) GpuTimerQueryPool.draw().end();
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
         }
     }

@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin;
 
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.render.pipeline.GpuTimerQueryPool;
 import com.shiroha.mmdskin.stage.client.bootstrap.StageClientBootstrap;
 import com.shiroha.mmdskin.util.VectorParseUtil;
 import org.apache.logging.log4j.LogManager;
@@ -14,6 +15,11 @@ public class MmdSkinClient {
         StageClientBootstrap.initialize();
         MmdClientResourceBootstrap.initialize();
         ClientRenderRuntime.initialize();
+    }
+
+    /** 平台生命周期在窗口 OpenGL 上下文仍可用时调用。 */
+    public static void onClientStopping() {
+        GpuTimerQueryPool.disposeAll();
     }
 
     public static String calledFrom(int i){

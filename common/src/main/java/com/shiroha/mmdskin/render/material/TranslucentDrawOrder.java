@@ -2,6 +2,7 @@ package com.shiroha.mmdskin.render.material;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
 
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL46C;
@@ -132,54 +133,61 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             ByteBuffer morphs,
             SubMeshDrawHelper.AlphaResolver alphaResolver) {
         int triangles = 0;
+        long classifyTimer = TranslucentDiagnostics.startTimer();
         MaterialRenderState state = new MaterialRenderState();
         if (batches.length < count) {
             batches = new int[count];
             includeOpaque = new boolean[count];
         }
         var batchIds = new HashMap<Batch, Integer>();
-        int program = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
-        boolean specular = GL46C.glGetUniformLocation(program, "MaterialSpecular") >= 0;
-        int eyeLocation = GL46C.glGetUniformLocation(program, "EyeEmission");
-        boolean eye = eyeLocation >= 0 && GL46C.glGetUniformf(program, eyeLocation) > 0;
-        boolean splitPixels = GL46C.glGetUniformLocation(program, "AlphaPass") >= 0;
-        boolean sphere = GL46C.glGetUniformLocation(program, "SphereMode") >= 0;
-        // Pack entity shaders may deform vertices or derive alpha beyond the diffuse atlas.
-        // Own Toon programs have the known MaterialColor/texture-alpha formula.
-        boolean packEntity =
-                IrisCompat.isIrisProgram(RenderSystem.getShader())
-                        && GL46C.glGetUniformLocation(program, "MaterialColor") < 0;
-        boolean coverageSafe = splitPixels && !packEntity;
-        for (int s = 0; s < count; s++) {
-            batches[s] = -1;
-            if (!includes(source, s, materials, morphs, alphaResolver, state)) continue;
-            triangles += source.getInt(s * 20 + 8) / 3;
-            var material = materials[source.getInt(s * 20)];
-            boolean power =
-                    specular
-                            && (state.specular[0] != 0
-                                    || state.specular[1] != 0
-                                    || state.specular[2] != 0);
-            var batch =
-                    new Batch(
-                            material.tex,
-                            // 球面模式及 morph 属于逐材质状态，不能只按主贴图合并。
-                            sphere && material.sphereTex > 0 && (material.sphereMode == 1 || material.sphereMode == 2)
-                                    ? source.getInt(s * 20) : -1,
-                            source.get(s * 20 + 17) == 0,
-                            material.hasAlpha,
-                            material.hasTranslucentPixels,
-                            state.color[0],
-                            state.color[1],
-                            state.color[2],
-                            state.alpha,
-                            specular ? state.specular[0] : 0,
-                            specular ? state.specular[1] : 0,
-                            specular ? state.specular[2] : 0,
-                            power ? state.specularPower : 0,
-                            eye ? material.eyeEmissionMaskMode() : 0);
-            batches[s] = batchIds.computeIfAbsent(batch, k -> batchIds.size());
-            includeOpaque[s] = !splitPixels || state.alpha < MaterialRenderState.OPAQUE_ALPHA;
+        boolean packEntity;
+        boolean coverageSafe;
+        try {
+            int program = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
+            boolean specular = GL46C.glGetUniformLocation(program, "MaterialSpecular") >= 0;
+            int eyeLocation = GL46C.glGetUniformLocation(program, "EyeEmission");
+            boolean eye = eyeLocation >= 0 && GL46C.glGetUniformf(program, eyeLocation) > 0;
+            boolean splitPixels = GL46C.glGetUniformLocation(program, "AlphaPass") >= 0;
+            boolean sphere = GL46C.glGetUniformLocation(program, "SphereMode") >= 0;
+            // Pack entity shaders may deform vertices or derive alpha beyond the diffuse atlas.
+            // Own Toon programs have the known MaterialColor/texture-alpha formula.
+            packEntity =
+                    IrisCompat.isIrisProgram(RenderSystem.getShader())
+                            && GL46C.glGetUniformLocation(program, "MaterialColor") < 0;
+            coverageSafe = splitPixels && !packEntity;
+            for (int s = 0; s < count; s++) {
+                batches[s] = -1;
+                if (!includes(source, s, materials, morphs, alphaResolver, state)) continue;
+                triangles += source.getInt(s * 20 + 8) / 3;
+                var material = materials[source.getInt(s * 20)];
+                boolean power =
+                        specular
+                                && (state.specular[0] != 0
+                                        || state.specular[1] != 0
+                                        || state.specular[2] != 0);
+                var batch =
+                        new Batch(
+                                material.tex,
+                                // 球面模式及 morph 属于逐材质状态，不能只按主贴图合并。
+                                sphere && material.sphereTex > 0 && (material.sphereMode == 1 || material.sphereMode == 2)
+                                        ? source.getInt(s * 20) : -1,
+                                source.get(s * 20 + 17) == 0,
+                                material.hasAlpha,
+                                material.hasTranslucentPixels,
+                                state.color[0],
+                                state.color[1],
+                                state.color[2],
+                                state.alpha,
+                                specular ? state.specular[0] : 0,
+                                specular ? state.specular[1] : 0,
+                                specular ? state.specular[2] : 0,
+                                power ? state.specularPower : 0,
+                                eye ? material.eyeEmissionMaskMode() : 0);
+                batches[s] = batchIds.computeIfAbsent(batch, k -> batchIds.size());
+                includeOpaque[s] = !splitPixels || state.alpha < MaterialRenderState.OPAQUE_ALPHA;
+            }
+        } finally {
+            TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.CLASSIFY, classifyTimer);
         }
         if (triangles == 0) {
             candidateCount = candidateVertexCount = drawCount = 0;
@@ -201,7 +209,14 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             if (indicesReloaded) {
                 ByteBuffer data = MemoryUtil.memAlloc(bytes);
                 try {
+                    long readbackTimer = TranslucentDiagnostics.startTimer();
+                    try {
                     GL46C.glGetBufferSubData(GL46C.GL_COPY_READ_BUFFER, 0, data);
+                    } finally {
+                        TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.READBACK, readbackTimer);
+                        TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_CALLS, 1);
+                        TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_BYTES, bytes);
+                    }
                     sourceIndices = new int[bytes / indexSize];
                     for (int i = 0; i < sourceIndices.length; i++)
                         sourceIndices[i] =
@@ -233,9 +248,17 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 if (positionRevision != inputs.geometryRevision()
                         || positionSource != inputs.positionBuffer()) {
                     // GPU compute writes precede the host read; do not use stale bind-pose centers.
+                    // READBACK CPU 时间包含 barrier 可能触发的等待，不代表纯 GPU 等待时间。
+                    long readbackTimer = TranslucentDiagnostics.startTimer();
+                    try {
                     GL46C.glMemoryBarrier(GL46C.GL_BUFFER_UPDATE_BARRIER_BIT);
                     GL46C.glBindBuffer(GL46C.GL_COPY_READ_BUFFER, inputs.positionBuffer());
                     GL46C.glGetBufferSubData(GL46C.GL_COPY_READ_BUFFER, 0, gpuPositions);
+                    } finally {
+                        TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.READBACK, readbackTimer);
+                        TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_CALLS, 1);
+                        TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_BYTES, required);
+                    }
                     positionRevision = inputs.geometryRevision();
                     positionSource = inputs.positionBuffer();
                 }
@@ -250,18 +273,34 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                     uvRevision = Long.MIN_VALUE;
                 }
                 if (uvRevision != inputs.uvRevision() || uvSource != inputs.uvBuffer()) {
+                    long readbackTimer = TranslucentDiagnostics.startTimer();
+                    try {
                     GL46C.glMemoryBarrier(GL46C.GL_BUFFER_UPDATE_BARRIER_BIT);
                     GL46C.glBindBuffer(GL46C.GL_COPY_READ_BUFFER, inputs.uvBuffer());
                     GL46C.glGetBufferSubData(GL46C.GL_COPY_READ_BUFFER, 0, gpuUvs);
+                    } finally {
+                        TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.READBACK, readbackTimer);
+                        TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_CALLS, 1);
+                        TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_BYTES, required);
+                    }
                     uvRevision = inputs.uvRevision();
                     uvSource = inputs.uvBuffer();
                 }
                 uvs = gpuUvs;
             }
-            if (!candidateCacheMatches(inputs, source, count, bytes, indexSize, coverageSafe, batches, includeOpaque, materials)) {
-                buildCandidates(inputs, source, count, materials,
+            long candidateTimer = TranslucentDiagnostics.startTimer();
+            boolean cacheMatches;
+            try {
+                cacheMatches = candidateCacheMatches(inputs, source, count, bytes, indexSize, coverageSafe, batches, includeOpaque, materials);
+                if (!cacheMatches) buildCandidates(inputs, source, count, materials,
                         batches, includeOpaque, coverageSafe, uvs, bytes);
+            } finally {
+                TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.CANDIDATES, candidateTimer);
             }
+            TranslucentDiagnostics.add(cacheMatches
+                    ? TranslucentDiagnostics.Counter.CANDIDATE_REUSE
+                    : TranslucentDiagnostics.Counter.CANDIDATE_BUILD, 1);
+            TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.CANDIDATE_TRIANGLES, candidateCount);
             if (keys.length < candidateCount) keys = new long[candidateCount];
             float mx = inputs.modelView().get(2),
                     my = inputs.modelView().get(6),
@@ -276,74 +315,97 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                             : new Matrix4f()
                                     .set(inputs.projection())
                                     .mul(new Matrix4f().set(inputs.modelView()));
-            for (int i = 0; i < candidateVertexCount; i++) {
-                int v = candidateVertices[i];
-                float x = positions.getFloat(v * 12),
-                        y = positions.getFloat(v * 12 + 4),
-                        z = positions.getFloat(v * 12 + 8);
-                vertexDepths[v] = mx * x + my * y + mz * z;
-                clipCodes[v] = 0;
-                if (clip != null) {
-                    float cx = clip.m00() * x + clip.m10() * y + clip.m20() * z + clip.m30();
-                    float cy = clip.m01() * x + clip.m11() * y + clip.m21() * z + clip.m31();
-                    float cz = clip.m02() * x + clip.m12() * y + clip.m22() * z + clip.m32();
-                    float cw = clip.m03() * x + clip.m13() * y + clip.m23() * z + clip.m33();
-                    clipCodes[v] =
-                            (cx < -cw ? 1 : 0)
-                                    | (cx > cw ? 2 : 0)
-                                    | (cy < -cw ? 4 : 0)
-                                    | (cy > cw ? 8 : 0)
-                                    | (cz < -cw ? 16 : 0)
-                                    | (cz > cw ? 32 : 0);
-                }
-            }
             int used = 0;
-            for (int candidate = 0; candidate < candidateCount; candidate++) {
-                int start = candidateStarts[candidate];
-                float z = 0;
-                int outside = 63;
-                for (int v = 0; v < 3; v++) {
-                    int id = sourceIndices[start + v];
-                    z += vertexDepths[id];
-                    outside &= clipCodes[id];
+            long depthTimer = TranslucentDiagnostics.startTimer();
+            try {
+                for (int i = 0; i < candidateVertexCount; i++) {
+                    int v = candidateVertices[i];
+                    float x = positions.getFloat(v * 12),
+                            y = positions.getFloat(v * 12 + 4),
+                            z = positions.getFloat(v * 12 + 8);
+                    vertexDepths[v] = mx * x + my * y + mz * z;
+                    clipCodes[v] = 0;
+                    if (clip != null) {
+                        float cx = clip.m00() * x + clip.m10() * y + clip.m20() * z + clip.m30();
+                        float cy = clip.m01() * x + clip.m11() * y + clip.m21() * z + clip.m31();
+                        float cz = clip.m02() * x + clip.m12() * y + clip.m22() * z + clip.m32();
+                        float cw = clip.m03() * x + clip.m13() * y + clip.m23() * z + clip.m33();
+                        clipCodes[v] =
+                                (cx < -cw ? 1 : 0)
+                                        | (cx > cw ? 2 : 0)
+                                        | (cy < -cw ? 4 : 0)
+                                        | (cy > cw ? 8 : 0)
+                                        | (cz < -cw ? 16 : 0)
+                                        | (cz > cw ? 32 : 0);
+                    }
                 }
-                if (outside != 0) continue;
-                int bits = Float.floatToIntBits(z);
-                int ordered = bits ^ ((bits >> 31) & 0x7fffffff);
-                // Stable ties retain author ordering for coincident facial surfaces.
-                keys[used] = ((long) ordered << 32) | (candidate & 0xffffffffL);
-                used++;
+                for (int candidate = 0; candidate < candidateCount; candidate++) {
+                    int start = candidateStarts[candidate];
+                    float z = 0;
+                    int outside = 63;
+                    for (int v = 0; v < 3; v++) {
+                        int id = sourceIndices[start + v];
+                        z += vertexDepths[id];
+                        outside &= clipCodes[id];
+                    }
+                    if (outside != 0) continue;
+                    int bits = Float.floatToIntBits(z);
+                    int ordered = bits ^ ((bits >> 31) & 0x7fffffff);
+                    // Stable ties retain author ordering for coincident facial surfaces.
+                    keys[used] = ((long) ordered << 32) | (candidate & 0xffffffffL);
+                    used++;
+                }
+                TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.VISIBLE_TRIANGLES, used);
+            } finally {
+                TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.DEPTH_KEYS, depthTimer);
             }
             // 仅并行处理 CPU 深度键；OpenGL 操作仍在渲染线程。
-            Arrays.parallelSort(keys, 0, used);
-            sortedIndices = resize(sortedIndices, Math.max(4, used * 12));
-            submeshes = resize(submeshes, Math.max(20, used * 20));
-            drawCount = 0;
-            int previousOwner = -1;
-            for (int t = 0; t < used; t++) {
-                int ordinal = (int) keys[t],
-                        owner = candidateOwners[ordinal],
-                        start = candidateStarts[ordinal];
-                for (int v = 0; v < 3; v++)
-                    sortedIndices.putInt((t * 3 + v) * 4, sourceIndices[start + v]);
-                if (previousOwner >= 0 && batches[owner] == batches[previousOwner])
-                    submeshes.putInt(
-                            (drawCount - 1) * 20 + 8,
-                            submeshes.getInt((drawCount - 1) * 20 + 8) + 3);
-                else {
-                    int b = drawCount * 20;
-                    for (int i = 0; i < 20; i++) submeshes.put(b + i, source.get(owner * 20 + i));
-                    submeshes.putInt(b + 4, t * 3);
-                    submeshes.putInt(b + 8, 3);
-                    drawCount++;
-                    previousOwner = owner;
-                }
+            long sortTimer = TranslucentDiagnostics.startTimer();
+            try {
+                Arrays.parallelSort(keys, 0, used);
+            } finally {
+                TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.SORT, sortTimer);
             }
-            sortedIndices.position(0).limit(used * 12);
-            submeshes.position(0).limit(drawCount * 20);
+            long indexTimer = TranslucentDiagnostics.startTimer();
+            try {
+                sortedIndices = resize(sortedIndices, Math.max(4, used * 12));
+                submeshes = resize(submeshes, Math.max(20, used * 20));
+                drawCount = 0;
+                int previousOwner = -1;
+                for (int t = 0; t < used; t++) {
+                    int ordinal = (int) keys[t],
+                            owner = candidateOwners[ordinal],
+                            start = candidateStarts[ordinal];
+                    for (int v = 0; v < 3; v++)
+                        sortedIndices.putInt((t * 3 + v) * 4, sourceIndices[start + v]);
+                    if (previousOwner >= 0 && batches[owner] == batches[previousOwner])
+                        submeshes.putInt(
+                                (drawCount - 1) * 20 + 8,
+                                submeshes.getInt((drawCount - 1) * 20 + 8) + 3);
+                    else {
+                        int b = drawCount * 20;
+                        for (int i = 0; i < 20; i++) submeshes.put(b + i, source.get(owner * 20 + i));
+                        submeshes.putInt(b + 4, t * 3);
+                        submeshes.putInt(b + 8, 3);
+                        drawCount++;
+                        previousOwner = owner;
+                    }
+                }
+                sortedIndices.position(0).limit(used * 12);
+                submeshes.position(0).limit(drawCount * 20);
+            } finally {
+                TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.INDEX_BUILD, indexTimer);
+            }
+            if (used > 0) TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.RUNS, drawCount);
             if (indexBuffer == 0) indexBuffer = GL46C.glGenBuffers();
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
-            GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER, sortedIndices, GL46C.GL_STREAM_DRAW);
+            long uploadTimer = TranslucentDiagnostics.startTimer();
+            try {
+                GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER, sortedIndices, GL46C.GL_STREAM_DRAW);
+            } finally {
+                TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.UPLOAD, uploadTimer);
+                TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.UPLOAD_BYTES, used * 12L);
+            }
             return true;
         } finally {
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, original);

@@ -18,6 +18,7 @@ import com.shiroha.mmdskin.render.pipeline.LightingHelper;
 import com.shiroha.mmdskin.render.pipeline.GpuTimerQueryPool;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKind;
+import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.SkinningComputeShader;
 import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
@@ -43,6 +44,34 @@ final class GpuSkinningModelRenderer {
     }
 
     static void render(GpuSkinningModelInstance target,
+                       Entity entityIn,
+                       float entityYaw,
+                       float entityPitch,
+                       Vector3f entityTrans,
+                       PoseStack deliverStack,
+                       RenderScene context) {
+        RenderPerformanceProfiler profiler = RenderPerformanceProfiler.get();
+        boolean samplingEnabled = profiler.isSamplingEnabled();
+        if (!samplingEnabled) GpuTimerQueryPool.releasePendingWhenSamplingDisabled();
+        try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
+                target.nativeModelHandle(), target.getModelName(), "GPU_COMPUTE",
+                samplingEnabled ? sceneKey(context) : "OTHER")) {
+            renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, context);
+        }
+    }
+
+    private static String sceneKey(RenderScene context) {
+        if (IrisCompat.isRenderingShadows()) return "SHADOW";
+        if (context == null) return "OTHER";
+        if (context.isFirstPerson()) return "FIRST_PERSON";
+        if (context.isPaperDoll()) return "PAPERDOLL";
+        if (context.isInventoryScene()) return "INVENTORY";
+        if (context.sceneType() == RenderScene.SceneType.ITEM) return "ITEM";
+        if (context.sceneType() == RenderScene.SceneType.WORLD) return "WORLD";
+        return "OTHER";
+    }
+
+    private static void renderInternal(GpuSkinningModelInstance target,
                        Entity entityIn,
                        float entityYaw,
                        float entityPitch,
@@ -102,7 +131,7 @@ final class GpuSkinningModelRenderer {
         target.currentDeliverStack = deliverStack;
 
         long drawTimer = RenderPerformanceProfiler.get().startTimer();
-        GpuTimerQueryPool.draw().begin();
+        boolean drawQueryStarted = GpuTimerQueryPool.draw().begin();
         try {
             if (useToon && GpuSkinningModelInstance.toonShaderCpu != null && GpuSkinningModelInstance.toonShaderCpu.isInitialized()) {
                 renderToon(target, minecraft, light, toonIntensity, firstPersonIndexReady, !isGuiScene);
@@ -110,7 +139,7 @@ final class GpuSkinningModelRenderer {
                 renderNormal(target, minecraft, light, firstPersonIndexReady, deliverStack, isGuiScene);
             }
         } finally {
-            GpuTimerQueryPool.draw().end();
+            if (drawQueryStarted) GpuTimerQueryPool.draw().end();
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
         }
     }
@@ -227,11 +256,11 @@ final class GpuSkinningModelRenderer {
         }
 
         long computeTimer = RenderPerformanceProfiler.get().startTimer();
-        GpuTimerQueryPool.compute().begin();
+        boolean computeQueryStarted = GpuTimerQueryPool.compute().begin();
         try {
             GpuSkinningModelInstance.computeShader.dispatch(target.cachedDispatchParams);
         } finally {
-            GpuTimerQueryPool.compute().end();
+            if (computeQueryStarted) GpuTimerQueryPool.compute().end();
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_COMPUTE_DISPATCH, computeTimer);
         }
 

@@ -323,6 +323,8 @@
   "gui.mmdskin.mod_settings.category.debug": "调试设置",
   "gui.mmdskin.mod_settings.debug_hud": "性能调试 HUD",
   "gui.mmdskin.mod_settings.debug_hud.tooltip": "在屏幕左上角显示模型的内存/显存占用信息",
+  "gui.mmdskin.mod_settings.debug_gpu_log": "GPU 日志",
+  "gui.mmdskin.mod_settings.debug_gpu_log.tooltip": "定期记录 GPU 耗时、缓冲回读、透明排序和绘制次数到 latest.log，用于排查渲染掉帧。默认每 5 秒汇总，独立于调试 HUD 和其它日志，保存后生效。",
   "gui.mmdskin.mod_settings.debug_model_deformation_log": "模型变形日志",
   "gui.mmdskin.mod_settings.debug_model_deformation_log.tooltip": "每 2 秒记录模型变形相关数据到 latest.log，仅记录数据，不会修改模型；独立于旧物理调试日志，用于排查背部凹陷。",
   "gui.mmdskin.mod_settings.debug_side_physics_log": "两侧部件物理日志",

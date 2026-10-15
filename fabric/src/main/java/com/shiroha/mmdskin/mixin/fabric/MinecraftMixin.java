@@ -17,7 +17,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MinecraftMixin {
 
     @Inject(method = "close", at = @At("HEAD"), remap = false)
-    private void releaseOutlineOnClose(CallbackInfo ci) {
+    private void releaseRenderResourcesOnClose(CallbackInfo ci) {
+        com.shiroha.mmdskin.MmdSkinClient.onClientStopping();
         com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
     }
 

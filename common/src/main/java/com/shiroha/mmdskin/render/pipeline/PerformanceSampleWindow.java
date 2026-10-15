@@ -72,6 +72,7 @@ public final class PerformanceSampleWindow {
         return new Snapshot(
                 samples[(nextIndex + samples.length - 1) % samples.length],
                 average,
+                percentile(sortedSamples, count, 50),
                 percentile(sortedSamples, count, 95),
                 percentile(sortedSamples, count, 99),
                 count);
@@ -90,17 +91,19 @@ public final class PerformanceSampleWindow {
 
     /** 不可变的性能统计快照。所有时间值单位均为纳秒。 */
     public static final class Snapshot {
-        private static final Snapshot EMPTY = new Snapshot(0L, 0L, 0L, 0L, 0);
+        private static final Snapshot EMPTY = new Snapshot(0L, 0L, 0L, 0L, 0L, 0);
 
         private final long currentNanos;
         private final long averageNanos;
+        private final long medianNanos;
         private final long p95Nanos;
         private final long p99Nanos;
         private final int count;
 
-        private Snapshot(long currentNanos, long averageNanos, long p95Nanos, long p99Nanos, int count) {
+        private Snapshot(long currentNanos, long averageNanos, long medianNanos, long p95Nanos, long p99Nanos, int count) {
             this.currentNanos = currentNanos;
             this.averageNanos = averageNanos;
+            this.medianNanos = medianNanos;
             this.p95Nanos = p95Nanos;
             this.p99Nanos = p99Nanos;
             this.count = count;
@@ -121,6 +124,8 @@ public final class PerformanceSampleWindow {
         public long p95Nanos() {
             return p95Nanos;
         }
+
+        public long medianNanos() { return medianNanos; }
 
         public long p99Nanos() {
             return p99Nanos;

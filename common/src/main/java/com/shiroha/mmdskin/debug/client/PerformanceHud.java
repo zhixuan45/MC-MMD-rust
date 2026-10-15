@@ -54,11 +54,10 @@ public class PerformanceHud {
     }
 
     public static void render(GuiGraphics graphics) {
+        RenderPerformanceProfiler.get().markPresentedFrame();
         if (!ConfigManager.isDebugHudEnabled()) {
             return;
         }
-
-        RenderPerformanceProfiler.get().markPresentedFrame();
 
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.options.hideGui || (minecraft.gui != null && minecraft.gui.getDebugOverlay().showDebugScreen())) {
@@ -223,16 +222,12 @@ public class PerformanceHud {
         PerformanceSampleWindow.Snapshot gpuCompute = snapshot.section(RenderPerformanceProfiler.GPU_SECTION_COMPUTE);
         PerformanceSampleWindow.Snapshot gpuDraw = snapshot.section(RenderPerformanceProfiler.GPU_SECTION_DRAW);
         if (gpuCompute.count() > 0 || gpuDraw.count() > 0) {
-            long gpuTotal = gpuCompute.averageNanos() + gpuDraw.averageNanos();
-            addLine(String.format("  MMD GPU %.2f ms  compute %.2f  draw %.2f",
-                    ms(gpuTotal), ms(gpuCompute.averageNanos()), ms(gpuDraw.averageNanos())), VALUE_COLOR);
-            if (gpuTotal > 0L) {
-                addLine(String.format("    Share compute %.0f%%  draw %.0f%%",
-                        percent(gpuCompute.averageNanos(), gpuTotal),
-                        percent(gpuDraw.averageNanos(), gpuTotal)), LABEL_COLOR);
-            }
+            addLine(String.format("  GPU query avg  compute %.2f ms  draw %.2f ms",
+                    ms(gpuCompute.averageNanos()), ms(gpuDraw.averageNanos())), VALUE_COLOR);
+            addLine(String.format("    Async samples  compute %d  draw %d",
+                    gpuCompute.count(), gpuDraw.count()), LABEL_COLOR);
         } else {
-            addLine("  MMD GPU N/A (CPU backend or collecting)", LABEL_COLOR);
+            addLine("  GPU query N/A (unsupported or collecting)", LABEL_COLOR);
         }
 
         addLine(String.format("  Load   visible %d  physics %d  passes %d  dispatches %d",

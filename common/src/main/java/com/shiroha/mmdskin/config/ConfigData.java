@@ -92,6 +92,7 @@ public class ConfigData {
     public int textureCacheBudgetMB = 256;
 
     public boolean debugHudEnabled = false;
+    public boolean debugGpuLog = false;
     public boolean debugModelDeformationLog = false;
     public boolean debugSidePhysicsLog = false;
     public boolean debugCollisionModeLog = false;

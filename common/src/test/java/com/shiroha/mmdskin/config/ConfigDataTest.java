@@ -51,7 +51,33 @@ class ConfigDataTest {
         assertFalse(loaded.debugSidePhysicsLog);
         assertFalse(loaded.debugCollisionModeLog);
         assertFalse(loaded.debugOutlinePaperDollLog);
+        assertFalse(loaded.debugGpuLog);
         assertEquals(0, new TestConfig(loaded).getIssueDiagnosticFlags());
+    }
+
+    @Test
+    void gpuLogPersistsIndependentlyAndTakesEffectThroughProvider(@TempDir Path configDir) {
+        ConfigData data = new ConfigData();
+        data.debugGpuLog = true;
+        data.save(configDir);
+        ConfigData loaded = ConfigData.load(configDir);
+        assertTrue(loaded.debugGpuLog);
+        assertFalse(loaded.debugHudEnabled);
+        assertFalse(loaded.performanceProfilingEnabled);
+        TestConfig provider = new TestConfig(loaded);
+        ConfigManager.init(provider);
+        try {
+            assertTrue(ConfigManager.isDebugGpuLogEnabled());
+            loaded.debugGpuLog = false;
+            assertFalse(ConfigManager.isDebugGpuLogEnabled());
+            loaded.debugModelDeformationLog = true;
+            loaded.save(configDir);
+            ConfigData roundTrip = ConfigData.load(configDir);
+            assertFalse(roundTrip.debugGpuLog);
+            assertTrue(roundTrip.debugModelDeformationLog);
+        } finally {
+            ConfigManager.init(null);
+        }
     }
 
     @Test

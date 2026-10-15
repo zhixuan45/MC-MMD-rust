@@ -77,6 +77,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public PaperDollRotationMode getPaperDollRotationMode() { return data.paperDollRotationMode; }
     @Override public boolean isPaperDollShowInScreens() { return data.paperDollShowInScreens; }
     @Override public boolean isDebugHudEnabled() { return data.debugHudEnabled; }
+    @Override public boolean isDebugGpuLogEnabled() { return data.debugGpuLog; }
     @Override public int getIssueDiagnosticFlags() {
         return IssueDiagnosticOptions.from(data.debugModelDeformationLog, data.debugSidePhysicsLog,
                 data.debugCollisionModeLog, data.debugOutlinePaperDollLog);

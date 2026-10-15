@@ -2,7 +2,7 @@ gradle.projectsEvaluated {
     def common = gradle.rootProject.project(':common')
     common.tasks.register('writeTranslucentProbeClasspath') {
         doLast {
-            def output = new File(gradle.rootProject.projectDir, 'Logs/translucent-perf-20261014/classpath.txt')
+            def output = new File(gradle.rootProject.projectDir, 'build/translucent-performance/classpath.txt')
             output.parentFile.mkdirs()
             output.text = common.sourceSets.main.runtimeClasspath.asPath
         }

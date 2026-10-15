@@ -42,6 +42,10 @@ public class ConfigManager {
         return provider != null ? provider.isPerformanceProfilingEnabled() : false;
     }
 
+    public static boolean isDebugGpuLogEnabled() {
+        return provider != null ? provider.isDebugGpuLogEnabled() : false;
+    }
+
     public static int getPerformanceLogIntervalSeconds() {
         return provider != null ? provider.getPerformanceLogIntervalSeconds() : 5;
     }

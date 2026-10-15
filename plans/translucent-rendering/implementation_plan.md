@@ -1,6 +1,8 @@
 # OpenGL 半透明性能优化与后端接口实施计划
 
-2026-10-15，待审批。本文件只描述实施方案，本轮未开始接口或性能代码改造。仓库根目录的 `implementation_plan.md` 属于尾裙碰撞任务，保留原文；本计划独立存放。执行者先完整阅读根 `index.md`，检查当前 Git diff，保留既有物理与 SPA/SPH 修复。
+2026-10-15，已审查，第一阶段诊断代码已实现并验证，游戏基线采集待完成。用户已在本次会话授权“如果没有关键问题就下发多个 luna 子代理开始实现”；审查未发现阻止第一阶段实施的关键问题，按此授权推进，无需重复审批。相关尾裙碰撞计划位于 `plans/tail-skirt-collision/implementation_plan.md`，保留原文。执行者先完整阅读根 `index.md`，检查当前 Git diff，保留既有物理与 SPA/SPH 修复。
+
+本轮由四个 Luna 子代理分别负责诊断聚合、排序/提交埋点、渲染作用域与 GPU query、采集工具与探针，主代理审查和整合。第一阶段先交付可采集的诊断与兼容性验证；真实游戏基线未取得前，不启用 GPU 排序/批量提交，也不把诊断接入称为性能优化已验收。具体实施与验证记录见同目录 `implementation_status.md`。
 
 ## 目标与现状
 
@@ -10,7 +12,7 @@
 
 现有 `RenderBackendRegistry`、`RenderModeManager` 和 `RenderCategory` 选择 CPU/GPU 蒙皮。`OpenGlModelInstance` 和 `GpuSkinningModelInstance` 均使用 OpenGL，后者是 OpenGL compute 蒙皮；`NativeRenderBackendPort` 是原生模型数据端口。当前不存在真正的图形 API 后端选择，也不存在 `ModelRendererBackend` 接口。`ModelInstance` 是 Minecraft 模型生命周期入口，仍接收 Entity/PoseStack/RenderScene。不能把 JNI 端口改名后称为已支持 Vulkan。
 
-当前关键代码是 `render/material/TranslucentDrawOrder.java`、`SubMeshDrawHelper.java`、`MaterialRenderState.java`、`ModelMaterial.java`、两个 renderer、`render/shader/SkinningComputeShader.java`、`render/pipeline/RenderPerformanceProfiler.java` 及 `GpuTimerQueryPool.java`。先核对这些文件与 `TRANSLUCENT_PERFORMANCE_HANDOFF.md`，以当前工作树而非旧报告中的历史行号实施。
+当前关键代码是 `render/material/TranslucentDrawOrder.java`、`SubMeshDrawHelper.java`、`MaterialRenderState.java`、`ModelMaterial.java`、两个 renderer、`render/shader/SkinningComputeShader.java`、`render/pipeline/RenderPerformanceProfiler.java` 及 `GpuTimerQueryPool.java`。先核对这些文件与 `doc/archive/handoffs/TRANSLUCENT_PERFORMANCE_HANDOFF.md`，以当前工作树而非旧报告中的历史行号实施。
 
 ## 边界与抽象
 
@@ -68,7 +70,7 @@ GPU 生成的实际 draw 数量不能引入新的每帧同步回读。支持设�
 
 第一阶段仅增加诊断并采集固定条件基线，记录站立/走路/跑步各阶段的帧时间与遮挡截图。第二阶段引入上述最小接口和 OpenGL 兼容适配，保持算法与 shader 行为，并用前后对照确认没有性能/画面回归。第三阶段按第一阶段证据实现 GPU 数据链及材质批量路径，在能力覆盖和整链验证闭合后启用；如果瓶颈属于其他阶段，调整优化内容并记录理由，不以抽象完成代替性能结果。第四阶段完成游戏验收与交付。
 
-拟改动范围以 `common/src/main/java/com/shiroha/mmdskin/` 为基准：
+拟改动范围以 `common/src/main/java/com/shiroha/mmdskin/` 为基准。查询池退出清理另复用 Fabric/NeoForge 现有 `MinecraftMixin` 的 `Minecraft.close` 入口，使资源在窗口上下文仍有效时释放，不依赖特定加载器新增事件：
 
 | 文件或目录 | 改动职责 |
 | --- | --- |
@@ -101,4 +103,4 @@ OpenGL 探针覆盖 CPU/GPU 蒙皮、兼容/加速排序、能力缺失/编译�
 
 将 CPU/GPU 策略和新透明实现分阶段验证。承诺保留画面语义，不能承诺某个未经测量的 FPS；接口完成、OpenGL 探针通过、游戏性能改善和未来 Vulkan 适配是四项不同结果。本轮 Vulkan 仅留下可替换边界，实际接入还需要目标 Minecraft/加载器真实提供的非 GL 宿主、目标/纹理资源、shader、同步和光影协议。
 
-审批对象为本计划中的 OpenGL 基线测量、最小接口抽取与按证据实施加速的范围。依据用户提供的 AGENTS.md 第 8c 条：重大架构改造“必须先出实施计划（implementation_plan.md）并等待用户审批，不得直接动手”。审批前只交付该文档；审批后先执行第一阶段，不在缺乏基线证据时直接启用 GPU 快速路径。
+审批对象为本计划中的 OpenGL 基线测量、最小接口抽取与按证据实施加速的范围。原计划引用用户此前提供的 AGENTS.md 第 8c 条：重大架构改造“必须先出实施计划（implementation_plan.md）并等待用户审批，不得直接动手”；当前检出未发现该文件，不能将历史引用当作已核实的现行仓库规则。本次会话已给出上述条件授权，审查后先执行第一阶段，不在缺乏基线证据时直接启用 GPU 快速路径。

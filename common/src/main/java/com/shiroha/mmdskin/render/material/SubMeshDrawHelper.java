@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.material;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
 import org.lwjgl.opengl.GL46C;
 
 import java.nio.ByteBuffer;
@@ -59,65 +60,79 @@ public final class SubMeshDrawHelper {
              SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
             boolean sorted=!shadowPass && order!=null && geometry!=null
                     && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,alphaResolver);
+            long submitTimer = TranslucentDiagnostics.startTimer();
+            try {
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
-            // Toon 对同一贴图的实心与半透明像素也分开，避免黑睫毛的实心部分丢失遮挡。
-            for (int pass = 0; pass < (shadowPass ? 1 : 3); pass++) {
-                if (pass == 2 && !hasTranslucentDraws) break;
-                // 保留半透明层间混合，再补覆盖深度，避免后画的云穿过模型。
-                RenderSystem.depthMask(pass != 1);
-                boolean ordered=pass==1 && sorted;
-                ByteBuffer draws=ordered?order.submeshes():subMeshDataBuf;
-                int drawCount=ordered?order.drawCount():subMeshCount;
-                GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ordered?order.indexBuffer():originalIndices);
-                try (MaterialDepthSeal seal = pass == 2 ? new MaterialDepthSeal() : null) {
-                    for (int i = 0; i < drawCount; ++i) {
-                        int base = i * SUB_MESH_STRIDE;
-                        int materialId = draws.getInt(base);
-                        int beginIndex = draws.getInt(base + 4);
-                        int vertexCount = draws.getInt(base + 8);
-                        float alpha = draws.getFloat(base + 12);
-                        boolean visible = draws.get(base + 16) != 0;
-                        boolean bothFace = draws.get(base + 17) != 0;
+                // Toon 对同一贴图的实心与半透明像素也分开，避免黑睫毛的实心部分丢失遮挡。
+                for (int pass = 0; pass < (shadowPass ? 1 : 3); pass++) {
+                    if (pass == 2 && !hasTranslucentDraws) break;
+                    long passDraws = 0;
+                    // 保留半透明层间混合，再补覆盖深度，避免后画的云穿过模型。
+                    RenderSystem.depthMask(pass != 1);
+                    boolean ordered=pass==1 && sorted;
+                    ByteBuffer draws=ordered?order.submeshes():subMeshDataBuf;
+                    int drawCount=ordered?order.drawCount():subMeshCount;
+                    GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ordered?order.indexBuffer():originalIndices);
+                    try (MaterialDepthSeal seal = pass == 2 ? new MaterialDepthSeal() : null) {
+                        for (int i = 0; i < drawCount; ++i) {
+                            int base = i * SUB_MESH_STRIDE;
+                            int materialId = draws.getInt(base);
+                            int beginIndex = draws.getInt(base + 4);
+                            int vertexCount = draws.getInt(base + 8);
+                            float alpha = draws.getFloat(base + 12);
+                            boolean visible = draws.get(base + 16) != 0;
+                            boolean bothFace = draws.get(base + 17) != 0;
 
-                        if (!visible || vertexCount <= 0 || materialId < 0 || materialId >= materials.length) {
-                            continue;
-                        }
-                        ModelMaterial material = materials[materialId];
-                        state.resolve(material, materialMorphs, materialId, alphaResolver.resolve(materialId, alpha));
-                        if (state.alpha < 0.001f) continue;
-                        if (!shadowPass) {
-                            if (binding.splitsTextureAlpha()) {
-                                if (pass == 0 && state.alpha < MaterialRenderState.OPAQUE_ALPHA) continue;
-                                if (pass == 1 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasAlpha) continue;
-                                if (pass == 2 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasTranslucentPixels) continue;
-                            } else {
-                                boolean translucent = state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasTranslucentPixels;
-                                if (translucent != (pass != 0)) continue;
+                            if (!visible || vertexCount <= 0 || materialId < 0 || materialId >= materials.length) {
+                                continue;
                             }
-                        }
-                        binding.apply(state, shadowPass || pass == 2 ? 0 : pass + 1);
-                        sphere.apply(material, state);
+                            ModelMaterial material = materials[materialId];
+                            state.resolve(material, materialMorphs, materialId, alphaResolver.resolve(materialId, alpha));
+                            if (state.alpha < 0.001f) continue;
+                            if (!shadowPass) {
+                                if (binding.splitsTextureAlpha()) {
+                                    if (pass == 0 && state.alpha < MaterialRenderState.OPAQUE_ALPHA) continue;
+                                    if (pass == 1 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasAlpha) continue;
+                                    if (pass == 2 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasTranslucentPixels) continue;
+                                } else {
+                                    boolean translucent = state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasTranslucentPixels;
+                                    if (translucent != (pass != 0)) continue;
+                                }
+                            }
+                            binding.apply(state, shadowPass || pass == 2 ? 0 : pass + 1);
+                            sphere.apply(material, state);
 
-                        if (bothFace) {
-                            RenderSystem.disableCull();
-                        } else {
-                            RenderSystem.enableCull();
-                        }
+                            if (bothFace) {
+                                RenderSystem.disableCull();
+                            } else {
+                                RenderSystem.enableCull();
+                            }
 
-                        int textureId = textureResolver.resolve(materialId);
-                        if (textureId != lastBoundTexture) {
-                            RenderSystem.setShaderTexture(0, textureId);
-                            RenderSystem.bindTexture(0);
-                            RenderSystem.bindTexture(textureId);
-                            lastBoundTexture = textureId;
-                        }
+                            int textureId = textureResolver.resolve(materialId);
+                            if (textureId != lastBoundTexture) {
+                                RenderSystem.setShaderTexture(0, textureId);
+                                RenderSystem.bindTexture(0);
+                                RenderSystem.bindTexture(textureId);
+                                lastBoundTexture = textureId;
+                            }
 
-                        beforeDraw.accept(materialId);
-                        if (pass == 1) hasTranslucentDraws = true;
-                        long startPos = (long) beginIndex * (ordered?4:indexElementSize);
-                        GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, ordered?GL46C.GL_UNSIGNED_INT:indexType, startPos);
+                            beforeDraw.accept(materialId);
+                            if (pass == 1) hasTranslucentDraws = true;
+                            long startPos = (long) beginIndex * (ordered?4:indexElementSize);
+                            GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, ordered?GL46C.GL_UNSIGNED_INT:indexType, startPos);
+                            passDraws++;
+                        }
+                    } finally {
+                        TranslucentDiagnostics.add(
+                                shadowPass ? TranslucentDiagnostics.Counter.DRAW_SHADOW
+                                        : pass == 0 ? TranslucentDiagnostics.Counter.DRAW_OPAQUE
+                                        : pass == 1 ? TranslucentDiagnostics.Counter.DRAW_TRANSLUCENT
+                                        : TranslucentDiagnostics.Counter.DRAW_DEPTH_SEAL,
+                                passDraws);
                     }
                 }
+            } finally {
+                TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.SUBMIT, submitTimer);
             }
         } finally {
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,originalIndices);

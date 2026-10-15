@@ -104,6 +104,8 @@ Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度�
 
 `render/material/TranslucentDrawOrder` 缓存透明候选拓扑与唯一引用顶点，稳定 UV 时复用筛选结果；当帧仍重算视锥和深度，并用 CPU 并行排序保留全局三角形顺序。动态第一人称索引、UV、可见性、材质 alpha 资格和覆盖对象变化使缓存失效。`texture/runtime/TextureAlphaCoverage` 使用粗块及像素位图保守细化 UV 包围盒，保留线性采样边界、材质透明度和外部 Iris 程序回退。GPU 位置同步回读和逐分组绘制仍存在；本地审计与验证位于 `Logs/translucent-perf-20261014/`。可提交的交接报告为 `doc/archive/handoffs/TRANSLUCENT_PERFORMANCE_HANDOFF.md`，云端提示词为 `doc/archive/handoffs/CLOUD_TRANSLUCENT_PERFORMANCE_PROMPT.md`，复验源码为 `tools/translucent-performance/`。用户反馈原版渲染约 110 FPS、当前 MMD 约 50 FPS、本轮改善约 20 FPS，不能将 110→50 当作同一 MMD 渲染路径的前后回归，也不能以微基准替代 BSL 游戏验收。
 
+2026-10-15 的诊断接入由 `render/pipeline/TranslucentDiagnostics` 按模型、场景和蒙皮策略限频输出 `[MMD透明性能]` JSON，覆盖候选构建/复用、深度键、排序、索引生成/上传、回读和各 pass 的实际 draw 数。窗口有界，关闭采样不创建模型作用域或读取时钟；`debugGpuLog` 对应“调试”分类的独立“GPU 日志”开关，默认关闭、保存生效；开启后自动采样并输出诊断，切换会重置窗口，HUD 或通用性能采样不会单独输出 GPU 诊断。`GpuTimerQueryPool` 保留宿主 query 所有权、异步结果独立窗口及退出清理。HUD 不把不同查询样本相加为整帧 GPU 时间。`tools/translucent-performance/summarize.py` 按站立/走路/跑步标签汇总计数与间隔均值，保留最新窗口分位数。实施状态和验证证据见 `plans/translucent-rendering/implementation_status.md`；本轮尚未引入设备接口或 GPU 排序/批量提交，游戏基线和性能验收仍待完成。
+
 无主贴图材质由 `render/material/MaterialTextureLoader` 统一加载：空路径通过既有 JNI `GetMaterialDiffuse` 读取材质 RGBA，生成实例独占的 1×1 纹理，供 CPU/GPU 与各着色路径采样；非空路径加载失败仍显示缺图提示。两个后端的生命周期与构造失败清理会释放默认纹理，共享文件纹理继续按引用计数回收。默认纹理计入模型显存统计。
 
 `texture/runtime/TextureGpuLoader` 在解码、内存复制和 GL 上传异常时通过 `finally` 释放 native handle、临时 buffer 和失败的 GL texture；`TextureRepository` 对不存在的可选预加载路径跳过解码，运行时仍按既有规则回退。失败诊断携带 path、diffuse/light-map 类型和模型/材质上下文，并有界去重。
@@ -172,7 +174,7 @@ JNI 相机数据仍为 32 字节、旋转为弧度，`stage/client/camera/StageC
 - 单模型独立配置：`.minecraft/config/mmdskin/model_configs/<规范化模型名>.json`（视线追踪范围、缩放、材质可见性和默认启用的 `tailIdleLiftEnabled`、`tailMovementBoostEnabled`）。旧配置缺省的尾巴字段启用，明确保存的 false 保留关闭。模型设置保存时同步到同名已加载实例，新实例加载时应用；Java `NativeScenePort.setTailPhysicsOptions` 经 JNI `SetTailPhysicsOptions` 更新原生实例。
 - 模型设置界面：`ui/selector/ModelSettingsScreen` 绘制尾巴物理开关及其他模型选项；`ModelSettingsLayout` 统一滚动视口、裁剪命中和滚动条几何。设置内容支持滚轮、拖动滚动条和翻页键，标题与底部操作固定，小窗口不再压缩卡片文字。回归见 `ModelSettingsLayoutTest`。
 - 玩家独立替换配置：持久化于 `ModelSelectorConfig`，支持在游戏内配置界面或 Alt 快捷轮盘中按玩家名/UUID 指定独立展示模型。
-- 调试设置：Fabric/NeoForge 的“调试”分类新增模型变形、两侧部件物理、碰撞模式、描边与纸娃娃四项日志，配置字段为 `debugModelDeformationLog`、`debugSidePhysicsLog`、`debugCollisionModeLog`、`debugOutlinePaperDollLog`，默认关闭且独立于旧物理日志。`IssueDiagnosticOptions` 定义位标记，`ModelIssueDiagnostics` 每两秒转交摘要及接触、锚点、速度指标；首次、每 30 秒及手动请求输出完整明细，`-Dmmdskin.diagnostics.full=true` 保留旧明细频率。原生快照仍每两秒构造，减少日志量不代表采样开销已改善。`OutlineRenderDiagnostics` 记录各渲染场景绘制前状态。使用指南见 `doc/diagnostics/ISSUE_DIAGNOSTICS_GUIDE.md`；抽样与有界样例不代替游戏画面证据。本轮审计记录见 `doc/diagnostics/root_cause_report.md`，原日志分析工具见 `tools/latest-log-audit/`。
+- 调试设置：Fabric/NeoForge 的“调试”分类新增模型变形、两侧部件物理、碰撞模式、描边与纸娃娃四项模型问题日志，以及独立的“GPU 日志”；配置字段为 `debugModelDeformationLog`、`debugSidePhysicsLog`、`debugCollisionModeLog`、`debugOutlinePaperDollLog`、`debugGpuLog`，默认关闭且独立于旧物理日志。`IssueDiagnosticOptions` 定义位标记，`ModelIssueDiagnostics` 每两秒转交摘要及接触、锚点、速度指标；首次、每 30 秒及手动请求输出完整明细，`-Dmmdskin.diagnostics.full=true` 保留旧明细频率。原生快照仍每两秒构造，减少日志量不代表采样开销已改善。`OutlineRenderDiagnostics` 记录各渲染场景绘制前状态。使用指南见 `doc/diagnostics/ISSUE_DIAGNOSTICS_GUIDE.md`；抽样与有界样例不代替游戏画面证据。本轮审计记录见 `doc/diagnostics/root_cause_report.md`，原日志分析工具见 `tools/latest-log-audit/`。
 
 ---
 ## 6. VMD 平滑与独立模型/动作预览工具
