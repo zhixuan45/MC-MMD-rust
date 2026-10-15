@@ -98,3 +98,16 @@ subprojects {
 	}
 	
 }
+
+
+// 将完整许可随 Fabric / Forge / NeoForge 发布物一并打包。
+subprojects {
+    if (project.name != "common") {
+        tasks.withType(ProcessResources).configureEach {
+            from(rootProject.projectDir) {
+                include "LICENSE", "LICENSE-*", "NOTICE", "THIRD_PARTY_LICENSES.md"
+                into "META-INF/licenses/mmdskin"
+            }
+        }
+    }
+}

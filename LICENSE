@@ -1,21 +1,68 @@
-MIT License
+MC-MMD-rust 非商业使用许可 1.0
+（以 CC BY-NC-SA 4.0 条文为基础，附加禁止 R18G 用途限制）
 
-Copyright (c) 2026 shiroha
+维护者：zhixuan45/shengxi
+项目地址：https://github.com/zhixuan45/MC-MMD-rust
+本许可适用于许可变更后由上述维护者享有或有权许可的新增及修改内容。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+一、许可基础与性质
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本许可将随附 LICENSE-CC-BY-NC-SA-4.0 中的条文作为基础纳入，
+并以下述明确修改为准。基础条文原文也可见：
+https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+本许可是独立的自定义许可，不是标准的 CC BY-NC-SA 4.0，
+不表示 Creative Commons 对本项目或本许可的认可，也不声明与
+标准 CC BY-NC-SA 4.0 兼容。标识符：
+LicenseRef-MC-MMD-NonCommercial-NoR18G-1.0
+
+二、署名、非商业性使用与相同方式共享
+
+在遵守本许可的前提下，允许免费复制、分享和修改适用内容。
+分享时须保留作者及上游署名、版权声明、项目地址、许可及免责说明，
+并明确标注修改。署名应包含 zhixuan45/shengxi 和已有上游作者，
+不得暗示维护者认可或赞助修改版。
+
+不得将适用内容用于主要以商业利益或金钱报酬为目的的活动。
+不得出售本模组，或将获取本模组设置为付费内容、付费下载或付费解锁。
+
+基础条文第 3(b)(1) 项替换为：分享改编作品时，应对适用的改编内容
+使用本许可的完整相同条款，包含本文件与基础条文；不得仅以标准
+CC BY-NC-SA 4.0 或其他许可替换本许可而移除本文件的限制。
+
+三、禁止 R18G 用途
+
+该模组禁止使用在 R18G 等相关场景。
+不得使用适用内容制作、展示、传播或协助实现以成人向极端血腥、
+肢解、内脏暴露、残虐等为主要表现的 R18G 内容、场景或演出。
+该限制同样适用于修改版及对适用内容的再分发。
+
+基础条文第 2(a)(5)(C) 和第 3(b)(3) 项中禁止下游附加限制的规定，
+不排除本文件已明确规定的非商业性、相同方式共享及禁止 R18G 条件；
+下游须保留这些条件，但不得据此自行增加其他限制。
+基础条文第 2(a)(5) 项中提及的许可要约，均指本自定义许可的完整条款。
+
+四、原有授权和第三方内容
+
+本许可不撤销已经授予的 MIT 或其他许可；此前版本已经合法授予的
+权利继续有效。本许可不改变上游作品、依赖库、第三方模型、动画、
+贴图等内容的版权、许可证和使用条件，亦不对本项目无权许可的内容
+作出授权。原项目 MIT 许可保留在 LICENSE-MIT 中。
+请同时保留 NOTICE、THIRD_PARTY_LICENSES.md（如有）及各依赖自带的许可。
+
+五、免费维护与使用提示
+
+本模组由 zhixuan45/shengxi 免费维护与更新，完全开源公开，
+如果你是付费获取请退款，免费开源地址：
+https://github.com/zhixuan45/MC-MMD-rust
+
+“开源公开”在此表示源代码公开可获取；由于非商业和用途限制，
+本许可不属于 OSI 定义的开源软件许可。
+游戏内确认按钮仅记录用户已阅读提示，不替代本许可或第三方授权。
+
+六、免责、终止与解释
+
+除本文件明确修改之处外，基础条文中的定义、例外与限制、
+免责声明、责任限制、期限、终止及解释条款继续适用。
+本文件与基础条文发生冲突时，以本文件为准。
+依法无需取得许可即可实施的行为不受本许可限制。

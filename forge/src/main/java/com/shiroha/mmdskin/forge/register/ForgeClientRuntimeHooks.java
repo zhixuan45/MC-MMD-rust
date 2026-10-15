@@ -11,6 +11,7 @@ import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.stage.client.StageClientRuntime;
 import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import com.shiroha.mmdskin.ui.QuickModelSwitcher;
+import com.shiroha.mmdskin.ui.notice.UsageNotice;
 import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
 import com.shiroha.mmdskin.ui.network.NetworkOpCode;
 import com.shiroha.mmdskin.ui.wheel.ConfigWheelScreen;
@@ -54,6 +55,8 @@ final class ForgeClientRuntimeHooks {
         if (minecraft.player == null) {
             return;
         }
+
+        UsageNotice.tick(minecraft);
 
         ClientRenderRuntime.get().modelRepository().tick();
         StageClientRuntime.get().animSyncHelper().tickPending();

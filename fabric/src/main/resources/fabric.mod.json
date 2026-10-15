@@ -11,10 +11,10 @@
 		"Gengorou-C"
 	],
 	"contact": {
-		"homepage": "https://github.com/shiroha233/3d-skin-layers",
-		"sources": "https://github.com/shiroha233/3d-skin-layers"
+		"homepage": "https://github.com/zhixuan45/MC-MMD-rust",
+		"sources": "https://github.com/zhixuan45/MC-MMD-rust"
 	},
-	"license": "MIT",
+	"license": "LicenseRef-MC-MMD-NonCommercial-NoR18G-1.0",
 	"icon": "icon.png",
 	"environment": "*",
 	"entrypoints": {

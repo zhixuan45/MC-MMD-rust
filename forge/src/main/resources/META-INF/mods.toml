@@ -1,7 +1,7 @@
 # Forge Mods.toml 配置文件
 modLoader = "javafml"
 loaderVersion = "[47,)"
-license = "MIT"
+license = "LicenseRef-MC-MMD-NonCommercial-NoR18G-1.0"
 
 [[mods]]
 modId = "mmdskin"
