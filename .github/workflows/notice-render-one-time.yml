@@ -1,0 +1,40 @@
+name: One-time usage notice render fix compilation
+
+on:
+  push:
+    branches: ['archived/1.20-vr']
+    paths: ['.github/workflows/notice-render-one-time.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: '1.21.1'
+            ref: '7449a8646fb5e26822f864263e3c6d83df1ae71a'
+            java: '21'
+            platform: 'neoforge'
+            exclude: ':prepareNativeResources'
+          - version: '1.20.1'
+            ref: 'eaa619da6b5a63ac011aae1475ae1e3d941c59ea'
+            java: '17'
+            platform: 'forge'
+            exclude: ':common:prepareNativeResources'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile shared screen and both loaders
+        run: bash gradlew :common:compileJava :fabric:compileJava :${{ matrix.platform }}:compileJava -x ${{ matrix.exclude }} --stacktrace
