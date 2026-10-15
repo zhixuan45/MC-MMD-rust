@@ -1,6 +1,9 @@
 use super::{BulletConstraint, BulletRigidBody, BulletShape, BulletWorld, RigidBodyInfo};
 use glam::{Mat4, Quat, Vec3};
 
+#[path = "tests/contact_points.rs"]
+mod contact_point_tests;
+
 fn body(shape: &BulletShape, transform: Mat4) -> BulletRigidBody {
     BulletRigidBody::new(
         &RigidBodyInfo {
@@ -50,7 +53,6 @@ fn assert_vec3_close(actual: Vec3, expected: Vec3) {
     );
 }
 
-
 #[test]
 fn refreshing_one_filter_preserves_other_contacts_and_can_restore_the_pair() {
     let world = BulletWorld::new(0.0, 0.0, 0.0).unwrap();
@@ -63,11 +65,22 @@ fn refreshing_one_filter_preserves_other_contacts_and_can_restore_the_pair() {
     world.add_rigid_body(&dynamic, 2, 1);
     world.detect_collisions();
     assert_eq!(world.contact_manifolds().len(), 2);
+    let shell_contacts = world.contact_points_for(&[&shell], 8).unwrap();
+    assert!(shell_contacts.total_hits > 0);
+    assert!(shell_contacts
+        .points
+        .iter()
+        .all(|point| point.body_a == shell.as_ptr() as usize
+            || point.body_b == shell.as_ptr() as usize));
     dynamic.set_ignore_collision_check(&shell, true);
     world.refresh_body_collision_filter(&dynamic);
     world.detect_collisions();
     let contacts = world.contact_manifolds();
     assert_eq!(contacts.len(), 1);
+    assert_eq!(
+        world.contact_points_for(&[&shell], 8).unwrap().total_hits,
+        0
+    );
     assert!(contacts
         .iter()
         .all(|c| c.body_a != shell.as_ptr() as usize && c.body_b != shell.as_ptr() as usize));
@@ -143,7 +156,6 @@ fn six_dof_round_trip_preserves_frames_limits_and_defaults() {
     assert!(diagnostic.use_frame_offset);
 }
 
-
 #[test]
 fn kinematic_target_is_interpolated_across_batched_substeps() {
     let shape = BulletShape::sphere(0.25).expect("应能创建 Bullet 测试形状");
@@ -168,8 +180,6 @@ fn kinematic_target_is_interpolated_across_batched_substeps() {
     );
     world.remove_rigid_body(&body);
 }
-
-
 
 #[test]
 fn render_sync_predicts_free_motion_by_fixed_step_remainder() {
@@ -222,7 +232,6 @@ fn render_sync_does_not_advance_a_body_into_its_contact_plane() {
     world.remove_rigid_body(&wall);
 }
 
-
 fn run_kinematic_crossing(manual_substeps: bool) -> (f32, usize, f32) {
     let world = BulletWorld::new(0.0, 0.0, 0.0).expect("应能创建 Bullet 测试世界");
     let sphere = BulletShape::sphere(0.2).expect("应能创建运动学球体");
@@ -273,8 +282,6 @@ fn batched_kinematic_crossing_matches_manual_substep_targets() {
     assert!(batched.2 > 0.0, "批量子步未产生有效冲量: {batched:?}");
 }
 
-
-
 #[test]
 fn kinematic_target_is_applied_before_constraint_solving() {
     let shape = BulletShape::sphere(0.25).expect("应能创建 Bullet 测试形状");
@@ -313,5 +320,3 @@ fn kinematic_target_is_applied_before_constraint_solving() {
     world.remove_rigid_body(&child);
     world.remove_rigid_body(&parent);
 }
-
-

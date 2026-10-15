@@ -16,10 +16,28 @@ import java.util.HashMap;
 
 /**
  * Sorts translucent triangle centers across materials without changing their alpha. CPU positions
- * are reused; GPU compute positions are read once per animation revision. This is centroid sorting,
+ * are reused; supported GPU passes prepare device indices without reading positions back.
+ * Compatibility passes read GPU positions once per animation revision. This is centroid sorting,
  * not order-independent handling of intersecting triangles.
  */
 public final class TranslucentDrawOrder implements AutoCloseable {
+    private static boolean reusePreparation() {
+        return !"false".equalsIgnoreCase(System.getProperty("mmdskin.reuseTranslucentPreparation"));
+    }
+    private final TranslucentBatchSubmission submission = new TranslucentBatchSubmission();
+    private final GpuTranslucentPreparation device = new GpuTranslucentPreparation();
+    private TranslucentBatchPlan deviceMaterials;
+    private boolean deviceActive;
+    private final PreparedGeometry prepared = new PreparedGeometry();
+    private int topologyBuild = -1;
+    private int[] topologyRows = new int[0], packedTopology = new int[0];
+
+    int submitBatch(ModelMaterial[] materials, ByteBuffer morphs,
+                    SubMeshDrawHelper.TextureResolver textures, SubMeshDrawHelper.AlphaResolver alphas) {
+        if (!deviceActive && drawCount == 0) return 0;
+        return deviceActive ? submission.drawGpu(deviceMaterials, materials, morphs, alphas, device)
+                : submission.draw(submeshes, drawCount, materials, morphs, textures, alphas);
+    }
     public record Inputs(
             ByteBuffer positions,
             int positionBuffer,
@@ -30,7 +48,21 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             boolean dynamicIndices,
             ByteBuffer uvs,
             int uvBuffer,
-            long uvRevision) {
+            long uvRevision,
+            ByteBuffer indices,
+            long indicesRevision) {
+        public Inputs(ByteBuffer positions, int positionBuffer, int vertexCount, FloatBuffer modelView,
+                      FloatBuffer projection, long geometryRevision, boolean dynamicIndices,
+                      ByteBuffer uvs, int uvBuffer, long uvRevision) {
+            this(positions, positionBuffer, vertexCount, modelView, projection, geometryRevision,
+                    dynamicIndices, uvs, uvBuffer, uvRevision, null, 0);
+        }
+
+        /** CPU bytes must describe the currently bound EBO; bump revision on every rewrite. */
+        public Inputs withIndices(ByteBuffer bytes, long revision) {
+            return new Inputs(positions, positionBuffer, vertexCount, modelView, projection,
+                    geometryRevision, dynamicIndices, uvs, uvBuffer, uvRevision, bytes, revision);
+        }
         public static Inputs cpu(
                 ByteBuffer positions, int positionBuffer, int vertexCount,
                 FloatBuffer modelView, FloatBuffer projection, long geometryRevision,
@@ -107,7 +139,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             float eye) {}
 
     public int indexBuffer() {
-        return indexBuffer;
+        return deviceActive ? device.indexBuffer() : indexBuffer;
     }
 
     public ByteBuffer submeshes() {
@@ -132,6 +164,14 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             ModelMaterial[] materials,
             ByteBuffer morphs,
             SubMeshDrawHelper.AlphaResolver alphaResolver) {
+        return prepare(inputs, source, count, indexSize, materials, morphs, alphaResolver, id -> materials[id].tex);
+    }
+
+    public boolean prepare(Inputs inputs, ByteBuffer source, int count, int indexSize,
+                           ModelMaterial[] materials, ByteBuffer morphs,
+                           SubMeshDrawHelper.AlphaResolver alphaResolver, SubMeshDrawHelper.TextureResolver textures) {
+        boolean previousDevice = deviceActive;
+        deviceActive = false;
         int triangles = 0;
         long classifyTimer = TranslucentDiagnostics.startTimer();
         MaterialRenderState state = new MaterialRenderState();
@@ -190,6 +230,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.CLASSIFY, classifyTimer);
         }
         if (triangles == 0) {
+            prepared.invalidate();
             candidateCount = candidateVertexCount = drawCount = 0;
             candidateValid = false;
             return false;
@@ -198,17 +239,22 @@ public final class TranslucentDrawOrder implements AutoCloseable {
         int previousRead = GL46C.glGetInteger(GL46C.GL_COPY_READ_BUFFER_BINDING);
         try {
             GL46C.glBindBuffer(GL46C.GL_COPY_READ_BUFFER, original);
-            int bytes =
-                    GL46C.glGetBufferParameteri(GL46C.GL_COPY_READ_BUFFER, GL46C.GL_BUFFER_SIZE);
-            long revision = inputs.dynamicIndices() ? inputs.geometryRevision() : 0;
+            int bytes = inputs.indices() != null ? inputs.indices().remaining()
+                    : GL46C.glGetBufferParameteri(GL46C.GL_COPY_READ_BUFFER, GL46C.GL_BUFFER_SIZE);
+            long revision = inputs.indices() != null ? inputs.indicesRevision()
+                    : inputs.dynamicIndices() ? inputs.geometryRevision() : 0;
             boolean indicesReloaded = original != sourceBuffer
                     || bytes != sourceBytes
                     || indexSize != sourceIndexSize
-                    || inputs.dynamicIndices()
+                    || (inputs.dynamicIndices() && inputs.indices() == null)
                     || revision != indexRevision;
             if (indicesReloaded) {
-                ByteBuffer data = MemoryUtil.memAlloc(bytes);
+                if ((indexSize != 1 && indexSize != 2 && indexSize != 4) || bytes % indexSize != 0)
+                    throw new IllegalArgumentException("Invalid source index format");
+                ByteBuffer data = inputs.indices() != null ? inputs.indices().slice().order(java.nio.ByteOrder.nativeOrder())
+                        : MemoryUtil.memAlloc(bytes);
                 try {
+                    if (inputs.indices() == null) {
                     long readbackTimer = TranslucentDiagnostics.startTimer();
                     try {
                     GL46C.glGetBufferSubData(GL46C.GL_COPY_READ_BUFFER, 0, data);
@@ -216,6 +262,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                         TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.READBACK, readbackTimer);
                         TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_CALLS, 1);
                         TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.READBACK_BYTES, bytes);
+                    }
                     }
                     sourceIndices = new int[bytes / indexSize];
                     for (int i = 0; i < sourceIndices.length; i++)
@@ -229,13 +276,56 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                                                     "Unsupported index size " + indexSize);
                                 };
                 } finally {
-                    MemoryUtil.memFree(data);
+                    if (inputs.indices() == null) MemoryUtil.memFree(data);
                 }
                 sourceBuffer = original;
                 sourceBytes = bytes;
                 sourceIndexSize = indexSize;
                 indexRevision = revision;
                 candidateValid = false;
+            }
+            boolean deviceEligible = inputs.positions() == null && !packEntity
+                    && com.shiroha.mmdskin.render.shader.TranslucentBatchShader.current() != null
+                    && GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, 0) == 0 && GpuTranslucentPreparation.enabled();
+            if (deviceEligible) {
+                // UV-morphed candidates remain a conservative superset; the fragment alpha pass
+                // still rejects opaque/empty pixels. Never read dynamic UVs back just to prune.
+                boolean pruneCoverage = coverageSafe && inputs.uvs() != null;
+                long candidateTimer = TranslucentDiagnostics.startTimer();
+                boolean cached;
+                try {
+                    cached = candidateCacheMatches(inputs, source, count, bytes, indexSize,
+                            pruneCoverage, batches, includeOpaque, materials);
+                    if (!cached) buildCandidates(inputs, source, count, materials, batches, includeOpaque,
+                            pruneCoverage, inputs.uvs(), bytes);
+                } finally {
+                    TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.CANDIDATES, candidateTimer);
+                }
+                TranslucentDiagnostics.add(cached ? TranslucentDiagnostics.Counter.CANDIDATE_REUSE
+                        : TranslucentDiagnostics.Counter.CANDIDATE_BUILD, 1);
+                TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.CANDIDATE_TRIANGLES, candidateCount);
+                if (candidateCount == 0) {
+                    prepared.invalidate();
+                    drawCount = 0;
+                    return true;
+                }
+                // Alpha coverage can eliminate entire submeshes. Their unused textures must not
+                // push an otherwise valid single-window pass back onto the CPU.
+                var devicePlan = TranslucentBatchPlan.singleWindowForCandidates(source, count,
+                        candidateOwners, candidateCount, materials, textures);
+                if (devicePlan != null && TranslucentBatchSubmission.supports(devicePlan.materials())) {
+                    boolean reuse = reusePreparation() && previousDevice && prepared.matches(inputs, candidateBuildCount, source, count, batches, packEntity);
+                    if (reuse || device.prepare(inputs, deviceTopology(devicePlan.rowBySubmesh()))) {
+                        deviceMaterials = devicePlan.materials();
+                        deviceActive = true;
+                        drawCount = 0; // Device command owns the visible count; do not read it on the CPU.
+                        prepared.capture(inputs, candidateBuildCount, source, count, batches, packEntity);
+                        if (reuse) TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.PREPARED_REUSE, 1);
+                        return true;
+                    }
+                } else {
+                    TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.GPU_WINDOW_FALLBACK, 1);
+                }
             }
             ByteBuffer positions = inputs.positions();
             if (positions == null) {
@@ -301,6 +391,11 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                     ? TranslucentDiagnostics.Counter.CANDIDATE_REUSE
                     : TranslucentDiagnostics.Counter.CANDIDATE_BUILD, 1);
             TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.CANDIDATE_TRIANGLES, candidateCount);
+            if (reusePreparation() && !previousDevice && prepared.matches(inputs, candidateBuildCount, source, count, batches, packEntity)) {
+                TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.PREPARED_REUSE, 1);
+                return true;
+            }
+            prepared.invalidate();
             if (keys.length < candidateCount) keys = new long[candidateCount];
             float mx = inputs.modelView().get(2),
                     my = inputs.modelView().get(6),
@@ -406,11 +501,61 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.UPLOAD, uploadTimer);
                 TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.UPLOAD_BYTES, used * 12L);
             }
+            prepared.capture(inputs, candidateBuildCount, source, count, batches, packEntity);
             return true;
         } finally {
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, original);
             GL46C.glBindBuffer(GL46C.GL_COPY_READ_BUFFER, previousRead);
         }
+    }
+
+    private int[] deviceTopology(int[] rowBySubmesh) {
+        if (topologyBuild == candidateBuildCount && Arrays.equals(topologyRows, rowBySubmesh)) return packedTopology;
+        int[] data = new int[Math.multiplyExact(candidateCount, 4)];
+        for (int i = 0; i < candidateCount; i++) {
+            int start = candidateStarts[i];
+            for (int v = 0; v < 3; v++) data[i * 4 + v] = sourceIndices[start + v];
+            data[i * 4 + 3] = rowBySubmesh[candidateOwners[i]];
+        }
+        topologyBuild = candidateBuildCount;
+        topologyRows = rowBySubmesh.clone();
+        return packedTopology = data;
+    }
+
+    /** Single-result cache: exact comparisons, bounded by this instance's submesh count. */
+    private static final class PreparedGeometry {
+        private Inputs input;
+        private int build;
+        private boolean pack;
+        private int[] state = new int[0];
+        private final int[] matrices = new int[32];
+        boolean matches(Inputs next, int nextBuild, ByteBuffer source, int count, int[] batches, boolean nextPack) {
+            if (input == null || build != nextBuild || pack != nextPack || state.length != count * 6
+                    || input.geometryRevision() != next.geometryRevision() || input.positions() != next.positions()
+                    || input.positionBuffer() != next.positionBuffer() || input.vertexCount() != next.vertexCount()
+                    || input.uvRevision() != next.uvRevision() || input.uvBuffer() != next.uvBuffer()
+                    || input.dynamicIndices() != next.dynamicIndices()) return false;
+            for (int i = 0; i < 32; i++) if (matrices[i] != matrixBits(next, i)) return false;
+            for (int i = 0; i < count; i++) {
+                for (int v = 0; v < 5; v++) if (state[i * 6 + v] != source.getInt(i * 20 + v * 4)) return false;
+                if (state[i * 6 + 5] != batches[i]) return false;
+            }
+            return true;
+        }
+        void capture(Inputs next, int nextBuild, ByteBuffer source, int count, int[] batches, boolean nextPack) {
+            input = next; build = nextBuild; pack = nextPack;
+            if (state.length != count * 6) state = new int[count * 6];
+            for (int i = 0; i < 32; i++) matrices[i] = matrixBits(next, i);
+            for (int i = 0; i < count; i++) {
+                for (int v = 0; v < 5; v++) state[i * 6 + v] = source.getInt(i * 20 + v * 4);
+                state[i * 6 + 5] = batches[i];
+            }
+        }
+        private static int matrixBits(Inputs input, int i) {
+            FloatBuffer matrix = i < 16 ? input.modelView() : input.projection();
+            return matrix == null ? 0x7fc00000 : Float.floatToRawIntBits(matrix.get(i % 16));
+        }
+        void invalidate() { input = null; }
     }
 
     private static boolean includes(
@@ -545,11 +690,12 @@ public final class TranslucentDrawOrder implements AutoCloseable {
     }
 
     public long vramBytes() {
-        return sortedIndices == null ? 0 : sortedIndices.limit();
+        return device.vramBytes() + submission.vramBytes() + (sortedIndices == null ? 0 : sortedIndices.limit());
     }
 
     public long ramBytes() {
-        return (long) sourceIndices.length * 4
+        return (long) (topologyRows.length + packedTopology.length + prepared.state.length + 32) * 4
+                + device.ramBytes() + submission.ramBytes() + (long) sourceIndices.length * 4
                 + (long) keys.length * Long.BYTES
                 + (long) batches.length * 4
                 + (long) candidateStarts.length * 4
@@ -568,6 +714,13 @@ public final class TranslucentDrawOrder implements AutoCloseable {
 
     @Override
     public void close() {
+        device.close();
+        deviceActive = false;
+        deviceMaterials = null;
+        prepared.invalidate();
+        topologyBuild = -1;
+        topologyRows = packedTopology = new int[0];
+        submission.close();
         if (indexBuffer != 0) GL46C.glDeleteBuffers(indexBuffer);
         indexBuffer = 0;
         if (gpuPositions != null) MemoryUtil.memFree(gpuPositions);

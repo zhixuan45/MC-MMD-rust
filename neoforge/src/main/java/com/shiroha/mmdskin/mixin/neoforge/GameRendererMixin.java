@@ -29,6 +29,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
 
+    @Inject(method = "render", at = @At("HEAD"))
+    private void mmdskin$beginRenderFrame(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
+        com.shiroha.mmdskin.render.pipeline.RenderFrameClock.begin();
+    }
+
+    @Inject(method = "render", at = @At("RETURN"))
+    private void mmdskin$finishRenderFrame(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
+        com.shiroha.mmdskin.render.pipeline.RenderFrameClock.finish();
+    }
+
     @Inject(method = "getFov", at = @At("RETURN"), cancellable = true)
     private void onGetFov(Camera camera, float partialTick, boolean useFovSetting, CallbackInfoReturnable<Double> cir) {
         MMDCameraController controller = MMDCameraController.getInstance();

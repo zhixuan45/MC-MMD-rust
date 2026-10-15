@@ -108,7 +108,15 @@ public abstract class ToonShaderBase {
         try {
             Programs programs = variants.get(key);
             if (programs == null) {
-                int main = compileProgram(getMainVertexShader(), outputSource(MAIN_FRAGMENT_SHADER_BODY, profile),
+                String fragment = outputSource(MAIN_FRAGMENT_SHADER_BODY, profile);
+                int main = 0;
+                if (key.equals(ToonOutputProfile.vanilla().id()) && TranslucentBatchShader.supported()) {
+                    main = compileProgram(getMainVertexShader(), TranslucentBatchShader.source(fragment),
+                            getShaderName() + "主着色器/材质批量");
+                    if (main != 0) TranslucentBatchShader.register(main);
+                    else logger.warn("Toon 批量材质编译失败，使用兼容提交路径");
+                }
+                if (main == 0) main = compileProgram(getMainVertexShader(), fragment,
                         getShaderName() + "主着色器/" + key);
                 if (main == 0) {
                     failedVariants.add(key);
@@ -117,6 +125,7 @@ public abstract class ToonShaderBase {
                 int outline = compileProgram(getOutlineVertexShader(), outlineSource(OUTLINE_FRAGMENT_SHADER_BODY, profile),
                         getShaderName() + "描边着色器/" + key);
                 if (outline == 0) {
+                    TranslucentBatchShader.forget(main);
                     GL46C.glDeleteProgram(main);
                     failedVariants.add(key);
                     return false;
@@ -194,6 +203,7 @@ public abstract class ToonShaderBase {
     }
 
     private static void deletePrograms(Programs programs) {
+        TranslucentBatchShader.forget(programs.main());
         GL46C.glDeleteProgram(programs.main());
         GL46C.glDeleteProgram(programs.outline());
     }
@@ -459,6 +469,7 @@ public abstract class ToonShaderBase {
 
     public void cleanup() {
         com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
+        com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.releaseCache();
         variants.values().forEach(ToonShaderBase::deletePrograms);
         variants.clear();
         failedVariants.clear();

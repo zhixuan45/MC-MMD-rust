@@ -425,6 +425,7 @@ impl MMDPhysics {
         } else {
             lines.push("[Bullet3][诊断][关节限位] none".to_owned());
         }
+        lines.extend(self.hair_debug_lines());
         lines.join("\n")
     }
 }

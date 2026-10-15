@@ -1,4 +1,9 @@
 {
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode": "刷新频率",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.tooltip": "每帧绘制保持动作流畅；60 或 30 Hz 可降低绘制开销，动作更新会更稀疏。启用光影时使用每帧绘制。",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.full": "每帧绘制",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.fps_60": "60 Hz",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.fps_30": "30 Hz",
   "key.categories.mmdskin": "MMD皮肤",
   "key.mmdskin.config_wheel": "配置轮盘",
   "key.mmdskin.maid_config_wheel": "女仆配置轮盘",

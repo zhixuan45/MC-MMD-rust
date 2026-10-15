@@ -45,6 +45,13 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
     }
 
     @Override
+    public ManagedModel peek(ModelRequestKey requestKey) {
+        if (requestKey == null) return null;
+        ModelCache.CacheEntry<ManagedModel> entry = modelCache.get(requestKey.cacheKey());
+        return entry == null ? null : entry.value;
+    }
+
+    @Override
     public ManagedModel acquire(ModelRequestKey requestKey) {
         if (requestKey == null || "unknown".equals(requestKey.modelName())) {
             return null;

@@ -6,6 +6,7 @@ import com.shiroha.mmdskin.config.ConfigData;
 import com.shiroha.mmdskin.config.PaperDollDisplayMode;
 import com.shiroha.mmdskin.config.PaperDollPosition;
 import com.shiroha.mmdskin.config.PaperDollRotationMode;
+import com.shiroha.mmdskin.config.PaperDollRefreshMode;
 import com.shiroha.mmdskin.config.PhysicsCollisionStabilityMode;
 import com.shiroha.mmdskin.config.PhysicsConfigSnapshot;
 import com.shiroha.mmdskin.config.UIConstants;
@@ -417,6 +418,17 @@ public class ModConfigScreen {
             .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode.tooltip"))
             .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode." + ((PaperDollRotationMode) e).name().toLowerCase()))
             .setSaveConsumer(value -> data.paperDollRotationMode = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.refresh_mode"),
+                PaperDollRefreshMode.class,
+                data.paperDollRefreshMode == null ? PaperDollRefreshMode.FULL : data.paperDollRefreshMode)
+            .setDefaultValue(PaperDollRefreshMode.FULL)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.refresh_mode.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.refresh_mode." + ((PaperDollRefreshMode) e).name().toLowerCase(java.util.Locale.ROOT)))
+            .setSaveConsumer(value -> data.paperDollRefreshMode = value)
             .build());
 
         paperDollCategory.addEntry(entryBuilder

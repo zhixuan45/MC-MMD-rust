@@ -1,4 +1,9 @@
 {
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode": "Refresh Rate",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.tooltip": "Every frame preserves smooth motion. 60 or 30 Hz reduces rendering work, with less frequent motion updates. Shader packs use every-frame rendering.",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.full": "Every Frame",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.fps_60": "60 Hz",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.fps_30": "30 Hz",
   "key.categories.mmdskin": "MMD Skin",
   "key.mmdskin.config_wheel": "Config Wheel",
   "key.mmdskin.maid_config_wheel": "Maid Config Wheel",

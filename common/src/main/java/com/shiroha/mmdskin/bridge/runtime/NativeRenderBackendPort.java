@@ -23,6 +23,9 @@ public interface NativeRenderBackendPort extends NativeModelPort, NativeModelLoa
 
     void updateAnimationOnly(long modelHandle, float deltaTime);
 
+    /** False: capability unavailable and no evaluation performed. */
+    default boolean updateModelProfiled(long handle, float delta, boolean cpuSkinning, ByteBuffer output) { return false; }
+
     default String takePhysicsDebugDiagnostic(long modelHandle) {
         // 测试替身和不支持诊断的后端默认没有待输出消息。
         return null;

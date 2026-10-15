@@ -11,7 +11,8 @@ final class OpenGlModelLifecycle {
 
     static void dispose(OpenGlModelInstance target) {
         target.releaseBaseResources();
-        target.translucentOrder.close();
+        target.translucentOrders.close();
+        target.currentTranslucentOrder = null;
         MaterialTextureLoader.releaseOwnedTextures(target.mats);
 
         if (target.posBuffer != null) {
@@ -96,7 +97,7 @@ final class OpenGlModelLifecycle {
         total += (long) target.vertexCount * 16;
         total += (long) target.vertexCount * 8 * 3;
         total += target.getEyeEmissionVramUsage();
-        total += target.translucentOrder.vramBytes();
+        total += target.translucentOrders.vramBytes();
         // 每个无主贴图材质持有一个 1×1 RGBA 默认纹理。
         for (var material : target.mats) {
             if (material != null && material.ownsTexture && material.tex > 0) total += 4;
@@ -115,6 +116,6 @@ final class OpenGlModelLifecycle {
         if (target.materialMorphResultCountValue() > 0) {
             javaRam += (long) target.materialMorphResultCountValue() * 56 * 4 * 2;
         }
-        return rustRam + javaRam + target.translucentOrder.ramBytes();
+        return rustRam + javaRam + target.translucentOrders.ramBytes();
     }
 }

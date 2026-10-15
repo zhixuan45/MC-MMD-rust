@@ -69,6 +69,27 @@ mod ffi {
 
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
+    pub struct BW_ContactPoint {
+        pub body_a: *mut BW_RigidBody,
+        pub body_b: *mut BW_RigidBody,
+        pub point_a: [c_float; 3],
+        pub point_b: [c_float; 3],
+        pub normal_on_b: [c_float; 3],
+        pub distance: c_float,
+        pub applied_normal_impulse: c_float,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    pub struct BW_ContactSampleInfo {
+        pub step_serial: u64,
+        pub substeps: c_int,
+        pub requested_substeps: c_int,
+        pub phase: c_int,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
     pub struct BW_ConstraintDiagnostic {
         pub linear_position: [c_float; 3],
         pub angular_position: [c_float; 3],
@@ -101,6 +122,7 @@ mod ffi {
             fixed_dt: c_float,
         );
         pub fn bw_world_get_render_time_offset(world: *mut BW_World) -> c_float;
+        pub fn bw_world_get_step_info(world: *mut BW_World, info: *mut BW_ContactSampleInfo);
         pub fn bw_world_sync_render_states(world: *mut BW_World);
         pub fn bw_world_detect_collisions(world: *mut BW_World);
         pub fn bw_world_refresh_body_collision_filter(world: *mut BW_World, rb: *mut BW_RigidBody);
@@ -124,6 +146,15 @@ mod ffi {
             world: *mut BW_World,
             output: *mut BW_ContactManifold,
             capacity: c_int,
+        ) -> c_int;
+        pub fn bw_world_copy_contact_points(
+            world: *mut BW_World,
+            target_bodies: *const *mut BW_RigidBody,
+            target_count: c_int,
+            output: *mut BW_ContactPoint,
+            capacity: c_int,
+            total_hits: *mut c_int,
+            sample_info: *mut BW_ContactSampleInfo,
         ) -> c_int;
 
         // 碰撞形状
@@ -267,6 +298,12 @@ mod ffi {
     }
 }
 
+mod contact_points;
+pub use contact_points::{
+    ContactPoint, ContactPointQuery, ContactPointQueryError, ContactSamplePhase,
+    MAX_CONTACT_QUERY_CAPACITY, MAX_CONTACT_QUERY_TARGETS,
+};
+
 // Bullet3 约束参数常量
 pub const BT_CONSTRAINT_STOP_ERP: i32 = 2;
 #[allow(dead_code)]
@@ -299,6 +336,11 @@ impl BulletWorld {
 
     pub fn step(&self, dt: f32, max_substeps: i32, fixed_dt: f32) {
         unsafe { ffi::bw_world_step(self.ptr, dt, max_substeps, fixed_dt) }
+        if crate::evaluation_profile::enabled() {
+            let mut info = ffi::BW_ContactSampleInfo::default();
+            unsafe { ffi::bw_world_get_step_info(self.ptr, &mut info) };
+            crate::evaluation_profile::step(info.substeps, info.requested_substeps);
+        }
     }
 
     /// 获取固定步后尚未模拟的渲染时间余数。

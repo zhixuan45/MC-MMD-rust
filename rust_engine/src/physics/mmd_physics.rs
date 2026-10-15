@@ -28,12 +28,18 @@ use super::physics_diagnostics::model_topology_signature;
 use super::tail_forces::TailForceState;
 
 mod body_contacts;
+mod body_factory;
 mod diagnostics;
 mod garment_diagnostics;
+mod hair_diagnostics;
 mod issue_diagnostics;
 mod motion_forces;
+mod snapshots;
 
 pub use garment_diagnostics::{GarmentContactSnapshot, GarmentPhysicsSnapshot};
+pub use snapshots::{
+    PhysicsBodySnapshot, PhysicsContactPointSnapshot, PhysicsContactPointSnapshotBatch,
+};
 
 /// MMD 物理世界管理器（Bullet3 引擎）
 ///
@@ -94,6 +100,7 @@ pub struct MMDPhysics {
     model_topology_signature: String,
     /// 每个物理实例独立的尾巴选项与闲置包络。
     tail_forces: TailForceState,
+    hair_debug: hair_diagnostics::HairDebugTelemetry,
 }
 
 /// 供命令行诊断工具读取的关节瞬时状态。
@@ -151,6 +158,7 @@ impl MMDPhysics {
             garment_forced_ignore_samples: Vec::new(),
             model_topology_signature: "fnv1a64:UNBUILT".to_owned(),
             tail_forces: TailForceState::default(),
+            hair_debug: hair_diagnostics::HairDebugTelemetry::default(),
         })
     }
 
@@ -175,6 +183,24 @@ impl MMDPhysics {
         bone_transforms: &[Mat4],
         bone_names: &[String],
     ) {
+        self.build_physics_with_proxies(
+            pmx_rigid_bodies,
+            pmx_joints,
+            bone_transforms,
+            bone_names,
+            &[],
+        );
+    }
+
+    /// 代理是独立输入，原始掩码、名称和作者世界关节锚点仍从 PMX 读取。
+    pub fn build_physics_with_proxies(
+        &mut self,
+        pmx_rigid_bodies: &[PmxRigidBody],
+        pmx_joints: &[PmxJoint],
+        bone_transforms: &[Mat4],
+        bone_names: &[String],
+        proxies: &[super::hair_collision_proxies::HairCollisionProxy],
+    ) {
         let config = get_config();
         let active_gravity_y = self.active_debug_config.gravity_y.get();
         self.active_debug_config = ActivePhysicsDebugConfig::from_config(&config);
@@ -186,7 +212,8 @@ impl MMDPhysics {
         // 按整个模型的碰撞用途分类，避免把动态链的静态关节锚点误当成人体碰撞壳。
         let body_collider_flags = body_collider_scale_flags(pmx_rigid_bodies, pmx_joints);
         // 兼容裙摆的资格独立于 PMX 原始掩码，避免漏配掩码导致补碰撞永远无法生效。
-        let garment_body_flags = garment_contact_body_flags(pmx_rigid_bodies, pmx_joints, bone_names);
+        let garment_body_flags =
+            garment_contact_body_flags(pmx_rigid_bodies, pmx_joints, bone_names);
         let garment_contact_plan = build_garment_contact_plan(
             pmx_rigid_bodies,
             &garment_body_flags,
@@ -219,19 +246,13 @@ impl MMDPhysics {
                 config.static_collider_scale,
                 body_collider_flags[body_index],
             );
-            let mut rb_data = MmdRigidBodyData::from_pmx(pmx_rb, bone_transform, shape_size);
-            let shape = MmdRigidBodyData::create_shape(pmx_rb, shape_size);
-            let body = shape
-                .as_ref()
-                .and_then(|s| rb_data.create_rigid_body(pmx_rb, s));
-
-            if shape.is_none() || body.is_none() {
+            let proxy = proxies.iter().find(|p| p.body_index == body_index);
+            let rb_data = body_factory::create_body(pmx_rb, bone_transform, shape_size, proxy);
+            if rb_data.bullet_shape.is_none() || rb_data.bullet_body.is_none() {
                 log::warn!("[Bullet3] 刚体 '{}' 创建失败，跳过", rb_data.name);
             }
 
             // 先转移所有权到 rb_data，再 push 到 Vec
-            rb_data.bullet_body = body;
-            rb_data.bullet_shape = shape;
             self.rigid_bodies.push(rb_data);
         }
 
@@ -416,6 +437,7 @@ impl MMDPhysics {
             })
             .collect();
 
+        self.initialize_hair_diagnostics(pmx_rigid_bodies, pmx_joints);
         let kinematic_count = self
             .rigid_bodies
             .iter()
@@ -577,6 +599,7 @@ impl MMDPhysics {
                         position,
                         self.debug_body_target_positions[index],
                     );
+                    self.hair_debug.observe_velocity(index, lin_vel, ang_vel);
                 }
                 if lin_sq > max_lin_sq {
                     let clamped = lin_vel * (max_lin / lin_sq.sqrt());
@@ -592,6 +615,7 @@ impl MMDPhysics {
         }
 
         if config.debug_log {
+            self.observe_hair_contacts();
             // 接触与关节数据均在求解后读取，不参与 Bullet 状态更新。
             for manifold in self.world.contact_manifolds() {
                 let (Some(&body_a), Some(&body_b)) = (
@@ -629,7 +653,13 @@ impl MMDPhysics {
             if self.debug_telemetry.elapsed >= 1.0 {
                 self.pending_debug_diagnostic = Some(self.build_debug_diagnostic());
                 self.debug_telemetry.reset_window();
+                self.reset_hair_debug_window();
             }
+        } else if self.debug_telemetry.step_count > 0 {
+            // 关日志丢弃未完成窗口，重开后不混入旧峰值。
+            self.debug_telemetry.reset_window();
+            self.reset_hair_debug_window();
+            self.pending_debug_diagnostic = None;
         }
     }
 

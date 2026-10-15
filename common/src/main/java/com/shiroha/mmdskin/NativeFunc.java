@@ -42,6 +42,9 @@ public class NativeFunc {
 
     public native void UpdateModel(long model, float deltaTime);
 
+    /** Optional v1 telemetry; 8 native-order longs, without retaining the direct buffer. */
+    public native boolean UpdateModelProfiled(long model, float deltaTime, boolean cpuSkinning, java.nio.ByteBuffer output);
+
     public native long GetVertexCount(long model);
 
     public native long GetPoss(long model);

@@ -124,8 +124,21 @@ fn garment_body_bone_is_compatible(body: &PmxRigidBody, bone_names: &[String]) -
     let name = name.to_lowercase();
     !has_non_skirt_local_semantics(&name)
         && ![
-            "上半身", "上体", "upperbody", "upper_body", "spine", "torso", "頭", "头",
-            "head", "首", "颈", "頸", "neck", "肩", "shoulder",
+            "上半身",
+            "上体",
+            "upperbody",
+            "upper_body",
+            "spine",
+            "torso",
+            "頭",
+            "头",
+            "head",
+            "首",
+            "颈",
+            "頸",
+            "neck",
+            "肩",
+            "shoulder",
         ]
         .iter()
         .any(|part| name.contains(part))
@@ -478,6 +491,9 @@ pub struct MmdRigidBodyData {
     pub decoded_rotation: [f32; 3],
     /// 实际送入 Bullet 的形状尺寸。
     pub shape_size: [f32; 3],
+    pub raw_shape_size: [f32; 3],
+    pub raw_shape_name: &'static str,
+    pub proxy_source: &'static str,
     /// 便于 JNI 日志稳定输出的形状名称。
     pub shape_name: &'static str,
     /// 形状在局部空间中的保守半尺寸，供构建期初始穿插检测使用。
@@ -537,6 +553,9 @@ impl MmdRigidBodyData {
             raw_rotation: pmx_rb.rotation,
             decoded_rotation,
             shape_size,
+            raw_shape_size: pmx_rb.size,
+            raw_shape_name: rigid_body_shape_name(pmx_rb.shape),
+            proxy_source: "pmx",
             shape_name: rigid_body_shape_name(pmx_rb.shape),
             collision_half_extents: collision_half_extents(pmx_rb.shape, shape_size),
             bullet_body: None,
@@ -677,8 +696,6 @@ mod tests {
         assert_eq!(pmx_collision_mask(0x0000), 0x0000);
     }
 
-
-
     #[test]
     fn rigid_body_rotation_matches_pmx_yxz_composition() {
         let [x, y, z] = [0.31, -0.47, 0.83];
@@ -686,9 +703,6 @@ mod tests {
             Quat::from_rotation_y(y) * Quat::from_rotation_x(x) * Quat::from_rotation_z(z);
         assert!(rigid_body_rotation([x, y, z]).abs_diff_eq(expected, 1e-6));
     }
-
-
-
 
     fn test_rigid_body(shape: RigidBodyShape, size: [f32; 3]) -> RigidBody {
         RigidBody {
@@ -710,8 +724,6 @@ mod tests {
         }
     }
 
-
-
     #[test]
     fn static_capsule_only_shrinks_collision_radius() {
         let mut body = test_rigid_body(RigidBodyShape::Capsule, [1.0, 4.0, 0.0]);
@@ -721,11 +733,6 @@ mod tests {
             [super::STATIC_COLLISION_SHAPE_SCALE, 4.0, 0.0]
         );
     }
-
-
-
-
-
 
     #[test]
     fn garment_contact_body_is_eligible_even_when_pmx_mask_omits_skirt() {
@@ -772,7 +779,10 @@ mod tests {
             rotation_spring: [0.0; 3],
         };
 
-        assert_eq!(garment_contact_body_flags(&[collider, skirt], &[joint], &[]), [true, false]);
+        assert_eq!(
+            garment_contact_body_flags(&[collider, skirt], &[joint], &[]),
+            [true, false]
+        );
     }
 
     #[test]
@@ -807,15 +817,16 @@ mod tests {
             rotation_spring: [0.0; 3],
         };
         let bodies = vec![collider, anchor, skirt];
-        assert!(is_dynamic_chain_anchor(1, &bodies, std::slice::from_ref(&joint)));
+        assert!(is_dynamic_chain_anchor(
+            1,
+            &bodies,
+            std::slice::from_ref(&joint)
+        ));
         assert_eq!(
             garment_contact_body_flags(&bodies, std::slice::from_ref(&joint), &[]),
             [true, false, false]
         );
     }
-
-
-
 
     #[test]
     fn traditional_chinese_garments_use_current_classifier() {

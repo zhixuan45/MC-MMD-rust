@@ -33,6 +33,7 @@ mod head_eye;
 mod issue_diagnostics;
 mod material_visibility;
 mod physics;
+mod physics_snapshots;
 mod render_data;
 mod tail_options;
 #[cfg(test)]

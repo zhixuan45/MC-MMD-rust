@@ -171,7 +171,7 @@ final class PlayerModelRenderCoordinator {
         }
     }
 
-    private static void consumePendingSignals(AbstractClientPlayer player,
+    static void consumePendingSignals(AbstractClientPlayer player,
                                               ManagedModel modelData,
                                               boolean isLocalPlayer) {
         if (isLocalPlayer) {

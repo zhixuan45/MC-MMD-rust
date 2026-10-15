@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.render.backend;
 /** 文件职责：记录单个模型的第一人称预更新姿态是否仍待正式 Draw 消费。 */
 final class FirstPersonPoseState {
     private boolean prepared;
+    private long frame;
 
     void beginPreparation() {
         prepared = false;
@@ -10,10 +11,11 @@ final class FirstPersonPoseState {
 
     void markPrepared() {
         prepared = true;
+        frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
     }
 
     boolean isPrepared() {
-        return prepared;
+        return prepared && frame == com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
     }
 
     void finishRender(boolean firstPersonDraw) {

@@ -114,6 +114,7 @@ public class ConfigData {
     public PaperDollRotationMode paperDollRotationMode = PaperDollRotationMode.FIXED;
     /** 是否在游戏暂停菜单等常规屏幕中显示纸娃娃 */
     public boolean paperDollShowInScreens = true;
+    public PaperDollRefreshMode paperDollRefreshMode = PaperDollRefreshMode.FULL;
 
     public boolean vrEnabled = false;
     public float vrArmIKStrength = 1.0f;

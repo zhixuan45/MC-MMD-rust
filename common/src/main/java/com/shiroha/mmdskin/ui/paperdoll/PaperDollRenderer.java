@@ -16,6 +16,8 @@ import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
 import com.shiroha.mmdskin.player.render.PlayerRenderHelper;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.scene.RenderScene;
+import com.shiroha.mmdskin.render.backend.BaseModelInstance;
+import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -37,6 +39,19 @@ public final class PaperDollRenderer {
     /** 动作触发后的延迟隐藏缓冲时间（毫秒），避免动作停顿瞬间频繁闪烁 */
     private static final long ACTION_HOLD_TIME_MS = 1200L;
     private static long lastActionTimeMs = 0L;
+    private static final PaperDollFrameCache FRAME_CACHE = new PaperDollFrameCache();
+
+    private record CacheKey(Object player, Object model, Object screen, int guiWidth, int guiHeight,
+                            double guiScale, Object position, int offsetX, int offsetY, float scale,
+                            Object rotation, boolean toon, boolean outline, float heldItemScale) { }
+
+    public static void releaseCache() { FRAME_CACHE.close(); }
+
+    /** Platform tick also handles leaving a world, where the HUD callback may stop entirely. */
+    public static void tickCache() {
+        if (Minecraft.getInstance().player == null || !ConfigManager.isPaperDollEnabled()
+                || ConfigManager.getPaperDollRefreshMode().framesPerSecond == 0) releaseCache();
+    }
 
     private PaperDollRenderer() {
     }
@@ -50,6 +65,7 @@ public final class PaperDollRenderer {
     public static void renderHud(GuiGraphics guiGraphics, float tickDelta) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui) {
+            FRAME_CACHE.invalidate();
             return;
         }
         // 如果当前打开了其他界面，由 Screen 阶段接管渲染，避免重复绘制
@@ -62,6 +78,7 @@ public final class PaperDollRenderer {
         }
 
         if (!shouldDisplay(mc.player)) {
+            FRAME_CACHE.invalidate();
             return;
         }
 
@@ -129,19 +146,46 @@ public final class PaperDollRenderer {
         String modelName = ModelSelectorConfig.getInstance().getPlayerModelByUuidOrName(
                 player.getUUID(), player.getName().getString());
         if (modelName == null || modelName.isEmpty() || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) {
+            FRAME_CACHE.invalidate();
             // 如果未配置 MMD 模型，调用原版实体预览回退绘制
             renderVanillaFallback(guiGraphics, player);
             return;
         }
 
-        ModelRequestKey requestKey = ModelRequestKey.paperDoll(player, modelName);
-        ManagedModel modelData = ClientRenderRuntime.get().modelRepository().acquire(requestKey);
+        var repository = ClientRenderRuntime.get().modelRepository();
+        ManagedModel source = repository.peek(ModelRequestKey.player(player, modelName));
+        BaseModelInstance sharedPose = source != null && source.modelInstance() instanceof BaseModelInstance instance
+                && instance.canReuseForPaperDoll(player, tickDelta) ? instance : null;
+        ManagedModel modelData = sharedPose != null ? source
+                : repository.acquire(ModelRequestKey.paperDoll(player, modelName));
         if (modelData == null || modelData.modelInstance() == null) {
+            FRAME_CACHE.invalidate();
             // 模型未加载完成前回退到原版绘制
             renderVanillaFallback(guiGraphics, player);
             return;
         }
 
+        int fps = ConfigManager.getPaperDollRefreshMode().framesPerSecond;
+        if (fps > 0 && !com.shiroha.mmdskin.compat.iris.IrisCompat.isIrisShaderActive()) {
+            // Finish previously queued HUD work before changing the framebuffer.
+            guiGraphics.flush();
+            Minecraft mc = Minecraft.getInstance();
+            var key = new CacheKey(player, modelData.modelInstance(), mc.screen,
+                    guiGraphics.guiWidth(), guiGraphics.guiHeight(), mc.getWindow().getGuiScale(),
+                    ConfigManager.getPaperDollPosition(), ConfigManager.getPaperDollOffsetX(),
+                    ConfigManager.getPaperDollOffsetY(), ConfigManager.getPaperDollScale(),
+                    ConfigManager.getPaperDollRotationMode(), ConfigManager.isToonRenderingEnabled(),
+                    ConfigManager.isToonOutlineEnabled(), ModelConfigManager.getConfig(modelName).heldItemScale);
+            if (FRAME_CACHE.render(key, fps, System.nanoTime(),
+                    () -> renderPrepared(guiGraphics, player, tickDelta, modelName, modelData, sharedPose))) return;
+        } else {
+            FRAME_CACHE.close();
+        }
+        renderPrepared(guiGraphics, player, tickDelta, modelName, modelData, sharedPose);
+    }
+
+    private static void renderPrepared(GuiGraphics guiGraphics, LocalPlayer player, float tickDelta,
+                                       String modelName, ManagedModel modelData, BaseModelInstance sharedPose) {
         int screenWidth = guiGraphics.guiWidth();
         int screenHeight = guiGraphics.guiHeight();
         float posX;
@@ -216,10 +260,11 @@ public final class PaperDollRenderer {
             int packedLight = 0xF000F0;
             float[] size = PlayerRenderHelper.getModelSize(modelData);
 
-            // 纸娃娃拥有独立的 ManagedModel 实例，在此独立推进自身的动画状态
-            AnimationStateManager.updateAnimationState(player, modelData);
-
-            modelData.modelInstance().render(
+            if (sharedPose != null) {
+                sharedPose.renderPaperDollPose(player, modelViewStack, packedLight);
+            } else {
+                AnimationStateManager.updateAnimationState(player, modelData);
+                modelData.modelInstance().render(
                     player,
                     0.0f,
                     0.0f,
@@ -228,9 +273,11 @@ public final class PaperDollRenderer {
                     modelViewStack,
                     packedLight,
                     RenderScene.PAPERDOLL
-            );
+                );
+            }
 
             float heldItemScale = ModelConfigManager.getConfig(modelName).heldItemScale;
+            long itemTimer = RenderPerformanceProfiler.get().startTimer();
             ItemRenderHelper.renderItems(
                     player,
                     modelData,
@@ -241,8 +288,10 @@ public final class PaperDollRenderer {
                     tickDelta,
                     size[0]
             );
-
+            RenderPerformanceProfiler.get().endTimer("paperDoll.items", itemTimer);
+            long flushTimer = RenderPerformanceProfiler.get().startTimer();
             guiGraphics.flush();
+            RenderPerformanceProfiler.get().endTimer("paperDoll.flush", flushTimer);
         } finally {
             if (lightLayerTurnedOn && mc.gameRenderer != null && mc.gameRenderer.lightTexture() != null) {
                 mc.gameRenderer.lightTexture().turnOffLightLayer();

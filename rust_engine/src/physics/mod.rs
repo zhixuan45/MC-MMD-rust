@@ -8,6 +8,7 @@ pub mod collision_topology;
 pub mod config;
 mod embedded_body_contacts;
 mod garment_contacts;
+pub mod hair_collision_proxies;
 mod hair_parameters;
 mod initialization_diagnostics;
 mod joint_parameters;
@@ -51,7 +52,8 @@ pub use collision_topology::CollisionStabilityMode;
 pub use config::{get_config, reset_config, set_config, PhysicsConfig};
 pub use mmd_joint::MmdJointData;
 pub use mmd_physics::{
-    GarmentContactSnapshot, GarmentPhysicsSnapshot, MMDPhysics, PhysicsJointSnapshot,
+    GarmentContactSnapshot, GarmentPhysicsSnapshot, MMDPhysics, PhysicsBodySnapshot,
+    PhysicsContactPointSnapshot, PhysicsContactPointSnapshotBatch, PhysicsJointSnapshot,
 };
 pub use mmd_rigid_body::{
     body_collider_scale_flags, effective_collision_shape_size,

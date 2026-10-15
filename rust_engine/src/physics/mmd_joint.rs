@@ -82,20 +82,18 @@ impl MmdJointData {
             apply_wide_skirt_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
         apply_wide_skirt_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
 
-        let clamped_wide_hair_root =
-            apply_wide_back_hair_root_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
-        apply_hair_chain_fallback(&mut parameters, pmx_rb_a, pmx_rb_b);
-        if !clamped_wide_hair_root {
-            apply_back_hair_root_limit(
-                &mut parameters,
-                pmx_rb_a,
-                pmx_rb_b,
-                position,
-                rotation,
-                rb_b_initial_transform.w_axis.truncate(),
-                rb_a_initial_transform.w_axis.truncate(),
-            );
-        }
+        // 默认保留作者头发约束；额外单向限位会在手臂接触时形成卡楔。
+        let hair_joint_control = std::env::var("MMD_HAIR_JOINT_COMPAT").unwrap_or_default();
+        apply_hair_joint_control(
+            &mut parameters,
+            pmx_rb_a,
+            pmx_rb_b,
+            position,
+            rotation,
+            rb_a_initial_transform,
+            rb_b_initial_transform,
+            &hair_joint_control,
+        );
 
         // frameA = rbA_initialTransform.inverse() * jointTransform
         // frameB = rbB_initialTransform.inverse() * jointTransform
@@ -181,6 +179,38 @@ impl MmdJointData {
         if let Some(constraint) = self.constraint.as_ref() {
             constraint.set_equilibrium_point();
         }
+    }
+}
+
+/// 仅在显式对照时应用旧头发兜底，不改默认作者参数。
+fn apply_hair_joint_control(
+    parameters: &mut JointParameters,
+    body_a: &PmxRigidBody,
+    body_b: &PmxRigidBody,
+    position: Vec3,
+    rotation: Quat,
+    bind_a: Mat4,
+    bind_b: Mat4,
+    control: &str,
+) {
+    // legacy 只作同输入 A/B；两个分项保留用于定位，不写入用户配置。
+    let legacy_root = matches!(control, "legacy" | "authored-chain");
+    let legacy_chain = matches!(control, "legacy" | "authored-root");
+    let clamped_root =
+        legacy_root && apply_wide_back_hair_root_fallback(parameters, body_a, body_b);
+    if legacy_chain {
+        apply_hair_chain_fallback(parameters, body_a, body_b);
+    }
+    if legacy_root && !clamped_root {
+        apply_back_hair_root_limit(
+            parameters,
+            body_a,
+            body_b,
+            position,
+            rotation,
+            bind_b.w_axis.truncate(),
+            bind_a.w_axis.truncate(),
+        );
     }
 }
 
@@ -414,3 +444,7 @@ mod tests {
 #[cfg(test)]
 #[path = "skirt_joint_tests.rs"]
 mod skirt_joint_tests;
+
+#[cfg(test)]
+#[path = "hair_joint_tests.rs"]
+mod hair_joint_tests;

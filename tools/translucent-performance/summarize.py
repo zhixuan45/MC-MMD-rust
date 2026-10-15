@@ -13,9 +13,11 @@ from typing import Any
 MARKER = "[MMD透明性能]"
 STAGES = ("CLASSIFY", "CANDIDATES", "DEPTH_KEYS", "SORT", "INDEX_BUILD", "UPLOAD", "SUBMIT", "READBACK")
 STAGE_FIELDS = ("avgNs", "medianNs", "p95Ns")
-COUNTERS = ("CANDIDATE_BUILD", "CANDIDATE_REUSE", "CANDIDATE_TRIANGLES", "VISIBLE_TRIANGLES", "RUNS",
+REQUIRED_COUNTERS = ("CANDIDATE_BUILD", "CANDIDATE_REUSE", "CANDIDATE_TRIANGLES", "VISIBLE_TRIANGLES", "RUNS",
             "DRAW_OPAQUE", "DRAW_TRANSLUCENT", "DRAW_DEPTH_SEAL", "DRAW_SHADOW", "READBACK_CALLS",
             "READBACK_BYTES", "UPLOAD_BYTES")
+OPTIONAL_COUNTERS = ("BATCH_SUBMISSIONS", "BATCH_RUNS", "BATCH_FALLBACK")
+COUNTERS = REQUIRED_COUNTERS + OPTIONAL_COUNTERS
 PHASES = ("standing", "walking", "running")
 
 
@@ -58,6 +60,8 @@ def validate(record: Any) -> dict[str, Any]:
     counters = record.get("counters")
     if not isinstance(counters, dict):
         raise RecordError("counters must be an object")
+    for counter in OPTIONAL_COUNTERS:
+        counters.setdefault(counter, 0)
     for counter in COUNTERS:
         _integer(counters.get(counter), f"counters.{counter}")
     return record

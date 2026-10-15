@@ -64,4 +64,5 @@ public interface IRenderConfig {
     default PaperDollRotationMode getPaperDollRotationMode() { return PaperDollRotationMode.FIXED; }
 
     default boolean isPaperDollShowInScreens() { return true; }
+    default PaperDollRefreshMode getPaperDollRefreshMode() { return PaperDollRefreshMode.FULL; }
 }

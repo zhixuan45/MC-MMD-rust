@@ -131,6 +131,7 @@ impl MmdModel {
             let _ = writeln!(out, "[MMD诊断][SIDE_PHYSICS] model={} physics=unavailable model_physics_enabled={} global_physics_enabled={} raw_bodies={} raw_joints={}", escape(&self.name), self.physics_enabled, global_physics_enabled, self.rigid_bodies.len(), self.joints.len());
             return;
         };
+        physics.write_hair_issue_diagnostic(out);
         let mut entries: Vec<_> = physics
             .rigid_bodies
             .iter()

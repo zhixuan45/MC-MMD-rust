@@ -94,7 +94,10 @@ public class OpenGlModelInstance extends BaseModelInstance {
     int cachedShaderProgram = -1;
     boolean hasUvMorph = false;
     int subMeshCount;
-    final TranslucentDrawOrder translucentOrder = new TranslucentDrawOrder();
+    final com.shiroha.mmdskin.render.material.ViewTranslucentOrders translucentOrders =
+            new com.shiroha.mmdskin.render.material.ViewTranslucentOrders();
+    TranslucentDrawOrder currentTranslucentOrder;
+    com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.Scene currentProfileScene;
     ByteBuffer subMeshDataBuf;
     int lastBlockBrightness = Integer.MIN_VALUE;
     int lastSkyBrightness = Integer.MIN_VALUE;

@@ -1,4 +1,9 @@
 {
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode": "更新頻度",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.tooltip": "毎フレームは滑らかな動きを維持します。60・30 Hz は描画負荷を下げますが、動きの更新間隔が広がります。シェーダーパック使用時は毎フレーム描画します。",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.full": "毎フレーム",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.fps_60": "60 Hz",
+  "gui.mmdskin.mod_settings.paper_doll.refresh_mode.fps_30": "30 Hz",
   "key.categories.mmdskin": "MMDスキン",
   "key.mmdskin.config_wheel": "設定ホイール",
   "key.mmdskin.maid_config_wheel": "メイド設定ホイール",

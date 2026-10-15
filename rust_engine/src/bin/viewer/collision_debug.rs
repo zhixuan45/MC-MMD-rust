@@ -5,6 +5,7 @@ use mmd::pmx::rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape};
 use mmd_engine::model::MmdModel;
 use mmd_engine::physics::{
     body_collider_scale_flags, effective_collision_shape_size_with_static_scale,
+    PhysicsBodySnapshot, PhysicsMode,
 };
 
 const CIRCLE_SEGMENTS: usize = 32;
@@ -17,6 +18,14 @@ pub struct CollisionLine {
 
 pub fn build_collision_lines(model: &MmdModel, static_collider_scale: f32) -> Vec<CollisionLine> {
     let mut lines = Vec::new();
+    if model.has_physics() {
+        let snapshots = model.physics_body_snapshots_matching("");
+        for snapshot in &snapshots {
+            append_runtime_body(&mut lines, snapshot);
+        }
+        return lines;
+    }
+
     let body_collider_flags = body_collider_scale_flags(&model.rigid_bodies, &model.joints);
     for (body_index, body) in model.rigid_bodies.iter().enumerate() {
         let transform = body_render_transform(model, body);
@@ -82,6 +91,37 @@ fn body_color(mode: RigidBodyMode) -> [f32; 4] {
         RigidBodyMode::Static => [0.1, 0.9, 0.25, 0.85],
         RigidBodyMode::Dynamic => [1.0, 0.15, 0.1, 0.85],
         RigidBodyMode::DynamicWithBonePosition => [0.1, 0.55, 1.0, 0.85],
+    }
+}
+
+fn runtime_body_color(mode: PhysicsMode) -> [f32; 4] {
+    match mode {
+        PhysicsMode::FollowBone => [0.1, 0.9, 0.25, 0.85],
+        PhysicsMode::Physics => [1.0, 0.15, 0.1, 0.85],
+        PhysicsMode::PhysicsWithBone => [0.1, 0.55, 1.0, 0.85],
+    }
+}
+
+fn append_runtime_body(lines: &mut Vec<CollisionLine>, body: &PhysicsBodySnapshot) {
+    if !body.render_transform.is_finite() || !body.shape_size.iter().all(|value| value.is_finite())
+    {
+        return;
+    }
+    let transform = mirror_z(body.render_transform);
+    let size = body.shape_size;
+    let color = runtime_body_color(body.mode);
+    let first_line = lines.len();
+    match body.shape_name {
+        "sphere" => append_sphere(lines, transform, size[0], color),
+        "box" => append_box(lines, transform, Vec3::from_array(size), color),
+        "capsule_y" => append_capsule(lines, transform, size[0], size[1], color),
+        _ => {}
+    }
+    if lines[first_line..]
+        .iter()
+        .any(|line| !line.start.is_finite() || !line.end.is_finite())
+    {
+        lines.truncate(first_line);
     }
 }
 
@@ -198,16 +238,5 @@ fn append_capsule(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::mirror_z;
-    use glam::{Mat4, Quat, Vec3};
-
-    #[test]
-    fn mirror_z_round_trip_restores_transform() {
-        let transform = Mat4::from_rotation_translation(
-            Quat::from_euler(glam::EulerRot::ZYX, 0.3, -0.5, 0.7),
-            Vec3::new(1.0, 2.0, 3.0),
-        );
-        assert!(mirror_z(mirror_z(transform)).abs_diff_eq(transform, 1e-6));
-    }
-}
+#[path = "collision_debug_tests.rs"]
+mod tests;

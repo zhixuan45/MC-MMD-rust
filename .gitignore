@@ -113,6 +113,8 @@ shader/
 !common/src/main/resources/assets/mmdskin/shader/
 common/src/main/resources/assets/mmdskin/shader/*
 !common/src/main/resources/assets/mmdskin/shader/toon_surface_lighting.glsl
+!common/src/main/resources/assets/mmdskin/shader/toon_batch_materials.glsl
+!common/src/main/resources/assets/mmdskin/shader/translucent_prepare.comp.glsl
 !common/src/main/java/com/shiroha/mmdskin/render/shader/
 !common/src/test/java/com/shiroha/mmdskin/render/shader/
 !common/src/main/java/com/shiroha/mmdskin/compat/iris/

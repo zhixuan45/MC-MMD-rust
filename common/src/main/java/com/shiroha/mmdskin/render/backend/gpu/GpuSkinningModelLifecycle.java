@@ -16,25 +16,17 @@ final class GpuSkinningModelLifecycle {
         }
 
         long total = 0;
-        int indexCount = (int) target.nativeBackendPort().getIndexCount(target.nativeModelHandle());
-        total += (long) indexCount * target.indexElementSize;
-        total += target.nativeBackendPort().getFirstPersonIndexCount(target.nativeModelHandle())
-                * target.indexElementSize;
-        total += (long) target.vertexCount * 12 * 2;
-        total += (long) target.vertexCount * 8;
-        total += (long) target.vertexCount * 16 * 2;
-        total += (long) target.vertexCount * 16;
-        total += (long) target.vertexCount * 8 * 2;
-        total += (long) target.vertexCount * 12 * 2;
+        total += target.staticBuffers.stream().mapToLong(ImmutableGpuBufferPool.Lease::accountedBytes).sum();
+        total += target.nativeBackendPort().getFirstPersonIndexCount(target.nativeModelHandle()) > 0
+                ? target.nativeBackendPort().getIndexCount(target.nativeModelHandle()) * target.indexElementSize : 0;
+        total += (long) target.vertexCount * (8 + 12 * 2); // light coordinates and skinned position/normal
         total += (long) ShaderConstants.MAX_BONES * 64;
         total += target.getEyeEmissionVramUsage();
-        total += target.translucentOrder.vramBytes();
+        total += target.translucentOrders.vramBytes();
         if (target.vertexMorphCount > 0) {
-            total += target.nativeBackendPort().getGpuMorphOffsetsSize(target.nativeModelHandle());
             total += (long) target.vertexMorphCount * 4;
         }
         if (target.uvMorphCount > 0) {
-            total += target.nativeBackendPort().getGpuUvMorphOffsetsSize(target.nativeModelHandle());
             total += (long) target.uvMorphCount * 4;
         }
         if (target.skinnedUvBuffer > 0) {
@@ -53,7 +45,10 @@ final class GpuSkinningModelLifecycle {
         }
 
         long rustRam = target.nativeBackendPort().getModelMemoryUsage(target.nativeModelHandle());
-        long javaRam = (long) target.vertexCount * 64;
+        long javaRam = (long) target.vertexCount * 8;
+        javaRam += target.staticBuffers.stream().mapToLong(ImmutableGpuBufferPool.Lease::accountedBytes).sum();
+        if (target.firstPersonIndexBuffer != null) javaRam += target.firstPersonIndexBuffer.capacity();
+        if (target.firstPersonMatrixBuffer != null) javaRam += target.firstPersonMatrixBuffer.capacity();
         javaRam += 128;
         if (target.boneMatricesBuffer != null) {
             javaRam += (long) target.boneMatricesBuffer.capacity() * 4;
@@ -79,7 +74,7 @@ final class GpuSkinningModelLifecycle {
         if (target.subMeshDataBuf != null) {
             javaRam += target.subMeshDataBuf.capacity();
         }
-        return rustRam + javaRam + target.translucentOrder.ramBytes();
+        return rustRam + javaRam + target.translucentOrders.ramBytes();
     }
 
     static void dispose(GpuSkinningModelInstance target) {
@@ -89,29 +84,24 @@ final class GpuSkinningModelLifecycle {
 
         target.initialized = false;
         target.releaseBaseResources();
-        target.translucentOrder.close();
+        target.translucentOrders.close();
+        target.currentTranslucentOrder = null;
+        target.originalIndices = null;
         MaterialTextureLoader.releaseOwnedTextures(target.mats);
 
         GL46C.glDeleteVertexArrays(target.vertexArrayObject);
-        GL46C.glDeleteBuffers(target.indexBufferObject);
+        target.staticBuffers.forEach(ImmutableGpuBufferPool.Lease::close);
+        target.staticBuffers.clear();
+        target.posBuffer = target.norBuffer = target.uv0Buffer = target.colorBuffer = target.uv1Buffer = null;
         if (target.firstPersonIndexBufferObject > 0) {
             GL46C.glDeleteBuffers(target.firstPersonIndexBufferObject);
         }
-        GL46C.glDeleteBuffers(target.positionBufferObject);
-        GL46C.glDeleteBuffers(target.normalBufferObject);
-        GL46C.glDeleteBuffers(target.uv0BufferObject);
-        GL46C.glDeleteBuffers(target.boneIndicesBufferObject);
-        GL46C.glDeleteBuffers(target.boneWeightsBufferObject);
-        GL46C.glDeleteBuffers(target.colorBufferObject);
-        GL46C.glDeleteBuffers(target.uv1BufferObject);
         GL46C.glDeleteBuffers(target.uv2BufferObject);
         GL46C.glDeleteBuffers(target.skinnedPositionsBuffer);
         GL46C.glDeleteBuffers(target.skinnedNormalsBuffer);
 
         if (target.boneMatrixSSBO > 0) GL46C.glDeleteBuffers(target.boneMatrixSSBO);
-        if (target.morphOffsetsSSBO > 0) GL46C.glDeleteBuffers(target.morphOffsetsSSBO);
         if (target.morphWeightsSSBO > 0) GL46C.glDeleteBuffers(target.morphWeightsSSBO);
-        if (target.uvMorphOffsetsSSBO > 0) GL46C.glDeleteBuffers(target.uvMorphOffsetsSSBO);
         if (target.uvMorphWeightsSSBO > 0) GL46C.glDeleteBuffers(target.uvMorphWeightsSSBO);
         if (target.skinnedUvBuffer > 0) GL46C.glDeleteBuffers(target.skinnedUvBuffer);
         target.boneMatrixSSBO = 0;

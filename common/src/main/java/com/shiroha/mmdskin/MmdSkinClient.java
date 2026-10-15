@@ -19,6 +19,8 @@ public class MmdSkinClient {
 
     /** 平台生命周期在窗口 OpenGL 上下文仍可用时调用。 */
     public static void onClientStopping() {
+        com.shiroha.mmdskin.render.pipeline.NativeEvaluationBatch.shutdown();
+        com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.releaseCache();
         GpuTimerQueryPool.disposeAll();
     }
 

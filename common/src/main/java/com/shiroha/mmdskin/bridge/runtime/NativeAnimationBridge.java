@@ -43,6 +43,7 @@ public final class NativeAnimationBridge implements NativeAnimationPort {
 
     @Override
     public void seekLayer(long modelHandle, long layer, float frame) {
+        NativePoseInputs.changed(modelHandle);
         NativeFunc.GetInst().SeekLayer(modelHandle, layer, frame);
     }
 

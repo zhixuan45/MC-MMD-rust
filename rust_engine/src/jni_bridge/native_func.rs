@@ -194,8 +194,8 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_UpdateModel(
     let model_handle = model;
     let targets = take_tacz_arm_targets(model);
     let received_mask = targets.map_or(0, |value| value.valid_mask());
-    let models = MODELS.read().unwrap_or_else(|e| e.into_inner());
-    if let Some(model_arc) = models.get(&model) {
+    let instance = MODELS.read().unwrap_or_else(|e| e.into_inner()).get(&model).cloned();
+    if let Some(model_arc) = instance {
         let mut model = model_arc.lock().unwrap_or_else(|e| e.into_inner());
         // 更新动画（内部已包含物理更新）
         let outcome = model.tick_animation_with_tacz_targets(delta_time, true, targets);
@@ -2476,8 +2476,8 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_UpdateAnimationOnly(
     let model_handle = model;
     let targets = take_tacz_arm_targets(model);
     let received_mask = targets.map_or(0, |value| value.valid_mask());
-    let models = MODELS.read().unwrap_or_else(|e| e.into_inner());
-    if let Some(model_arc) = models.get(&model) {
+    let instance = MODELS.read().unwrap_or_else(|e| e.into_inner()).get(&model).cloned();
+    if let Some(model_arc) = instance {
         let mut model = model_arc.lock().unwrap_or_else(|e| e.into_inner());
         let outcome = model.tick_animation_with_tacz_targets(delta_time, false, targets);
         record_tacz_arm_apply_result(model_handle, received_mask, outcome);

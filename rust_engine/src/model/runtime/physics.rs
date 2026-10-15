@@ -45,12 +45,13 @@ impl MmdModel {
             &bone_names,
             &bone_positions,
         );
-        let synthesized_colliders = crate::physics::body_collider_synthesis::apply_body_collider_fill(
-            fill_plan,
-            &self.rigid_bodies,
-            config.auto_upper_body_colliders,
-            config.auto_lower_body_colliders,
-        );
+        let synthesized_colliders =
+            crate::physics::body_collider_synthesis::apply_body_collider_fill(
+                fill_plan,
+                &self.rigid_bodies,
+                config.auto_upper_body_colliders,
+                config.auto_lower_body_colliders,
+            );
         let all_rigid_bodies: Vec<mmd::pmx::rigid_body::RigidBody> =
             if synthesized_colliders.is_empty() {
                 self.rigid_bodies.clone()
@@ -80,11 +81,21 @@ impl MmdModel {
                 .collect()
         };
 
-        physics.build_physics_with_bone_names(
+        // 游戏验收前仅显式实验入口启用；没有网格上下文的旧入口保持原行为。
+        let hair_plan = if std::env::var("MMD_HAIR_COLLIDER_COMPAT").is_ok_and(|v| v == "geometry")
+        {
+            Some(crate::physics::hair_collision_proxies::build_hair_collision_proxies(self))
+        } else {
+            None
+        };
+        physics.build_physics_with_proxies(
             &all_rigid_bodies,
             &all_joints,
             &bind_bone_transforms,
             &bone_names,
+            hair_plan
+                .as_ref()
+                .map_or(&[], |plan| plan.proxies.as_slice()),
         );
         physics.configure_embedded_body_contacts(&bone_names, &bone_parents);
         physics.set_tail_bone_names(&bone_names, &bone_parents);

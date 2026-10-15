@@ -1,6 +1,7 @@
 //! JNI 绑定层 - 与 Java 代码交互
 
 mod animation_handle;
+mod evaluation_profile;
 mod issue_diagnostics;
 mod material_sphere;
 mod model_handle;

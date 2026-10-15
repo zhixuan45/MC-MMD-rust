@@ -68,6 +68,7 @@ final class OpenGlModelRenderer {
                        Vector3f entityTrans, PoseStack deliverStack, int packedLight, RenderScene context) {
         Minecraft minecraft = Minecraft.getInstance();
         boolean isGuiScene = context != null && context.isInventoryScene();
+        target.currentProfileScene = RenderPerformanceProfiler.scene(context);
         LightingHelper.LightData light = isGuiScene
                 ? new LightingHelper.LightData(15, 15, 0, 1.0f)
                 : LightingHelper.sampleLight(entityIn, minecraft);
@@ -92,6 +93,7 @@ final class OpenGlModelRenderer {
 
         boolean firstPersonIndexReady = firstPersonView
                 && refreshFirstPersonIndices(target, nativeBackend, modelHandle, deliverStack);
+        target.currentTranslucentOrder = target.translucentOrders.get(isGuiScene, firstPersonIndexReady);
         // EBO 与子网格范围必须来自同一份布局；本帧刷新失败时一起回退。
         target.activeIndexBufferObject = firstPersonIndexReady
                 ? target.firstPersonIndexBufferObject
@@ -556,6 +558,8 @@ final class OpenGlModelRenderer {
     }
 
     private static void drawSubMeshes(OpenGlModelInstance target, Minecraft minecraft, ToonShaderBase eyeShader) {
+        long timer = RenderPerformanceProfiler.get().startTimer();
+        try {
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
@@ -574,12 +578,15 @@ final class OpenGlModelRenderer {
                         var material = target.mats[materialId];
                         eyeShader.setEyeMaterialMask(material == null ? 0.0f : material.eyeEmissionMaskMode());
                     }
-                }, target.translucentOrder,
+                }, target.currentTranslucentOrder,
                 TranslucentDrawOrder.Inputs.cpu(
                         target.posBuffer, target.vertexBufferObject, target.vertexCount, target.modelViewMatBuff,
                         target.projMatBuff, target.nativeUpdateRevisionValue(),
                         GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING) == target.firstPersonIndexBufferObject,
                         target.uv0Buffer, target.texcoordBufferObject, target.hasUvMorph));
+        } finally {
+            RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.bodySection, timer);
+        }
     }
 
     private static void clearStandardRenderState(OpenGlModelInstance target) {
@@ -710,12 +717,17 @@ final class OpenGlModelRenderer {
     }
 
     private static void renderOutlinePass(OpenGlModelInstance target) {
+        long timer = RenderPerformanceProfiler.get().startTimer();
+        try {
         OutlineRenderPass.draw(OpenGlModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
                 target.vertexBufferObject, target.normalBufferObject, target.texcoordBufferObject, target.subMeshDataBuf,
                 target.subMeshCount, target.indexElementSize, target.indexType,
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
                 (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
                 materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex);
+        } finally {
+            RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
+        }
     }
 
     private static void renderToonMainPass(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity,

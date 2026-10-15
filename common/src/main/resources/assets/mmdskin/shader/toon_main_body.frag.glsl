@@ -20,12 +20,20 @@ uniform int AlphaPass; // 0: 全部（阴影），1: 实心，2: 半透明
 uniform float EyeEmission;
 uniform float EyeMaterialMask;
 
+/* TOON_BATCH_MATERIALS */
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
 /* TOON_SURFACE_LIGHTING */
 
 void main() {
+#ifdef MMD_BATCH_MATERIALS
+    mmdLoadMaterial();
+    if (MmdBatchEnabled) mmdPrepareSphere(normalize(viewNormal));
+    vec4 texColor = mmdDiffuse(texCoord0);
+    if (mmdCull) discard;
+#else
     vec4 texColor = texture(Sampler0, texCoord0);
+#endif
     float finalAlpha = texColor.a * MaterialColor.a;
     if (finalAlpha < AlphaCutoff) {
         discard;
@@ -49,9 +57,17 @@ void main() {
     }
     if (SphereMode == 1 || SphereMode == 2) {
         // 纹理解码已经翻转 Y；视空间法线映射让球面效果随视角变化。
+#ifdef MMD_BATCH_MATERIALS
+        vec2 halfTexel = 0.5 / vec2(mmdSphereSize());
+#else
         vec2 halfTexel = 0.5 / vec2(textureSize(SphereTexture, 0));
+#endif
         vec2 sphereUv = clamp(normal.xy * 0.5 + 0.5, halfTexel, vec2(1.0) - halfTexel);
+#ifdef MMD_BATCH_MATERIALS
+        vec3 sphereColor = mmdSphere(sphereUv).rgb;
+#else
         vec3 sphereColor = texture(SphereTexture, sphereUv).rgb;
+#endif
         sphereColor = mix(vec3(1.0), sphereColor * SphereMul.rgb, SphereMul.a);
         sphereColor = clamp(sphereColor + (sphereColor - vec3(1.0)) * SphereAdd.a, 0.0, 1.0) + SphereAdd.rgb;
         // SPA 可叠加在黑色主贴图上，贴图 alpha 不改变 PMX 表面透明度。

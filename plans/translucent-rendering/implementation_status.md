@@ -1,5 +1,27 @@
 # 半透明渲染实施记录
 
+## 2026-10-16 多模型优化续作
+
+已实现输入精确匹配的透明准备缓存，以及 GL 4.3、自有 vanilla Toon、单纹理窗口条件下的 GPU 深度／裁剪／稳定排序／索引与材质行收集和 indirect 提交；该路径不回读位置或排序结果。其它程序与多窗口保留兼容路径。纸娃娃新增本帧世界姿态／完整 GPU 蒙皮输出的条件复用，同资产不可变 GPU 缓冲新增有预算的引用共享。实现范围、逐项对照开关、诊断口径和测试见 `../multi-model-performance/implementation_plan.md`。下文为此前各阶段记录，所述“尚未实现”仅对应当时状态；当前游戏内多人收益仍待测量。
+
+## 2026-10-15 本地基线后的提交碎片修复
+
+用户在 NeoForge 开发环境完成第一阶段采样后，授权优先修改透明提交。原始日志为 `neoforge/run/client/logs/2026-10-15-1.log.gz`；后续一轮从 21:31 开始记录到 `latest.log`。WORLD 样本每模型 render 调用约 10970 个透明候选、6164 次透明 draw，SUBMIT 均值约 6.08 ms；纸娃娃有相近的提交碎片。这是修复前的模型调用成本，不是游戏帧时间。
+
+- `TranslucentBatchPlan` 直接遍历现有排序 runs，构造连续纹理窗口、材质表和逐三角形材质行号。每窗口最多 8 张原始纹理，主贴图与球面贴图共同计数；超出只按原顺序切窗，不按材质重排，不改变排序和平局顺序。
+- `TranslucentBatchSubmission` 在模型排序器的生命周期内管理两个 SSBO。已知 vanilla Toon 的透明 pass 每窗口只执行一次索引绘制，用 fragment `gl_PrimitiveID` 读取材质行；保留当帧 EBO、alpha、材质 morph、SPH/SPA、眼部发光和单双面状态。纹理保留原大小、格式、过滤和 wrap。混合单双面材质由片元朝向过滤保持原剔除语义。
+- `ToonShaderBase` 只为自己的 vanilla 输出变体尝试 GL 4.3 shader，失败则重编译原 GLSL 330。光影包输出变体、外部程序、低能力设备、主纹理使用自定义 sampler 或超出 SSBO 上限时保留原提交。CPU/GPU 蒙皮和纸娃娃都复用公共入口；阴影、不透明、深度补写和描边保留原链路。支持 `-Dmmdskin.translucentBatch=false` 对照旧提交。
+- 批量路径恢复活动纹理、纹理、sampler、剔除状态、SSBO indexed range 与 generic binding，finally 关闭批量 shader 分支。模型释放清理新增内存和显存，资源统计包含新增表。
+- 新增 `BATCH_SUBMISSIONS`（命中的透明 pass 数）、`BATCH_RUNS`（批量处理的逻辑 run 数）、`BATCH_FALLBACK`（排序后使用旧提交的次数）。`DRAW_TRANSLUCENT` 保持实际 draw 口径，`RUNS` 保持逻辑 run 口径。SUBMIT 包含规划、材质求值、表上传及绘制；`UPLOAD_BYTES` 包含新增表。新增上传耗时计入 SUBMIT，不能只看原 UPLOAD 阶段。汇总器接受历史日志并输出新指标。
+
+验证：177 项 common 测试通过，Fabric/NeoForge 编译通过。Windows 真实 OpenGL 的 `BatchGlProbe` 对比原 GLSL 330 与新程序：36 个逻辑 run、10 张主纹理及 2 张球面纹理切为 6 次 draw，所有像素通道差异不超过 1/255。覆盖共享顶点跨材质、SPH/SPA、morph、眼部发光、纹理溢出、正反面剔除和 winding、完整生产入口颜色/深度、状态恢复、回退及重复清理。原 CPU/GPU 输入缓存与排序、稳定平局、异常恢复和 GPU timer 生命周期探针通过。探针未绘制用户完整模型，不代表游戏性能或光影包画面已验收。
+
+最终本地 `:common:test :fabric:remapJar :neoforge:shadowJar --offline -x :prepareNativeResources` 打包通过，两个发布 Jar 均包含新增批量 class、shader 和现有 Windows native；没有构建或验证工作区中独立进行的 Rust/物理修改。最终 class 输出再次通过 Windows GL 探针。日志汇总器 5 项测试通过，包括新增批量计数和历史日志兼容；Windows 沙箱的临时目录权限问题通过在沙箱外运行同一测试命令解决。变更通过 Git diff 空白检查。
+
+未实现设备接口抽取、GPU 排序或取消 GPU 位置回读，也未修改纸娃娃独立动画实例。纸娃娃后续方案见 `paperdoll_optimization.md`。重启开发客户端后先关闭纸娃娃，核对 WORLD 的 `BATCH_SUBMISSIONS > 0`、实际 draw 与 SUBMIT；再开启纸娃娃单独对照。保持模型、Toon、相机与分辨率，观察发丝、睫毛、透明服饰、单双面、眼部发光和描边。
+
+## 第一阶段首次交付记录（历史）
+
 2026-10-15，代码基线 `60d24e6`。用户授权审查通过后下发多个 Luna 子代理开始实现；已由四个 Luna 子代理实施，主代理审查、修复并验证。初始工作树干净，未修改物理、JNI、贴图或 shader。
 
 ## 审查结论与阶段边界

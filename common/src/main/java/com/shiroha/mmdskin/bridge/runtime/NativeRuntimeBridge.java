@@ -22,6 +22,24 @@ public final class NativeRuntimeBridge implements
         NativeScenePort,
         PlatformCapabilityPort {
     private static final Logger logger = LogManager.getLogger();
+    private static volatile boolean evaluationProfilingAvailable = true;
+
+    @Override
+    public boolean updateModelProfiled(long handle, float delta, boolean cpuSkinning, ByteBuffer output) {
+        if (!evaluationProfilingAvailable) return false;
+        try {
+            if (!nativeFunc().UpdateModelProfiled(handle, delta, cpuSkinning, output)) return false;
+            NativePoseInputs.changed(handle);
+            return true;
+        } catch (UnsatisfiedLinkError missing) {
+            evaluationProfilingAvailable = false;
+            logger.info("当前原生库未提供内部求值计时，继续使用兼容更新路径");
+            return false;
+        }
+    }
+
+    @Override public long poseInputRevision(long handle) { return NativePoseInputs.revision(handle); }
+    @Override public boolean hasExternalPoseInput(long handle) { return NativePoseInputs.hasExternalPose(handle); }
 
     private NativeFunc nativeFunc() {
         return NativeFunc.GetInst();
@@ -32,6 +50,7 @@ public final class NativeRuntimeBridge implements
         if (physicsConfig == null) {
             throw new IllegalArgumentException("physicsConfig cannot be null");
         }
+        NativePoseInputs.configurationChanged();
         try {
             nativeFunc().SetPhysicsConfig(
                     physicsConfig.enabled(),
@@ -66,11 +85,13 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public boolean setLayerBoneMask(long modelHandle, int layer, String rootBoneName) {
+        NativePoseInputs.changed(modelHandle);
         return nativeFunc().SetLayerBoneMask(modelHandle, layer, rootBoneName);
     }
 
     @Override
     public boolean setLayerBoneExclude(long modelHandle, int layer, String rootBoneName) {
+        NativePoseInputs.changed(modelHandle);
         return nativeFunc().SetLayerBoneExclude(modelHandle, layer, rootBoneName);
     }
 
@@ -81,41 +102,49 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public void changeModelAnimation(long modelHandle, long animationHandle, long layer) {
+        NativePoseInputs.animationChanged(modelHandle, layer);
         nativeFunc().ChangeModelAnim(modelHandle, animationHandle, layer);
     }
 
     @Override
     public void transitionLayerTo(long modelHandle, long layer, long animationHandle, float transitionTime) {
+        NativePoseInputs.animationChanged(modelHandle, layer);
         nativeFunc().TransitionLayerTo(modelHandle, layer, animationHandle, transitionTime);
     }
 
     @Override
     public void setLayerLoop(long modelHandle, long layer, boolean loop) {
+        NativePoseInputs.assign(modelHandle, "loop." + layer, loop ? 1 : 0);
         nativeFunc().SetLayerLoop(modelHandle, layer, loop);
     }
 
     @Override
     public void setLayerWeight(long modelHandle, long layer, float weight) {
+        NativePoseInputs.assign(modelHandle, "weight." + layer, NativePoseInputs.bits(weight));
         nativeFunc().SetLayerWeight(modelHandle, layer, weight);
     }
 
     @Override
     public void resetModelPhysics(long modelHandle) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().ResetModelPhysics(modelHandle);
     }
 
     @Override
     public void setPhysicsEnabled(long modelHandle, boolean enabled) {
+        NativePoseInputs.assign(modelHandle, "physics", enabled ? 1 : 0);
         nativeFunc().SetPhysicsEnabled(modelHandle, enabled);
     }
 
     @Override
     public void updateModel(long modelHandle, float deltaTime) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().UpdateModel(modelHandle, deltaTime);
     }
 
     @Override
     public void updateAnimationOnly(long modelHandle, float deltaTime) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().UpdateAnimationOnly(modelHandle, deltaTime);
     }
 
@@ -160,6 +189,7 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public boolean setTaczArmTargets(long modelHandle, float[] columnMajorMatrices, int validMask) {
+        NativePoseInputs.externalPose(modelHandle);
         if (!isValidTaczArmTargetPacket(columnMajorMatrices, validMask)) {
             // Java 前置校验失败也要清掉上一帧尚未消费的目标。
             clearTaczArmTargets(modelHandle);
@@ -184,6 +214,7 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public void clearTaczArmTargets(long modelHandle) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().ClearTaczArmTargets(modelHandle);
     }
 
@@ -205,6 +236,7 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public void setFirstPersonMode(long modelHandle, boolean enabled) {
+        NativePoseInputs.assign(modelHandle, "firstPerson", enabled ? 1 : 0);
         nativeFunc().SetFirstPersonMode(modelHandle, enabled);
     }
 
@@ -220,16 +252,19 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public void applyVrTrackingInput(long modelHandle, float[] trackingData) {
+        NativePoseInputs.externalPose(modelHandle);
         nativeFunc().ApplyVRTrackingInput(modelHandle, trackingData);
     }
 
     @Override
     public void setVrEnabled(long modelHandle, boolean enabled) {
+        NativePoseInputs.assign(modelHandle, "vr", enabled ? 1 : 0);
         nativeFunc().SetVREnabled(modelHandle, enabled);
     }
 
     @Override
     public void setVrIkParams(long modelHandle, float armIkStrength) {
+        NativePoseInputs.assign(modelHandle, "vrStrength", NativePoseInputs.bits(armIkStrength));
         nativeFunc().SetVRIKParams(modelHandle, armIkStrength);
     }
 
@@ -245,17 +280,20 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public void setMaterialVisible(long modelHandle, int materialIndex, boolean visible) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().SetMaterialVisible(modelHandle, materialIndex, visible);
     }
 
     @Override
     public void setAllMaterialsVisible(long modelHandle, boolean visible) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().SetAllMaterialsVisible(modelHandle, visible);
     }
 
     @Override
     public void deleteModel(long modelHandle) {
         nativeFunc().DeleteModel(modelHandle);
+        NativePoseInputs.forget(modelHandle);
     }
 
     @Override
@@ -510,21 +548,25 @@ public final class NativeRuntimeBridge implements
 
     @Override
     public void resetAllMorphs(long modelHandle) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().ResetAllMorphs(modelHandle);
     }
 
     @Override
     public void setMorphWeight(long modelHandle, int morphIndex, float weight) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().SetMorphWeight(modelHandle, morphIndex, weight);
     }
 
     @Override
     public void syncGpuMorphWeights(long modelHandle) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().SyncGpuMorphWeights(modelHandle);
     }
 
     @Override
     public int applyVpdMorph(long modelHandle, String filePath) {
+        NativePoseInputs.changed(modelHandle);
         return nativeFunc().ApplyVpdMorph(modelHandle, filePath);
     }
 
@@ -532,6 +574,7 @@ public final class NativeRuntimeBridge implements
     public boolean setBoneOverride(long modelHandle, int boneIndex,
                                    float tx, float ty, float tz,
                                    float qx, float qy, float qz, float qw) {
+        NativePoseInputs.externalPose(modelHandle);
         return nativeFunc().SetBoneOverride(modelHandle, boneIndex, tx, ty, tz, qx, qy, qz, qw);
     }
 
@@ -539,61 +582,73 @@ public final class NativeRuntimeBridge implements
     public boolean setBoneOverrideByName(long modelHandle, String boneName,
                                          float tx, float ty, float tz,
                                          float qx, float qy, float qz, float qw) {
+        NativePoseInputs.externalPose(modelHandle);
         return nativeFunc().SetBoneOverrideByName(modelHandle, boneName, tx, ty, tz, qx, qy, qz, qw);
     }
 
     @Override
     public void clearBoneOverrides(long modelHandle) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().ClearBoneOverrides(modelHandle);
     }
 
     @Override
     public int setBoneOverrideBatch(long modelHandle, int[] boneIndices, float[] transforms) {
+        NativePoseInputs.externalPose(modelHandle);
         return nativeFunc().SetBoneOverrideBatch(modelHandle, boneIndices, transforms);
     }
 
     @Override
     public void setExternalIkOverride(long modelHandle, String ikName, boolean enabled) {
+        NativePoseInputs.externalPose(modelHandle);
         nativeFunc().SetExternalIkOverride(modelHandle, ikName, enabled);
     }
 
     @Override
     public void clearExternalIkOverrides(long modelHandle) {
+        NativePoseInputs.changed(modelHandle);
         nativeFunc().ClearExternalIkOverrides(modelHandle);
     }
 
     @Override
     public void setHeadAngle(long modelHandle, float x, float y, float z, boolean worldSpace) {
+        NativePoseInputs.assign(modelHandle, "head", NativePoseInputs.bits(x), NativePoseInputs.bits(y), NativePoseInputs.bits(z), worldSpace ? 1 : 0);
         nativeFunc().SetHeadAngle(modelHandle, x, y, z, worldSpace);
     }
 
     @Override
     public void setModelPositionAndYaw(long modelHandle, float x, float y, float z, float yawRadians) {
+        NativePoseInputs.assign(modelHandle, "root", NativePoseInputs.bits(x), NativePoseInputs.bits(y), NativePoseInputs.bits(z), NativePoseInputs.bits(yawRadians));
         nativeFunc().SetModelPositionAndYaw(modelHandle, x, y, z, yawRadians);
     }
 
     @Override
     public void setAutoBlinkEnabled(long modelHandle, boolean enabled) {
+        NativePoseInputs.assign(modelHandle, "blink", enabled ? 1 : 0);
         nativeFunc().SetAutoBlinkEnabled(modelHandle, enabled);
     }
 
     @Override
     public void setEyeTrackingEnabled(long modelHandle, boolean enabled) {
+        NativePoseInputs.assign(modelHandle, "eyeTracking", enabled ? 1 : 0);
         nativeFunc().SetEyeTrackingEnabled(modelHandle, enabled);
     }
 
     @Override
     public void setEyeMaxAngle(long modelHandle, float maxAngle) {
+        NativePoseInputs.assign(modelHandle, "eyeMax", NativePoseInputs.bits(maxAngle));
         nativeFunc().SetEyeMaxAngle(modelHandle, maxAngle);
     }
 
     @Override
     public void setTailPhysicsOptions(long modelHandle, boolean idleLift, boolean movementBoost) {
+        NativePoseInputs.assign(modelHandle, "tail", idleLift ? 1 : 0, movementBoost ? 1 : 0);
         nativeFunc().SetTailPhysicsOptions(modelHandle, idleLift, movementBoost);
     }
 
     @Override
     public void setEyeAngle(long modelHandle, float eyeX, float eyeY) {
+        NativePoseInputs.assign(modelHandle, "eye", NativePoseInputs.bits(eyeX), NativePoseInputs.bits(eyeY));
         nativeFunc().SetEyeAngle(modelHandle, eyeX, eyeY);
     }
 }

@@ -1,5 +1,11 @@
 # 透明渲染性能诊断工具
 
+## 有序批量提交复验（Windows）
+
+先用 JDK 21 执行 `./gradlew.bat --offline -I tools/translucent-performance/validation.gradle :common:classes :common:writeTranslucentProbeClasspath`，再运行 `tools/translucent-performance/run-batch-probe.ps1`。探针比较原 GLSL 330 Toon 与材质表程序的颜色、生产入口的深度，检查纹理窗口、共享顶点跨材质、球面/morph/眼部发光、单双面、回退及状态/资源恢复；然后执行原有排序缓存与 GPU timer 探针。若仅验证 Java 且需保留已经生成的 native，可给 Gradle 加 `-x :prepareNativeResources`；这不会编译 Rust，不能代表验证了未构建的原生改动。
+
+vanilla Toon 的 GL 4.3 路径新增 `BATCH_SUBMISSIONS`、`BATCH_RUNS`、`BATCH_FALLBACK`。`RUNS` 是排序后的逻辑分段，`DRAW_TRANSLUCENT` 是实际 draw，二者不再要求相等。每窗口最多绑定 8 张主/球面纹理；超出按原透明顺序切窗。SUBMIT 包含窗口规划、材质表构造/上传和绘制，新增表字节计入 `UPLOAD_BYTES`。旧日志缺少新计数时汇总为零。可用 JVM 参数 `-Dmmdskin.translucentBatch=false` 强制旧提交作为对照，重启客户端后生效。
+
 本目录包含日志汇总器和可复验探针源码，不包含第三方模型、生成图片或采样结果。性能/资产历史与限制见 [`doc/archive/handoffs/TRANSLUCENT_PERFORMANCE_HANDOFF.md`](../../doc/archive/handoffs/TRANSLUCENT_PERFORMANCE_HANDOFF.md)。旧报告中的 FPS 都是用户给出的约数，不能混成同一 MMD 路径的前后数据。
 
 ## 汇总游戏日志
@@ -51,6 +57,21 @@ phase / 预热时长 / 采样时长 / 重复轮次：
 ```
 
 ## 探针
+
+2026-10-16 增加多模型优化验证：Windows 下先用 JDK 21 运行下列任务，再执行 `./tools/translucent-performance/run-batch-probe.ps1`。脚本使用本地已有的 Windows LWJGL natives，不下载依赖。GL 上下文不可用会明确失败，不跳过验证。
+
+```powershell
+./gradlew.bat --offline -I tools/translucent-performance/validation.gradle `
+  :common:test :common:writeTranslucentProbeClasspath -x :prepareNativeResources
+./tools/translucent-performance/run-batch-probe.ps1
+```
+
+- `BatchGlProbe` 对照旧 CPU 提交、CPU 合批及 GPU 间接合批的颜色与深度，保留多材质、共享顶点、球面／morph／眼发光、纹理溢出、剔除、回退和 GL 状态验证。
+- `GpuPreparationGlProbe` 以 CPU 为 oracle，直接回读探针的 GPU 索引、材质行与 command，25 组用例覆盖裁剪、全部裁掉、平局、NaN／正负零、128 项 tile 边界、容量变化、SSBO range／program 恢复与清理。只有验证探针读取这些结果，生产快速路径没有结果回读。
+- `StaticBufferGlProbe` 验证不可变缓冲的内容去重、不同语义隔离、只读视图、引用／记账转移、最后释放、重新获取、开关和 GL 状态，并在独立 JVM 以预算 0 验证独立分配回退。
+- 原 `CacheGlProbe` 和 `GpuTimerGlProbe` 继续覆盖兼容准备、CPU／GPU 位置来源、缓存失效、动态索引与查询所有权。
+
+游戏中新增 `GPU_PREPARE`（GPU 准备次数）、`PREPARED_REUSE`（透明准备结果复用次数）；GPU 分支仍可能首次读取原始索引或每调用读取第一人称动态 EBO，不能要求所有 `READBACK_CALLS` 为 0。分场景实例／求值／启用物理求值／复用统计在 `[MMD性能]` 中，汇总器当前只处理 `[MMD透明性能]`。纯 GPU 排序没有独立计时，不能把兼容路径的 CPU `SORT` 降低解释为零 GPU 排序成本。逐项启动开关、实施范围和 1／2／4／8 实体测试矩阵见 `plans/multi-model-performance/implementation_plan.md`。
 
 `SortBenchmark.java` 是独立 JDK 微基准；它比较导出的静态键排序结果，不包含 Minecraft 线程竞争、GPU 同步、材质提交或完整画面，也不是游戏收益证据。`audit_assets.py` 和 `export_sort_keys.py` 需要 NumPy/Pillow，只读资产并输出静态姿势模拟；这些依赖只用于原有资产工具，不用于日志汇总器。
 

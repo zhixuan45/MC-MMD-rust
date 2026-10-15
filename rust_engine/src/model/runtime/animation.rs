@@ -562,6 +562,7 @@ impl MmdModel {
         cpu_skinning: bool,
         targets: Option<TaczArmTargets>,
     ) -> TaczArmApplyOutcome {
+        let animation_timer = crate::evaluation_profile::timer();
         self.with_vrm_runtime_state(|model, runtime_state| {
             runtime_state.apply_inputs(model);
         });
@@ -593,6 +594,8 @@ impl MmdModel {
             self.sync_gpu_uv_morph_weights_from_cache();
         }
 
+        crate::evaluation_profile::stage(animation_timer, 0);
+        let ik_timer = crate::evaluation_profile::timer();
         self.update_node_animation(false);
 
         if self.vr_enabled {
@@ -617,6 +620,8 @@ impl MmdModel {
             runtime_state.process_post_ik(model, elapsed);
         });
 
+        crate::evaluation_profile::stage(ik_timer, 1);
+        let physics_timer = crate::evaluation_profile::timer();
         let physics_enabled = !self.is_vrm && self.physics_enabled && self.physics.is_some();
         if physics_enabled {
             self.update_physics(elapsed);
@@ -624,6 +629,8 @@ impl MmdModel {
             self.end_physics_update();
         }
 
+        crate::evaluation_profile::stage(physics_timer, 2);
+        let finishing_timer = crate::evaluation_profile::timer();
         // 第一人称 TaCZ 真实锚点必须晚于物理与 VR 分支，避免手臂在同帧被再次覆盖。
         // 第三人称不提交骨骼目标，完整保留本帧 VMD 姿态。
         let mut tacz_outcome = TaczArmApplyOutcome::default();
@@ -645,6 +652,8 @@ impl MmdModel {
 
         self.apply_transition_blend(elapsed);
 
+        crate::evaluation_profile::stage(finishing_timer, 0);
+        let skinning_timer = crate::evaluation_profile::timer();
         if cpu_skinning {
             self.update();
         } else if !self.debug_logged && physics_enabled {
@@ -663,6 +672,7 @@ impl MmdModel {
             }
             */
         }
+        crate::evaluation_profile::stage(skinning_timer, 3);
         tacz_outcome
     }
 }

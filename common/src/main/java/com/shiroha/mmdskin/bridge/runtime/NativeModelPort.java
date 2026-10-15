@@ -3,6 +3,9 @@ package com.shiroha.mmdskin.bridge.runtime;
 
 /** 文件职责：定义模型运行时相关的 native 能力边界。 */
 public interface NativeModelPort {
+    /** Long.MIN_VALUE means that the implementation cannot observe all pose mutations. */
+    default long poseInputRevision(long modelHandle) { return Long.MIN_VALUE; }
+    default boolean hasExternalPoseInput(long modelHandle) { return true; }
 
     boolean setLayerBoneMask(long modelHandle, int layer, String rootBoneName);
 

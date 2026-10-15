@@ -1,6 +1,7 @@
 //! MMD 模型运行时管理
 
 mod first_person_mesh;
+pub mod hair_geometry;
 pub(crate) mod hand_attachment;
 mod loader;
 mod material;

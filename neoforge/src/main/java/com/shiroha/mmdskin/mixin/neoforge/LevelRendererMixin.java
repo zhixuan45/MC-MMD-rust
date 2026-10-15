@@ -10,12 +10,34 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.core.BlockPos;
+import org.joml.Matrix4f;
+import com.shiroha.mmdskin.player.render.PlayerWorldEvaluationPrepass;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /** LevelRenderer Mixin，用于在 MMD 第一人称与 VR 场景下决定本地玩家是否强制渲染。 */
 @Mixin(LevelRenderer.class)
 public abstract class LevelRendererMixin {
+    @Shadow private Frustum cullingFrustum;
+    @Shadow private Frustum capturedFrustum;
+    @Shadow public abstract boolean isSectionCompiled(BlockPos pos);
+
+    @Inject(method = "renderLevel", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/client/multiplayer/ClientLevel;entitiesForRendering()Ljava/lang/Iterable;", ordinal = 0), require = 0)
+    private void mmdskin$prepareIndependentModels(DeltaTracker delta, boolean blockOutline, Camera camera,
+            GameRenderer renderer, LightTexture light, Matrix4f view, Matrix4f projection, CallbackInfo ci) {
+        if (capturedFrustum == null) PlayerWorldEvaluationPrepass.prepare(camera, cullingFrustum,
+                delta.getGameTimeDeltaPartialTick(false), this::isSectionCompiled, YsmCompat::isYsmModelActive);
+    }
+
 
     @Redirect(
         method = "renderLevel",

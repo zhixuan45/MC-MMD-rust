@@ -8,6 +8,9 @@ public interface ModelRepositoryPort {
 
     ManagedModel acquire(ModelRequestKey requestKey);
 
+    /** Peek without scheduling a load or finalizing GPU resources. */
+    default ManagedModel peek(ModelRequestKey requestKey) { return null; }
+
     boolean isPending(ModelRequestKey requestKey);
 
     void reloadModel(String modelName);

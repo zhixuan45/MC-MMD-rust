@@ -19,6 +19,17 @@ def row(model_id=1, model_name="杏辞", scene="WORLD", samples=10, median=100, 
 
 
 class SummarizeTests(unittest.TestCase):
+    def test_batch_metrics_accept_historical_logs_and_keep_new_counts(self):
+        old = row()
+        for key in summarize.OPTIONAL_COUNTERS:
+            del old["counters"][key]
+        self.assertEqual(summarize.validate(old)["counters"]["BATCH_SUBMISSIONS"], 0)
+        new = row()
+        self.assertEqual(summarize.validate(new)["counters"]["BATCH_RUNS"], 20)
+        new["counters"]["BATCH_RUNS"] = -1
+        with self.assertRaisesRegex(summarize.RecordError, "BATCH_RUNS"):
+            summarize.validate(new)
+
     def test_phase_chinese_models_scenes_weighting_and_latest_window(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "游戏.log"

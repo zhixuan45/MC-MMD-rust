@@ -7,6 +7,7 @@ import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.render.backend.BaseModelInstance;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
+import com.shiroha.mmdskin.render.material.ViewTranslucentOrders;
 import com.shiroha.mmdskin.render.material.MaterialTextureLoader;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.ShaderConstants;
@@ -29,15 +30,20 @@ import org.lwjgl.system.MemoryUtil;
 
 /** 文件职责：承载 GPU skinning 模型实例状态。 */
 public class GpuSkinningModelInstance extends BaseModelInstance {
-    final TranslucentDrawOrder translucentOrder = new TranslucentDrawOrder();
+    final ViewTranslucentOrders translucentOrders = new ViewTranslucentOrders();
+    TranslucentDrawOrder currentTranslucentOrder;
+    com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.Scene currentProfileScene;
     static volatile SkinningComputeShader computeShader;
     static volatile ToonShaderCpu toonShaderCpu;
     static final ToonConfig toonConfig = ToonConfig.getInstance();
 
+    final List<ImmutableGpuBufferPool.Lease> staticBuffers = new ArrayList<>();
     int vertexCount;
 
     int vertexArrayObject;
     int indexBufferObject;
+    ByteBuffer originalIndices;
+    long firstPersonIndexRevision;
     int firstPersonIndexBufferObject;
     ByteBuffer firstPersonIndexBuffer;
     ByteBuffer firstPersonMatrixBuffer;
@@ -193,6 +199,7 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
         ModelMaterial lightMapMaterial = null;
         ModelMaterial[] mats = null;
         List<String> textureKeys = new ArrayList<>();
+        List<ImmutableGpuBufferPool.Lease> staticBuffers = new ArrayList<>();
 
         try {
             nativeBackend.initGpuSkinningData(model);
@@ -206,14 +213,6 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             }
 
             vao = GL46C.glGenVertexArrays();
-            indexVbo = GL46C.glGenBuffers();
-            posVbo = GL46C.glGenBuffers();
-            norVbo = GL46C.glGenBuffers();
-            uv0Vbo = GL46C.glGenBuffers();
-            boneIdxVbo = GL46C.glGenBuffers();
-            boneWgtVbo = GL46C.glGenBuffers();
-            colorVbo = GL46C.glGenBuffers();
-            uv1Vbo = GL46C.glGenBuffers();
             uv2Vbo = GL46C.glGenBuffers();
 
             GL46C.glBindVertexArray(vao);
@@ -225,8 +224,9 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             ByteBuffer indexBuffer = ByteBuffer.allocateDirect(indexSize);
             nativeBackend.copyNativeDataToBuffer(indexBuffer, indexData, indexSize);
             indexBuffer.position(0);
+            var indexLease = share(staticBuffers, "index" + indexElementSize, indexBuffer);
+            indexVbo = indexLease.buffer();
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, indexVbo);
-            GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL46C.GL_STATIC_DRAW);
 
             long firstPersonIndexCount = nativeBackend.getFirstPersonIndexCount(model);
             if (firstPersonIndexCount > 0) {
@@ -252,41 +252,40 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             if (nativeBackend.copyOriginalPositionsToBuffer(model, posBuffer, vertexCount) == 0) {
                 logger.warn("Failed to copy original vertex positions");
             }
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, posVbo);
-            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, posBuffer, GL46C.GL_STATIC_DRAW);
+            var posBufferLease = share(staticBuffers, "posBuffer", posBuffer);
+            posVbo = posBufferLease.buffer();
+            posBuffer = posBufferLease.data();
 
             ByteBuffer norBuffer = ByteBuffer.allocateDirect(vertexCount * 12);
             norBuffer.order(ByteOrder.LITTLE_ENDIAN);
             if (nativeBackend.copyOriginalNormalsToBuffer(model, norBuffer, vertexCount) == 0) {
                 logger.warn("Failed to copy original normals");
             }
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, norVbo);
-            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, norBuffer, GL46C.GL_STATIC_DRAW);
+            var norBufferLease = share(staticBuffers, "norBuffer", norBuffer);
+            norVbo = norBufferLease.buffer();
+            norBuffer = norBufferLease.data();
 
             ByteBuffer uv0Buffer = ByteBuffer.allocateDirect(vertexCount * 8);
             uv0Buffer.order(ByteOrder.LITTLE_ENDIAN);
             long uvData = nativeBackend.getUvDataAddress(model);
             nativeBackend.copyNativeDataToBuffer(uv0Buffer, uvData, vertexCount * 8);
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, uv0Vbo);
-            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, uv0Buffer, GL46C.GL_STATIC_DRAW);
+            var uv0BufferLease = share(staticBuffers, "uv0Buffer", uv0Buffer);
+            uv0Vbo = uv0BufferLease.buffer();
+            uv0Buffer = uv0BufferLease.data();
 
             ByteBuffer boneIndicesByteBuffer = ByteBuffer.allocateDirect(vertexCount * 16);
             boneIndicesByteBuffer.order(ByteOrder.LITTLE_ENDIAN);
             if (nativeBackend.copyBoneIndicesToBuffer(model, boneIndicesByteBuffer, vertexCount) == 0) {
                 logger.warn("Failed to copy bone indices");
             }
-            IntBuffer boneIndicesBuffer = boneIndicesByteBuffer.asIntBuffer();
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, boneIdxVbo);
-            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, boneIndicesBuffer, GL46C.GL_STATIC_DRAW);
+            boneIdxVbo = share(staticBuffers, "boneIndicesByteBuffer", boneIndicesByteBuffer).buffer();
 
             ByteBuffer boneWeightsByteBuffer = ByteBuffer.allocateDirect(vertexCount * 16);
             boneWeightsByteBuffer.order(ByteOrder.LITTLE_ENDIAN);
             if (nativeBackend.copyBoneWeightsToBuffer(model, boneWeightsByteBuffer, vertexCount) == 0) {
                 logger.warn("Failed to copy bone weights");
             }
-            FloatBuffer boneWeightsFloatBuffer = boneWeightsByteBuffer.asFloatBuffer();
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, boneWgtVbo);
-            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, boneWeightsFloatBuffer, GL46C.GL_STATIC_DRAW);
+            boneWgtVbo = share(staticBuffers, "boneWeightsByteBuffer", boneWeightsByteBuffer).buffer();
 
             ByteBuffer colorBuffer = ByteBuffer.allocateDirect(vertexCount * 16);
             colorBuffer.order(ByteOrder.LITTLE_ENDIAN);
@@ -307,14 +306,16 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             // Iris 独立使用尾部坐标，不改变原版/自定义 shader 的 UV1。
             uv1Buffer.putInt(0).putInt(10);
             uv1Buffer.flip();
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, uv1Vbo);
-            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, uv1Buffer, GL46C.GL_STATIC_DRAW);
+            var uv1BufferLease = share(staticBuffers, "uv1Buffer", uv1Buffer);
+            uv1Vbo = uv1BufferLease.buffer();
+            uv1Buffer = uv1BufferLease.data();
 
             ByteBuffer uv2Buffer = ByteBuffer.allocateDirect(vertexCount * 8);
             uv2Buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, colorVbo);
-            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, colorBuffer, GL46C.GL_STATIC_DRAW);
+            var colorBufferLease = share(staticBuffers, "colorBuffer", colorBuffer);
+            colorVbo = colorBufferLease.buffer();
+            colorBuffer = colorBufferLease.data();
 
             GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, uv2Vbo);
             GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, vertexCount * 8, GL46C.GL_DYNAMIC_DRAW);
@@ -370,6 +371,15 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             if (morphCount > 0) {
                 morphWeightsBuffer = MemoryUtil.memAllocFloat(morphCount);
                 morphBuffers = SkinningComputeShader.createMorphBuffers(morphCount);
+                int previousOffset = morphBuffers[0];
+                morphBuffers[0] = 0;
+                GL46C.glDeleteBuffers(previousOffset);
+                long size = nativeBackend.getGpuMorphOffsetsSize(model);
+                if (size <= 0 || size > Integer.MAX_VALUE) throw new IllegalStateException("Invalid vertex morph size: " + size);
+                ByteBuffer offsets = ByteBuffer.allocateDirect((int) size).order(ByteOrder.nativeOrder());
+                nativeBackend.copyGpuMorphOffsetsToBuffer(model, offsets);
+                offsets.clear();
+                morphBuffers[0] = share(staticBuffers, "vertexMorphOffsets", offsets).buffer();
             }
 
             nativeBackend.initGpuUvMorphData(model);
@@ -377,6 +387,15 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             if (uvMorphCount > 0) {
                 uvMorphWeightsBuf = MemoryUtil.memAllocFloat(uvMorphCount);
                 uvMorphBuffers = SkinningComputeShader.createUvMorphBuffers(uvMorphCount);
+                int previousOffset = uvMorphBuffers[0];
+                uvMorphBuffers[0] = 0;
+                GL46C.glDeleteBuffers(previousOffset);
+                long size = nativeBackend.getGpuUvMorphOffsetsSize(model);
+                if (size <= 0 || size > Integer.MAX_VALUE) throw new IllegalStateException("Invalid UV morph size: " + size);
+                ByteBuffer offsets = ByteBuffer.allocateDirect((int) size).order(ByteOrder.nativeOrder());
+                nativeBackend.copyGpuUvMorphOffsetsToBuffer(model, offsets);
+                offsets.clear();
+                uvMorphBuffers[0] = share(staticBuffers, "uvMorphOffsets", offsets).buffer();
                 skinnedUvBuf = SkinningComputeShader.createSkinnedUvBuffer(vertexCount);
             } else {
                 skinnedUvBuf = SkinningComputeShader.createSkinnedUvBuffer(vertexCount);
@@ -390,12 +409,16 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             }
 
             GpuSkinningModelInstance result = new GpuSkinningModelInstance();
+            result.staticBuffers.addAll(staticBuffers);
+            result.morphDataUploaded = true;
+            result.uvMorphDataUploaded = true;
             result.nativeRenderBackendPort = nativeBackend;
             result.model = model;
             result.modelDir = modelDir;
             result.vertexCount = vertexCount;
             result.vertexArrayObject = vao;
             result.indexBufferObject = indexVbo;
+            result.originalIndices = indexLease.data();
             result.firstPersonIndexBufferObject = firstPersonIndexVbo;
             result.firstPersonIndexBuffer = firstPersonIndexBuffer;
             result.firstPersonMatrixBuffer = firstPersonMatrixBuffer;
@@ -481,15 +504,8 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             logger.error("GPU skinning model creation failed, cleaning resources: {}", e.getMessage());
 
             if (vao > 0) GL46C.glDeleteVertexArrays(vao);
-            if (indexVbo > 0) GL46C.glDeleteBuffers(indexVbo);
             if (firstPersonIndexVbo > 0) GL46C.glDeleteBuffers(firstPersonIndexVbo);
-            if (posVbo > 0) GL46C.glDeleteBuffers(posVbo);
-            if (norVbo > 0) GL46C.glDeleteBuffers(norVbo);
-            if (uv0Vbo > 0) GL46C.glDeleteBuffers(uv0Vbo);
-            if (boneIdxVbo > 0) GL46C.glDeleteBuffers(boneIdxVbo);
-            if (boneWgtVbo > 0) GL46C.glDeleteBuffers(boneWgtVbo);
-            if (colorVbo > 0) GL46C.glDeleteBuffers(colorVbo);
-            if (uv1Vbo > 0) GL46C.glDeleteBuffers(uv1Vbo);
+            staticBuffers.forEach(ImmutableGpuBufferPool.Lease::close);
             if (uv2Vbo > 0) GL46C.glDeleteBuffers(uv2Vbo);
             if (outputBuffers != null) {
                 GL46C.glDeleteBuffers(outputBuffers[0]);
@@ -497,11 +513,9 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             }
             if (boneMatrixSsbo > 0) GL46C.glDeleteBuffers(boneMatrixSsbo);
             if (morphBuffers != null) {
-                GL46C.glDeleteBuffers(morphBuffers[0]);
                 GL46C.glDeleteBuffers(morphBuffers[1]);
             }
             if (uvMorphBuffers != null) {
-                GL46C.glDeleteBuffers(uvMorphBuffers[0]);
                 GL46C.glDeleteBuffers(uvMorphBuffers[1]);
             }
             if (skinnedUvBuf > 0) GL46C.glDeleteBuffers(skinnedUvBuf);
@@ -523,6 +537,15 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
             if (!textureKeys.isEmpty()) TextureRepository.releaseAll(textureKeys);
             return null;
         }
+    }
+
+    private static ImmutableGpuBufferPool.Lease share(List<ImmutableGpuBufferPool.Lease> leases,
+                                                       String kind, ByteBuffer data) {
+        // Native copy methods use absolute addresses; keep the complete immutable payload.
+        data.position(0);
+        var lease = ImmutableGpuBufferPool.acquire(kind, data);
+        leases.add(lease);
+        return lease;
     }
 
     private static boolean ensureComputeShaderInitialized() {
@@ -549,9 +572,18 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
     }
 
     @Override
+    protected boolean supportsPaperDollPoseReuse(boolean firstPerson) {
+        // With a dedicated view mesh, native material visibility still retains all full-body parts.
+        return !firstPerson || firstPersonIndexBufferObject > 0;
+    }
+
+    @Override
     protected void onUpdate(float deltaTime) {
         backendPort().updateAnimationOnly(model, deltaTime);
     }
+
+    @Override protected boolean usesCpuSkinning() { return false; }
+    @Override protected boolean supportsParallelEvaluation() { return true; }
 
     @Override
     protected void doRenderModel(Entity entityIn,

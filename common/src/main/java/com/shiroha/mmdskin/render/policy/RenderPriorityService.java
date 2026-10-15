@@ -23,7 +23,7 @@ public final class RenderPriorityService {
     private static final RenderPriorityService INSTANCE = new RenderPriorityService();
     private final RenderPerformanceConfig config = ConfigManagerRenderPerformanceConfig.get();
 
-    private final ConcurrentMap<Long, Long> lastAnimationUpdateFrameByModel = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Long, AnimationUpdateSchedule> animationSchedules = new ConcurrentHashMap<>();
     private final Set<UUID> prioritizedVisibleEntities = new HashSet<>();
     private final Set<UUID> prioritizedPhysicsEntities = new HashSet<>();
 
@@ -43,10 +43,6 @@ public final class RenderPriorityService {
         long nextFrameKey = computeFrameKey();
         if (nextFrameKey == currentFrameKey) {
             return;
-        }
-
-        if (currentFrameKey != Long.MIN_VALUE) {
-            RenderPerformanceProfiler.get().completeFrame(visibleModelsThisFrame, physicsModelsThisFrame);
         }
 
         currentFrameKey = nextFrameKey;
@@ -73,24 +69,11 @@ public final class RenderPriorityService {
     }
 
     public boolean shouldUpdateAnimation(long modelHandle, double distanceSq, boolean localPlayer) {
-        if (localPlayer) {
-            lastAnimationUpdateFrameByModel.put(modelHandle, currentFrameIndex);
-            return true;
-        }
-
-        int updateInterval = resolveAnimationUpdateInterval(distanceSq);
-        if (updateInterval <= 1) {
-            lastAnimationUpdateFrameByModel.put(modelHandle, currentFrameIndex);
-            return true;
-        }
-
-        Long lastFrame = lastAnimationUpdateFrameByModel.get(modelHandle);
-        if (lastFrame == null || currentFrameIndex - lastFrame >= updateInterval) {
-            lastAnimationUpdateFrameByModel.put(modelHandle, currentFrameIndex);
-            return true;
-        }
-
-        return false;
+        beginWorldFrame();
+        return animationSchedules.computeIfAbsent(modelHandle, ignored -> new AnimationUpdateSchedule()).due(
+                modelHandle, currentFrameIndex, distanceSq, localPlayer,
+                config.getAnimationLodMediumDistance(), config.getAnimationLodFarDistance(),
+                config.getAnimationLodMediumUpdateInterval(), config.getAnimationLodFarUpdateInterval());
     }
 
     public synchronized boolean shouldEnablePhysics(Entity entity, boolean localPlayer) {
@@ -118,30 +101,21 @@ public final class RenderPriorityService {
         return entity.distanceToSqr(cameraEntity);
     }
 
-    private int resolveAnimationUpdateInterval(double distanceSq) {
-        double mediumDistance = config.getAnimationLodMediumDistance();
-        double farDistance = config.getAnimationLodFarDistance();
-        double mediumSq = mediumDistance * mediumDistance;
-        double farSq = farDistance * farDistance;
-
-        if (distanceSq <= mediumSq) {
-            return 1;
-        }
-        if (distanceSq <= farSq) {
-            return config.getAnimationLodMediumUpdateInterval();
-        }
-        return config.getAnimationLodFarUpdateInterval();
-    }
-
     private long computeFrameKey() {
-        Minecraft minecraft = Minecraft.getInstance();
-        long gameTime = minecraft.level != null ? minecraft.level.getGameTime() : 0L;
-        float partialTick = minecraft.getTimer() != null ? minecraft.getTimer().getGameTimeDeltaPartialTick(false) : 0.0f;
-        long frameTimeBits = Float.floatToRawIntBits(partialTick) & 0xffffffffL;
-        return (gameTime << 32) ^ frameTimeBits;
+        return com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
     }
+
+    public synchronized void completeRenderFrame() {
+        boolean worldFrame = currentFrameKey == computeFrameKey();
+        RenderPerformanceProfiler.get().completeFrame(worldFrame ? visibleModelsThisFrame : 0,
+                worldFrame ? physicsModelsThisFrame : 0);
+    }
+
+    public void forgetModel(long handle) { animationSchedules.remove(handle); }
 
     private void rebuildPrioritySets() {
+        Set<UUID> previousVisible = new HashSet<>(prioritizedVisibleEntities);
+        Set<UUID> previousPhysics = new HashSet<>(prioritizedPhysicsEntities);
         prioritizedVisibleEntities.clear();
         prioritizedPhysicsEntities.clear();
         visibleModelsThisFrame = 0;
@@ -157,7 +131,7 @@ public final class RenderPriorityService {
         for (AbstractClientPlayer player : minecraft.level.players()) {
             if (shouldConsiderPlayer(player)) {
                 boolean localPlayer = minecraft.player != null && minecraft.player.getUUID().equals(player.getUUID());
-                candidates.add(new PrioritizedEntity(player, distanceSqToCamera(player, localPlayer), localPlayer));
+                candidates.add(prioritize(player, localPlayer, previousVisible));
             }
         }
 
@@ -169,19 +143,19 @@ public final class RenderPriorityService {
                         && MobReplacementService.isMaidEntity(living)
                         && MaidMMDModelManager.hasMMDModel(living.getUUID());
                 if (replacementModel != null || maidModel) {
-                    candidates.add(new PrioritizedEntity(living, distanceSqToCamera(living, false), false));
+                    candidates.add(prioritize(living, false, previousVisible));
                 }
             }
         }
 
         candidates.sort(Comparator
                 .comparing(PrioritizedEntity::localPlayer).reversed()
-                .thenComparingDouble(PrioritizedEntity::distanceSq));
+                .thenComparingDouble(PrioritizedEntity::score)
+                .thenComparing(candidate -> candidate.entity().getUUID()));
 
         int visibleCap = config.getMaxVisibleModelsPerFrame();
         int physicsCap = config.getMaxPhysicsModelsPerFrame();
         double physicsDistance = config.getPhysicsLodMaxDistance();
-        double physicsDistanceSq = physicsDistance * physicsDistance;
 
         for (PrioritizedEntity candidate : candidates) {
             Entity entity = candidate.entity();
@@ -197,7 +171,8 @@ public final class RenderPriorityService {
                 prioritizedPhysicsEntities.add(uuid);
                 continue;
             }
-            if (physicsDistance > 0.0d && candidate.distanceSq() > physicsDistanceSq) {
+            double boundary = physicsDistance * (AnimationUpdateSchedule.enabled() && previousPhysics.contains(uuid) ? 1.1 : 1.0);
+            if (physicsDistance > 0.0d && candidate.distanceSq() > boundary * boundary) {
                 continue;
             }
             if (physicsCap <= 0 || prioritizedPhysicsEntities.size() < physicsCap) {
@@ -207,6 +182,30 @@ public final class RenderPriorityService {
 
         visibleModelsThisFrame = prioritizedVisibleEntities.size();
         physicsModelsThisFrame = prioritizedPhysicsEntities.size();
+    }
+
+    private PrioritizedEntity prioritize(Entity entity, boolean local, Set<UUID> previous) {
+        double distance = distanceSqToCamera(entity, local);
+        double score = distance;
+        Minecraft minecraft = Minecraft.getInstance();
+        var camera = minecraft.gameRenderer.getMainCamera();
+        if (AnimationUpdateSchedule.enabled() && camera.isInitialized() && !local) {
+            var offset = entity.getBoundingBox().getCenter().subtract(camera.getPosition());
+            var forward = camera.getLookVector();
+            var left = camera.getLeftVector();
+            var up = camera.getUpVector();
+            // Extra margin covers ordinary custom meshes. Even very large models remain
+            // candidates: the approximation affects budgets, never hard visibility tests.
+            double radius = Math.max(2, entity.getBoundingBox().getSize() * .75);
+            double tangent = Math.tan(Math.toRadians(minecraft.options.fov().get()) * .5);
+            double aspect = (double) minecraft.getWindow().getWidth() / Math.max(1, minecraft.getWindow().getHeight());
+            score = ScreenPriority.score(distance,
+                    offset.x * left.x + offset.y * left.y + offset.z * left.z,
+                    offset.x * up.x + offset.y * up.y + offset.z * up.z,
+                    offset.x * forward.x + offset.y * forward.y + offset.z * forward.z,
+                    radius, tangent, aspect, previous.contains(entity.getUUID()));
+        }
+        return new PrioritizedEntity(entity, distance, local, score);
     }
 
     private boolean shouldConsiderPlayer(AbstractClientPlayer player) {
@@ -222,6 +221,6 @@ public final class RenderPriorityService {
                 && !UIConstants.DEFAULT_MODEL_NAME.equals(selectedModel);
     }
 
-    private record PrioritizedEntity(Entity entity, double distanceSq, boolean localPlayer) {
+    private record PrioritizedEntity(Entity entity, double distanceSq, boolean localPlayer, double score) {
     }
 }

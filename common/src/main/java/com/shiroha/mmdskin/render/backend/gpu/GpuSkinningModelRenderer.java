@@ -80,6 +80,7 @@ final class GpuSkinningModelRenderer {
                        RenderScene context) {
         Minecraft minecraft = Minecraft.getInstance();
         boolean isGuiScene = context != null && context.isInventoryScene();
+        target.currentProfileScene = RenderPerformanceProfiler.scene(context);
         LightingHelper.LightData light = isGuiScene
                 ? new LightingHelper.LightData(15, 15, 0, 1.0f)
                 : LightingHelper.sampleLight(entityIn, minecraft);
@@ -106,6 +107,7 @@ final class GpuSkinningModelRenderer {
         boolean firstPersonIndexReady = firstPersonView
                 && refreshFirstPersonIndices(target, nativeBackend, modelHandle, deliverStack);
         refreshSubMeshData(target, nativeBackend, modelHandle, firstPersonIndexReady);
+        target.currentTranslucentOrder = target.translucentOrders.get(isGuiScene, firstPersonIndexReady);
 
         boolean useToon = initializeToonShaderIfNeeded(!isGuiScene);
         float toonIntensity = isGuiScene ? 1.0f
@@ -169,9 +171,9 @@ final class GpuSkinningModelRenderer {
         target.firstPersonIndexBuffer.limit(indexCount * target.indexElementSize);
         // EBO 绑定属于当前 VAO 状态。此处发生在绑定 MMD VAO 之前，不能污染 Minecraft 正在使用的 VAO。
         GL46C.glNamedBufferSubData(target.firstPersonIndexBufferObject, 0, target.firstPersonIndexBuffer);
+        target.firstPersonIndexRevision++;
         RenderPerformanceProfiler.get().recordTransfer(TransferKind.FIRST_PERSON_INDEX,
                 (long) indexCount * target.indexElementSize);
-        target.firstPersonIndexBuffer.clear();
         return true;
     }
 
@@ -557,6 +559,8 @@ final class GpuSkinningModelRenderer {
     }
 
     private static void renderOutlinePass(GpuSkinningModelInstance target) {
+        long timer = RenderPerformanceProfiler.get().startTimer();
+        try {
         OutlineRenderPass.draw(GpuSkinningModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
                 target.skinnedPositionsBuffer, target.skinnedNormalsBuffer,
                 target.skinnedUvBuffer > 0 ? target.skinnedUvBuffer : target.uv0BufferObject, target.subMeshDataBuf,
@@ -564,6 +568,9 @@ final class GpuSkinningModelRenderer {
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
                 (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
                 materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex);
+        } finally {
+            RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
+        }
     }
 
     private static void drawAllSubMeshes(GpuSkinningModelInstance target, Minecraft minecraft) {
@@ -571,9 +578,12 @@ final class GpuSkinningModelRenderer {
     }
 
     private static void drawAllSubMeshes(GpuSkinningModelInstance target, Minecraft minecraft, ToonShaderBase eyeShader) {
+        boolean firstPerson = GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING) == target.firstPersonIndexBufferObject;
         int missingTextureId = minecraft.getTextureManager()
                 .getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE)
                 .getId();
+        long timer = RenderPerformanceProfiler.get().startTimer();
+        try {
         SubMeshDrawHelper.draw(
                 target.subMeshDataBuf,
                 target.subMeshCount,
@@ -589,13 +599,18 @@ final class GpuSkinningModelRenderer {
                         var material = target.mats[materialId];
                         eyeShader.setEyeMaterialMask(material == null ? 0.0f : material.eyeEmissionMaskMode());
                     }
-                }, target.translucentOrder,
+                }, target.currentTranslucentOrder,
                 TranslucentDrawOrder.Inputs.gpu(
                         target.skinnedPositionsBuffer, target.vertexCount, target.modelViewMatBuff,
                         target.projMatBuff, target.nativeUpdateRevisionValue(),
-                        GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING) == target.firstPersonIndexBufferObject,
+                        firstPerson,
                         target.uv0Buffer, target.uv0BufferObject, target.skinnedUvBuffer,
-                        target.uvMorphCount > 0));
+                        target.uvMorphCount > 0).withIndices(
+                                firstPerson ? target.firstPersonIndexBuffer : target.originalIndices,
+                                firstPerson ? target.firstPersonIndexRevision : 0));
+        } finally {
+            RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.bodySection, timer);
+        }
     }
 
     private static float effectiveOutlineAlpha(GpuSkinningModelInstance target, int materialId, float baseAlpha) {

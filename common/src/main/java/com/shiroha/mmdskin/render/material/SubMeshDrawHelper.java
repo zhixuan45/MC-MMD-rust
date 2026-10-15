@@ -59,7 +59,7 @@ public final class SubMeshDrawHelper {
              MaterialShaderBinding binding = new MaterialShaderBinding();
              SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
             boolean sorted=!shadowPass && order!=null && geometry!=null
-                    && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,alphaResolver);
+                    && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,alphaResolver,textureResolver);
             long submitTimer = TranslucentDiagnostics.startTimer();
             try {
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
@@ -74,6 +74,15 @@ public final class SubMeshDrawHelper {
                     int drawCount=ordered?order.drawCount():subMeshCount;
                     GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ordered?order.indexBuffer():originalIndices);
                     try (MaterialDepthSeal seal = pass == 2 ? new MaterialDepthSeal() : null) {
+                        if (ordered) {
+                            int batchDraws = order.submitBatch(materials, materialMorphs, textureResolver, alphaResolver);
+                            if (batchDraws >= 0) {
+                                passDraws = batchDraws;
+                                hasTranslucentDraws = batchDraws > 0;
+                                continue;
+                            }
+                            TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_FALLBACK, 1);
+                        }
                         for (int i = 0; i < drawCount; ++i) {
                             int base = i * SUB_MESH_STRIDE;
                             int materialId = draws.getInt(base);

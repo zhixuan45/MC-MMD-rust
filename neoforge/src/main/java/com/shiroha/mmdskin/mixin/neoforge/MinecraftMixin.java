@@ -21,6 +21,7 @@ public abstract class MinecraftMixin {
 
     @Inject(method = "tick", at = @At("HEAD"))
     private void releaseDisabledOutline(CallbackInfo ci) {
+        com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.tickCache();
         if (!com.shiroha.mmdskin.config.ConfigManager.isToonRenderingEnabled()
                 || !com.shiroha.mmdskin.config.ConfigManager.isToonOutlineEnabled()) {
             com.shiroha.mmdskin.render.outline.OutlineCoverage.release();

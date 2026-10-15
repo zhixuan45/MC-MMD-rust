@@ -20,6 +20,70 @@ public final class RenderPerformanceProfiler {
     public static final String SECTION_DRAW = "draw";
     public static final String GPU_SECTION_COMPUTE = "gpuCompute";
     public static final String GPU_SECTION_DRAW = "gpuDraw";
+    public enum Scene {
+        WORLD, FIRST_PERSON, SHADOW, PAPERDOLL, INVENTORY, ITEM, OTHER;
+        public final String nativeSection = "nativeUpdate." + name();
+        /** Includes transparent preparation and submission, excludes outline. CPU wall time. */
+        public final String bodySection = "draw.body." + name();
+        public final String outlineSection = "draw.outline." + name();
+    }
+    private final java.util.EnumMap<Scene, java.util.Set<Long>> renderedInstances = new java.util.EnumMap<>(Scene.class);
+    private final long[][] sceneTotals = new long[Scene.values().length][8];
+    private final int[][] sceneFrame = new int[Scene.values().length][3];
+    private long paperDollCacheHits, paperDollCacheRefreshes;
+    private long parallelBatches, parallelModels;
+
+    public synchronized void recordParallelBatch(int models) {
+        if (models > 1 && isSamplingEnabled()) { parallelBatches++; parallelModels += models; }
+    }
+
+    /** Sum of exclusive per-model CPU work. With parallel evaluation it is not render-thread wait time. */
+    public synchronized void recordElapsed(String section, long nanos) {
+        if (nanos < 0 || !isSamplingEnabled()) return;
+        profilingTotalsNanos.merge(section, nanos, Long::sum);
+        currentFrameTotalsNanos.merge(section, nanos, Long::sum);
+        currentFrameCalls.merge(section, 1, Integer::sum);
+        sectionWindows.computeIfAbsent(section, ignored -> new PerformanceSampleWindow(120));
+    }
+
+    public synchronized void recordNativeProfile(Scene scene, java.nio.ByteBuffer data) {
+        if (!isSamplingEnabled() || data.getLong(0) != 1) return;
+        String[] names = {"animation", "ik", "physics", "cpuSkinning"};
+        for (int i = 0; i < names.length; i++) recordElapsed("native." + names[i] + "." + scene.name(), data.getLong((i + 1) * 8));
+        long[] totals = sceneTotals[scene.ordinal()];
+        totals[4]++;
+        totals[5] += data.getLong(40);
+        totals[6] += data.getLong(48);
+        totals[7] += data.getLong(56);
+    }
+
+    public synchronized void recordPaperDollCache(boolean refresh) {
+        if (!isSamplingEnabled()) return;
+        if (refresh) paperDollCacheRefreshes++; else paperDollCacheHits++;
+    }
+
+    public static Scene scene(com.shiroha.mmdskin.render.scene.RenderScene scene) {
+        if (com.shiroha.mmdskin.compat.iris.IrisCompat.isRenderingShadows()) return Scene.SHADOW;
+        if (scene == null) return Scene.OTHER;
+        if (scene.isPaperDoll()) return Scene.PAPERDOLL;
+        if (scene.isFirstPerson()) return Scene.FIRST_PERSON;
+        if (scene.isWorldScene()) return Scene.WORLD;
+        if (scene.isInventoryScene()) return Scene.INVENTORY;
+        if (scene.sceneType() == com.shiroha.mmdskin.render.scene.RenderScene.SceneType.ITEM) return Scene.ITEM;
+        return Scene.OTHER;
+    }
+
+    public synchronized void recordModel(Scene scene, long handle) {
+        if (isSamplingEnabled()) renderedInstances.get(scene).add(handle);
+    }
+    public synchronized void recordEvaluation(Scene scene, boolean physicsEnabled) {
+        if (!isSamplingEnabled()) return;
+        sceneFrame[scene.ordinal()][0]++;
+        if (physicsEnabled) sceneFrame[scene.ordinal()][1]++;
+    }
+    public synchronized void recordEvaluationReuse(Scene scene) {
+        if (isSamplingEnabled()) sceneFrame[scene.ordinal()][2]++;
+    }
 
     /** 传输分类只在真实 JNI/OpenGL 数据搬运点记录，避免 HUD 展示推算值。 */
     public enum TransferKind {
@@ -57,6 +121,14 @@ public final class RenderPerformanceProfiler {
     private volatile long samplingGeneration;
 
     private RenderPerformanceProfiler() {
+        for (Scene scene : Scene.values()) {
+            renderedInstances.put(scene, new java.util.HashSet<>());
+            profilingTotalsNanos.put(scene.nativeSection, 0L);
+            profilingTotalsNanos.put(scene.bodySection, 0L);
+            profilingTotalsNanos.put(scene.outlineSection, 0L);
+        }
+        profilingTotalsNanos.put("paperDoll.items", 0L);
+        profilingTotalsNanos.put("paperDoll.flush", 0L);
         profilingTotalsNanos.put(SECTION_LIVING_STATE_SYNC, 0L);
         profilingTotalsNanos.put(SECTION_NATIVE_MODEL_UPDATE, 0L);
         profilingTotalsNanos.put(SECTION_BONE_UPLOAD, 0L);
@@ -91,6 +163,7 @@ public final class RenderPerformanceProfiler {
         profilingTotalsNanos.merge(section, elapsed, Long::sum);
         currentFrameTotalsNanos.merge(section, elapsed, Long::sum);
         currentFrameCalls.merge(section, 1, Integer::sum);
+        sectionWindows.computeIfAbsent(section, ignored -> new PerformanceSampleWindow(120));
     }
 
     /** GPU 查询结果会延迟若干帧返回，因此独立写入阶段窗口。 */
@@ -142,7 +215,19 @@ public final class RenderPerformanceProfiler {
             sectionWindows.get(entry.getKey()).record(entry.getValue());
             entry.setValue(0L);
         }
-        Map<String, Integer> frameCalls = Map.copyOf(currentFrameCalls);
+        Map<String, Integer> frameCalls = new LinkedHashMap<>(currentFrameCalls);
+        for (Scene scene : Scene.values()) {
+            int i = scene.ordinal(), instances = renderedInstances.get(scene).size();
+            sceneTotals[i][0] += instances;
+            frameCalls.put(scene.name() + ".instances", instances);
+            for (int v = 0; v < 3; v++) { sceneTotals[i][v + 1] += sceneFrame[i][v]; }
+            frameCalls.put(scene.name() + ".evaluations", sceneFrame[i][0]);
+            frameCalls.put(scene.name() + ".physicsEnabledEvaluations", sceneFrame[i][1]);
+            frameCalls.put(scene.name() + ".evaluationReuses", sceneFrame[i][2]);
+            renderedInstances.get(scene).clear();
+            java.util.Arrays.fill(sceneFrame[i], 0);
+        }
+        frameCalls = Map.copyOf(frameCalls);
         currentFrameCalls.replaceAll((section, count) -> 0);
         long[] frameTransferBytes = currentTransferBytes.clone();
         long[] frameAvoidedUploadBytes = currentAvoidedUploadBytes.clone();
@@ -187,6 +272,10 @@ public final class RenderPerformanceProfiler {
             for (PerformanceSampleWindow window : sectionWindows.values()) window.clear();
             currentFrameTotalsNanos.replaceAll((section, value) -> 0L);
             currentFrameCalls.replaceAll((section, value) -> 0);
+            for (Scene scene : Scene.values()) {
+                renderedInstances.get(scene).clear();
+                java.util.Arrays.fill(sceneFrame[scene.ordinal()], 0);
+            }
             java.util.Arrays.fill(currentTransferBytes, 0L);
             java.util.Arrays.fill(currentAvoidedUploadBytes, 0L);
             latestSnapshot = Snapshot.empty();
@@ -210,6 +299,10 @@ public final class RenderPerformanceProfiler {
                 .append(String.format("%.2f", profiledPhysicsModels / (double) profiledFrameCount));
 
         PerformanceSampleWindow.Snapshot frame = frameTimeWindow.snapshot();
+        message.append(", paperDoll.cacheHits=").append(paperDollCacheHits)
+                .append(", paperDoll.cacheRefreshes=").append(paperDollCacheRefreshes);
+        message.append(", native.parallelBatches=").append(parallelBatches)
+                .append(", native.parallelModels=").append(parallelModels);
         message.append(", presentedFrameSamples=").append(frame.count())
                 .append(", presentedFrameMedian=").append(String.format("%.3fms", frame.medianNanos() / 1_000_000.0d))
                 .append(", presentedFrameP95=").append(String.format("%.3fms", frame.p95Nanos() / 1_000_000.0d));
@@ -217,6 +310,19 @@ public final class RenderPerformanceProfiler {
         message.append(", nativeUpdateWorldFrame={samples:").append(nativeUpdate.count())
                 .append(",medianNs:").append(nativeUpdate.medianNanos())
                 .append(",p95Ns:").append(nativeUpdate.p95Nanos()).append('}');
+        for (Scene scene : Scene.values()) {
+            long[] totals = sceneTotals[scene.ordinal()];
+            if (totals[0] + totals[1] + totals[3] == 0) continue;
+            message.append(", scene.").append(scene.name()).append("={avgInstances:")
+                    .append(String.format(java.util.Locale.ROOT, "%.2f", totals[0] / (double) profiledFrameCount))
+                    .append(",evaluations:").append(totals[1])
+                    .append(",physicsEnabledEvaluations:").append(totals[2])
+                    .append(",reuses:").append(totals[3])
+                    .append(",nativeProfileSamples:").append(totals[4])
+                    .append(",bulletSteps:").append(totals[5])
+                    .append(",bulletSubsteps:").append(totals[6])
+                    .append(",bulletRequestedSubsteps:").append(totals[7]).append('}');
+        }
         if (ConfigManager.isDebugGpuLogEnabled()) {
             appendGpuQuerySummary(message, GPU_SECTION_COMPUTE, "compute");
             appendGpuQuerySummary(message, GPU_SECTION_DRAW, "draw");
@@ -243,6 +349,9 @@ public final class RenderPerformanceProfiler {
         profiledFrameCount = 0L;
         profiledVisibleModels = 0L;
         profiledPhysicsModels = 0L;
+        paperDollCacheHits = paperDollCacheRefreshes = 0;
+        parallelBatches = parallelModels = 0;
+        for (long[] totals : sceneTotals) java.util.Arrays.fill(totals, 0L);
         for (Map.Entry<String, Long> entry : profilingTotalsNanos.entrySet()) {
             entry.setValue(0L);
         }

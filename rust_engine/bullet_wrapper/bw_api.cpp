@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <climits>
 #include <cmath>
 #include <vector>
 
@@ -294,6 +295,10 @@ struct BW_World {
     btSequentialImpulseConstraintSolver* solver;
     BW_KinematicStepWorld* world;
     KinematicDynamicFilter* kinematicFilter;
+    uint64_t stepSerial;
+    int simulatedSubsteps;
+    int requestedSubsteps;
+    int samplePhase;
 };
 
 BW_World* bw_world_create(float gravity_x, float gravity_y, float gravity_z) {
@@ -307,6 +312,10 @@ BW_World* bw_world_create(float gravity_x, float gravity_y, float gravity_z) {
         w->dispatcher, w->broadphase, w->solver, w->config);
     w->world->setGravity(btVector3(gravity_x, gravity_y, gravity_z));
     w->kinematicFilter = nullptr;
+    w->stepSerial = 0;
+    w->simulatedSubsteps = 0;
+    w->requestedSubsteps = 0;
+    w->samplePhase = 0;
     g_alloc_worlds.fetch_add(1, std::memory_order_relaxed);
     return w;
     BW_CATCH_NULL
@@ -326,11 +335,24 @@ void bw_world_destroy(BW_World* w) {
 
 void bw_world_step(BW_World* w, float dt, int max_substeps, float fixed_dt) {
     if (!w) return;
-    w->world->stepSimulation(dt, max_substeps, fixed_dt);
+    w->requestedSubsteps = w->world->stepSimulation(dt, max_substeps, fixed_dt);
+    w->simulatedSubsteps = max_substeps > 0
+        ? std::min(w->requestedSubsteps, max_substeps)
+        : (max_substeps == 0 ? w->requestedSubsteps : 0);
+    ++w->stepSerial;
+    w->samplePhase = 2;
 }
 
 float bw_world_get_render_time_offset(BW_World* w) {
     return w ? (float)w->world->renderTimeOffset() : 0.0f;
+}
+
+void bw_world_get_step_info(BW_World* w, BW_ContactSampleInfo* info) {
+    if (!w || !info) return;
+    info->step_serial = w->stepSerial;
+    info->substeps = w->simulatedSubsteps;
+    info->requested_substeps = w->requestedSubsteps;
+    info->phase = w->samplePhase;
 }
 
 void bw_world_sync_render_states(BW_World* w) {
@@ -341,6 +363,7 @@ void bw_world_detect_collisions(BW_World* w) {
     if (!w) return;
     // 初始化阶段只需要建立真实接触流形，不能让求解器改写刚体状态。
     w->world->performDiscreteCollisionDetection();
+    w->samplePhase = 1;
 }
 
 void bw_world_set_gravity(BW_World* w, float x, float y, float z) {
@@ -439,6 +462,59 @@ int bw_world_copy_contact_manifolds(
             item.normal_on_b[axis] = normal[axis];
         }
         output[written++] = item;
+    }
+    return written;
+}
+
+int bw_world_copy_contact_points(
+    BW_World* w,
+    BW_RigidBody* const* target_bodies, int target_count,
+    BW_ContactPoint* output, int capacity,
+    int* total_hits, BW_ContactSampleInfo* sample_info)
+{
+    if (!w || !w->dispatcher || !total_hits || !sample_info ||
+        target_count < 0 || target_count > BW_MAX_CONTACT_QUERY_TARGETS ||
+        (target_count > 0 && !target_bodies) || capacity < 0 ||
+        (capacity > 0 && !output)) return -1;
+
+    *total_hits = 0;
+    sample_info->step_serial = w->stepSerial;
+    sample_info->substeps = w->simulatedSubsteps;
+    sample_info->requested_substeps = w->requestedSubsteps;
+    sample_info->phase = w->samplePhase;
+    const int write_limit = std::min(capacity, BW_MAX_CONTACT_QUERY_CAPACITY);
+    int written = 0;
+    for (int i = 0; i < w->dispatcher->getNumManifolds(); ++i) {
+        btPersistentManifold* manifold = w->dispatcher->getManifoldByIndexInternal(i);
+        auto* body_a = (BW_RigidBody*)manifold->getBody0();
+        auto* body_b = (BW_RigidBody*)manifold->getBody1();
+        bool target_match = target_count == 0;
+        for (int k = 0; k < target_count && !target_match; ++k) {
+            target_match = target_bodies[k] == body_a || target_bodies[k] == body_b;
+        }
+        if (!target_match) continue;
+
+        for (int j = 0; j < manifold->getNumContacts(); ++j) {
+            const btManifoldPoint& point = manifold->getContactPoint(j);
+            if (point.getDistance() >= 0.0f) continue;
+            if (*total_hits < INT_MAX) ++*total_hits;
+            if (written >= write_limit) continue;
+
+            BW_ContactPoint item{};
+            item.body_a = body_a;
+            item.body_b = body_b;
+            const btVector3& point_a = point.getPositionWorldOnA();
+            const btVector3& point_b = point.getPositionWorldOnB();
+            const btVector3& normal = point.m_normalWorldOnB;
+            for (int axis = 0; axis < 3; ++axis) {
+                item.point_a[axis] = point_a[axis];
+                item.point_b[axis] = point_b[axis];
+                item.normal_on_b[axis] = normal[axis];
+            }
+            item.distance = point.getDistance();
+            item.applied_normal_impulse = point.getAppliedImpulse();
+            output[written++] = item;
+        }
     }
     return written;
 }

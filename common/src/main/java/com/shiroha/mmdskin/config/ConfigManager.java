@@ -276,6 +276,10 @@ public class ConfigManager {
         return provider != null ? provider.isPaperDollShowInScreens() : true;
     }
 
+    public static PaperDollRefreshMode getPaperDollRefreshMode() {
+        return provider != null ? provider.getPaperDollRefreshMode() : PaperDollRefreshMode.FULL;
+    }
+
     public static boolean isVREnabled() {
         return provider != null ? provider.isVREnabled() : false;
     }

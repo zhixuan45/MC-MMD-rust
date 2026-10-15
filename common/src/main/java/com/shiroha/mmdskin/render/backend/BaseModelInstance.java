@@ -63,6 +63,13 @@ public abstract class BaseModelInstance implements ModelInstance {
     private boolean physicsStateInitialized = false;
     private boolean physicsEnabled = true;
     private final FirstPersonPoseState firstPersonPoseState = new FirstPersonPoseState();
+    private final FrameEvaluationCache evaluationCache = new FrameEvaluationCache();
+    private RenderPerformanceProfiler.Scene evaluationScene = RenderPerformanceProfiler.Scene.OTHER;
+    private com.shiroha.mmdskin.render.pipeline.ScenePoseSnapshot syncedPose;
+    private long worldDrawFrame = -1;
+    private ByteBuffer nativeProfile;
+    private Entity worldDrawEntity;
+    private boolean worldDrawFirstPerson;
     /** 全局 Alpha 调制因子（例如直播防走光虚化透明度，默认 1.0） */
     protected float globalAlpha = 1.0f;
 
@@ -87,6 +94,7 @@ public abstract class BaseModelInstance implements ModelInstance {
 
     /** 相机和正式世界绘制复用同帧姿态，避免重复推进动画。 */
     public boolean prepareCameraPose(LivingEntity entity, float entityYaw, float tickDelta, RenderScene scene) {
+        evaluationScene = RenderPerformanceProfiler.scene(scene);
         firstPersonPoseState.beginPreparation();
         if (entity == null || model == 0 || !isReady() || scene == null || !scene.isWorldScene()) {
             return false;
@@ -96,7 +104,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         applyPhysicsState(RuntimeConfigPortHolder.get().isPhysicsEnabled());
 
         long syncTimer = RenderPerformanceProfiler.get().startTimer();
-        LivingEntityModelStateHelper.syncModelState(
+        syncedPose = LivingEntityModelStateHelper.syncModelState(
                 model,
                 entity,
                 entityYaw,
@@ -124,6 +132,29 @@ public abstract class BaseModelInstance implements ModelInstance {
     /** 在不重复同步实体状态的前提下，让刚提交的一次性手臂目标进入当前 prepared pose。 */
     public boolean refreshPreparedFirstPersonPose() {
         return firstPersonPoseState.isPrepared() && update(true);
+    }
+
+    protected boolean supportsPaperDollPoseReuse(boolean firstPerson) { return false; }
+
+    /** Checks without mutating the source pose; GUI sorting and light remain view-specific. */
+    public final boolean canReuseForPaperDoll(LivingEntity entity, float tickDelta) {
+        if (model == 0 || !isReady() || vrActive || globalAlpha != 1.0f
+                || "false".equalsIgnoreCase(System.getProperty("mmdskin.paperDollReuse"))
+                || worldDrawEntity != entity || worldDrawFrame != com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current()
+                || !evaluationCache.matches(worldDrawFrame, backendPort().poseInputRevision(model))
+                || !supportsPaperDollPoseReuse(worldDrawFirstPerson)
+                || backendPort().hasExternalPoseInput(model)
+                || MMDCameraController.getInstance().isStagePlayingModel(model)) return false;
+        var expected = new com.shiroha.mmdskin.render.pipeline.ScenePoseSnapshot(null);
+        LivingEntityModelStateHelper.syncModelState(expected, model, entity, 0.0f, tickDelta,
+                RenderScene.PAPERDOLL, getModelName(), false, false);
+        return expected.sameInputs(syncedPose);
+    }
+
+    public final void renderPaperDollPose(LivingEntity entity, PoseStack stack, int packedLight) {
+        RenderPerformanceProfiler.get().recordModel(RenderPerformanceProfiler.Scene.PAPERDOLL, model);
+        RenderPerformanceProfiler.get().recordEvaluationReuse(RenderPerformanceProfiler.Scene.PAPERDOLL);
+        doRenderModel(entity, 0.0f, 0.0f, new Vector3f(), stack, packedLight, RenderScene.PAPERDOLL);
     }
 
     /** 应用所有渲染后端共享的模型根变换，供 TaCZ 坐标换算复用。 */
@@ -176,6 +207,7 @@ public abstract class BaseModelInstance implements ModelInstance {
                        Vector3f entityTrans, float tickDelta, PoseStack mat,
                        int packedLight, RenderScene context) {
         if (model == 0 || !isReady()) return;
+        evaluationScene = RenderPerformanceProfiler.scene(context);
 
         WorldRenderPolicy.Decision worldDecision = nonWorldDecision();
         if (context != null && context.isWorldScene()) {
@@ -186,6 +218,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         } else {
             applyPhysicsState(RuntimeConfigPortHolder.get().isPhysicsEnabled());
         }
+        RenderPerformanceProfiler.get().recordModel(evaluationScene, model);
 
         if (entityIn instanceof LivingEntity living) {
             handleLivingEntity(living, entityYaw, entityPitch, entityTrans,
@@ -262,14 +295,14 @@ public abstract class BaseModelInstance implements ModelInstance {
                                      Vector3f entityTrans, float tickDelta, PoseStack mat,
                                      int packedLight, RenderScene context, WorldRenderPolicy.Decision worldDecision) {
         boolean stagePlaying = MMDCameraController.getInstance().isStagePlayingModel(model);
-        boolean reusePreparedPose = firstPersonPoseState.isPrepared()
-                && context != null && context.isWorldScene();
-
         applyPhysicsState(worldDecision.physicsEnabled());
+        boolean reusePreparedPose = firstPersonPoseState.isPrepared()
+                && evaluationCache.matches(com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current(), backendPort().poseInputRevision(model))
+                && context != null && context.isWorldScene();
 
         if (worldDecision.shouldUpdate() && !reusePreparedPose) {
             long syncTimer = RenderPerformanceProfiler.get().startTimer();
-            LivingEntityModelStateHelper.syncModelState(
+            syncedPose = LivingEntityModelStateHelper.syncModelState(
                     model,
                     entityIn,
                     entityYaw,
@@ -284,6 +317,11 @@ public abstract class BaseModelInstance implements ModelInstance {
         }
         try {
             doRenderModel(entityIn, entityYaw, entityPitch, entityTrans, mat, packedLight, context);
+            if (context != null && context.isWorldScene() && !IrisCompat.isRenderingShadows()) {
+                worldDrawFrame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
+                worldDrawEntity = entityIn;
+                worldDrawFirstPerson = context.isFirstPerson();
+            }
         } finally {
             firstPersonPoseState.finishRender(context != null && context.isFirstPerson());
         }
@@ -294,6 +332,12 @@ public abstract class BaseModelInstance implements ModelInstance {
     }
 
     private boolean update(boolean forceEvaluation) {
+        long frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
+        if (!forceEvaluation && !vrActive && !"false".equalsIgnoreCase(System.getProperty("mmdskin.reuseEvaluation"))
+                && evaluationCache.matches(frame, backendPort().poseInputRevision(model))) {
+            RenderPerformanceProfiler.get().recordEvaluationReuse(evaluationScene);
+            return true;
+        }
         long currentTime = System.currentTimeMillis();
         if (lastUpdateTime < 0) {
             lastUpdateTime = currentTime;
@@ -309,14 +353,99 @@ public abstract class BaseModelInstance implements ModelInstance {
         if (deltaTime < 0.0f) deltaTime = 0.0f;
         if (deltaTime > MAX_DELTA_TIME) deltaTime = MAX_DELTA_TIME;
 
-        long updateTimer = RenderPerformanceProfiler.get().startTimer();
-        onUpdate(deltaTime);
+        var profiler = RenderPerformanceProfiler.get();
+        long updateTimer = profiler.startTimer();
+        boolean profiled = false;
+        if (updateTimer != 0) {
+            if (nativeProfile == null) nativeProfile = ByteBuffer.allocateDirect(64).order(java.nio.ByteOrder.nativeOrder());
+            profiled = backendPort().updateModelProfiled(model, deltaTime, usesCpuSkinning(), nativeProfile);
+        }
+        if (!profiled) onUpdate(deltaTime);
+        if (profiled) profiler.recordNativeProfile(evaluationScene, nativeProfile);
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_NATIVE_MODEL_UPDATE, updateTimer);
+        RenderPerformanceProfiler.get().endTimer(evaluationScene.nativeSection, updateTimer);
+        RenderPerformanceProfiler.get().recordEvaluation(evaluationScene, physicsEnabled);
+        evaluationCache.capture(frame, backendPort().poseInputRevision(model));
         logRustDiagnostics();
         logPhysicsDiagnostic();
         issueDiagnostics.sample(backendPort(), model, getModelName(), getClass().getSimpleName());
         nativeUpdateRevision.incrementAndGet();
         return true;
+    }
+
+    protected boolean usesCpuSkinning() { return true; }
+    protected boolean supportsParallelEvaluation() { return false; }
+
+    public final boolean canPrepareWorldEvaluation() {
+        return supportsParallelEvaluation() && model != 0 && isReady() && !vrActive
+                && !firstPersonPoseState.isPrepared() && !backendPort().hasExternalPoseInput(model)
+                && !MMDCameraController.getInstance().isStagePlayingModel(model);
+    }
+
+    /** Render-thread input preparation. Only already-loaded, independent world instances qualify. */
+    public final com.shiroha.mmdskin.render.pipeline.NativeEvaluationBatch.Work prepareWorldEvaluation(
+            LivingEntity entity, float yaw, float tickDelta) {
+        if (!canPrepareWorldEvaluation()) return null;
+        long frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
+        if (evaluationCache.matches(frame, backendPort().poseInputRevision(model))) return null;
+        var decision = WorldRenderPolicy.get().resolve(model, entity);
+        if (!decision.shouldUpdate()) return null;
+        applyPhysicsState(decision.physicsEnabled());
+        var profiler = RenderPerformanceProfiler.get();
+        long syncTimer = profiler.startTimer();
+        syncedPose = LivingEntityModelStateHelper.syncModelState(model, entity, yaw, tickDelta,
+                RenderScene.WORLD, getModelName(), false, false);
+        profiler.endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
+        long now = System.currentTimeMillis();
+        if (lastUpdateTime < 0) { lastUpdateTime = now; return null; }
+        float delta = Math.min(MAX_DELTA_TIME, (now - lastUpdateTime) / 1000.0f);
+        if (delta <= 0) return null;
+        lastUpdateTime = now;
+        boolean sample = profiler.isSamplingEnabled();
+        long generation = profiler.samplingGeneration();
+        if (sample && nativeProfile == null) nativeProfile = ByteBuffer.allocateDirect(64).order(java.nio.ByteOrder.nativeOrder());
+        return new PreparedEvaluation(this, backendPort(), model, frame, delta, physicsEnabled,
+                usesCpuSkinning(), sample ? nativeProfile : null, generation);
+    }
+
+    /** Contains no entity, GL resource or renderer callback; execute touches JNI and its own result only. */
+    private static final class PreparedEvaluation implements com.shiroha.mmdskin.render.pipeline.NativeEvaluationBatch.Work {
+        private final BaseModelInstance owner;
+        private final NativeRenderBackendPort port;
+        private final long handle, frame, generation;
+        private final float delta;
+        private final boolean physics, cpu;
+        private final ByteBuffer profile;
+        private long elapsed;
+        private boolean profiled;
+        PreparedEvaluation(BaseModelInstance owner, NativeRenderBackendPort port, long handle, long frame,
+                           float delta, boolean physics, boolean cpu, ByteBuffer profile, long generation) {
+            this.owner = owner; this.port = port; this.handle = handle; this.frame = frame;
+            this.delta = delta; this.physics = physics; this.cpu = cpu; this.profile = profile; this.generation = generation;
+        }
+        public long handle() { return handle; }
+        public void execute() {
+            long start = profile != null ? System.nanoTime() : 0;
+            profiled = profile != null && port.updateModelProfiled(handle, delta, cpu, profile);
+            if (!profiled) {
+                if (cpu) port.updateModel(handle, delta); else port.updateAnimationOnly(handle, delta);
+            }
+            if (start != 0) elapsed = System.nanoTime() - start;
+        }
+        public void complete() {
+            var profiler = RenderPerformanceProfiler.get();
+            if (profile != null && profiler.samplingGeneration() == generation && profiler.isSamplingEnabled()) {
+                profiler.recordElapsed(RenderPerformanceProfiler.SECTION_NATIVE_MODEL_UPDATE, elapsed);
+                profiler.recordElapsed(RenderPerformanceProfiler.Scene.WORLD.nativeSection, elapsed);
+                if (profiled) profiler.recordNativeProfile(RenderPerformanceProfiler.Scene.WORLD, profile);
+            }
+            profiler.recordEvaluation(RenderPerformanceProfiler.Scene.WORLD, physics);
+            owner.evaluationCache.capture(frame, port.poseInputRevision(handle));
+            owner.logRustDiagnostics();
+            owner.logPhysicsDiagnostic();
+            owner.issueDiagnostics.sample(port, handle, owner.getModelName(), owner.getClass().getSimpleName());
+            owner.nativeUpdateRevision.incrementAndGet();
+        }
     }
 
     /** 将 Rust 全局日志队列按原级别转交给 Log4j。 */
@@ -403,6 +532,7 @@ public abstract class BaseModelInstance implements ModelInstance {
             if (buffer != null) buffer.close();
         } finally {
             if (model != 0) {
+                com.shiroha.mmdskin.render.policy.RenderPriorityService.get().forgetModel(model);
                 backendPort().deleteModel(model);
                 model = 0;
             }

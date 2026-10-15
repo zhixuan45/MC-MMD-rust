@@ -9,6 +9,7 @@
 #define BW_API_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +45,30 @@ typedef struct {
     float point_b[3];
     float normal_on_b[3];
 } BW_ContactManifold;
+
+/* 单条穿透接触；各字段来自同一个 btManifoldPoint。 */
+typedef struct {
+    BW_RigidBody* body_a;
+    BW_RigidBody* body_b;
+    float point_a[3];
+    float point_b[3];
+    float normal_on_b[3];
+    float distance;
+    float applied_normal_impulse;
+} BW_ContactPoint;
+
+typedef struct {
+    uint64_t step_serial;
+    int substeps; /* 实际执行数 */
+    int requested_substeps; /* Bullet stepSimulation 的返回值，限幅前 */
+    int phase; /* 0=尚无采样更新，1=碰撞检测后，2=物理步后 */
+} BW_ContactSampleInfo;
+
+/* Constant-time telemetry; does not enumerate contacts or advance simulation. */
+void bw_world_get_step_info(BW_World* world, BW_ContactSampleInfo* info);
+
+#define BW_MAX_CONTACT_QUERY_TARGETS 256
+#define BW_MAX_CONTACT_QUERY_CAPACITY 4096
 
 /* 完整回读 Bullet 实际持有的 6DOF 参数，避免由 Rust 侧公式自证。 */
 typedef struct {
@@ -109,6 +134,12 @@ void bw_world_set_kinematic_filter(BW_World* world, bool enabled);
 int bw_world_get_contact_manifold_count(BW_World* world);
 int bw_world_copy_contact_manifolds(
     BW_World* world, BW_ContactManifold* output, int capacity);
+/* 有目标时仅查询涉及目标的点；否则查询全世界穿透点。容量受上述常量限制。 */
+int bw_world_copy_contact_points(
+    BW_World* world,
+    BW_RigidBody* const* target_bodies, int target_count,
+    BW_ContactPoint* output, int capacity,
+    int* total_hits, BW_ContactSampleInfo* sample_info);
 
 /* ===== 碰撞形状 ===== */
 BW_Shape* bw_shape_sphere(float radius);
