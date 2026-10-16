@@ -15,6 +15,11 @@ uniform vec3 ToonEnvironmentDirection;
 uniform vec3 ToonEnvironmentSkyTint;
 uniform float ToonEnvironmentWeather;
 
+#ifdef TOON_MATERIAL_LIGHTING
+// 复用本片段照明，供 SPA 加色衰减，避免重复阴影采样。
+vec3 toonSurfaceIllumination = vec3(1.0);
+#endif
+
 float saturate(float value) {
     return clamp(value, 0.0, 1.0);
 }
@@ -67,7 +72,11 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
     surface = mix(surface, vec3(1.0), saturate(rimBand * RimIntensity));
 #endif
     // 光照只乘一次；高光与边缘光在暗处同样衰减。
-    return surface * max(illumination, vec3(0.0));
+    vec3 surfaceIllumination = max(illumination, vec3(0.0));
+#ifdef TOON_MATERIAL_LIGHTING
+    toonSurfaceIllumination = surfaceIllumination;
+#endif
+    return surface * surfaceIllumination;
 }
 
 /* TOON_LIGHTING */

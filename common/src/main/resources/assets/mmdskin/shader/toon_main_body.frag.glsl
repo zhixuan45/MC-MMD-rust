@@ -70,8 +70,9 @@ void main() {
 #endif
         sphereColor = mix(vec3(1.0), sphereColor * SphereMul.rgb, SphereMul.a);
         sphereColor = clamp(sphereColor + (sphereColor - vec3(1.0)) * SphereAdd.a, 0.0, 1.0) + SphereAdd.rgb;
-        // SPA 可叠加在黑色主贴图上，贴图 alpha 不改变 PMX 表面透明度。
-        finalColor = SphereMode == 1 ? finalColor * sphereColor : finalColor + sphereColor;
+        // SPA 保留黑底加色，但随环境照明衰减；表面 alpha 不变。
+        finalColor = SphereMode == 1 ? finalColor * sphereColor
+                : finalColor + sphereColor * toonSurfaceIllumination;
     }
     // 合并眼瞳遮罩与线性空间发光。
     float emissionMask = EyeMaterialMask < 0.0 ? 0.0 : max(saturate(eyeMask), saturate(EyeMaterialMask));

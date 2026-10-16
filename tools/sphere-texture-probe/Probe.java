@@ -54,6 +54,7 @@ public final class Probe {
             setup();
             initShader();
             testSphereModes();
+            testSphereLighting();
             testMorphFactors();
             testBindingRestore();
             testExceptionalRestore();
@@ -229,6 +230,36 @@ public final class Probe {
         expectArray(disabled, beforeMultiply, 0.02f, "关闭恢复原始表面");
         writePanels(baseImage, spaImage, beforeImage, sphImage, readImage());
         System.out.println("PASS 关闭/SPA/SPH/alpha; SPA=" + arr(spa) + " SPH=" + arr(sph));
+    }
+
+    private static void testSphereLighting() {
+        ModelMaterial material = material(diffuseBlack, sphereColor, 2);
+        float[] bright = draw(material, null, 1);
+        try {
+            shader.setLightIntensity(.2f);
+            float[] dim = draw(material, null, 1);
+            for (int i = 0; i < 3; i++) {
+                near(dim[i], bright[i] * .2f, .015f, "SPA 随环境照明衰减通道 " + i);
+            }
+            near(dim[3], bright[3], .01f, "照明不改变 SPA alpha");
+            shader.setLightIntensity(0);
+            check(maxRgb(draw(material, null, 1)) < .01f, "SPA 在无照明时不得自行发亮");
+
+            // 方块光仍保留球面层，并使用相同的暖色照明。
+            shader.setLightIntensity(.25f);
+            uniform1i("ToonGenericEnvironment", 1);
+            GL46C.glUniform2f(GL46C.glGetUniformLocation(shader.getMainProgram(), "ToonLightmap"),
+                    248 / 256f, 8 / 256f);
+            float[] torch = draw(material, null, 1);
+            float[] tint = {1, .82f, .65f};
+            for (int i = 0; i < 3; i++) {
+                near(torch[i], bright[i] * .25f * tint[i], .015f, "SPA 方块光色调通道 " + i);
+            }
+        } finally {
+            uniform1i("ToonGenericEnvironment", 0);
+            shader.setLightIntensity(1);
+        }
+        System.out.println("PASS SPA 暗处衰减、无照明、方块光色调与 alpha");
     }
 
     private static void testMorphFactors() {
