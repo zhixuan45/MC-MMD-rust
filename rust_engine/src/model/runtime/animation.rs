@@ -653,9 +653,10 @@ impl MmdModel {
         self.apply_transition_blend(elapsed);
 
         crate::evaluation_profile::stage(finishing_timer, 0);
-        let skinning_timer = crate::evaluation_profile::timer();
         if cpu_skinning {
+            let skinning_timer = crate::evaluation_profile::timer();
             self.update();
+            crate::evaluation_profile::stage(skinning_timer, 3);
         } else if !self.debug_logged && physics_enabled {
             self.debug_logged = true;
             if let Some(ref physics) = self.physics {
@@ -672,7 +673,6 @@ impl MmdModel {
             }
             */
         }
-        crate::evaluation_profile::stage(skinning_timer, 3);
         tacz_outcome
     }
 }

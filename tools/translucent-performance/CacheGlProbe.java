@@ -131,6 +131,56 @@ public class CacheGlProbe {
         }
         }
         check(Arrays.equals(cpuGpuResults[0],cpuGpuResults[1]),"CPU/GPU input ordering equivalence");
+        explicitIndexAndViewCaches(ebo, pos, uv, view);
         GpuTimerGlProbe.run();
+    }
+
+    static int firstIndex(TranslucentDrawOrder order) {
+        ByteBuffer out=buffer(4);
+        GL46C.glBindBuffer(GL46C.GL_COPY_READ_BUFFER,order.indexBuffer());
+        GL46C.glGetBufferSubData(GL46C.GL_COPY_READ_BUFFER,0,out);
+        return out.getInt(0);
+    }
+
+    static void explicitIndexAndViewCaches(int ebo, ByteBuffer positions, ByteBuffer uvs, FloatBuffer view) {
+        ModelMaterial material=new ModelMaterial(); material.hasAlpha=true; material.hasTranslucentPixels=true;
+        ModelMaterial[] materials={material};
+        for(int i=0;i<6;i++) positions.putFloat(i*12+8,0);
+        ByteBuffer draws=buffer(20); draws.putInt(8,6).putFloat(12,1).put(16,(byte)1);
+        // The valid region has prefix/suffix padding; CPU bytes deliberately differ from the EBO.
+        ByteBuffer indices=buffer(40); indices.position(8).limit(32);
+        for(int i=0;i<6;i++) indices.putInt(8+i*4,(i+3)%6);
+        var input=new TranslucentDrawOrder.Inputs(positions,0,6,view,null,11,true,uvs,0,0).withIndices(indices,11);
+        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ebo);
+        try(var order=new TranslucentDrawOrder()) {
+            order.prepare(input,draws,1,4,materials,null,(i,a)->a);
+            check(firstIndex(order)==3,"CPU index region used instead of EBO readback");
+            check(indices.position()==8&&indices.limit()==32,"source region preserved");
+            order.prepare(input,draws,1,4,materials,null,(i,a)->a);
+            check(order.candidateBuildCount()==1,"explicit dynamic index revision reused");
+            for(int i=0;i<6;i++)indices.putInt(8+i*4,i);
+            input=input.withIndices(indices,12);
+            order.prepare(input,draws,1,4,materials,null,(i,a)->a);
+            check(firstIndex(order)==0&&order.candidateBuildCount()==2,"new index revision invalidates topology");
+            indices.limit(20); draws.putInt(8,3);
+            order.prepare(input,draws,1,4,materials,null,(i,a)->a);
+            check(order.candidateTriangleCount()==1&&order.candidateBuildCount()==3,"index valid length invalidates topology");
+            indices.limit(19); boolean rejected=false;
+            try { order.prepare(input,draws,1,4,materials,null,(i,a)->a); }
+            catch(IllegalArgumentException expected) { rejected=true; }
+            check(rejected,"unaligned CPU index region rejected");
+        }
+        draws.putInt(8,6); indices.limit(32);
+        try(var views=new ViewTranslucentOrders()) {
+            var world=views.get(false,false); var first=views.get(false,true); var gui=views.get(true,false);
+            check(world!=first&&world!=gui&&first!=gui,"distinct view ownership");
+            for(int pass=0;pass<4;pass++)for(var order:new TranslucentDrawOrder[]{world,first,gui})
+                order.prepare(input,draws,1,4,materials,null,(i,a)->a);
+            for(var order:new TranslucentDrawOrder[]{world,first,gui})check(order.candidateBuildCount()==1,"alternating view cache retained");
+            check(views.ramBytes()>0&&views.vramBytes()>0,"view memory accounting");
+            views.close(); check(views.ramBytes()==0&&views.vramBytes()==0,"all view resources released");
+        }
+        check(GL46C.glGetError()==0,"explicit index/view GL error");
+        System.out.println("PASS explicit CPU index regions/revisions and alternating view caches");
     }
 }

@@ -9,6 +9,9 @@ public final class SphereTextureBinding implements AutoCloseable {
     private final int unit;
     private final int previousTexture, previousSampler, previousUniform;
     private int lastTexture = -1;
+    private int lastMode = -1;
+    private final float[] lastMul = new float[4], lastAdd = new float[4];
+    private boolean factorsValid;
 
     public SphereTextureBinding(boolean shadowPass) {
         int program = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
@@ -37,7 +40,11 @@ public final class SphereTextureBinding implements AutoCloseable {
         if (mode < 0) return;
         boolean enabled = unit >= 0 && material.sphereTex > 0
                 && (material.sphereMode == 1 || material.sphereMode == 2);
-        GL46C.glUniform1i(mode, enabled ? material.sphereMode : 0);
+        int nextMode = enabled ? material.sphereMode : 0;
+        if (lastMode != nextMode) {
+            GL46C.glUniform1i(mode, nextMode);
+            lastMode = nextMode;
+        }
         if (!enabled) return;
         if (material.sphereTex != lastTexture) {
             int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
@@ -46,8 +53,15 @@ public final class SphereTextureBinding implements AutoCloseable {
             GL46C.glActiveTexture(active);
             lastTexture = material.sphereTex;
         }
-        if (mul >= 0) GL46C.glUniform4f(mul, state.sphereMul[0], state.sphereMul[1], state.sphereMul[2], state.sphereMul[3]);
-        if (add >= 0) GL46C.glUniform4f(add, state.sphereAdd[0], state.sphereAdd[1], state.sphereAdd[2], state.sphereAdd[3]);
+        if (mul >= 0 && (!factorsValid || !java.util.Arrays.equals(lastMul, state.sphereMul))) {
+            GL46C.glUniform4f(mul, state.sphereMul[0], state.sphereMul[1], state.sphereMul[2], state.sphereMul[3]);
+            System.arraycopy(state.sphereMul, 0, lastMul, 0, 4);
+        }
+        if (add >= 0 && (!factorsValid || !java.util.Arrays.equals(lastAdd, state.sphereAdd))) {
+            GL46C.glUniform4f(add, state.sphereAdd[0], state.sphereAdd[1], state.sphereAdd[2], state.sphereAdd[3]);
+            System.arraycopy(state.sphereAdd, 0, lastAdd, 0, 4);
+        }
+        factorsValid = true;
     }
 
     private static int freeUnit(int program, int sphereLocation) {

@@ -54,12 +54,13 @@ public final class SubMeshDrawHelper {
         boolean previousDepthMask = GL46C.glGetBoolean(GL46C.GL_DEPTH_WRITEMASK);
         boolean hasTranslucentDraws = false;
         int originalIndices=GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING);
-        MaterialRenderState state = new MaterialRenderState();
+        DrawMaterialCache materialCache = new DrawMaterialCache(materials, materialMorphs, alphaResolver, textureResolver);
         try (EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
              MaterialShaderBinding binding = new MaterialShaderBinding();
              SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
             boolean sorted=!shadowPass && order!=null && geometry!=null
-                    && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,alphaResolver,textureResolver);
+                    && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,
+                    alphaResolver,textureResolver,materialCache);
             long submitTimer = TranslucentDiagnostics.startTimer();
             try {
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
@@ -75,7 +76,7 @@ public final class SubMeshDrawHelper {
                     GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ordered?order.indexBuffer():originalIndices);
                     try (MaterialDepthSeal seal = pass == 2 ? new MaterialDepthSeal() : null) {
                         if (ordered) {
-                            int batchDraws = order.submitBatch(materials, materialMorphs, textureResolver, alphaResolver);
+                            int batchDraws = order.submitBatch(materials, materialCache);
                             if (batchDraws >= 0) {
                                 passDraws = batchDraws;
                                 hasTranslucentDraws = batchDraws > 0;
@@ -96,7 +97,7 @@ public final class SubMeshDrawHelper {
                                 continue;
                             }
                             ModelMaterial material = materials[materialId];
-                            state.resolve(material, materialMorphs, materialId, alphaResolver.resolve(materialId, alpha));
+                            MaterialRenderState state = materialCache.resolve(materialId, alpha);
                             if (state.alpha < 0.001f) continue;
                             if (!shadowPass) {
                                 if (binding.splitsTextureAlpha()) {
@@ -117,7 +118,7 @@ public final class SubMeshDrawHelper {
                                 RenderSystem.enableCull();
                             }
 
-                            int textureId = textureResolver.resolve(materialId);
+                            int textureId = materialCache.texture(materialId);
                             if (textureId != lastBoundTexture) {
                                 RenderSystem.setShaderTexture(0, textureId);
                                 RenderSystem.bindTexture(0);

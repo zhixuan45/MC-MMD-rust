@@ -1,6 +1,6 @@
 # 多模型同时显示的性能优化计划
 
-> 2026-10-16 暂停续作记录见 [暂停报告](pause_report_2026-10-16.md)。本计划下方是较早阶段的实施与验证快照；新增未编译／未打包改动及恢复顺序以暂停报告为准。
+> 2026-10-16 已恢复并完成剩余实现、探针验证及双平台打包。当前交付与验收边界见 [续作完成报告](completion_report_2026-10-16.md)；[暂停报告](pause_report_2026-10-16.md) 保留为历史记录。
 
 2026-10-15 制定，2026-10-16 更新实施状态。用户确认目标是多人／多个模型同时显示时的帧率；下述四阶段的主要运行时路径已落地，验证范围和保留项见文末。游戏内多人帧率收益尚未测量。
 
@@ -85,12 +85,14 @@ WORLD/PAPERDOLL 的实际透明 draw 均为每调用 1 次，`BATCH_SUBMISSIONS 
 
 ## 2026-10-16 代码实施结果
 
-1. `RenderFrameClock` 由两个平台 `GameRenderer.render` 驱动，覆盖世界到 GUI 的真实帧。`NativePoseInputs` 跟踪原生输入代次；`FrameEvaluationCache` 仅复用同实例、同帧、同输入的求值，强制刷新和 VR 保留求值。切换动画会失效对应层的赋值记录，未知 port 保守处理。透明准备缓存最多保留一个结果，并核对几何、UV、索引、材质资格、视图及裁剪语义。
-2. `GpuTranslucentPreparation` 在 GL 4.3 下执行当帧深度、裁剪、稳定排序、索引／材质行收集和间接绘制。适用范围为 GPU 蒙皮、自有 vanilla Toon、所需主／球面纹理能放入一个 8 槽窗口的透明 pass。生产链路不读取位置、排序结果或 indirect command；静态原始索引首次读取、第一人称动态索引读取仍保留。多窗口、Iris／外部程序、能力不足或 shader 初始化失败时走兼容路径。仍为三角形中心排序，不解决相交透明面排序的固有限制。
-3. `ImmutableGpuBufferPool` 按 GL 上下文、数据语义与内容共享原始索引、静态几何、骨索引／权重和 morph 偏移，默认池预算 256 MiB，超预算独立分配。引用计数负责释放，RAM／VRAM 只向一个存活持有者记账。原生模型、骨骼／物理／morph 权重、蒙皮输出、光照 UV、动态第一人称索引与视图排序仍按实例持有。纸娃娃通过 `ScenePoseSnapshot` 核对本帧世界输入；符合条件时复用同一实例的姿态和 GPU 蒙皮输出，使用完整身体原始 EBO、独立 GUI 光照与排序。源未绘制、头眼输入不同、外部骨骼／IK 控制、VR 或舞台播放时回退独立实例。
-4. `AnimationUpdateSchedule` 用稳定句柄相位分散中远距离更新，保留配置中的 1／2／4 帧频率，距离边界使用 10% 滞回。排序加入相机朝向、上帧入选滞回和 UUID 平局顺序；物理距离预算加入 10% 退出滞回。没有新增硬包围盒裁剪，没有降低原有显示数量上限。
+1. `RenderFrameClock` 由两个平台 `GameRenderer.render` 驱动，覆盖世界到 GUI 的真实帧。`NativePoseInputs` 跟踪原生输入代次；`FrameEvaluationCache` 仅复用同实例、同帧、同输入的求值，强制刷新和 VR 保留求值。切换动画会失效对应层的赋值记录，未知 port 保守处理。`ViewTranslucentOrders` 为世界、第一人称和 GUI 各保留一个有界缓存，核对几何、UV、索引、材质资格、视图及裁剪语义，视图交替不再互相驱逐。
+2. `GpuTranslucentPreparation` 在 GL 4.3 下执行当帧深度、裁剪、稳定排序、索引／材质行收集和间接绘制。适用范围为 GPU 蒙皮、自有 vanilla Toon、实际候选所需主／球面纹理能放入一个 8 槽窗口的透明 pass。窗口按候选材质建立，原始材质纹理多于 8 张不再直接判定失败。生产链路不读取位置、排序结果或 indirect command；原始／动态索引有已知 CPU 数据及版本时直接消费，未知来源仍保守回读。多窗口、Iris／外部程序、能力不足或 shader 初始化失败时走兼容路径。仍为三角形中心排序，不解决相交透明面排序的固有限制。
+3. `ImmutableGpuBufferPool` 按 GL 上下文、数据语义与内容共享原始索引、静态几何、骨索引／权重和 morph 偏移，默认池预算 256 MiB，超预算独立分配。引用计数负责释放，RAM／VRAM 只向一个存活持有者记账。原生模型、骨骼／物理／morph 权重、蒙皮输出、光照 UV、动态第一人称索引与视图排序仍按实例持有。纸娃娃现在只核对世界实例在本帧完成绘制、实体归属和 native 输入版本，直接复用已求值的头眼、动画、物理和蒙皮结果；不再构造独立 GUI 预期姿态，因此局部眼睛／头部差异不会触发第二次求值。固定模式只改变 GUI 根显示朝向，跟随模式保留整体朝向跟随。源未绘制、输入版本过期、外部骨骼／IK 控制、VR、舞台播放或第一人称缺少完整身体索引时回退独立实例。
+4. `AnimationUpdateSchedule` 用稳定句柄相位分散中远距离更新，保留配置中的 1／2／4 帧频率，距离边界使用 10% 滞回。优先级加入屏幕投影面积、相机朝向、上帧入选滞回和 UUID 平局顺序；物理距离预算加入 10% 退出滞回。没有新增模型硬裁剪，没有降低原有显示数量上限。
+5. `PlayerWorldEvaluationPrepass` 在实体绘制循环前收集至少两个合格远端玩家 GPU 模型，渲染线程准备输入，最多三个工作线程加调用线程执行 JNI，全部汇合后在渲染线程发布结果。遵守实体冻结的 partial tick、可见性和区块检查，不触发模型加载。相同句柄去重，常规失败仍等待其余任务。排除本地玩家、VR、TaCZ、舞台及外部姿态；Iris 主世界实体程序也可使用该 CPU 预求值，平台注入在阴影 frustum 下不调用且运行时保留阴影保护。关闭同帧复用也会关闭预求值，防止重复执行。
+6. 纸娃娃增加每帧／60 Hz／30 Hz 选项，默认每帧。60／30 Hz 使用独立深度的 RGBA8 离屏目标、预乘 alpha 合成和 128 MiB 预算；刷新成功才记账，尺寸／布局／模型／模式改变会失效。手持物品、光影包、特殊 stencil／logic／sRGB／MRT 或独立 draw-buffer 状态回退每帧。释放与资源重载、隐藏及退出接通。
 
-采样新增各场景实际绘制句柄数、求值数、复用数、启用物理的求值数，以及分场景原生更新时间、纸娃娃物品与 flush 时间。`scene.NAME.physicsEnabledEvaluations` 代表启用物理的求值次数，**不是 Bullet 实际步数／子步数**。动画／IK／物理的 native 内部独立计时、主体／描边完整拆分、屏幕面积优先级、独立实例并行 JNI 和可选 30／60 Hz 离屏纸娃娃仍属于后续工作；本轮没有改动这些原生执行边界。GPU 查询仍覆盖原绘制作用域，不能作为纯 GPU 排序耗时。
+采样记录各场景实际绘制句柄数、求值／复用数、启用物理的求值数、主体／描边与纸娃娃物品／flush 时间。新 JNI 以 64 字节版本化 direct buffer 返回动画、IK、物理、CPU 蒙皮的独立时间及 Bullet 实际调用／执行子步／请求子步，旧 DLL 无入口则回退常规求值。GPU 求值的 CPU 蒙皮时间为零，采样关闭不读取阶段时钟。`scene.NAME.physicsEnabledEvaluations` 仍只是启用物理的求值次数；实际步数应读新字段。并行 native 累计工作时间不能当主线程阻塞，需同时检查 `native.batchExecuteJoin`。GPU 查询仍覆盖原绘制作用域，不能作为纯 GPU 排序耗时。
 
 ### 对照开关
 
@@ -99,6 +101,7 @@ WORLD/PAPERDOLL 的实际透明 draw 均为每调用 1 次，`BATCH_SUBMISSIONS 
 | 名称 | 作用 |
 | --- | --- |
 | `mmdskin.reuseEvaluation` | 同实例同帧原生求值复用 |
+| `mmdskin.parallelEvaluation` | 独立远端玩家模型并行求值；依赖 `reuseEvaluation`，不足两个合格模型保留常规入口 |
 | `mmdskin.reuseTranslucentPreparation` | 输入完全相同的透明准备结果复用 |
 | `mmdskin.gpuTranslucent` | GPU 透明准备与间接提交 |
 | `mmdskin.translucentBatch` | 透明材质合批，包括 GPU 快速路径 |
@@ -109,6 +112,8 @@ WORLD/PAPERDOLL 的实际透明 draw 均为每调用 1 次，`BATCH_SUBMISSIONS 
 
 ### 已验证与游戏验收
 
-191 项 common 单元测试与 5 项日志汇总器测试通过；Fabric `remapJar`、NeoForge `shadowJar` 打包通过。两包包含新增类和 compute shader，Windows DLL 与当前 `build/generated/native-resources` 逐字节一致；校验记录为 `build/translucent-performance/multi-model-artifact-verification.json`。本轮 Java 打包使用 `-x :prepareNativeResources` 保留现有原生资源，没有验证独立的 Rust 物理改动。Windows 真实 GL 探针验证原 CPU 提交、CPU 合批和 GPU 间接合批颜色／深度一致；覆盖多材质、球面、morph、眼发光、剔除、纹理溢出回退和状态恢复。GPU 准备以 CPU 为 oracle，25 组数据覆盖裁剪、全部裁掉、稳定平局、NaN／正负零、128 项 tile 边界及容量变化；已修正驱动保留负零导致的并列顺序差异。共享缓冲验证内容、引用释放、记账转移、重新获取、预算与开关回退、GL 状态和清理。探针通过不能替代真实模型画面验收。
+当前 common 202 项、Python 5 项测试通过，Rust 统计定向 4 项通过；Rust 全库串行运行 237 项通过、2 项忽略。默认并行测试曾出现两项物理断言失败，两项独立运行均通过，表现符合共享配置干扰，尚未修复测试隔离。真实 GL 探针新增已知 CPU 索引、三视图缓存、候选纹理窗口和纸娃娃合成／深度／状态／生命周期验证，原有 GPU 准备 25 组及共享缓冲对照继续通过。真实 JNI 探针验证非法缓冲不求值、未对齐写入边界、旧 DLL 回退，以及四模型并行与串行最终骨骼结果逐字节一致。
+
+已用新 release DLL 完整执行原生资源同步及 Fabric `remapJar`、NeoForge `shadowJar`，本次未跳过 `prepareNativeResources`。两包 DLL 与 release 输出逐字节一致，类／shader／语言／Mixin 配置与 Fabric refmap 已核查，校验记录为 `build/translucent-performance/multi-model-artifact-verification.json`。原版实体循环字节码已核对；没有启动游戏验证实际 Mixin 应用与多人画面。详细命令、哈希及边界见续作完成报告。
 
 下一次重启开发客户端后，用固定条件采集 1／2／4／8 个相同与不同模型；再对照纸娃娃关闭／开启，检查 `GPU_PREPARE`、`PREPARED_REUSE`、`READBACK_CALLS`、`scene.PAPERDOLL.reuses` 和各场景求值。检查第一／第三人称完整部件、头眼、手持物品、VR／TaCZ、暂停、切换模型、Iris 和资源重载。纸娃娃复用未命中时保留回退是预期行为，需根据新日志判断原因；尚未承诺任何 FPS 增益。

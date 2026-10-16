@@ -14,8 +14,11 @@ Push-Location $taskRoot
 try {
     & (Join-Path $Jdk 'bin/javac.exe') -proc:none -encoding UTF-8 -cp $taskCp -d $taskOutput `
         (Join-Path $PSScriptRoot 'BatchGlProbe.java') (Join-Path $PSScriptRoot 'CacheGlProbe.java') (Join-Path $PSScriptRoot 'GpuTimerGlProbe.java') `
-        (Join-Path $PSScriptRoot 'GpuPreparationGlProbe.java') (Join-Path $PSScriptRoot 'StaticBufferGlProbe.java')
+        (Join-Path $PSScriptRoot 'GpuPreparationGlProbe.java') (Join-Path $PSScriptRoot 'StaticBufferGlProbe.java') `
+        (Join-Path $PSScriptRoot 'PaperDollGlProbe.java') (Join-Path $PSScriptRoot 'MaterialBindingGlProbe.java')
     if ($LASTEXITCODE -ne 0) { throw 'GL probe compilation failed' }
+    & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" com.shiroha.mmdskin.render.material.MaterialBindingGlProbe
+    if ($LASTEXITCODE -ne 0) { throw 'Material binding GL probe failed' }
     & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" com.shiroha.mmdskin.render.material.BatchGlProbe
     if ($LASTEXITCODE -ne 0) { throw 'Batch GL probe failed' }
     & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" CacheGlProbe
@@ -26,4 +29,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Static buffer GL probe failed' }
     & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" StaticBufferGlProbe 0
     if ($LASTEXITCODE -ne 0) { throw 'Static buffer budget GL probe failed' }
+    & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" PaperDollGlProbe
+    if ($LASTEXITCODE -ne 0) { throw 'Paperdoll GL probe failed' }
 } finally { Pop-Location }

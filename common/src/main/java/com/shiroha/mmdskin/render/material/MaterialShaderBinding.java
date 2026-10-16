@@ -13,6 +13,12 @@ final class MaterialShaderBinding implements AutoCloseable {
     private final int[] attributes;
     private final boolean[] enabled;
     private final float[][] previousColors;
+    private final float[] lastColor = new float[4];
+    private final float[] lastSpecular = new float[3];
+    private float lastPower;
+    private int lastPass = -1;
+    private boolean colorValid, specularValid, powerValid;
+    private boolean modulatorValid;
 
     MaterialShaderBinding() {
         int program = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
@@ -41,26 +47,48 @@ final class MaterialShaderBinding implements AutoCloseable {
     boolean splitsTextureAlpha() { return alphaPass >= 0; }
 
     void apply(MaterialRenderState state, int pass) {
+        boolean colorChanged = !colorValid || lastColor[0] != state.color[0]
+                || lastColor[1] != state.color[1] || lastColor[2] != state.color[2] || lastColor[3] != state.alpha;
         if (materialColor >= 0) {
-            GL46C.glUniform4f(materialColor, state.color[0], state.color[1], state.color[2], state.alpha);
-            if (materialSpecular >= 0) GL46C.glUniform3f(materialSpecular,
+            if (colorChanged) GL46C.glUniform4f(materialColor, state.color[0], state.color[1], state.color[2], state.alpha);
+            if (materialSpecular >= 0 && (!specularValid || lastSpecular[0] != state.specular[0]
+                    || lastSpecular[1] != state.specular[1] || lastSpecular[2] != state.specular[2])) {
+                GL46C.glUniform3f(materialSpecular,
                     state.specular[0], state.specular[1], state.specular[2]);
-            if (materialPower >= 0) GL46C.glUniform1f(materialPower, state.specularPower);
+                System.arraycopy(state.specular, 0, lastSpecular, 0, 3);
+                specularValid = true;
+            }
+            if (materialPower >= 0 && (!powerValid || lastPower != state.specularPower)) {
+                GL46C.glUniform1f(materialPower, state.specularPower);
+                lastPower = state.specularPower;
+                powerValid = true;
+            }
         } else {
             boolean hasColorAttribute = false;
             for (int location : attributes) {
                 if (location < 0) continue;
                 hasColorAttribute = true;
-                GL46C.glVertexAttrib4f(location, state.color[0], state.color[1], state.color[2], state.alpha);
+                if (colorChanged) GL46C.glVertexAttrib4f(location, state.color[0], state.color[1], state.color[2], state.alpha);
             }
             // 全局 alpha 已在 state.alpha 中，不能再被 ColorModulator 重复相乘。
-            if (colorModulator >= 0) GL46C.glUniform4f(colorModulator,
+            if (colorModulator >= 0 && (!modulatorValid || (!hasColorAttribute && colorChanged))) {
+                GL46C.glUniform4f(colorModulator,
                     previousModulator[0] * (hasColorAttribute ? 1.0f : state.color[0]),
                     previousModulator[1] * (hasColorAttribute ? 1.0f : state.color[1]),
                     previousModulator[2] * (hasColorAttribute ? 1.0f : state.color[2]),
                     hasColorAttribute ? 1.0f : state.alpha);
+                modulatorValid = true;
+            }
         }
-        if (alphaPass >= 0) GL46C.glUniform1i(alphaPass, pass);
+        if (colorChanged) {
+            System.arraycopy(state.color, 0, lastColor, 0, 3);
+            lastColor[3] = state.alpha;
+            colorValid = true;
+        }
+        if (alphaPass >= 0 && lastPass != pass) {
+            GL46C.glUniform1i(alphaPass, pass);
+            lastPass = pass;
+        }
     }
 
     @Override

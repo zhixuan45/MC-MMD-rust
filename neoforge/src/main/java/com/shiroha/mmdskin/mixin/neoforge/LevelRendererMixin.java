@@ -35,7 +35,7 @@ public abstract class LevelRendererMixin {
     private void mmdskin$prepareIndependentModels(DeltaTracker delta, boolean blockOutline, Camera camera,
             GameRenderer renderer, LightTexture light, Matrix4f view, Matrix4f projection, CallbackInfo ci) {
         if (capturedFrustum == null) PlayerWorldEvaluationPrepass.prepare(camera, cullingFrustum,
-                delta.getGameTimeDeltaPartialTick(false), this::isSectionCompiled, YsmCompat::isYsmModelActive);
+                delta, this::isSectionCompiled, YsmCompat::isYsmModelActive);
     }
 
 

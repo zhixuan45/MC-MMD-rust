@@ -155,7 +155,7 @@ public final class PaperDollRenderer {
         var repository = ClientRenderRuntime.get().modelRepository();
         ManagedModel source = repository.peek(ModelRequestKey.player(player, modelName));
         BaseModelInstance sharedPose = source != null && source.modelInstance() instanceof BaseModelInstance instance
-                && instance.canReuseForPaperDoll(player, tickDelta) ? instance : null;
+                && instance.canReuseForPaperDoll(player) ? instance : null;
         ManagedModel modelData = sharedPose != null ? source
                 : repository.acquire(ModelRequestKey.paperDoll(player, modelName));
         if (modelData == null || modelData.modelInstance() == null) {
@@ -166,7 +166,8 @@ public final class PaperDollRenderer {
         }
 
         int fps = ConfigManager.getPaperDollRefreshMode().framesPerSecond;
-        if (fps > 0 && !com.shiroha.mmdskin.compat.iris.IrisCompat.isIrisShaderActive()) {
+        if (fps > 0 && player.getMainHandItem().isEmpty() && player.getOffhandItem().isEmpty()
+                && !com.shiroha.mmdskin.compat.iris.IrisCompat.isIrisShaderActive()) {
             // Finish previously queued HUD work before changing the framebuffer.
             guiGraphics.flush();
             Minecraft mc = Minecraft.getInstance();
@@ -225,19 +226,9 @@ public final class PaperDollRenderer {
         float scale = ConfigManager.getPaperDollScale();
         modelViewStack.scale(scale, scale, -scale);
 
-        Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
-        if (ConfigManager.getPaperDollRotationMode() == PaperDollRotationMode.FIXED) {
-            // 面对镜头，经典微侧身 20 度
-            rotation.mul(new Quaternionf().rotateY((180.0f + 20.0f) * ((float) Math.PI / 180F)));
-            rotation.mul(new Quaternionf().rotateX(5.0f * ((float) Math.PI / 180F)));
-        } else {
-            // 跟随玩家身体与视角转动（面对镜头为基准）
-            float bodyYaw = Mth.rotLerp(tickDelta, player.yBodyRotO, player.yBodyRot);
-            float pitch = -player.getXRot();
-            rotation.mul(new Quaternionf().rotateY((180.0f - bodyYaw) * ((float) Math.PI / 180F)));
-            rotation.mul(new Quaternionf().rotateX(pitch * ((float) Math.PI / 180F)));
-        }
-        modelViewStack.mulPose(rotation);
+        // 仅设置整体显示朝向；头眼、动作和物理沿用世界姿态。
+        modelViewStack.mulPose(PaperDollDisplayTransform.rotation(ConfigManager.getPaperDollRotationMode(),
+                Mth.rotLerp(tickDelta, player.yBodyRotO, player.yBodyRot), player.getXRot(), new Quaternionf()));
 
         PaperDollRenderScope.enter();
         Minecraft mc = Minecraft.getInstance();

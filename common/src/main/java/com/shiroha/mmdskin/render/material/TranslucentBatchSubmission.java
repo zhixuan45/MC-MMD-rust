@@ -20,23 +20,22 @@ final class TranslucentBatchSubmission implements AutoCloseable {
     }
 
     /** Returns actual draw calls, or -1 before drawing anything when the compatibility path is needed. */
-    int draw(ByteBuffer runs, int count, ModelMaterial[] materials, ByteBuffer morphs,
-             SubMeshDrawHelper.TextureResolver textures, SubMeshDrawHelper.AlphaResolver alphas) {
+    int draw(ByteBuffer runs, int count, ModelMaterial[] materials, DrawMaterialCache materialCache) {
         var uniforms = TranslucentBatchShader.current();
         if (uniforms == null || count == 0) return -1;
         // Legacy diffuse sampling inherits unit 0's sampler; the table uses texture object parameters.
         if (GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, 0) != 0) return -1;
-        var plan = TranslucentBatchPlan.build(runs, count, materials, textures);
-        return drawPlan(plan, count, materials, morphs, alphas, null);
+        var plan = TranslucentBatchPlan.build(runs, count, materials, materialCache::texture);
+        return drawPlan(plan, count, materials, materialCache, null);
     }
 
-    int drawGpu(TranslucentBatchPlan plan, ModelMaterial[] materials, ByteBuffer morphs,
-                SubMeshDrawHelper.AlphaResolver alphas, GpuTranslucentPreparation device) {
-        return drawPlan(plan, plan.rows.size(), materials, morphs, alphas, device);
+    int drawGpu(TranslucentBatchPlan plan, ModelMaterial[] materials,
+                DrawMaterialCache materialCache, GpuTranslucentPreparation device) {
+        return drawPlan(plan, plan.rows.size(), materials, materialCache, device);
     }
 
-    private int drawPlan(TranslucentBatchPlan plan, int count, ModelMaterial[] materials, ByteBuffer morphs,
-                         SubMeshDrawHelper.AlphaResolver alphas, GpuTranslucentPreparation device) {
+    private int drawPlan(TranslucentBatchPlan plan, int count, ModelMaterial[] materials,
+                         DrawMaterialCache materialCache, GpuTranslucentPreparation device) {
         var uniforms = TranslucentBatchShader.current();
         if (uniforms == null) return -1;
         long rowBytes = (long) plan.rows.size() * ROW_BYTES;
@@ -46,11 +45,10 @@ final class TranslucentBatchSubmission implements AutoCloseable {
                 || rowBytes > Integer.MAX_VALUE || triangleBytes > Integer.MAX_VALUE) return -1;
         rows = resize(rows, (int) rowBytes);
         if (device == null) triangles = resize(triangles, (int) triangleBytes);
-        MaterialRenderState state = new MaterialRenderState();
         for (var row : plan.rows) {
             var key = row.key();
             ModelMaterial material = materials[key.material()];
-            state.resolve(material, morphs, key.material(), alphas.resolve(key.material(), Float.intBitsToFloat(key.alphaBits())));
+            MaterialRenderState state = materialCache.resolve(key.material(), Float.intBitsToFloat(key.alphaBits()));
             rows.putFloat(state.color[0]).putFloat(state.color[1]).putFloat(state.color[2]).putFloat(state.alpha);
             rows.putFloat(state.specular[0]).putFloat(state.specular[1]).putFloat(state.specular[2]).putFloat(state.specularPower);
             for (float value : state.sphereMul) rows.putFloat(value);

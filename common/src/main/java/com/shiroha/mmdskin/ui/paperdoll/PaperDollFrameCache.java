@@ -7,7 +7,7 @@ import com.shiroha.mmdskin.render.shader.ShaderCompiler;
 import org.apache.logging.log4j.LogManager;
 import org.lwjgl.opengl.GL46C;
 
-/** One full-resolution transparent image including outline and held items, with isolated depth. */
+/** One full-resolution transparent model image including outline, with isolated depth. */
 public final class PaperDollFrameCache implements AutoCloseable {
     private static final long MAX_BYTES = 128L * 1024 * 1024;
     private final PaperDollRefreshClock clock = new PaperDollRefreshClock();
@@ -22,6 +22,9 @@ public final class PaperDollFrameCache implements AutoCloseable {
                 || GL46C.glIsEnabled(GL46C.GL_COLOR_LOGIC_OP)
                 || GL46C.glIsEnabled(GL46C.GL_FRAMEBUFFER_SRGB)) return false;
         Target target = new Target();
+        // A single color image cannot represent multiple outputs or per-target blending.
+        // Reject those targets before changing any state (including unused indexed state).
+        if (!singleColorTarget()) return false;
         int w = target.viewport[2], h = target.viewport[3];
         int max = Math.min(GL46C.glGetInteger(GL46C.GL_MAX_TEXTURE_SIZE), GL46C.glGetInteger(GL46C.GL_MAX_RENDERBUFFER_SIZE));
         if (w <= 0 || h <= 0 || w > max || h > max || (long) w * h * 8 > MAX_BYTES) return false;
@@ -37,7 +40,6 @@ public final class PaperDollFrameCache implements AutoCloseable {
         }
         boolean refresh = clock.due(key, fps, now);
         RenderPerformanceProfiler profiler = RenderPerformanceProfiler.get();
-        profiler.recordPaperDollCache(refresh);
         if (refresh) {
             long timer = profiler.startTimer();
             clock.invalidate();
@@ -84,6 +86,31 @@ public final class PaperDollFrameCache implements AutoCloseable {
             GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 3);
         } finally {
             profiler.endTimer("paperDoll.cacheComposite", timer);
+        }
+        profiler.recordPaperDollCache(refresh);
+        return true;
+    }
+
+    private static boolean singleColorTarget() {
+        int count = GL46C.glGetInteger(GL46C.GL_MAX_DRAW_BUFFERS);
+        int first = GL46C.glGetInteger(GL46C.GL_DRAW_BUFFER0);
+        if (first == GL46C.GL_NONE) return false;
+        // Composition uses global blend setters; require identical indexed state so restoring
+        // index zero also restores every other slot, even currently unused attachments.
+        int[] properties = {GL46C.GL_BLEND_SRC_RGB, GL46C.GL_BLEND_DST_RGB,
+                GL46C.GL_BLEND_SRC_ALPHA, GL46C.GL_BLEND_DST_ALPHA,
+                GL46C.GL_BLEND_EQUATION_RGB, GL46C.GL_BLEND_EQUATION_ALPHA};
+        var mask = org.lwjgl.BufferUtils.createByteBuffer(4);
+        var other = org.lwjgl.BufferUtils.createByteBuffer(4);
+        GL46C.glGetBooleani_v(GL46C.GL_COLOR_WRITEMASK, 0, mask);
+        boolean blend = GL46C.glIsEnabledi(GL46C.GL_BLEND, 0);
+        for (int i = 1; i < count; i++) {
+            if (GL46C.glGetInteger(GL46C.GL_DRAW_BUFFER0 + i) != GL46C.GL_NONE
+                    || GL46C.glIsEnabledi(GL46C.GL_BLEND, i) != blend) return false;
+            GL46C.glGetBooleani_v(GL46C.GL_COLOR_WRITEMASK, i, other);
+            for (int c = 0; c < 4; c++) if (mask.get(c) != other.get(c)) return false;
+            if (org.lwjgl.opengl.GL.getCapabilities().OpenGL40) for (int property : properties)
+                if (GL46C.glGetIntegeri(property, i) != GL46C.glGetIntegeri(property, 0)) return false;
         }
         return true;
     }

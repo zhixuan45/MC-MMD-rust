@@ -24,8 +24,10 @@ class SummarizeTests(unittest.TestCase):
         for key in summarize.OPTIONAL_COUNTERS:
             del old["counters"][key]
         self.assertEqual(summarize.validate(old)["counters"]["BATCH_SUBMISSIONS"], 0)
+        self.assertEqual(summarize.validate(old)["counters"]["GPU_WINDOW_FALLBACK"], 0)
         new = row()
         self.assertEqual(summarize.validate(new)["counters"]["BATCH_RUNS"], 20)
+        self.assertEqual(summarize.validate(new)["counters"]["GPU_WINDOW_FALLBACK"], 20)
         new["counters"]["BATCH_RUNS"] = -1
         with self.assertRaisesRegex(summarize.RecordError, "BATCH_RUNS"):
             summarize.validate(new)

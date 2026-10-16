@@ -32,11 +32,10 @@ public final class TranslucentDrawOrder implements AutoCloseable {
     private int topologyBuild = -1;
     private int[] topologyRows = new int[0], packedTopology = new int[0];
 
-    int submitBatch(ModelMaterial[] materials, ByteBuffer morphs,
-                    SubMeshDrawHelper.TextureResolver textures, SubMeshDrawHelper.AlphaResolver alphas) {
+    int submitBatch(ModelMaterial[] materials, DrawMaterialCache materialCache) {
         if (!deviceActive && drawCount == 0) return 0;
-        return deviceActive ? submission.drawGpu(deviceMaterials, materials, morphs, alphas, device)
-                : submission.draw(submeshes, drawCount, materials, morphs, textures, alphas);
+        return deviceActive ? submission.drawGpu(deviceMaterials, materials, materialCache, device)
+                : submission.draw(submeshes, drawCount, materials, materialCache);
     }
     public record Inputs(
             ByteBuffer positions,
@@ -170,11 +169,18 @@ public final class TranslucentDrawOrder implements AutoCloseable {
     public boolean prepare(Inputs inputs, ByteBuffer source, int count, int indexSize,
                            ModelMaterial[] materials, ByteBuffer morphs,
                            SubMeshDrawHelper.AlphaResolver alphaResolver, SubMeshDrawHelper.TextureResolver textures) {
+        return prepare(inputs, source, count, indexSize, materials, morphs, alphaResolver, textures,
+                new DrawMaterialCache(materials, morphs, alphaResolver, textures));
+    }
+
+    boolean prepare(Inputs inputs, ByteBuffer source, int count, int indexSize,
+                    ModelMaterial[] materials, ByteBuffer morphs,
+                    SubMeshDrawHelper.AlphaResolver alphaResolver, SubMeshDrawHelper.TextureResolver textures,
+                    DrawMaterialCache materialCache) {
         boolean previousDevice = deviceActive;
         deviceActive = false;
         int triangles = 0;
         long classifyTimer = TranslucentDiagnostics.startTimer();
-        MaterialRenderState state = new MaterialRenderState();
         if (batches.length < count) {
             batches = new int[count];
             includeOpaque = new boolean[count];
@@ -197,9 +203,10 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             coverageSafe = splitPixels && !packEntity;
             for (int s = 0; s < count; s++) {
                 batches[s] = -1;
-                if (!includes(source, s, materials, morphs, alphaResolver, state)) continue;
+                if (!includes(source, s, materials, materialCache)) continue;
                 triangles += source.getInt(s * 20 + 8) / 3;
                 var material = materials[source.getInt(s * 20)];
+                var state = materialCache.resolve(source.getInt(s * 20), source.getFloat(s * 20 + 12));
                 boolean power =
                         specular
                                 && (state.specular[0] != 0
@@ -312,7 +319,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 // Alpha coverage can eliminate entire submeshes. Their unused textures must not
                 // push an otherwise valid single-window pass back onto the CPU.
                 var devicePlan = TranslucentBatchPlan.singleWindowForCandidates(source, count,
-                        candidateOwners, candidateCount, materials, textures);
+                        candidateOwners, candidateCount, materials, materialCache::texture);
                 if (devicePlan != null && TranslucentBatchSubmission.supports(devicePlan.materials())) {
                     boolean reuse = reusePreparation() && previousDevice && prepared.matches(inputs, candidateBuildCount, source, count, batches, packEntity);
                     if (reuse || device.prepare(inputs, deviceTopology(devicePlan.rowBySubmesh()))) {
@@ -558,20 +565,15 @@ public final class TranslucentDrawOrder implements AutoCloseable {
         void invalidate() { input = null; }
     }
 
-    private static boolean includes(
-            ByteBuffer source,
-            int s,
-            ModelMaterial[] materials,
-            ByteBuffer morphs,
-            SubMeshDrawHelper.AlphaResolver resolver,
-            MaterialRenderState state) {
+    private static boolean includes(ByteBuffer source, int s, ModelMaterial[] materials,
+                                    DrawMaterialCache materialCache) {
         int b = s * 20, id = source.getInt(b);
         if (source.get(b + 16) == 0
                 || source.getInt(b + 8) <= 0
                 || id < 0
                 || id >= materials.length) return false;
         ModelMaterial material = materials[id];
-        state.resolve(material, morphs, id, resolver.resolve(id, source.getFloat(b + 12)));
+        MaterialRenderState state = materialCache.resolve(id, source.getFloat(b + 12));
         return state.alpha >= .001f
                 && (state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasAlpha);
     }

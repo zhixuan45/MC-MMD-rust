@@ -50,7 +50,7 @@ public final class LivingEntityModelStateHelper {
         LivingEntityModelStateHelper.scenePort = scenePort != null ? scenePort : NOOP_SCENE_PORT;
     }
 
-    public static ScenePoseSnapshot syncModelState(long modelHandle,
+    public static void syncModelState(long modelHandle,
                                       LivingEntity entity,
                                       float entityYaw,
                                       float tickDelta,
@@ -58,9 +58,7 @@ public final class LivingEntityModelStateHelper {
                                       String modelName,
                                       boolean stagePlaying,
         boolean vrActive) {
-        ScenePoseSnapshot snapshot = new ScenePoseSnapshot(scenePort);
-        syncModelState(snapshot, modelHandle, entity, entityYaw, tickDelta, context, modelName, stagePlaying, vrActive);
-        return snapshot;
+        syncModelState(scenePort, modelHandle, entity, entityYaw, tickDelta, context, modelName, stagePlaying, vrActive);
     }
 
     public static void syncModelState(NativeScenePort scenePort, long modelHandle, LivingEntity entity,

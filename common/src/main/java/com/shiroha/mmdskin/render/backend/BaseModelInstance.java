@@ -65,11 +65,8 @@ public abstract class BaseModelInstance implements ModelInstance {
     private final FirstPersonPoseState firstPersonPoseState = new FirstPersonPoseState();
     private final FrameEvaluationCache evaluationCache = new FrameEvaluationCache();
     private RenderPerformanceProfiler.Scene evaluationScene = RenderPerformanceProfiler.Scene.OTHER;
-    private com.shiroha.mmdskin.render.pipeline.ScenePoseSnapshot syncedPose;
-    private long worldDrawFrame = -1;
+    private final PaperDollPoseState<LivingEntity> paperDollPose = new PaperDollPoseState<>();
     private ByteBuffer nativeProfile;
-    private Entity worldDrawEntity;
-    private boolean worldDrawFirstPerson;
     /** 全局 Alpha 调制因子（例如直播防走光虚化透明度，默认 1.0） */
     protected float globalAlpha = 1.0f;
 
@@ -104,7 +101,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         applyPhysicsState(RuntimeConfigPortHolder.get().isPhysicsEnabled());
 
         long syncTimer = RenderPerformanceProfiler.get().startTimer();
-        syncedPose = LivingEntityModelStateHelper.syncModelState(
+        LivingEntityModelStateHelper.syncModelState(
                 model,
                 entity,
                 entityYaw,
@@ -136,19 +133,17 @@ public abstract class BaseModelInstance implements ModelInstance {
 
     protected boolean supportsPaperDollPoseReuse(boolean firstPerson) { return false; }
 
-    /** Checks without mutating the source pose; GUI sorting and light remain view-specific. */
-    public final boolean canReuseForPaperDoll(LivingEntity entity, float tickDelta) {
+    /** Reuse the world head, eyes and physics; only the GUI root transform changes facing. */
+    public final boolean canReuseForPaperDoll(LivingEntity entity) {
         if (model == 0 || !isReady() || vrActive || globalAlpha != 1.0f
-                || "false".equalsIgnoreCase(System.getProperty("mmdskin.paperDollReuse"))
-                || worldDrawEntity != entity || worldDrawFrame != com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current()
-                || !evaluationCache.matches(worldDrawFrame, backendPort().poseInputRevision(model))
-                || !supportsPaperDollPoseReuse(worldDrawFirstPerson)
-                || backendPort().hasExternalPoseInput(model)
-                || MMDCameraController.getInstance().isStagePlayingModel(model)) return false;
-        var expected = new com.shiroha.mmdskin.render.pipeline.ScenePoseSnapshot(null);
-        LivingEntityModelStateHelper.syncModelState(expected, model, entity, 0.0f, tickDelta,
-                RenderScene.PAPERDOLL, getModelName(), false, false);
-        return expected.sameInputs(syncedPose);
+                || "false".equalsIgnoreCase(System.getProperty("mmdskin.paperDollReuse"))) return false;
+        long frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
+        long revision = backendPort().poseInputRevision(model);
+        return paperDollPose.matches(entity, frame, revision)
+                && evaluationCache.matches(frame, revision)
+                && supportsPaperDollPoseReuse(paperDollPose.isFirstPerson())
+                && !backendPort().hasExternalPoseInput(model)
+                && !MMDCameraController.getInstance().isStagePlayingModel(model);
     }
 
     public final void renderPaperDollPose(LivingEntity entity, PoseStack stack, int packedLight) {
@@ -302,7 +297,7 @@ public abstract class BaseModelInstance implements ModelInstance {
 
         if (worldDecision.shouldUpdate() && !reusePreparedPose) {
             long syncTimer = RenderPerformanceProfiler.get().startTimer();
-            syncedPose = LivingEntityModelStateHelper.syncModelState(
+            LivingEntityModelStateHelper.syncModelState(
                     model,
                     entityIn,
                     entityYaw,
@@ -318,9 +313,8 @@ public abstract class BaseModelInstance implements ModelInstance {
         try {
             doRenderModel(entityIn, entityYaw, entityPitch, entityTrans, mat, packedLight, context);
             if (context != null && context.isWorldScene() && !IrisCompat.isRenderingShadows()) {
-                worldDrawFrame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
-                worldDrawEntity = entityIn;
-                worldDrawFirstPerson = context.isFirstPerson();
+                paperDollPose.capture(entityIn, com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current(),
+                        backendPort().poseInputRevision(model), context.isFirstPerson());
             }
         } finally {
             firstPersonPoseState.finishRender(context != null && context.isFirstPerson());
@@ -377,7 +371,8 @@ public abstract class BaseModelInstance implements ModelInstance {
     protected boolean supportsParallelEvaluation() { return false; }
 
     public final boolean canPrepareWorldEvaluation() {
-        return supportsParallelEvaluation() && model != 0 && isReady() && !vrActive
+        return !"false".equalsIgnoreCase(System.getProperty("mmdskin.reuseEvaluation"))
+                && supportsParallelEvaluation() && model != 0 && isReady() && !vrActive
                 && !firstPersonPoseState.isPrepared() && !backendPort().hasExternalPoseInput(model)
                 && !MMDCameraController.getInstance().isStagePlayingModel(model);
     }
@@ -393,7 +388,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         applyPhysicsState(decision.physicsEnabled());
         var profiler = RenderPerformanceProfiler.get();
         long syncTimer = profiler.startTimer();
-        syncedPose = LivingEntityModelStateHelper.syncModelState(model, entity, yaw, tickDelta,
+        LivingEntityModelStateHelper.syncModelState(model, entity, yaw, tickDelta,
                 RenderScene.WORLD, getModelName(), false, false);
         profiler.endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
         long now = System.currentTimeMillis();

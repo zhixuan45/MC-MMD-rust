@@ -131,6 +131,29 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
     }
 
     @Override
+    public int loadedWorldModelCount() {
+        final int[] count = {0};
+        modelCache.forEach((key, entry) -> {
+            if (count[0] >= 2 || entry == null || entry.value == null
+                    || entry.value.modelInstance() == null
+                    || entry.value.modelInstance().getModelHandle() == 0L) return;
+            if (entry.value.requestKey().subjectKind() != ModelSubjectKind.PAPERDOLL) count[0]++;
+        });
+        if (count[0] >= 2) return count[0];
+        try {
+            for (ManagedModel externalModel : extensionPort.additionalLoadedModels()) {
+                if (externalModel == null || externalModel.modelInstance() == null
+                        || externalModel.modelInstance().getModelHandle() == 0L
+                        || externalModel.requestKey().subjectKind() == ModelSubjectKind.PAPERDOLL) continue;
+                if (++count[0] >= 2) return count[0];
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to count external managed models", e);
+        }
+        return count[0];
+    }
+
+    @Override
     public int totalModelsLoaded() {
         return totalModelsLoaded.get();
     }

@@ -10,6 +10,7 @@ import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.pipeline.NativeEvaluationBatch;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -24,13 +25,25 @@ import java.util.function.Predicate;
  */
 public final class PlayerWorldEvaluationPrepass {
     private PlayerWorldEvaluationPrepass() {}
-    public static void prepare(Camera camera, Frustum frustum, float tickDelta,
+    public static void prepare(Camera camera, Frustum frustum, DeltaTracker delta,
                                Predicate<BlockPos> sectionCompiled, Predicate<AbstractClientPlayer> ysmActive) {
+        // The platform mixin invokes this hook before the main world entity loop and skips
+        // captured shadow frusta. Keep the explicit shadow guard for direct callers, but Iris'
+        // main entity program does not make native animation evaluation unsafe. This lets the
+        // CPU-side part of the multi-model path remain useful while Iris handles transparency.
         if (!NativeEvaluationBatch.enabled() || frustum == null || IrisCompat.isRenderingShadows()
-                || IrisCompat.isIrisShaderActive() || FirstPersonManager.vrRuntime().isLocalPlayerInVr()) return;
+                || FirstPersonManager.vrRuntime().isLocalPlayerInVr()) return;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || mc.player == null) return;
+        // The world can contain models that are not players: stage actors, mob
+        // replacements and extension-owned entities all consume native model
+        // instances. Use the repository's loaded world-model set as the gate;
+        // player count is not a valid proxy for the amount of MMD work.
+        if (mc.level == null || mc.player == null
+                || ClientRenderRuntime.get().modelDiagnostics().loadedWorldModelCount() < 2) return;
         var jobs = new ArrayList<NativeEvaluationBatch.Work>();
+        record Candidate(AbstractClientPlayer player, com.shiroha.mmdskin.model.runtime.ManagedModel data,
+                         BaseModelInstance model) {}
+        var candidates = new ArrayList<Candidate>();
         var handles = new HashSet<Long>();
         var position = camera.getPosition();
         long timer = RenderPerformanceProfiler.get().startTimer();
@@ -48,10 +61,20 @@ public final class PlayerWorldEvaluationPrepass {
             if (data == null || data.entityState().playStageAnim
                     || !(data.modelInstance() instanceof BaseModelInstance model)
                     || !model.canPrepareWorldEvaluation() || !handles.add(model.getModelHandle())) continue;
-            AnimationStateManager.updateAnimationState(player, data);
-            PlayerModelRenderCoordinator.consumePendingSignals(player, data, false);
-            var pose = PlayerRenderHelper.calculateMutableRenderPose(player, data, tickDelta);
-            var work = model.prepareWorldEvaluation(player, pose.bodyYaw, tickDelta);
+            candidates.add(new Candidate(player, data, model));
+        }
+        // A lone model gains nothing from batching; leave its normal render entry untouched.
+        if (candidates.size() < 2) {
+            RenderPerformanceProfiler.get().endTimer("native.batchPrepare", timer);
+            return;
+        }
+        for (var candidate : candidates) {
+            var player = candidate.player();
+            float tickDelta = delta.getGameTimeDeltaPartialTick(!mc.level.tickRateManager().isEntityFrozen(player));
+            AnimationStateManager.updateAnimationState(player, candidate.data());
+            PlayerModelRenderCoordinator.consumePendingSignals(player, candidate.data(), false);
+            var pose = PlayerRenderHelper.calculateMutableRenderPose(player, candidate.data(), tickDelta);
+            var work = candidate.model().prepareWorldEvaluation(player, pose.bodyYaw, tickDelta);
             if (work != null) jobs.add(work);
         }
         var profiler = RenderPerformanceProfiler.get();
@@ -61,4 +84,5 @@ public final class PlayerWorldEvaluationPrepass {
         profiler.endTimer("native.batchExecuteJoin", timer);
         profiler.recordParallelBatch(jobs.size());
     }
+
 }

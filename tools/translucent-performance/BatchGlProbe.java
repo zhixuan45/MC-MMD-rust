@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.render.material;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
 import com.shiroha.mmdskin.render.shader.TranslucentBatchShader;
+import com.shiroha.mmdskin.texture.runtime.TextureAlphaCoverage;
 import java.nio.*;
 import org.joml.Matrix4f;
 import org.lwjgl.glfw.GLFW;
@@ -188,9 +189,48 @@ public class BatchGlProbe {
         for(int path=1;path<3;path++)for(int i=0;i<images[0].capacity();i++) productionMax=Math.max(productionMax,Math.abs((images[0].get(i)&255)-(images[path].get(i)&255)));
         check(productionMax<=1,"production color mismatch max="+productionMax);
         for(int path=1;path<3;path++)for(int i=0;i<depths[0].capacity();i++) check(depths[0].get(i)==depths[path].get(i),"production depth mismatch");
+        filteredWindow(legacy,batch,ebo,positionSsbo,positionsOnly,view,textures);
         check(GL46C.glGetError()==GL46C.GL_NO_ERROR,"final GL error");
         legacy.cleanup(); batch.cleanup(); GL46C.glDeleteBuffers(vbo); GL46C.glDeleteBuffers(ebo); GL46C.glDeleteBuffers(positionSsbo);
         GL46C.glDeleteVertexArrays(vao); GL46C.glDeleteTextures(textures);
         System.out.println("BatchGlProbe PASS: 36 runs -> "+draws[0]+" draws; mixed materials, shared vertices, sphere/morph/eyes, texture overflow, culling, fallback, state, cleanup");
+    }
+
+    static void filteredWindow(ToonShaderCpu legacy, ToonShaderCpu batch, int ebo, int positionSsbo,
+                               ByteBuffer positions, FloatBuffer view, int[] textures) {
+        ModelMaterial[] mats=new ModelMaterial[10]; ByteBuffer runs=buffer(10*20),uvs=buffer(24);
+        ByteBuffer opaque=buffer(8*8*4),partial=buffer(8*8*4);
+        for(int i=0;i<64;i++){opaque.put(i*4+3,(byte)255);partial.put(i*4+3,(byte)130);}
+        for(int i=0;i<10;i++) {
+            var mat=mats[i]=new ModelMaterial(); mat.tex=textures[i]; mat.hasAlpha=true; mat.hasTranslucentPixels=true;
+            // Nine atlases are opaque at this triangle; only one translucent candidate survives.
+            mat.alphaCoverage=TextureAlphaCoverage.fromRgba(i==9?partial:opaque,8,8);
+            RenderSystem.activeTexture(GL46C.GL_TEXTURE0); RenderSystem.bindTexture(mat.tex);
+            GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D,0,0,0,8,8,GL46C.GL_RGBA,GL46C.GL_UNSIGNED_BYTE,i==9?partial:opaque);
+            GL46C.glGenerateMipmap(GL46C.GL_TEXTURE_2D);
+            int b=i*20; runs.putInt(b,i).putInt(b+4,i*3).putInt(b+8,3).putFloat(b+12,1)
+                    .put(b+16,(byte)1).put(b+17,(byte)1);
+        }
+        for(int i=0;i<3;i++)uvs.putFloat(i*8,.3f).putFloat(i*8+4,.3f);
+        ByteBuffer[] images=new ByteBuffer[2]; FloatBuffer[] depths=new FloatBuffer[2];
+        for(int path=0;path<2;path++) {
+            var shader=path==0?legacy:batch; setup(shader); RenderSystem.depthMask(true);
+            GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
+            GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ebo);
+            try(var order=new TranslucentDrawOrder()) {
+                var input=(path==0?TranslucentDrawOrder.Inputs.cpu(positions,0,3,view,null,1,false,uvs,0,false)
+                        :TranslucentDrawOrder.Inputs.gpu(positionSsbo,3,view,null,1,false,uvs,0,0,false));
+                SubMeshDrawHelper.draw(runs,10,4,GL46C.GL_UNSIGNED_INT,i->mats[i].tex,(i,a)->a,
+                        mats,null,false,i->shader.setEyeMaterialMask(0),order,input);
+                check(order.candidateTriangleCount()==1,"coverage-filtered candidate count");
+                if(path==1)check(order.drawCount()==0&&order.indexBuffer()!=0,"filtered ten-texture pass uses GPU preparation");
+            }
+            images[path]=buffer(SIZE*SIZE*4);depths[path]=buffer(SIZE*SIZE*4).asFloatBuffer();
+            GL46C.glReadPixels(0,0,SIZE,SIZE,GL46C.GL_RGBA,GL46C.GL_UNSIGNED_BYTE,images[path]);
+            GL46C.glReadPixels(0,0,SIZE,SIZE,GL46C.GL_DEPTH_COMPONENT,GL46C.GL_FLOAT,depths[path]);
+        }
+        for(int i=0;i<images[0].capacity();i++)check(Math.abs((images[0].get(i)&255)-(images[1].get(i)&255))<=1,"filtered window pixel oracle");
+        for(int i=0;i<depths[0].capacity();i++)check(depths[0].get(i)==depths[1].get(i),"filtered window depth oracle");
+        System.out.println("PASS ten raw textures filtered to one candidate window, CPU/GPU color and depth");
     }
 }

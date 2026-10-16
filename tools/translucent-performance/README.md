@@ -66,12 +66,35 @@ phase / 预热时长 / 采样时长 / 重复轮次：
 ./tools/translucent-performance/run-batch-probe.ps1
 ```
 
-- `BatchGlProbe` 对照旧 CPU 提交、CPU 合批及 GPU 间接合批的颜色与深度，保留多材质、共享顶点、球面／morph／眼发光、纹理溢出、剔除、回退和 GL 状态验证。
+- `BatchGlProbe` 对照旧 CPU 提交、CPU 合批及 GPU 间接合批的颜色与深度，保留多材质、共享顶点、球面／morph／眼发光、纹理溢出、剔除、回退和 GL 状态验证。额外用 10 张原始纹理、筛选后仅剩一个候选窗口的数据，验证生产入口确实进入 GPU 路径，颜色／深度与 CPU 对照一致。
+- `MaterialBindingGlProbe` 验证提交状态去重后的 Toon 颜色／高光、Iris 风格颜色 attribute／modulator 分支、alpha pass，以及球面模式／因子／纹理切换与宿主状态恢复。使用合成 shader，不等于真实 BSL 场景验收；CPU 提交优化记录见 `plans/translucent-rendering/cpu_submission_report_2026-10-16.md`。
 - `GpuPreparationGlProbe` 以 CPU 为 oracle，直接回读探针的 GPU 索引、材质行与 command，25 组用例覆盖裁剪、全部裁掉、平局、NaN／正负零、128 项 tile 边界、容量变化、SSBO range／program 恢复与清理。只有验证探针读取这些结果，生产快速路径没有结果回读。
 - `StaticBufferGlProbe` 验证不可变缓冲的内容去重、不同语义隔离、只读视图、引用／记账转移、最后释放、重新获取、开关和 GL 状态，并在独立 JVM 以预算 0 验证独立分配回退。
-- 原 `CacheGlProbe` 和 `GpuTimerGlProbe` 继续覆盖兼容准备、CPU／GPU 位置来源、缓存失效、动态索引与查询所有权。
+- `CacheGlProbe` 和 `GpuTimerGlProbe` 覆盖兼容准备、CPU／GPU 位置来源、缓存失效、动态索引与查询所有权；新增显式 CPU 索引的 position／limit、版本／长度失效、未对齐长度拒绝，以及世界／第一人称／GUI 三缓存交替保留和释放。
+- `PaperDollGlProbe` 覆盖真实 GL 预乘 alpha 合成颜色（容差 2）、目标深度隔离、刷新／命中／键失效／尺寸变化、失败后重试、状态与资源恢复，以及 stencil、logic、sRGB、MRT 和独立 blend 状态的保守回退。
 
-游戏中新增 `GPU_PREPARE`（GPU 准备次数）、`PREPARED_REUSE`（透明准备结果复用次数）；GPU 分支仍可能首次读取原始索引或每调用读取第一人称动态 EBO，不能要求所有 `READBACK_CALLS` 为 0。分场景实例／求值／启用物理求值／复用统计在 `[MMD性能]` 中，汇总器当前只处理 `[MMD透明性能]`。纯 GPU 排序没有独立计时，不能把兼容路径的 CPU `SORT` 降低解释为零 GPU 排序成本。逐项启动开关、实施范围和 1／2／4／8 实体测试矩阵见 `plans/multi-model-performance/implementation_plan.md`。
+游戏中新增 `GPU_PREPARE`（GPU 准备次数）、`PREPARED_REUSE`（透明准备结果复用次数）和 `GPU_WINDOW_FALLBACK`（候选纹理窗口不满足 GPU 准备条件的次数），汇总器全部支持，旧日志缺少字段按零处理。原始／动态索引有已知 CPU 数据及版本时直接消费，未知来源仍可能读 EBO，不能要求所有 `READBACK_CALLS` 为 0。世界、第一人称、GUI 各保留一个有界透明缓存。分场景实例／求值／启用物理求值／复用统计在 `[MMD性能]` 中，汇总器当前只处理 `[MMD透明性能]`。纯 GPU 排序没有独立计时，不能把兼容路径的 CPU `SORT` 降低解释为零 GPU 排序成本。逐项启动开关、实施范围和 1／2／4／8 实体测试矩阵见 `plans/multi-model-performance/implementation_plan.md`。
+
+## 原生统计与多模型并行探针
+
+使用 JDK 21 和项目已有 Cargo 缓存，先生成 classpath 并构建 release DLL：
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Zulu\zulu-21'
+$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+.\gradlew.bat --offline -I tools/translucent-performance/validation.gradle :common:classes :common:writeTranslucentProbeClasspath -x :prepareNativeResources
+cargo build --offline --release --lib --manifest-path rust_engine/Cargo.toml
+.\tools\translucent-performance\run-native-probe.ps1
+cargo test --offline --manifest-path rust_engine/Cargo.toml --lib evaluation_profile
+```
+
+`NativeProfileProbe` 在 `build/translucent-performance/evaluation-probe.pmx` 生成单骨骼／单动态刚体 PMX，通过项目解析器和真实 JNI 加载，不读取或修改用户模型。验证 64 字节统计协议、非法 buffer 不执行求值、未对齐 direct buffer 边界、CPU／GPU 求值字段及实际 Bullet 计数；四个独立模型各执行 48 次并行采样求值，与常规串行基准的最终骨骼矩阵逐字节比较。极短阶段可低于平台计时分辨率，不能要求每次 IK 都大于零。Rust 定向测试另验证 0 步、子步截断、可变步进以及采样和并行不改变独立世界结果。
+
+脚本默认使用 `rust_engine/target/release/mmd_engine.dll`，可用 `-Dll PATH` 指定；若有另存的旧 DLL，可用 `-LegacyDll PATH` 在独立 JVM 验证缺失采样入口时返回 false、不会求值、随后常规更新仍然有效。打包任务会覆盖生成资源目录的 DLL，应在覆盖前另存旧版本，不能把新 DLL 当作旧版本探针输入。完整库测试可运行 `cargo test --offline --manifest-path rust_engine/Cargo.toml --lib -- --test-threads=1`；2026-10-16 发现默认并行测试的两项物理断言独立／串行可通过，详见完成报告中的测试隔离限制。
+
+生产并行预处理仅覆盖至少两个合格、已加载的远端玩家 GPU 模型；输入准备和完成回调在渲染线程，后台只执行 JNI，全部汇合后才继续绘制。`-Dmmdskin.parallelEvaluation=false` 关闭并行，关闭 `mmdskin.reuseEvaluation` 也禁用预处理。单个远端、CPU 蒙皮、本地玩家、VR、TaCZ、舞台、外部姿态或光影包保留常规路径。`native.parallelBatches`／`native.parallelModels` 确认批处理命中，`native.batchExecuteJoin` 反映执行与汇合的调用线程时间；各实例累计 native 阶段时间代表工作量，不等于主线程阻塞。实际 Bullet 调用／执行子步／请求子步与旧 `physicsEnabledEvaluations` 字段含义不同。
+
+纸娃娃默认每帧刷新；设置中可选 60／30 Hz 离屏缓存。此模式降低刷新频率，需要和默认模式分别采样。手持任意物品或启用光影包时回退每帧；特殊 GL 目标／状态、超过 128 MiB 预算等情况也保守回退。`scene.PAPERDOLL.reuses` 代表姿态复用，应结合离屏刷新／命中计数判断收益，不能混为同一缓存。隐藏、切换模型、改变布局／模式、重载和退出都需要游戏验证。
 
 `SortBenchmark.java` 是独立 JDK 微基准；它比较导出的静态键排序结果，不包含 Minecraft 线程竞争、GPU 同步、材质提交或完整画面，也不是游戏收益证据。`audit_assets.py` 和 `export_sort_keys.py` 需要 NumPy/Pillow，只读资产并输出静态姿势模拟；这些依赖只用于原有资产工具，不用于日志汇总器。
 

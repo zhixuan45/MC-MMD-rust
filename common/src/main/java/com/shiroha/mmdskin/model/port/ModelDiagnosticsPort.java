@@ -8,6 +8,11 @@ public interface ModelDiagnosticsPort {
 
     List<ManagedModel> loadedModels();
 
+    /** Number of active world-facing model instances, excluding paper-doll/UI entries. */
+    default int loadedWorldModelCount() {
+        return loadedModels().size();
+    }
+
     int totalModelsLoaded();
 
     int pendingReleaseCount();

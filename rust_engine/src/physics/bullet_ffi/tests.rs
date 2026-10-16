@@ -4,6 +4,9 @@ use glam::{Mat4, Quat, Vec3};
 #[path = "tests/contact_points.rs"]
 mod contact_point_tests;
 
+#[path = "tests/evaluation_profile.rs"]
+mod evaluation_profile_tests;
+
 fn body(shape: &BulletShape, transform: Mat4) -> BulletRigidBody {
     BulletRigidBody::new(
         &RigidBodyInfo {

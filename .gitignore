@@ -136,3 +136,4 @@ rust_engine/deps/bullet3/
 /Cyspring/
 /.gradle-user-home/
 /.gradle-tmp-stage-a/
+/.gradle-local/

@@ -27,6 +27,7 @@ public final class NativeEvaluationBatch {
     private NativeEvaluationBatch() {}
     public static boolean enabled() {
         return EXECUTOR != null && !EXECUTOR.isShutdown()
+                && !"false".equalsIgnoreCase(System.getProperty("mmdskin.reuseEvaluation"))
                 && !"false".equalsIgnoreCase(System.getProperty("mmdskin.parallelEvaluation"));
     }
     public static void run(List<? extends Work> input) {
