@@ -12,6 +12,13 @@ uniform int SphereMode;
 uniform vec4 SphereMul;
 uniform vec4 SphereAdd;
 uniform float AlphaCutoff;
+uniform float HairAlphaCutoff;
+uniform bool HairMaterial;
+uniform bool DisableTransparency;
+uniform int ToonTransparencyMode; // 0 普通，1 取深度，2 深层余量，3 选中层
+uniform bool ToonTransparencyHasPrevious;
+uniform sampler2D ToonTransparencyDepth;
+uniform sampler2D ToonTransparencyCoverage;
 uniform vec4 MaterialColor;
 uniform vec3 MaterialSpecular;
 uniform float MaterialSpecularPower;
@@ -35,12 +42,39 @@ void main() {
     vec4 texColor = texture(Sampler0, texCoord0);
 #endif
     float finalAlpha = texColor.a * MaterialColor.a;
-    if (finalAlpha < AlphaCutoff) {
+    // 独立覆盖全局阈值；先裁切，再执行实心对照及透明分层。
+    float cutoff = max(0.001, HairMaterial ? HairAlphaCutoff : AlphaCutoff);
+    if (finalAlpha < cutoff) {
         discard;
     }
+    // 保留透明孔洞，将仍可见的半透明像素作为实心绘制。
+    if (DisableTransparency) finalAlpha = 1.0;
 
     if (AlphaPass == 1 && finalAlpha < 0.999) discard;
     if (AlphaPass == 2 && finalAlpha >= 0.999) discard;
+
+    if (ToonTransparencyMode != 0) {
+        if (ToonTransparencyMode == 1 && !ToonTransparencyHasPrevious) {
+            toonOutput0 = vec4(1.0);
+            return;
+        }
+        // 空层的复制深度不是透明表面，必须按像素验证覆盖标记。
+        if (texelFetch(ToonTransparencyCoverage, ivec2(gl_FragCoord.xy), 0).r < 0.5) discard;
+        float layerDepth = texelFetch(ToonTransparencyDepth, ivec2(gl_FragCoord.xy), 0).r;
+        // 容纳 D24 深度纹理量化，不按三角形中心决定前后关系。
+        const float depthEpsilon = 0.0000001;
+        if ((ToonTransparencyMode == 1 && ToonTransparencyHasPrevious)
+                || ToonTransparencyMode == 2) {
+            if (gl_FragCoord.z <= layerDepth + depthEpsilon) discard;
+        } else if (ToonTransparencyMode == 3) {
+            if (abs(gl_FragCoord.z - layerDepth) > depthEpsilon) discard;
+        }
+        // 深度采集不计算光照，也不写入颜色目标。
+        if (ToonTransparencyMode == 1) {
+            toonOutput0 = vec4(1.0);
+            return;
+        }
+    }
 
     vec3 albedo = texColor.rgb * MaterialColor.rgb;
     vec3 normal = normalize(viewNormal);

@@ -32,9 +32,49 @@ public final class RenderPerformanceProfiler {
     private final int[][] sceneFrame = new int[Scene.values().length][3];
     private long paperDollCacheHits, paperDollCacheRefreshes;
     private long parallelBatches, parallelModels;
+    private final long[][] parallelBatchDetails = new long[Scene.values().length][10];
+    private final long[][] nativeParallelDetails = new long[Scene.values().length][15];
+    private final long[][] nativeParallelMax = new long[Scene.values().length][14];
 
     public synchronized void recordParallelBatch(int models) {
         if (models > 1 && isSamplingEnabled()) { parallelBatches++; parallelModels += models; }
+    }
+
+    /** 记录有效类别、CPU 调度预算和本批 Java 求值活跃峰值。 */
+    public synchronized void recordParallelBatch(Scene scene, int players, int mobs, int maids,
+                                                   NativeEvaluationBatch.BatchStats stats) {
+        if (scene == null || stats == null || stats.tasks() == 0 || !isSamplingEnabled()) return;
+        if (stats.peakWorkers() > 0 || (stats.tasks() == 1 && stats.internalBudget() > 1
+                && !"false".equalsIgnoreCase(System.getProperty("mmdskin.parallelInternal")))) {
+            parallelBatches++;
+            parallelModels += stats.tasks();
+        }
+        long[] values = parallelBatchDetails[scene.ordinal()];
+        values[0]++;
+        values[1] += stats.tasks();
+        values[2] += players;
+        values[3] += mobs;
+        values[4] += maids;
+        values[5] += stats.cpuBudget();
+        values[6] += stats.internalBudget();
+        values[7] += stats.requestedWorkers();
+        values[8] = Math.max(values[8], stats.peakWorkers());
+        values[9] = Math.max(values[9], stats.peakActive());
+    }
+
+    /** 版本化 profile 的细节由能力适配层确认后才会调用。 */
+    public synchronized void recordNativeParallelDetail(Scene scene, java.nio.ByteBuffer data) {
+        if (scene == null || data == null || data.capacity() < 288 || !isSamplingEnabled()) return;
+        long[] values = nativeParallelDetails[scene.ordinal()];
+        long[] maximums = nativeParallelMax[scene.ordinal()];
+        int[] offsets = {80, 88, 96, 176, 184, 192, 200, 232, 240, 248,
+                256, 264, 272, 280};
+        values[0]++;
+        for (int i = 0; i < offsets.length; i++) {
+            long value = data.getLong(offsets[i]);
+            values[i + 1] += value;
+            maximums[i] = Math.max(maximums[i], value);
+        }
     }
 
     /** Sum of exclusive per-model CPU work. With parallel evaluation it is not render-thread wait time. */
@@ -50,6 +90,7 @@ public final class RenderPerformanceProfiler {
         if (!isSamplingEnabled() || data.getLong(0) != 1) return;
         String[] names = {"animation", "ik", "physics", "cpuSkinning"};
         for (int i = 0; i < names.length; i++) recordElapsed("native." + names[i] + "." + scene.name(), data.getLong((i + 1) * 8));
+        NativeEvaluationDetails.record(this, scene, data);
         long[] totals = sceneTotals[scene.ordinal()];
         totals[4]++;
         totals[5] += data.getLong(40);
@@ -303,6 +344,16 @@ public final class RenderPerformanceProfiler {
                 .append(", paperDoll.cacheRefreshes=").append(paperDollCacheRefreshes);
         message.append(", native.parallelBatches=").append(parallelBatches)
                 .append(", native.parallelModels=").append(parallelModels);
+        for (Scene scene : Scene.values()) {
+            long[] batch = parallelBatchDetails[scene.ordinal()];
+            if (batch[0] > 0) message.append(", native.batch.").append(scene.name()).append("={batches:")
+                    .append(batch[0]).append(",tasks:").append(batch[1])
+                    .append(",players:").append(batch[2]).append(",mobs:").append(batch[3])
+                    .append(",maids:").append(batch[4]).append(",backgroundBudgetSum:").append(batch[5])
+                    .append(",internalBudgetSum:").append(batch[6]).append(",workers:").append(batch[7])
+                    .append(",peakWorkers:").append(batch[8]).append(",peakJavaActive:").append(batch[9]).append('}');
+            appendNativeParallelDetail(message, scene);
+        }
         message.append(", presentedFrameSamples=").append(frame.count())
                 .append(", presentedFrameMedian=").append(String.format("%.3fms", frame.medianNanos() / 1_000_000.0d))
                 .append(", presentedFrameP95=").append(String.format("%.3fms", frame.p95Nanos() / 1_000_000.0d));
@@ -351,12 +402,28 @@ public final class RenderPerformanceProfiler {
         profiledPhysicsModels = 0L;
         paperDollCacheHits = paperDollCacheRefreshes = 0;
         parallelBatches = parallelModels = 0;
+        for (long[] values : parallelBatchDetails) java.util.Arrays.fill(values, 0L);
+        for (long[] values : nativeParallelDetails) java.util.Arrays.fill(values, 0L);
+        for (long[] values : nativeParallelMax) java.util.Arrays.fill(values, 0L);
         for (long[] totals : sceneTotals) java.util.Arrays.fill(totals, 0L);
         for (Map.Entry<String, Long> entry : profilingTotalsNanos.entrySet()) {
             entry.setValue(0L);
         }
         java.util.Arrays.fill(currentTransferBytes, 0L);
         java.util.Arrays.fill(currentAvoidedUploadBytes, 0L);
+    }
+
+    private void appendNativeParallelDetail(StringBuilder message, Scene scene) {
+        long[] values = nativeParallelDetails[scene.ordinal()];
+        if (values[0] == 0) return;
+        String[] names = {"cpuBudget", "flags", "configuredWidth", "bodies", "constraints",
+                "manifolds", "contacts", "islands", "maxIslandBodies", "maxIslandConstraints",
+                "activePeak", "dispatchTasks", "matrixTasks", "matrixPeak"};
+        message.append(", native.parallelDetail.").append(scene.name()).append("={samples:").append(values[0]);
+        for (int i = 0; i < names.length; i++) message.append(',').append(names[i]).append("Avg:")
+                .append(String.format(java.util.Locale.ROOT, "%.2f", values[i + 1] / (double) values[0]))
+                .append(',').append(names[i]).append("Max:").append(nativeParallelMax[scene.ordinal()][i]);
+        message.append('}');
     }
 
     /** HUD 只读取不可变快照，避免在绘制阶段持有 Profiler 锁。 */

@@ -97,6 +97,26 @@ public class MaidMMDModelManager {
         return model;
     }
 
+    /** 仅读取当前已加载绑定，不触发目录扫描或异步加载。 */
+    public static ManagedModel peekLoadedModel(UUID maidUUID) {
+        if (maidUUID == null) return null;
+        String modelName = getBindingModelName(maidUUID);
+        if (modelName == null || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) return null;
+        ManagedModel model = loadedModels.get(maidUUID);
+        if (!isCurrentModel(model, maidUUID, modelName)) {
+            model = ClientRenderRuntime.get().modelRepository().peek(ModelRequestKey.maid(maidUUID, modelName));
+            if (model != null) loadedModels.put(maidUUID, model);
+        }
+        return isCurrentModel(model, maidUUID, modelName) ? model : null;
+    }
+
+    private static boolean isCurrentModel(ManagedModel model, UUID maidUUID, String modelName) {
+        return model != null && model.modelInstance() != null
+                && model.modelInstance().getModelHandle() != 0L
+                && model.requestKey().equals(ModelRequestKey.maid(maidUUID, modelName))
+                && ClientRenderRuntime.get().modelRepository().peek(model.requestKey()) == model;
+    }
+
     private static boolean isModelAvailable(UUID maidUUID, String modelName) {
         if (modelName == null || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) return false;
         if (modelName.equals(unavailableModels.get(maidUUID))) return false;

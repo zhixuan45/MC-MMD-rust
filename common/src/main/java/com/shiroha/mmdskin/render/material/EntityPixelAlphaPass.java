@@ -34,6 +34,7 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         ShaderInstance shader = RenderSystem.getShader();
         if (shadowPass || shader == null || shader.getId() != original
                 || GL46C.glGetUniformLocation(original, "AlphaPass") >= 0) return scope;
+        // 已知原版实体程序也需拆分实心覆盖，防止后方发片覆盖前方实心像素。
         if (!IrisCompat.isIrisProgram(shader) && !shader.getName().equals("rendertype_entity_translucent")) return scope;
         if (shader != cachedSource) {
             if (cachedProgram != 0) GL46C.glDeleteProgram(cachedProgram);
@@ -49,7 +50,10 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         if (cachedProgram == 0) return scope;
         try {
             GL46C.glUseProgram(cachedProgram);
-            copyUniforms(original);
+            if (!copyUniforms(original)) {
+                GL46C.glUseProgram(original);
+                return scope;
+            }
         } catch (RuntimeException e) {
             GL46C.glUseProgram(original);
             throw e;
@@ -71,13 +75,10 @@ final class EntityPixelAlphaPass implements AutoCloseable {
             else return 0;
         }
         if (vertex == 0 || fragment == null) return 0;
-        if(vanilla) {
-            // The original entity cutout drops authored PMX alpha below .1. Match Toon's
-            // minimal coverage threshold only for this known vanilla program variant.
-            var cutoff=VANILLA_CUTOFF.matcher(fragment);
-            // A resource pack can replace the named core program. Keep its custom
-            // cutoff if the vanilla expression is absent, while retaining alpha passes.
-            if(cutoff.find())fragment=cutoff.replaceAll(m->m.group(1)+"0.001"+m.group(2));
+        if (vanilla) {
+            // 仅替换已知原版阈值，保留 PMX 有意的低透明度。
+            var cutoff = VANILLA_CUTOFF.matcher(fragment);
+            if (cutoff.find()) fragment = cutoff.replaceAll(m -> m.group(1) + "0.001" + m.group(2));
         }
         if (GL.getCapabilities().OpenGL43 && GL46C.glGetProgramInterfacei(original,
                 GL46C.GL_SHADER_STORAGE_BLOCK, GL46C.GL_ACTIVE_RESOURCES) != 0) return 0;
@@ -123,6 +124,10 @@ final class EntityPixelAlphaPass implements AutoCloseable {
                     int from=GL46C.glGetUniformLocation(original,entry), to=GL46C.glGetUniformLocation(program,entry);
                     if (from>=0 && to>=0) {
                         if (!supportedUniform(type.get(0))) throw new IllegalStateException("unsupported uniform type: " + type.get(0));
+                        if (isSampler(type.get(0)) && !validSamplerUnit(original, from)) {
+                            // 光影包可能在重载期间留下失效单元，直接保留原程序。
+                            throw new IllegalStateException("sampler texture unit out of range: " + entry);
+                        }
                         copy.add(new Uniform(from,to,type.get(0)));
                     }
                 }
@@ -141,7 +146,7 @@ final class EntityPixelAlphaPass implements AutoCloseable {
     }
 
     private static boolean supportedUniform(int type) {
-        return switch (type) {
+        return isSampler(type) || switch (type) {
             case GL46C.GL_FLOAT,GL46C.GL_FLOAT_VEC2,GL46C.GL_FLOAT_VEC3,GL46C.GL_FLOAT_VEC4,
                     GL46C.GL_FLOAT_MAT2,GL46C.GL_FLOAT_MAT3,GL46C.GL_FLOAT_MAT4,
                     GL46C.GL_INT,GL46C.GL_INT_VEC2,GL46C.GL_INT_VEC3,GL46C.GL_INT_VEC4,
@@ -167,10 +172,11 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         return null;
     }
 
-    private static void copyUniforms(int source) {
+    private static boolean copyUniforms(int source) {
         try (MemoryStack stack=MemoryStack.stackPush()) {
             FloatBuffer f=stack.mallocFloat(16);IntBuffer v=stack.mallocInt(4);
             for (Uniform u:uniforms) {
+                if (isSampler(u.type) && !validSamplerUnit(source, u.source)) return false;
                 switch (u.type) {
                     case GL46C.GL_FLOAT -> {GL46C.glGetUniformfv(source,u.source,f);GL46C.glUniform1f(u.target,f.get(0));}
                     case GL46C.GL_FLOAT_VEC2 -> {GL46C.glGetUniformfv(source,u.source,f);GL46C.glUniform2f(u.target,f.get(0),f.get(1));}
@@ -186,6 +192,28 @@ final class EntityPixelAlphaPass implements AutoCloseable {
                 }
             }
         }
+        return true;
+    }
+
+    private static boolean validSamplerUnit(int program, int location) {
+        int unit = GL46C.glGetUniformi(program, location);
+        int max = GL46C.glGetInteger(GL46C.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+        return unit >= 0 && unit < max;
+    }
+
+    private static boolean isSampler(int type) {
+        return switch (type) {
+            case GL46C.GL_SAMPLER_1D, GL46C.GL_SAMPLER_2D, GL46C.GL_SAMPLER_3D,
+                    GL46C.GL_SAMPLER_CUBE, GL46C.GL_SAMPLER_1D_SHADOW, GL46C.GL_SAMPLER_2D_SHADOW,
+                    GL46C.GL_SAMPLER_CUBE_SHADOW,
+                    GL46C.GL_SAMPLER_1D_ARRAY, GL46C.GL_SAMPLER_2D_ARRAY,
+                    GL46C.GL_SAMPLER_1D_ARRAY_SHADOW, GL46C.GL_SAMPLER_2D_ARRAY_SHADOW,
+                    GL46C.GL_INT_SAMPLER_1D, GL46C.GL_INT_SAMPLER_2D, GL46C.GL_INT_SAMPLER_3D,
+                    GL46C.GL_INT_SAMPLER_CUBE, GL46C.GL_UNSIGNED_INT_SAMPLER_1D,
+                    GL46C.GL_UNSIGNED_INT_SAMPLER_2D, GL46C.GL_UNSIGNED_INT_SAMPLER_3D,
+                    GL46C.GL_UNSIGNED_INT_SAMPLER_CUBE -> true;
+            default -> false;
+        };
     }
 
     @Override public void close() { GL46C.glUseProgram(previousProgram); }

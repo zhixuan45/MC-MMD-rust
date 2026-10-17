@@ -42,6 +42,25 @@ class TranslucentBatchPlanTest {
             assertEquals(ids[i] + 100, window.textures()[row.diffuseSlot()]);
         }
     }
+    @Test void constrainedCapacitySplitsOnlyAtContinuousRunBoundaries() {
+        int[] ids = {0, 1, 2, 0, 2};
+        var plan = TranslucentBatchPlan.build(runs(ids), ids.length, materials(3), i -> i + 100, 2);
+        assertEquals(2, plan.windows.size());
+        assertEquals(0, plan.windows.get(0).firstIndex());
+        assertEquals(6, plan.windows.get(0).indexCount());
+        assertEquals(6, plan.windows.get(1).firstIndex());
+        assertEquals(9, plan.windows.get(1).indexCount());
+        for (int i = 0; i < ids.length; i++) {
+            assertEquals(ids[i], plan.rows.get(plan.triangleRows[i]).key().material());
+        }
+    }
+
+    @Test void oneSphereMaterialCannotExceedTheAvailableWindow() {
+        var mats = materials(1);
+        mats[0].sphereMode = 1;
+        mats[0].sphereTex = 200;
+        assertNull(TranslucentBatchPlan.build(runs(0), 1, mats, i -> i + 100, 1));
+    }
     @Test void sphereTexturesConsumeSlotsAndSameTextureIsDeduplicated() {
         var mats = materials(6);
         for (int i = 0; i < mats.length; i++) { mats[i].sphereMode = 2; mats[i].sphereTex = 200 + i; }

@@ -8,6 +8,12 @@ public interface IToonConfig {
 
     default boolean isToonRenderingEnabled() { return false; }
 
+    default boolean isToonDisableTransparency() { return false; }
+
+    default float getToonAlphaCutoff() { return 0.001f; }
+
+    default float getToonHairAlphaCutoff() { return 0.001f; }
+
     default int getToonLevels() { return 4; }
 
     default float getToonTransitionSoftness() { return 1.2f; }

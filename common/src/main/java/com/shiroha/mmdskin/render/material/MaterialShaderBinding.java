@@ -8,6 +8,8 @@ final class MaterialShaderBinding implements AutoCloseable {
     private final int materialSpecular;
     private final int materialPower;
     private final int alphaPass;
+    private final int hairMaterial;
+    private final boolean disableTransparency;
     private final int colorModulator;
     private final float[] previousModulator = new float[4];
     private final int[] attributes;
@@ -17,6 +19,7 @@ final class MaterialShaderBinding implements AutoCloseable {
     private final float[] lastSpecular = new float[3];
     private float lastPower;
     private int lastPass = -1;
+    private int lastHair = -1;
     private boolean colorValid, specularValid, powerValid;
     private boolean modulatorValid;
 
@@ -26,6 +29,9 @@ final class MaterialShaderBinding implements AutoCloseable {
         materialSpecular = GL46C.glGetUniformLocation(program, "MaterialSpecular");
         materialPower = GL46C.glGetUniformLocation(program, "MaterialSpecularPower");
         alphaPass = GL46C.glGetUniformLocation(program, "AlphaPass");
+        hairMaterial = GL46C.glGetUniformLocation(program, "HairMaterial");
+        int opaque = GL46C.glGetUniformLocation(program, "DisableTransparency");
+        disableTransparency = materialColor >= 0 && opaque >= 0 && GL46C.glGetUniformi(program, opaque) != 0;
         int modulator = GL46C.glGetUniformLocation(program, "ColorModulator");
         colorModulator = modulator >= 0 ? modulator : GL46C.glGetUniformLocation(program, "iris_ColorModulator");
         if (colorModulator >= 0) GL46C.glGetUniformfv(program, colorModulator, previousModulator);
@@ -45,8 +51,14 @@ final class MaterialShaderBinding implements AutoCloseable {
     }
 
     boolean splitsTextureAlpha() { return alphaPass >= 0; }
+    boolean disablesTransparency() { return disableTransparency; }
 
     void apply(MaterialRenderState state, int pass) {
+        int hair = state.hair ? 1 : 0;
+        if (hairMaterial >= 0 && lastHair != hair) {
+            GL46C.glUniform1i(hairMaterial, hair);
+            lastHair = hair;
+        }
         boolean colorChanged = !colorValid || lastColor[0] != state.color[0]
                 || lastColor[1] != state.color[1] || lastColor[2] != state.color[2] || lastColor[3] != state.alpha;
         if (materialColor >= 0) {
@@ -103,5 +115,6 @@ final class MaterialShaderBinding implements AutoCloseable {
         if (colorModulator >= 0) GL46C.glUniform4f(colorModulator,
                 previousModulator[0], previousModulator[1], previousModulator[2], previousModulator[3]);
         if (alphaPass >= 0) GL46C.glUniform1i(alphaPass, 0);
+        if (hairMaterial >= 0) GL46C.glUniform1i(hairMaterial, 0);
     }
 }

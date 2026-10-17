@@ -295,9 +295,21 @@ impl BoneSet {
 
     /// 结束更新（计算蒙皮矩阵）
     pub fn end_update(&mut self) {
+        let timer = crate::evaluation_profile::timer();
+        let policy = crate::evaluation_parallelism::current_policy();
+        if let Some((tasks, peak)) = crate::evaluation_parallelism::update_skinning_matrices(
+            &self.links,
+            &mut self.skinning_matrices,
+            policy.thread_budget,
+        ) {
+            crate::evaluation_profile::matrix_parallel(policy.thread_budget, tasks, peak);
+            crate::evaluation_profile::detail_stage(timer, 5);
+            return;
+        }
         for i in 0..self.links.len() {
             self.skinning_matrices[i] = self.links[i].get_skinning_matrix();
         }
+        crate::evaluation_profile::detail_stage(timer, 5);
     }
 
     /// 重置所有骨骼变换

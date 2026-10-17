@@ -11,8 +11,10 @@ public final class MaterialRenderState {
     public final float[] sphereAdd = new float[4];
     public float specularPower;
     public float alpha;
+    public boolean hair;
 
     public void resolve(ModelMaterial material, ByteBuffer morphs, int materialId, float effectiveAlpha) {
+        hair = material.isHair();
         for (int channel = 0; channel < 3; channel++) {
             float diffuse = morph(material.diffuse[channel], morphs, materialId, channel);
             float ambient = morph(material.ambient[channel], morphs, materialId, 8 + channel);

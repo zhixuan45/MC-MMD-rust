@@ -47,7 +47,8 @@ public class BatchGlProbe {
         GL46C.glDepthMask(false);
         if(batch) {
             check(TranslucentBatchShader.current()!=null,"production batch program eligibility");
-            draws[0]=submission.draw(runs,COUNT,mats,morphs,i->mats[i].tex,(i,a)->a);
+            draws[0]=submission.draw(runs,COUNT,mats,new DrawMaterialCache(mats,morphs,(i,a)->a,i->mats[i].tex),
+                    ProgramSamplerLayout.capture(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM)));
             check(draws[0]>0 && draws[0]<COUNT,"batch reduced actual submissions");
         } else {
             MaterialRenderState state=new MaterialRenderState();
@@ -132,7 +133,18 @@ public class BatchGlProbe {
             GL46C.glBindBufferRange(GL46C.GL_SHADER_STORAGE_BUFFER,3,host,alignment,128);
             int sampler=GL46C.glGenSamplers(); GL46C.glBindSampler(4,sampler);
             GL46C.glActiveTexture(GL46C.GL_TEXTURE4); GL46C.glBindTexture(GL46C.GL_TEXTURE_2D,textures[2]);
-            setup(batch); submission.draw(runs,COUNT,mats,morphs,i->mats[i].tex,(i,a)->a);
+            setup(batch);
+            // 数组元素设为不同值，检查逐项恢复，避免未初始化数据漏过回归。
+            int[] savedBatchUnits={1,2,3,4,5,6,7,8};
+            GL46C.glUniform1iv(GL46C.glGetUniformLocation(batch.getMainProgram(),"MmdBatchTextures[0]"),savedBatchUnits);
+            var layout=ProgramSamplerLayout.capture(batch.getMainProgram());
+            check(layout!=null,"available batch texture units");
+            for(int unit:layout.units())check(unit!=0,"base sampler unit reserved");
+            check(submission.draw(runs,COUNT,mats,new DrawMaterialCache(mats,morphs,(i,a)->a,i->mats[i].tex),layout)>0,"host-state batch draw");
+            for(int i=0;i<savedBatchUnits.length;i++) {
+                int location=GL46C.glGetUniformLocation(batch.getMainProgram(),"MmdBatchTextures["+i+"]");
+                check(GL46C.glGetUniformi(batch.getMainProgram(),location)==savedBatchUnits[i],"batch sampler array restored at "+i);
+            }
             check(GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE)==GL46C.GL_TEXTURE4,"active texture restored");
             check(GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D)==textures[2],"texture restored");
             check(GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING,4)==sampler,"sampler restored");
@@ -140,11 +152,17 @@ public class BatchGlProbe {
             check(GL46C.glGetInteger64i(GL46C.GL_SHADER_STORAGE_BUFFER_SIZE,3)==128,"SSBO size restored");
             check(GL46C.glGetInteger(GL46C.GL_SHADER_STORAGE_BUFFER_BINDING)==host,"generic SSBO restored");
             GL46C.glBindSampler(0,sampler);
-            check(submission.draw(runs,COUNT,mats,morphs,i->mats[i].tex,(i,a)->a)==-1,"custom sampler fallback");
+            // 主贴图采样器会改变过滤，必须保留兼容路径的真实采样。
+            check(ProgramSamplerLayout.capture(batch.getMainProgram())==null,"custom diffuse sampler rejected");
+            check(submission.draw(runs,COUNT,mats,new DrawMaterialCache(mats,morphs,(i,a)->a,i->mats[i].tex),
+                    ProgramSamplerLayout.capture(batch.getMainProgram()))==-1,"custom sampler fallback");
+            check(GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING,0)==sampler,"base sampler restored");
             GL46C.glBindSampler(0,0); GL46C.glBindSampler(4,0); GL46C.glDeleteSamplers(sampler); GL46C.glDeleteBuffers(host);
-            legacy.useMain(); check(submission.draw(runs,COUNT,mats,morphs,i->mats[i].tex,(i,a)->a)==-1,"legacy program fallback");
+            legacy.useMain(); check(submission.draw(runs,COUNT,mats,new DrawMaterialCache(mats,morphs,(i,a)->a,i->mats[i].tex),
+                    ProgramSamplerLayout.capture(legacy.getMainProgram()))==-1,"legacy program fallback");
             setup(batch); System.setProperty("mmdskin.translucentBatch","false");
-            check(submission.draw(runs,COUNT,mats,morphs,i->mats[i].tex,(i,a)->a)==-1,"runtime compatibility switch");
+            check(submission.draw(runs,COUNT,mats,new DrawMaterialCache(mats,morphs,(i,a)->a,i->mats[i].tex),
+                    ProgramSamplerLayout.capture(batch.getMainProgram()))==-1,"runtime compatibility switch");
             System.clearProperty("mmdskin.translucentBatch");
             submission.close(); submission.close(); check(submission.ramBytes()==0&&submission.vramBytes()==0,"idempotent cleanup");
         }
@@ -159,7 +177,12 @@ public class BatchGlProbe {
         for(int i=0;i<mats.length;i++) { mats[i].tex=textures[i%4]; if(mats[i].sphereTex>0)mats[i].sphereTex=textures[4+i%2]; }
         int positionSsbo=GL46C.glGenBuffers(); GL46C.glBindBuffer(GL46C.GL_COPY_WRITE_BUFFER,positionSsbo);
         positionsOnly.flip(); GL46C.glBufferData(GL46C.GL_COPY_WRITE_BUFFER,positionsOnly,GL46C.GL_STATIC_DRAW);
-        ByteBuffer[] images=new ByteBuffer[3]; FloatBuffer[] depths=new FloatBuffer[3];
+        ByteBuffer[] images=new ByteBuffer[5]; FloatBuffer[] depths=new FloatBuffer[5];
+        int productionSampler=GL46C.glGenSamplers();
+        GL46C.glSamplerParameteri(productionSampler,GL46C.GL_TEXTURE_MIN_FILTER,GL46C.GL_NEAREST);
+        GL46C.glSamplerParameteri(productionSampler,GL46C.GL_TEXTURE_MAG_FILTER,GL46C.GL_NEAREST);
+        GL46C.glSamplerParameteri(productionSampler,GL46C.GL_TEXTURE_WRAP_S,GL46C.GL_CLAMP_TO_EDGE);
+        GL46C.glSamplerParameteri(productionSampler,GL46C.GL_TEXTURE_WRAP_T,GL46C.GL_CLAMP_TO_EDGE);
         GL46C.glCullFace(GL46C.GL_BACK); GL46C.glFrontFace(GL46C.GL_CCW);
         // Earlier checks deliberately use raw GL. Resynchronize the Blaze3D caches before
         // exercising production code, whose state changes go through RenderSystem.
@@ -167,19 +190,21 @@ public class BatchGlProbe {
         GL46C.glBindTexture(GL46C.GL_TEXTURE_2D,0); RenderSystem.bindTexture(0);
         RenderSystem.disableCull(); RenderSystem.enableCull();
         RenderSystem.depthMask(false); RenderSystem.depthMask(true);
-        for(int path=0;path<3;path++) {
-            var shader=path==0?legacy:batch; setup(shader);
+        for(int path=0;path<5;path++) {
+            var shader=path==0||path==3?legacy:batch; setup(shader);
+            GL46C.glBindSampler(0,path>=3?productionSampler:0);
             RenderSystem.enableCull(); RenderSystem.depthMask(true);
             GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT|GL46C.GL_DEPTH_BUFFER_BIT);
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ebo);
             try(var order=new TranslucentDrawOrder()) {
-                var geometry=path==2
+                var geometry=path==2||path==4
                         ? TranslucentDrawOrder.Inputs.gpu(positionSsbo,3,view,null,1,false,uvs,0,0,false)
                         : TranslucentDrawOrder.Inputs.cpu(positionsOnly,0,3,view,null,1,false,uvs,0,false);
                 SubMeshDrawHelper.draw(runs,COUNT,4,GL46C.GL_UNSIGNED_INT,i->mats[i].tex,(i,a)->a,
                         mats,morphs,false,i->shader.setEyeMaterialMask(mats[i].eyeEmissionMaskMode()),order,geometry);
                 check(GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING)==ebo,"production EBO restored");
                 if(path==2)check(order.drawCount()==0 && order.indexBuffer()!=0,"production uses GPU indirect preparation");
+                if(path==4)check(order.drawCount()>0,"custom sampling retains CPU sorted fallback");
             }
             images[path]=buffer(SIZE*SIZE*4); depths[path]=buffer(SIZE*SIZE*4).asFloatBuffer();
             GL46C.glReadPixels(0,0,SIZE,SIZE,GL46C.GL_RGBA,GL46C.GL_UNSIGNED_BYTE,images[path]);
@@ -189,6 +214,14 @@ public class BatchGlProbe {
         for(int path=1;path<3;path++)for(int i=0;i<images[0].capacity();i++) productionMax=Math.max(productionMax,Math.abs((images[0].get(i)&255)-(images[path].get(i)&255)));
         check(productionMax<=1,"production color mismatch max="+productionMax);
         for(int path=1;path<3;path++)for(int i=0;i<depths[0].capacity();i++) check(depths[0].get(i)==depths[path].get(i),"production depth mismatch");
+        int customMax=0;
+        for(int i=0;i<images[3].capacity();i++)
+            customMax=Math.max(customMax,Math.abs((images[3].get(i)&255)-(images[4].get(i)&255)));
+        check(customMax<=1,"custom filtering production color mismatch max="+customMax);
+        for(int i=0;i<depths[3].capacity();i++)check(depths[3].get(i)==depths[4].get(i),"custom filtering production depth mismatch");
+        check(GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING,0)==productionSampler,"custom production sampler preserved");
+        GL46C.glBindSampler(0,0); GL46C.glDeleteSamplers(productionSampler);
+        System.out.println("PASS custom diffuse filtering, CPU sorted fallback, color/depth and sampler state");
         filteredWindow(legacy,batch,ebo,positionSsbo,positionsOnly,view,textures);
         check(GL46C.glGetError()==GL46C.GL_NO_ERROR,"final GL error");
         legacy.cleanup(); batch.cleanup(); GL46C.glDeleteBuffers(vbo); GL46C.glDeleteBuffers(ebo); GL46C.glDeleteBuffers(positionSsbo);

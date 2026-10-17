@@ -35,6 +35,9 @@ public final class ToonConfig {
     public float getOutlineColorR() { return 0; }
     public float getOutlineColorG() { return 0; }
     public float getOutlineColorB() { return 0; }
+    public static float alphaCutoff = .001f, hairAlphaCutoff = .001f;
+    public float getAlphaCutoff() { return alphaCutoff; }
+    public float getHairAlphaCutoff() { return hairAlphaCutoff; }
 }
 '@
     'com/shiroha/mmdskin/render/shader/ToonShaderBase.java' = @'

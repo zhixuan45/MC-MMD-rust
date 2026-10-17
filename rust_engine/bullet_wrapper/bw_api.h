@@ -119,6 +119,18 @@ typedef struct {
 BW_World* bw_world_create(float gravity_x, float gravity_y, float gravity_z);
 void bw_world_destroy(BW_World* world);
 void bw_world_step(BW_World* world, float dt, int max_substeps, float fixed_dt);
+typedef struct BW_ParallelStats {
+    int thread_width;
+    int peak_active;
+    int jobs;
+    int islands;
+    int max_island_bodies;
+    int max_island_constraints;
+} BW_ParallelStats;
+bool bw_parallel_available(void);
+int bw_world_step_parallel(BW_World* world, float dt, int max_substeps, float fixed_dt,
+                          int thread_budget, bool parallel);
+void bw_world_get_parallel_stats(BW_World* world, BW_ParallelStats* output);
 float bw_world_get_render_time_offset(BW_World* world);
 void bw_world_sync_render_states(BW_World* world);
 /* 仅更新宽相/窄相接触，不推进时间、不执行约束或接触求解。 */

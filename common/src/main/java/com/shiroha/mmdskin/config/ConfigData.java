@@ -36,6 +36,11 @@ public class ConfigData {
     public int animationLodFarUpdateInterval = 4;
 
     public boolean toonRenderingEnabled = false;
+    /** Toon 下将半透明像素按不透明绘制。 */
+    public boolean toonDisableTransparency = false;
+    /** 发片单独覆盖全局阈值，默认保留原裁切。 */
+    public float toonAlphaCutoff = 0.001f;
+    public float toonHairAlphaCutoff = 0.001f;
     public int toonLevels = 4;
     public float toonTransitionSoftness = 1.2f;
     public float toonRimPower = 5.6f;
@@ -174,6 +179,8 @@ public class ConfigData {
         animationLodMediumUpdateInterval = Math.max(1, animationLodMediumUpdateInterval);
         animationLodFarUpdateInterval = Math.max(animationLodMediumUpdateInterval, animationLodFarUpdateInterval);
         toonLevels = Math.max(2, Math.min(5, toonLevels));
+        toonAlphaCutoff = Float.isFinite(toonAlphaCutoff) ? clamp(toonAlphaCutoff, 0.001f, 1.0f) : 0.001f;
+        toonHairAlphaCutoff = Float.isFinite(toonHairAlphaCutoff) ? clamp(toonHairAlphaCutoff, 0.001f, 1.0f) : 0.001f;
         toonTransitionSoftness = Float.isFinite(toonTransitionSoftness)
                 ? clamp(toonTransitionSoftness, 0.0f, 2.0f) : 1.2f;
         toonRimPower = clamp(toonRimPower, 0.1f, 10.0f);

@@ -125,13 +125,20 @@ public final class PassStateProbe {
         var inputs = new OutlineRenderPass.Inputs(positions, normals, positions, meshes, 3, 4,
                 GL46C.GL_UNSIGNED_INT, projection, modelView, 1);
         int[] visits = {0};
+        var config = com.shiroha.mmdskin.render.shader.ToonConfig.getInstance();
+        config.alphaCutoff = .2f;
+        config.hairAlphaCutoff = .3f;
         // 第三材质在 draw 前抛出，前两材质使用合法的零索引绘制。
         var shader = new com.shiroha.mmdskin.render.shader.ToonShaderBase() {
             private int material;
             private boolean mask;
+            private float cutoff;
             @Override public void useOutline() { GL46C.glUseProgram(program); }
+            @Override public void setOutlineAlphaCutoff(float value) { cutoff = value; }
             @Override public void setOutlineUseTextureAlpha(boolean enabled) { mask = enabled; }
             @Override public void setOutlineAlpha(float alpha) {
+                float expected = (material == 0 ? .3f : .2f) / alpha;
+                check(Math.abs(cutoff - expected) < .00001f, "发片/全局裁切及有效 alpha 换算");
                 check(mask == (material < 2), "无纹理材质必须关闭遮罩");
                 if (material < 2) check(GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D) == textures[material], "逐材质纹理绑定");
                 visits[0] = ++material;
@@ -140,10 +147,11 @@ public final class PassStateProbe {
         };
         boolean threw = false;
         try {
-            OutlineRenderPass.draw(shader, inputs, (material, alpha) -> 1,
-                    material -> material < 2 ? textures[material] : 0);
+            OutlineRenderPass.draw(shader, inputs, (material, alpha) -> .5f,
+                    material -> material < 2 ? textures[material] : 0, material -> material == 0);
         } catch (ProbeException expected) { threw = true; }
         check(threw && visits[0] == 3, "应验证全部材质及无纹理异常路径");
+        config.alphaCutoff = config.hairAlphaCutoff = .001f;
         check(GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE) == GL46C.GL_TEXTURE3, "恢复活动纹理单元");
         GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
         check(GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D) == textures[2], "恢复原纹理绑定");

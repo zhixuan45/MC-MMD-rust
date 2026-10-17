@@ -724,7 +724,8 @@ final class OpenGlModelRenderer {
                 target.subMeshCount, target.indexElementSize, target.indexType,
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
                 (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
-                materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex);
+                materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex,
+                materialId -> target.mats[materialId] != null && target.mats[materialId].isHair());
         } finally {
             RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
         }

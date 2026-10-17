@@ -1,5 +1,16 @@
 use super::*;
 
+type SkinningItem<'a> = (
+    (
+        (
+            ((&'a mut glam::Vec3, &'a mut glam::Vec3), &'a mut [f32]),
+            &'a mut [f32],
+        ),
+        &'a RuntimeVertex,
+    ),
+    &'a VertexWeight,
+);
+
 impl MmdModel {
     /// 初始化动画状态
     pub fn initialize_animation(&mut self) {
@@ -49,6 +60,7 @@ impl MmdModel {
     pub fn update(&mut self) {
         let bone_matrices = self.bone_manager.get_skinning_matrices();
         let vertex_count = self.vertices.len();
+        let budget = crate::evaluation_parallelism::current_policy().thread_budget;
         let raw_len = vertex_count * 3;
 
         if self.update_positions_raw.len() != raw_len {
@@ -61,55 +73,101 @@ impl MmdModel {
             self.update_uvs_raw.resize(self.update_uvs.len() * 2, 0.0);
         }
 
-        // UV 拷贝（并行）
-        self.update_uvs_raw
-            .par_chunks_mut(2)
-            .zip(self.update_uvs.par_iter())
-            .for_each(|(chunk, uv)| {
-                chunk[0] = uv.x;
-                chunk[1] = uv.y;
-            });
-
-        // 并行蒙皮计算
-        let vertices = &self.vertices;
-        let weights = &self.weights;
-
-        // 将输出切片分块，每个顶点对应 3 个 f32
-        let pos_raw = &mut self.update_positions_raw;
-        let norm_raw = &mut self.update_normals_raw;
-        let positions = &mut self.update_positions;
-        let normals = &mut self.update_normals;
-
-        // 并行计算所有顶点（使用已应用 Morph 的 update_positions）
-        positions
-            .par_iter_mut()
-            .zip(normals.par_iter_mut())
-            .zip(pos_raw.par_chunks_mut(3))
-            .zip(norm_raw.par_chunks_mut(3))
-            .zip(vertices.par_iter())
-            .zip(weights.par_iter())
-            .for_each(
-                |(((((pos_out, norm_out), pos_chunk), norm_chunk), vertex), weight)| {
-                    // 使用 pos_out（即 update_positions，已应用 Morph）作为蒙皮输入
-                    let morph_position = *pos_out;
-                    let (pos, norm) = compute_vertex_skinning(
-                        morph_position, // 使用已应用 Morph 的位置
-                        vertex.normal,
-                        weight,
-                        &bone_matrices,
-                    );
-
+        let sample_parallelism = crate::evaluation_profile::enabled();
+        let parallel_sample = if vertex_count >= 2048 {
+            crate::evaluation_parallelism::with_pool_for_budget(budget, || {
+                self.update_uvs_raw
+                    .par_chunks_mut(2)
+                    .zip(self.update_uvs.par_iter())
+                    .for_each(|(chunk, uv)| {
+                        chunk[0] = uv.x;
+                        chunk[1] = uv.y;
+                    });
+                let sampled = sample_parallelism;
+                let metrics = sampled.then(|| {
+                    (
+                        std::sync::atomic::AtomicUsize::new(0),
+                        std::sync::atomic::AtomicUsize::new(0),
+                        std::sync::atomic::AtomicUsize::new(0),
+                    )
+                });
+                let vertices = &self.vertices;
+                let weights = &self.weights;
+                let matrices = &bone_matrices;
+                let output = self
+                    .update_positions
+                    .par_iter_mut()
+                    .zip(self.update_normals.par_iter_mut())
+                    .zip(self.update_positions_raw.par_chunks_mut(3))
+                    .zip(self.update_normals_raw.par_chunks_mut(3))
+                    .zip(vertices.par_iter())
+                    .zip(weights.par_iter());
+                let apply = |item: SkinningItem<'_>| {
+                    let (((((pos_out, norm_out), pos_chunk), norm_chunk), vertex), weight) = item;
+                    let (pos, norm) =
+                        compute_vertex_skinning(*pos_out, vertex.normal, weight, matrices);
                     *pos_out = pos;
                     *norm_out = norm;
-
-                    pos_chunk[0] = pos.x;
-                    pos_chunk[1] = pos.y;
-                    pos_chunk[2] = pos.z;
-                    norm_chunk[0] = norm.x;
-                    norm_chunk[1] = norm.y;
-                    norm_chunk[2] = norm.z;
-                },
+                    pos_chunk.copy_from_slice(&pos.to_array());
+                    norm_chunk.copy_from_slice(&norm.to_array());
+                };
+                if sampled {
+                    use std::sync::atomic::Ordering;
+                    let (tasks, active, peak) = metrics.as_ref().unwrap();
+                    output.for_each_init(
+                        || {
+                            tasks.fetch_add(1, Ordering::Relaxed);
+                            let now = active.fetch_add(1, Ordering::Relaxed) + 1;
+                            peak.fetch_max(now, Ordering::Relaxed);
+                            MatrixWorkerGuard(active)
+                        },
+                        |_, value| apply(value),
+                    );
+                    let (tasks, _, peak) = metrics.as_ref().unwrap();
+                    Some((
+                        tasks.load(std::sync::atomic::Ordering::Relaxed),
+                        peak.load(std::sync::atomic::Ordering::Relaxed),
+                    ))
+                } else {
+                    output.for_each(apply);
+                    None
+                }
+            })
+        } else {
+            None
+        };
+        if let Some(Some((tasks, peak))) = parallel_sample {
+            crate::evaluation_profile::matrix_parallel(
+                crate::evaluation_parallelism::bounded_thread_budget(budget),
+                tasks,
+                peak,
             );
+        }
+        if parallel_sample.is_none() {
+            for (chunk, uv) in self
+                .update_uvs_raw
+                .chunks_exact_mut(2)
+                .zip(&self.update_uvs)
+            {
+                chunk[0] = uv.x;
+                chunk[1] = uv.y;
+            }
+            for index in 0..vertex_count {
+                let vertex = &self.vertices[index];
+                let weight = &self.weights[index];
+                let (pos, norm) = compute_vertex_skinning(
+                    self.update_positions[index],
+                    vertex.normal,
+                    weight,
+                    &bone_matrices,
+                );
+                self.update_positions[index] = pos;
+                self.update_normals[index] = norm;
+                self.update_positions_raw[index * 3..index * 3 + 3]
+                    .copy_from_slice(&pos.to_array());
+                self.update_normals_raw[index * 3..index * 3 + 3].copy_from_slice(&norm.to_array());
+            }
+        }
 
         // 调试日志（只在首次执行）
         if !self.debug_logged {
@@ -556,6 +614,19 @@ impl MmdModel {
         self.tick_animation_internal(elapsed, cpu_skinning, targets)
     }
 
+    /// 按次接收内部并行预算，不修改全局执行策略。
+    pub(crate) fn tick_animation_with_policy(
+        &mut self,
+        elapsed: f32,
+        cpu_skinning: bool,
+        targets: Option<TaczArmTargets>,
+        policy: crate::evaluation_parallelism::EvaluationPolicy,
+    ) -> TaczArmApplyOutcome {
+        crate::evaluation_parallelism::with_policy(policy, || {
+            self.tick_animation_internal(elapsed, cpu_skinning, targets)
+        })
+    }
+
     fn tick_animation_internal(
         &mut self,
         elapsed: f32,
@@ -625,6 +696,9 @@ impl MmdModel {
         let physics_enabled = !self.is_vrm && self.physics_enabled && self.physics.is_some();
         if physics_enabled {
             self.update_physics(elapsed);
+            if crate::evaluation_profile::has_failed() {
+                return TaczArmApplyOutcome::default();
+            }
             self.update_node_animation(true);
             self.end_physics_update();
         }
@@ -674,5 +748,12 @@ impl MmdModel {
             */
         }
         tacz_outcome
+    }
+}
+
+struct MatrixWorkerGuard<'a>(&'a std::sync::atomic::AtomicUsize);
+impl Drop for MatrixWorkerGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

@@ -14,35 +14,58 @@ final class TranslucentBatchSubmission implements AutoCloseable {
     private long uploadedBytes;
     private long materialBytes, triangleBytesAllocated;
 
-    static boolean supports(TranslucentBatchPlan plan) {
+    static boolean supports(TranslucentBatchPlan plan, ProgramSamplerLayout layout) {
         long bytes = (long) plan.rows.size() * ROW_BYTES;
-        return bytes <= Integer.MAX_VALUE && bytes <= GL46C.glGetInteger64(GL46C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE);
+        return bytes <= Integer.MAX_VALUE
+                && bytes <= GL46C.glGetInteger64(GL46C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE)
+                && layout != null && layout.program() == GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM)
+                && plan.windows.stream().allMatch(window -> window.textures().length <= layout.capacity());
     }
 
     /** Returns actual draw calls, or -1 before drawing anything when the compatibility path is needed. */
-    int draw(ByteBuffer runs, int count, ModelMaterial[] materials, DrawMaterialCache materialCache) {
+    int draw(ByteBuffer runs, int count, ModelMaterial[] materials, DrawMaterialCache materialCache,
+             ProgramSamplerLayout layout) {
         var uniforms = TranslucentBatchShader.current();
         if (uniforms == null || count == 0) return -1;
-        // Legacy diffuse sampling inherits unit 0's sampler; the table uses texture object parameters.
-        if (GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, 0) != 0) return -1;
-        var plan = TranslucentBatchPlan.build(runs, count, materials, materialCache::texture);
-        return drawPlan(plan, count, materials, materialCache, null);
+        if (layout == null || layout.program() != uniforms.program()) {
+            TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_SAMPLERS, 1);
+            return -1;
+        }
+        var plan = TranslucentBatchPlan.build(runs, count, materials, materialCache::texture, layout.capacity());
+        if (plan == null) {
+            TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_CAPACITY, 1);
+            return -1;
+        }
+        return drawPlan(plan, count, materials, materialCache, null, layout);
     }
 
     int drawGpu(TranslucentBatchPlan plan, ModelMaterial[] materials,
-                DrawMaterialCache materialCache, GpuTranslucentPreparation device) {
-        return drawPlan(plan, plan.rows.size(), materials, materialCache, device);
+                DrawMaterialCache materialCache, GpuTranslucentPreparation device,
+                ProgramSamplerLayout layout) {
+        return drawPlan(plan, plan.rows.size(), materials, materialCache, device, layout);
     }
 
     private int drawPlan(TranslucentBatchPlan plan, int count, ModelMaterial[] materials,
-                         DrawMaterialCache materialCache, GpuTranslucentPreparation device) {
+                         DrawMaterialCache materialCache, GpuTranslucentPreparation device,
+                         ProgramSamplerLayout layout) {
         var uniforms = TranslucentBatchShader.current();
         if (uniforms == null) return -1;
+        if (layout == null || layout.program() != uniforms.program()) {
+            TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_SAMPLERS, 1);
+            return -1;
+        }
+        if (!supports(plan, layout)) {
+            TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_CAPACITY, 1);
+            return -1;
+        }
         long rowBytes = (long) plan.rows.size() * ROW_BYTES;
         long triangleBytes = (long) plan.triangleRows.length * Integer.BYTES;
         long maxBlock = GL46C.glGetInteger64(GL46C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE);
         if (rowBytes > maxBlock || triangleBytes > maxBlock
-                || rowBytes > Integer.MAX_VALUE || triangleBytes > Integer.MAX_VALUE) return -1;
+                || rowBytes > Integer.MAX_VALUE || triangleBytes > Integer.MAX_VALUE) {
+            TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_CAPACITY, 1);
+            return -1;
+        }
         rows = resize(rows, (int) rowBytes);
         if (device == null) triangles = resize(triangles, (int) triangleBytes);
         for (var row : plan.rows) {
@@ -55,7 +78,8 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             for (float value : state.sphereAdd) rows.putFloat(value);
             rows.putFloat(material.eyeEmissionMaskMode()).putFloat(row.sphereSlot() < 0 ? 0 : material.sphereMode)
                     .putFloat(row.diffuseSlot()).putFloat(row.sphereSlot());
-            rows.putFloat(key.bothFace() ? 1 : 0).putFloat(0).putFloat(0).putFloat(0);
+            // 复用空闲标记，不增加材质表大小或拆分批次。
+            rows.putFloat(key.bothFace() ? 1 : 0).putFloat(state.hair ? 1 : 0).putFloat(0).putFloat(0);
         }
         if (device == null) for (int row : plan.triangleRows) triangles.putInt(row);
         rows.flip();
@@ -64,8 +88,15 @@ final class TranslucentBatchSubmission implements AutoCloseable {
         int genericBuffer = GL46C.glGetInteger(GL46C.GL_SHADER_STORAGE_BUFFER_BINDING);
         Binding materialBinding = Binding.capture(2), triangleBinding = Binding.capture(3);
         int activeTexture = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
-        int[] savedTextures = new int[TranslucentBatchPlan.TEXTURE_SLOTS];
-        int[] savedSamplers = new int[savedTextures.length];
+        int[] textureUnits = layout.units();
+        int[] savedTextures = new int[textureUnits.length];
+        int[] savedSamplers = new int[textureUnits.length];
+        int[] savedBatchUnits = new int[ProgramSamplerLayout.MAX_BATCH_TEXTURES];
+        // glGetUniform 只返回一个数组元素，必须逐项保存。
+        for (int i = 0; i < savedBatchUnits.length; i++) {
+            int location = GL46C.glGetUniformLocation(uniforms.program(), "MmdBatchTextures[" + i + "]");
+            savedBatchUnits[i] = GL46C.glGetUniformi(uniforms.program(), location);
+        }
         boolean cull = GL46C.glIsEnabled(GL46C.GL_CULL_FACE);
         int cullMode = GL46C.glGetInteger(GL46C.GL_CULL_FACE_MODE);
         int enabled = GL46C.glGetUniformi(uniforms.program(), uniforms.enabled());
@@ -74,9 +105,10 @@ final class TranslucentBatchSubmission implements AutoCloseable {
         int oldIndirect = GL46C.glGetInteger(GL46C.GL_DRAW_INDIRECT_BUFFER_BINDING);
         // All raw state changes are restored, including indexed SSBO ranges and sampler objects.
         for (int i = 0; i < savedTextures.length; i++) {
-            GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + i);
+            int unit = textureUnits[i];
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + unit);
             savedTextures[i] = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
-            savedSamplers[i] = GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, i);
+            savedSamplers[i] = GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, unit);
         }
         try {
             if (materialsBuffer == 0) materialsBuffer = GL46C.glGenBuffers();
@@ -96,13 +128,14 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             GL46C.glUniform1i(uniforms.enabled(), 1);
             GL46C.glUniform1i(alphaPass, 2);
             GL46C.glUniform1i(uniforms.cullMode(), cullMode == GL46C.GL_BACK ? 0 : cullMode == GL46C.GL_FRONT ? 1 : 2);
-            GL46C.glUniform1iv(uniforms.textures(), new int[]{0, 1, 2, 3, 4, 5, 6, 7});
+            GL46C.glUniform1iv(uniforms.textures(), layout.uniformUnits());
             GL46C.glDisable(GL46C.GL_CULL_FACE);
             for (var window : plan.windows) {
                 for (int slot = 0; slot < window.textures().length; slot++) {
-                    GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + slot);
+                    int unit = textureUnits[slot];
+                    GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + unit);
                     GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, window.textures()[slot]);
-                    GL46C.glBindSampler(slot, 0);
+                    GL46C.glBindSampler(unit, 0);
                 }
                 GL46C.glUniform1i(uniforms.triangleOffset(), window.firstIndex() / 3);
                 if (device == null) {
@@ -120,11 +153,13 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             GL46C.glBindBuffer(GL46C.GL_DRAW_INDIRECT_BUFFER, oldIndirect);
             GL46C.glUniform1i(uniforms.enabled(), enabled);
             GL46C.glUniform1i(alphaPass, oldPass);
+            GL46C.glUniform1iv(uniforms.textures(), savedBatchUnits);
             if (cull) GL46C.glEnable(GL46C.GL_CULL_FACE); else GL46C.glDisable(GL46C.GL_CULL_FACE);
             for (int i = 0; i < savedTextures.length; i++) {
-                GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + i);
+                int unit = textureUnits[i];
+                GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + unit);
                 GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, savedTextures[i]);
-                GL46C.glBindSampler(i, savedSamplers[i]);
+                GL46C.glBindSampler(unit, savedSamplers[i]);
             }
             GL46C.glActiveTexture(activeTexture);
             materialBinding.restore(2);

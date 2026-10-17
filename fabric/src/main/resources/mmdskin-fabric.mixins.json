@@ -23,6 +23,7 @@
     "compat.tacz.TaczGunItemRendererWrapperMixin",
     "compat.tacz.TaczRightHandRenderMixin",
     "compat.tacz.TaczLeftHandRenderMixin",
+    "compat.IrisShadowEvaluationMixin",
     "FabricScreenMixin"
   ],
   "injectors": {

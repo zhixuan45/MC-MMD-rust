@@ -45,6 +45,13 @@ public class NativeFunc {
     /** Optional v1 telemetry; 8 native-order longs, without retaining the direct buffer. */
     public native boolean UpdateModelProfiled(long model, float deltaTime, boolean cpuSkinning, java.nio.ByteBuffer output);
 
+    /** 按次预算 ABI v1；能力不存在时保留旧入口。 */
+    public native long GetEvaluationCapabilities();
+
+    /** false 表示执行前拒绝；开始更新后不能返回 false 触发重跑。 */
+    public native boolean UpdateModelParallel(long model, float deltaTime, boolean cpuSkinning,
+                                              int threadBudget, boolean physicsParallel, ByteBuffer output);
+
     public native long GetVertexCount(long model);
 
     public native long GetPoss(long model);

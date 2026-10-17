@@ -18,11 +18,17 @@ public final class ModernPackProbe {
             "gbuffers_entities", "gbuffers_entities_translucent", "gbuffers_entities_glowing", "gbuffers_hand");
     private static final Pattern BUFFERS = Pattern.compile(
             "DRAWBUFFERS\\s*:\\s*([0-9]+)|RENDERTARGETS\\s*:\\s*([0-9]+(?:\\s*,\\s*[0-9]+)*)");
+    private static final List<String> PACKS = List.of(
+            "ComplementaryReimagined_r5.9.3.zip", "ComplementaryUnbound_r5.9.3.zip");
 
     private ModernPackProbe() {}
 
     public static void run(Path shaderpacks) throws Exception {
-        Path pack = shaderpacks.resolve("ComplementaryUnbound_r5.9.3.zip");
+        for (String packName : PACKS) runPack(shaderpacks, packName);
+    }
+
+    private static void runPack(Path shaderpacks, String packName) throws Exception {
+        Path pack = shaderpacks.resolve(packName);
         if (!Files.isRegularFile(pack)) throw new AssertionError("缺少真实包: " + pack);
         Map<String, String> options = Probe.options(Path.of(pack + ".txt"));
         List<StringPair> defines = List.of(new StringPair("MC_VERSION", "12101"),
@@ -59,7 +65,7 @@ public final class ModernPackProbe {
             }
         }
         if (checked != DIMENSIONS.size() * PROGRAMS.size()) throw new AssertionError("现代包程序覆盖不完整: " + checked);
-        System.out.println("PASS modern package: " + checked + " real program main+outline compilations");
+        System.out.println("PASS modern package " + pack.getFileName() + ": " + checked + " real program main+outline compilations");
     }
 
     private static String wrapper(ZipFile zip, String dimension, String program, String extension) {

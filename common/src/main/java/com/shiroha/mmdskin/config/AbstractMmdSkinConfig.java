@@ -26,6 +26,9 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public int getAnimationLodFarUpdateInterval() { return data.animationLodFarUpdateInterval; }
 
     @Override public boolean isToonRenderingEnabled() { return data.toonRenderingEnabled; }
+    @Override public boolean isToonDisableTransparency() { return data.toonDisableTransparency; }
+    @Override public float getToonAlphaCutoff() { return data.toonAlphaCutoff; }
+    @Override public float getToonHairAlphaCutoff() { return data.toonHairAlphaCutoff; }
     @Override public int getToonLevels() { return data.toonLevels; }
     @Override public float getToonTransitionSoftness() { return data.toonTransitionSoftness; }
     @Override public float getToonRimPower() { return data.toonRimPower; }

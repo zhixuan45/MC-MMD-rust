@@ -15,7 +15,6 @@ import org.lwjgl.opengl.GL46C;
 public class ToonRenderHelper {
 
     private static final ToonConfig toonConfig = ToonConfig.getInstance();
-    private static final float ALPHA_CUTOFF = 0.001f;
 
     public static void setupToonUniforms(ToonShaderBase shader, float lightIntensity, Vector3f lightDirection) {
         setupToonUniforms(shader, lightIntensity, lightDirection, 1.0f);
@@ -49,7 +48,6 @@ public class ToonRenderHelper {
         );
         shader.setSpecular(toonConfig.getSpecularPower(), toonConfig.getSpecularIntensity());
         shader.setLightDirection(lightX, lightY, lightZ);
-        shader.setAlphaCutoff(ALPHA_CUTOFF);
         shader.setGlobalAlpha(globalAlpha);
         shader.setEyeEmission(0.0f);
         shader.setEyeMaterialMask(0.0f);

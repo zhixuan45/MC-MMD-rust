@@ -1,7 +1,8 @@
 param(
     [string]$Instance = 'D:\minecraft\.minecraft\versions\1.21.1-NeoForge_21.1.252',
     [string]$Jdk = 'C:\Program Files\Zulu\zulu-21',
-    [string]$EyeAssetData = ''
+    [string]$EyeAssetData = '',
+    [switch]$BslBatchOnly
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -24,6 +25,13 @@ $taskClasspath = [System.Collections.Generic.List[string]]::new()
 foreach ($taskRelative in @('common/build/classes/java/main','common/build/resources/main')) {
     $taskClasspath.Add((Join-Path $taskRoot $taskRelative))
 }
+$taskNeoForgeVersion = (Select-String -LiteralPath (Join-Path $taskRoot 'gradle.properties') -Pattern '^neoforge_version=').Line.Split('=')[1]
+$taskMinecraftMaven = Join-Path $env:USERPROFILE '.gradle/caches/fabric-loom/minecraftMaven/net/minecraft'
+$taskMinecraftJar = Get-ChildItem -LiteralPath (Join-Path $taskMinecraftMaven "neoforge-$taskNeoForgeVersion-minecraft-merged-mojang") -Recurse -Filter '*.jar' |
+    Where-Object { $_.Name.Contains('merged-mojang-') -and $_.Name.EndsWith('.jar') -and $_.Name -notmatch 'sources|backup' } |
+    Select-Object -First 1
+if (!$taskMinecraftJar) { throw "缺少映射后的 Minecraft/NeoForge Jar: $taskNeoForgeVersion" }
+$taskClasspath.Add($taskMinecraftJar.FullName)
 $taskClasspath.Add($taskIris.FullName)
 $taskClasspath.Add($taskJcpp)
 $taskJoml = Get-ChildItem -LiteralPath (Join-Path $taskCache 'org.joml/joml') -Recurse -Filter 'joml-*.jar' |
@@ -35,7 +43,7 @@ foreach ($taskModule in @('lwjgl','lwjgl-glfw','lwjgl-opengl')) {
         Where-Object { $_.Name -eq "$taskModule-3.3.3.jar" -or $_.Name -eq "$taskModule-3.3.3-natives-windows.jar" } |
         ForEach-Object { $taskClasspath.Add($_.FullName) }
 }
-foreach ($taskDependency in @('org.apache.logging.log4j/log4j-api','org.apache.logging.log4j/log4j-core','org.slf4j/slf4j-api','com.google.guava/guava','com.google.code.gson/gson')) {
+foreach ($taskDependency in @('org.apache.logging.log4j/log4j-api','org.apache.logging.log4j/log4j-core','org.slf4j/slf4j-api','com.google.guava/guava','com.google.code.gson/gson','com.mojang/logging','it.unimi.dsi/fastutil')) {
     $taskDependencyPath = Join-Path $taskCache $taskDependency
     $taskVersion = Get-ChildItem -LiteralPath $taskDependencyPath -Directory | Sort-Object Name -Descending | Select-Object -First 1
     Get-ChildItem -LiteralPath $taskVersion.FullName -Recurse -Filter '*.jar' |
@@ -47,16 +55,30 @@ $taskJava = Join-Path $Jdk 'bin/java.exe'
 $taskJavac = Join-Path $Jdk 'bin/javac.exe'
 Push-Location $taskRoot
 try {
-    $taskSources = @('Probe.java','ModernPackProbe.java','OverlayProbe.java','LightingProbe.java','ToonControlsProbe.java','UniformBridgeProbe.java','OutlineCoverageProbe.java') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+    $taskSources = @('Probe.java','ModernPackProbe.java','BslBatchGlProbe.java','OverlayProbe.java','LightingProbe.java','ToonControlsProbe.java','UniformBridgeProbe.java','OutlineCoverageProbe.java') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+    $taskSources += @(
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ToonShaderBase.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/TranslucentBatchShader.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/ProgramSamplerLayout.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/SphereTextureBinding.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/TranslucentBatchPlan.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/TranslucentBatchSubmission.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/TranslucentDrawOrder.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/pipeline/TranslucentDiagnostics.java')
+    )
     if ($EyeAssetData) {
         $taskSources += @('EyeAssetProbe.java','EyeEmissionBufferProbe.java') | ForEach-Object { Join-Path $PSScriptRoot $_ }
     }
     $taskSources += @(
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ToonOutputProfile.java'),
-        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ComplementaryToonLighting.java')
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ComplementaryToonLighting.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ToonUniformBridge.java')
     )
     & $taskJavac -proc:none -encoding UTF-8 -cp $taskCp -d $taskProbeDir $taskSources
     if ($LASTEXITCODE -ne 0) { throw '探针编译失败' }
+    & $taskJava -cp "$taskProbeDir;$taskCp" BslBatchGlProbe (Join-Path $Instance 'shaderpacks/BSL_v10.1.8.zip')
+    if ($LASTEXITCODE -ne 0) { throw 'BSL 合批 GL 对照探针失败' }
+    if ($BslBatchOnly) { return }
     & $taskJava -cp "$taskProbeDir;$taskCp" Probe (Join-Path $Instance 'shaderpacks')
     if ($LASTEXITCODE -ne 0) { throw '探针验证失败' }
     if ($EyeAssetData) {

@@ -34,8 +34,11 @@ class NativeEvaluationBatchTest {
                 assertEquals(3, finished.get());
                 completed.incrementAndGet();
             };
-            NativeEvaluationBatch.run(List.of(job(1, run, complete), job(2, run, complete), job(3, run, complete)), executor);
+            var stats = NativeEvaluationBatch.run(List.of(job(1, run, complete), job(2, run, complete), job(3, run, complete)), executor, 8);
             assertEquals(3, completed.get());
+            assertEquals(2, stats.requestedWorkers());
+            assertEquals(2, stats.peakWorkers());
+            assertEquals(3, stats.peakActive());
         }
     }
 

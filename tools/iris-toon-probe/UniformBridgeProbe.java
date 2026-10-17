@@ -47,6 +47,10 @@ public final class UniformBridgeProbe {
             }
             check(!bridge.copy(invalid,target,new Object()) && bridge.failureReason().contains("类型"),"类型不匹配必须显式回退");
             check(!bridge.copy(missing,target,new Object()) && bridge.failureReason().contains("second"),"缺少输入必须显式回退");
+            int maxUnits = GL46C.glGetInteger(GL46C.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+            check(!ToonUniformBridge.isSamplerUnitValid(-1, maxUnits), "负采样器单元必须拒绝");
+            check(ToonUniformBridge.isSamplerUnitValid(maxUnits - 1, maxUnits), "末尾有效采样器单元");
+            check(!ToonUniformBridge.isSamplerUnitValid(maxUnits, maxUnits), "越界采样器单元必须拒绝");
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR,"uniform 同步 GL 错误");
             System.out.println("PASS uniform bridge: comma declarations, arrays, matrices, samplers, independent locations, target switch, invalid/missing inputs");
         } finally {

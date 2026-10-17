@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 
 /** Iris apply 之后同步已更新的光照 uniform；采样器沿用 Iris 绑定的单元。 */
 final class ToonUniformBridge {
-    private record Binding(int source, int target, int type) {}
+    private record Binding(int source, int target, int type, boolean sampler, String name) {}
     private record Plan(int source, int target, List<Binding> bindings, String reason) {}
     private record Uniform(int type, int size) {}
     private final Set<String> uniforms;
@@ -45,6 +45,18 @@ final class ToonUniformBridge {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             var floats = stack.mallocFloat(16);
             var integers = stack.mallocInt(4);
+            int maxCombinedUnits = GL46C.glGetInteger(GL46C.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
+            // 先预检 sampler，避免把非法纹理单元写入目标程序。
+            for (Binding binding : plan) {
+                if (!binding.sampler()) continue;
+                integers.clear();
+                GL46C.glGetUniformiv(source, binding.source(), integers);
+                int unit = integers.get(0);
+                if (!isSamplerUnitValid(unit, maxCombinedUnits)) {
+                    failureReason = "采样器纹理单元越界: " + binding.name() + "=" + unit;
+                    return false;
+                }
+            }
             for (Binding binding : plan) {
                 if (isInteger(binding.type())) {
                     integers.clear();
@@ -75,6 +87,10 @@ final class ToonUniformBridge {
     }
 
     String failureReason() { return failureReason; }
+
+    static boolean isSamplerUnitValid(int unit, int maxUnits) {
+        return unit >= 0 && unit < maxUnits;
+    }
 
     private Plan failure(int source, int target, String reason) {
         return new Plan(source, target, List.of(), reason);
@@ -108,7 +124,8 @@ final class ToonUniformBridge {
                     String sourceName = sourceBase + (size.get(0) > 1 ? "[" + element + "]" : "");
                     int sourceLocation = GL46C.glGetUniformLocation(source, sourceName);
                     if (sourceLocation < 0) return failure(source, target, "来源缺少 uniform 位置: " + sourceName);
-                    result.add(new Binding(sourceLocation, GL46C.glGetUniformLocation(target, targetName), type.get(0)));
+                    result.add(new Binding(sourceLocation, GL46C.glGetUniformLocation(target, targetName),
+                            type.get(0), isSampler(type.get(0)), sourceName));
                 }
             }
         }
@@ -127,8 +144,23 @@ final class ToonUniformBridge {
         return switch (type) {
             case GL46C.GL_INT, GL46C.GL_INT_VEC2, GL46C.GL_INT_VEC3, GL46C.GL_INT_VEC4,
                  GL46C.GL_BOOL, GL46C.GL_BOOL_VEC2, GL46C.GL_BOOL_VEC3, GL46C.GL_BOOL_VEC4,
-                 GL46C.GL_SAMPLER_2D, GL46C.GL_SAMPLER_2D_SHADOW, GL46C.GL_SAMPLER_3D -> true;
+                 GL46C.GL_SAMPLER_1D, GL46C.GL_SAMPLER_2D, GL46C.GL_SAMPLER_3D,
+                 GL46C.GL_SAMPLER_CUBE, GL46C.GL_SAMPLER_1D_SHADOW, GL46C.GL_SAMPLER_2D_SHADOW,
+                 GL46C.GL_SAMPLER_CUBE_SHADOW,
+                 GL46C.GL_SAMPLER_1D_ARRAY, GL46C.GL_SAMPLER_2D_ARRAY,
+                 GL46C.GL_SAMPLER_1D_ARRAY_SHADOW, GL46C.GL_SAMPLER_2D_ARRAY_SHADOW,
+                 GL46C.GL_INT_SAMPLER_1D, GL46C.GL_INT_SAMPLER_2D, GL46C.GL_INT_SAMPLER_3D,
+                 GL46C.GL_INT_SAMPLER_CUBE, GL46C.GL_UNSIGNED_INT_SAMPLER_1D,
+                 GL46C.GL_UNSIGNED_INT_SAMPLER_2D, GL46C.GL_UNSIGNED_INT_SAMPLER_3D,
+                 GL46C.GL_UNSIGNED_INT_SAMPLER_CUBE -> true;
             default -> false;
         };
+    }
+
+    private static boolean isSampler(int type) {
+        return type != GL46C.GL_INT && type != GL46C.GL_INT_VEC2 && type != GL46C.GL_INT_VEC3
+                && type != GL46C.GL_INT_VEC4 && type != GL46C.GL_BOOL && type != GL46C.GL_BOOL_VEC2
+                && type != GL46C.GL_BOOL_VEC3 && type != GL46C.GL_BOOL_VEC4
+                && isInteger(type);
     }
 }

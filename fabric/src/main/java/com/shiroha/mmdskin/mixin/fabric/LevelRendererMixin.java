@@ -35,7 +35,11 @@ public abstract class LevelRendererMixin {
     private void mmdskin$prepareIndependentModels(DeltaTracker delta, boolean blockOutline, Camera camera,
             GameRenderer renderer, LightTexture light, Matrix4f view, Matrix4f projection, CallbackInfo ci) {
         if (capturedFrustum == null) PlayerWorldEvaluationPrepass.prepare(camera, cullingFrustum,
-                delta, this::isSectionCompiled, YsmCompat::isYsmModelActive);
+                delta, this::isSectionCompiled, YsmCompat::isYsmModelActive,
+                entity -> com.shiroha.mmdskin.fabric.maid.MaidCompatMixinPlugin.isMaidModLoaded()
+                        && com.shiroha.mmdskin.compat.maid.render.MaidRenderOwnership.isVanillaRendererPath(
+                                entity, net.minecraft.client.Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entity)),
+                (entity, tick) -> net.minecraft.util.Mth.lerp(tick, entity.yRotO, entity.getYRot()));
     }
 
 

@@ -1,4 +1,4 @@
-param([string]$Jdk = 'C:\Program Files\Zulu\zulu-21')
+param([string]$Jdk = 'C:\Program Files\Zulu\zulu-21', [switch]$AlphaOnly)
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $taskOutput = Join-Path $taskRoot 'build/translucent-performance'
@@ -15,8 +15,12 @@ try {
     & (Join-Path $Jdk 'bin/javac.exe') -proc:none -encoding UTF-8 -cp $taskCp -d $taskOutput `
         (Join-Path $PSScriptRoot 'BatchGlProbe.java') (Join-Path $PSScriptRoot 'CacheGlProbe.java') (Join-Path $PSScriptRoot 'GpuTimerGlProbe.java') `
         (Join-Path $PSScriptRoot 'GpuPreparationGlProbe.java') (Join-Path $PSScriptRoot 'StaticBufferGlProbe.java') `
-        (Join-Path $PSScriptRoot 'PaperDollGlProbe.java') (Join-Path $PSScriptRoot 'MaterialBindingGlProbe.java')
+        (Join-Path $PSScriptRoot 'PaperDollGlProbe.java') (Join-Path $PSScriptRoot 'MaterialBindingGlProbe.java') `
+        (Join-Path $PSScriptRoot 'AlphaOrderGlProbe.java')
     if ($LASTEXITCODE -ne 0) { throw 'GL probe compilation failed' }
+    & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" com.shiroha.mmdskin.render.material.AlphaOrderGlProbe
+    if ($LASTEXITCODE -ne 0) { throw 'Alpha/order GL probe failed' }
+    if ($AlphaOnly) { return }
     & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" com.shiroha.mmdskin.render.material.MaterialBindingGlProbe
     if ($LASTEXITCODE -ne 0) { throw 'Material binding GL probe failed' }
     & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" com.shiroha.mmdskin.render.material.BatchGlProbe

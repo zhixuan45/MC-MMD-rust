@@ -6,6 +6,7 @@ import org.lwjgl.opengl.GL46C;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.util.function.IntPredicate;
 
 /** 集中执行 CPU 与 GPU 蒙皮共用的描边绘制。 */
 public final class OutlineRenderPass {
@@ -39,6 +40,11 @@ public final class OutlineRenderPass {
 
     public static void draw(ToonShaderBase shader, Inputs inputs,
                             AlphaResolver alphaResolver, TextureResolver textureResolver) {
+        draw(shader, inputs, alphaResolver, textureResolver, id -> false);
+    }
+
+    public static void draw(ToonShaderBase shader, Inputs inputs,
+                            AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver) {
         int positionLocation = shader.getOutlinePositionLocation();
         int normalLocation = shader.getOutlineNormalLocation();
         int uvLocation = shader.getOutlineUvLocation();
@@ -78,7 +84,7 @@ public final class OutlineRenderPass {
             if (orthographic) GL46C.glDepthFunc(GL46C.GL_LESS);
             GL46C.glCullFace(GL46C.GL_FRONT);
             GL46C.glEnable(GL46C.GL_CULL_FACE);
-            drawSubMeshes(shader, inputs, alphaResolver, textureResolver);
+            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config);
             pass.composite();
         }
     }
@@ -95,13 +101,16 @@ public final class OutlineRenderPass {
     }
 
     private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver,
-                                      TextureResolver textureResolver) {
+                                      TextureResolver textureResolver, IntPredicate hairResolver, ToonConfig config) {
         ByteBuffer data = inputs.subMeshData();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
             int base = i * SUB_MESH_STRIDE;
             if (data.get(base + 16) == 0) continue;
             float alpha = alphaResolver.resolve(data.getInt(base), data.getFloat(base + 12));
             if (alpha < 0.001f) continue;
+            float cutoff = hairResolver.test(data.getInt(base)) ? config.getHairAlphaCutoff() : config.getAlphaCutoff();
+            // 主体裁掉的像素不留下描边；保留原贴图遮罩的 0.1 下限。
+            shader.setOutlineAlphaCutoff(Math.max(0.1f, cutoff / alpha));
             // 无纹理材质沿用实心遮罩，不采样上一材质的残留绑定。
             int texture = textureResolver.resolve(data.getInt(base));
             shader.setOutlineUseTextureAlpha(texture > 0);

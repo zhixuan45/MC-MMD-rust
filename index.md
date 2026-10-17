@@ -118,6 +118,10 @@ Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度�
 
 PMX 球面模式保存在 `model/material.rs`，通过独立 `jni_bridge/material_sphere.rs` 与 `SphereMaterialNative` 查询；Java 异步预加载与 `MaterialTextureLoader` 引用计数加载球面纹理。CPU/GPU 共用的 `SphereTextureBinding` 为 Toon 主体绑定未被光影采样器占用的单元，主体实现 SPH 乘法、SPA 加法和球面材质 morph，保持表面 alpha；透明排序区分球面材质。解码按内容识别 `.spa/.sph` 中的 PNG/BMP。非 Toon 程序及模式 3 扩展 UV 暂未补齐；真实珍珠 PNG 的离线球面 A/B、状态恢复与双平台包验证见 `doc/render/SPHERE_TEXTURE_SUPPORT.md`、`tools/sphere-texture-probe/`，仍需游戏验收。
 
+2026-10-17 三渲二透明 pass 通过 `render/material/ToonTransparencyLayers` 对最近 4 层进行逐像素深度剥离和颜色重放，深层保留原排序；共享深度池预算 128 MiB，深度阶段跳过照明，CPU/GPU 共用且不读回查询结果。Fabric/NeoForge 三渲二分页新增默认关闭的 `toonDisableTransparency`，将可见半透明像素作为实心绘制，保留透明孔洞。合成相交面、状态/异常恢复、BSL profile 与成本边界见 `doc/render/TOON_TRANSPARENCY_LAYERS.md`、`tools/translucent-performance/run-toon-transparency-probe.ps1`。原截图与游戏性能仍待同条件验收。
+
+同页的 `toonAlphaCutoff` / `toonHairAlphaCutoff` 为全局与发片独立裁切滑块，范围 0.001～1.000、默认 0.001，保存后生效。`HairMaterialClassifier` 按材质名识别发片并排除发饰，避免共用图集误判；主体、透明合批和描边共用选择结果。阈值在实心化和分层前应用，发片覆盖全局；复用材质表空闲标记，不新增 draw 或缓冲。普通/合批 CPU/GPU 回读与描边状态探针已覆盖独立裁切和恢复，截图根因仍需游戏对照。
+
 三渲二设置新增“明暗过渡柔和度”滑块（0～200，默认 120）。`toonTransitionSoftness` 经公共配置与 `ToonRenderHelper` 上传到 CPU/GPU 共用主体，`toonDiffuseRamp` 同时控制材质色调与 BSL/Complementary 适配中的直射光分档。0 保留原抗锯齿过渡，增加数值按色阶间距扩宽明暗交界，100 以内保留各档平坦区，超过 100 继续柔化并归一化最暗/最亮端点，不修改阴影投射/采样或描边。`ConfigDataTest` 验证旧配置缺省、范围与非有限值；`ToonControlsProbe` 回读 2～5 档的 0/35/100/120/200 柔和度、100 内的平坦区、照度端点、alpha 和归零恢复，光影编译覆盖含 BSL 10.1.8。游戏观感由用户测试确认。
 
 描边新增默认启用的 `toonOutlineFollowLighting`，Fabric/NeoForge 三渲二界面可关闭以保留旧纯色效果。`shader/toon_surface_lighting.glsl` 共用主体色阶与照明函数，`ToonOutlineLighting` 为描边独立缓存并同步相同 Iris 环境输入，关闭描边自身高光和边缘光，不接入眼瞳发光。原表面位置用于照明/阴影采样，外扩位置继续用于原轮廓过滤；透明裁切、宽度与覆盖率合成沿用现有逻辑。`LightingProbe` 对照主体/描边的昼夜、洞穴、火把、降雨与阴影，`ToonControlsProbe` 验证暗处、旧白色、黑色及 alpha；真实光影包编译探针拒绝把通用照明回退当成原包成功。游戏内亮边和 Bloom 仍需同条件开关对照；材质取色来源等待用户确认。

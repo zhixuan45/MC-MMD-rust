@@ -62,6 +62,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     protected final AtomicLong nativeUpdateRevision = new AtomicLong(0L);
     private boolean physicsStateInitialized = false;
     private boolean physicsEnabled = true;
+    private volatile long failedEvaluationFrame = -1;
     private final FirstPersonPoseState firstPersonPoseState = new FirstPersonPoseState();
     private final FrameEvaluationCache evaluationCache = new FrameEvaluationCache();
     private RenderPerformanceProfiler.Scene evaluationScene = RenderPerformanceProfiler.Scene.OTHER;
@@ -291,11 +292,13 @@ public abstract class BaseModelInstance implements ModelInstance {
                                      int packedLight, RenderScene context, WorldRenderPolicy.Decision worldDecision) {
         boolean stagePlaying = MMDCameraController.getInstance().isStagePlayingModel(model);
         applyPhysicsState(worldDecision.physicsEnabled());
-        boolean reusePreparedPose = firstPersonPoseState.isPrepared()
-                && evaluationCache.matches(com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current(), backendPort().poseInputRevision(model))
-                && context != null && context.isWorldScene();
+        long frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
+        boolean failedThisFrame = failedEvaluationFrame == frame;
+        boolean reusePreparedPose = context != null && context.isWorldScene()
+                && evaluationCache.matchesWorld(frame, backendPort().poseInputRevision(model),
+                        firstPersonPoseState.isPrepared(), vrActive);
 
-        if (worldDecision.shouldUpdate() && !reusePreparedPose) {
+        if (worldDecision.shouldUpdate() && !reusePreparedPose && !failedThisFrame) {
             long syncTimer = RenderPerformanceProfiler.get().startTimer();
             LivingEntityModelStateHelper.syncModelState(
                     model,
@@ -309,6 +312,8 @@ public abstract class BaseModelInstance implements ModelInstance {
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
 
             update();
+        } else if (worldDecision.shouldUpdate() && reusePreparedPose) {
+            RenderPerformanceProfiler.get().recordEvaluationReuse(evaluationScene);
         }
         try {
             doRenderModel(entityIn, entityYaw, entityPitch, entityTrans, mat, packedLight, context);
@@ -327,6 +332,7 @@ public abstract class BaseModelInstance implements ModelInstance {
 
     private boolean update(boolean forceEvaluation) {
         long frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
+        if (failedEvaluationFrame == frame) return false;
         if (!forceEvaluation && !vrActive && !"false".equalsIgnoreCase(System.getProperty("mmdskin.reuseEvaluation"))
                 && evaluationCache.matches(frame, backendPort().poseInputRevision(model))) {
             RenderPerformanceProfiler.get().recordEvaluationReuse(evaluationScene);
@@ -350,16 +356,23 @@ public abstract class BaseModelInstance implements ModelInstance {
         var profiler = RenderPerformanceProfiler.get();
         long updateTimer = profiler.startTimer();
         boolean profiled = false;
-        if (updateTimer != 0) {
-            if (nativeProfile == null) nativeProfile = ByteBuffer.allocateDirect(64).order(java.nio.ByteOrder.nativeOrder());
-            profiled = backendPort().updateModelProfiled(model, deltaTime, usesCpuSkinning(), nativeProfile);
+        try {
+            if (updateTimer != 0) {
+                if (nativeProfile == null) nativeProfile = ByteBuffer.allocateDirect(
+                        com.shiroha.mmdskin.render.pipeline.NativeEvaluationScope.PROFILE_BYTES)
+                        .order(java.nio.ByteOrder.nativeOrder());
+                profiled = backendPort().updateModelProfiled(model, deltaTime, usesCpuSkinning(), nativeProfile);
+            }
+            if (!profiled) onUpdate(deltaTime);
+        } catch (RuntimeException | Error failure) {
+            failedEvaluationFrame = frame;
+            throw failure;
         }
-        if (!profiled) onUpdate(deltaTime);
         if (profiled) profiler.recordNativeProfile(evaluationScene, nativeProfile);
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_NATIVE_MODEL_UPDATE, updateTimer);
         RenderPerformanceProfiler.get().endTimer(evaluationScene.nativeSection, updateTimer);
         RenderPerformanceProfiler.get().recordEvaluation(evaluationScene, physicsEnabled);
-        evaluationCache.capture(frame, backendPort().poseInputRevision(model));
+        evaluationCache.capture(frame, backendPort().poseInputRevision(model), evaluationScene);
         logRustDiagnostics();
         logPhysicsDiagnostic();
         issueDiagnostics.sample(backendPort(), model, getModelName(), getClass().getSimpleName());
@@ -380,9 +393,19 @@ public abstract class BaseModelInstance implements ModelInstance {
     /** Render-thread input preparation. Only already-loaded, independent world instances qualify. */
     public final com.shiroha.mmdskin.render.pipeline.NativeEvaluationBatch.Work prepareWorldEvaluation(
             LivingEntity entity, float yaw, float tickDelta) {
+        return prepareWorldEvaluation(entity, yaw, tickDelta, RenderPerformanceProfiler.Scene.WORLD);
+    }
+
+    /** 阴影和世界共用输入同步，但分别记录实际求值场景。 */
+    public final com.shiroha.mmdskin.render.pipeline.NativeEvaluationBatch.Work prepareWorldEvaluation(
+            LivingEntity entity, float yaw, float tickDelta, RenderPerformanceProfiler.Scene scene) {
         if (!canPrepareWorldEvaluation()) return null;
+        if (scene != RenderPerformanceProfiler.Scene.WORLD && scene != RenderPerformanceProfiler.Scene.SHADOW) return null;
+        evaluationScene = scene;
         long frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
-        if (evaluationCache.matches(frame, backendPort().poseInputRevision(model))) return null;
+        if (failedEvaluationFrame == frame
+                || evaluationCache.matchesWorld(frame, backendPort().poseInputRevision(model),
+                        firstPersonPoseState.isPrepared(), vrActive)) return null;
         var decision = WorldRenderPolicy.get().resolve(model, entity);
         if (!decision.shouldUpdate()) return null;
         applyPhysicsState(decision.physicsEnabled());
@@ -398,8 +421,10 @@ public abstract class BaseModelInstance implements ModelInstance {
         lastUpdateTime = now;
         boolean sample = profiler.isSamplingEnabled();
         long generation = profiler.samplingGeneration();
-        if (sample && nativeProfile == null) nativeProfile = ByteBuffer.allocateDirect(64).order(java.nio.ByteOrder.nativeOrder());
-        return new PreparedEvaluation(this, backendPort(), model, frame, delta, physicsEnabled,
+        if (sample && nativeProfile == null) nativeProfile = ByteBuffer.allocateDirect(
+                com.shiroha.mmdskin.render.pipeline.NativeEvaluationScope.PROFILE_BYTES)
+                .order(java.nio.ByteOrder.nativeOrder());
+        return new PreparedEvaluation(this, backendPort(), model, frame, scene, delta, physicsEnabled,
                 usesCpuSkinning(), sample ? nativeProfile : null, generation);
     }
 
@@ -408,22 +433,30 @@ public abstract class BaseModelInstance implements ModelInstance {
         private final BaseModelInstance owner;
         private final NativeRenderBackendPort port;
         private final long handle, frame, generation;
+        private final RenderPerformanceProfiler.Scene scene;
         private final float delta;
         private final boolean physics, cpu;
         private final ByteBuffer profile;
         private long elapsed;
         private boolean profiled;
         PreparedEvaluation(BaseModelInstance owner, NativeRenderBackendPort port, long handle, long frame,
+                           RenderPerformanceProfiler.Scene scene,
                            float delta, boolean physics, boolean cpu, ByteBuffer profile, long generation) {
             this.owner = owner; this.port = port; this.handle = handle; this.frame = frame;
+            this.scene = scene;
             this.delta = delta; this.physics = physics; this.cpu = cpu; this.profile = profile; this.generation = generation;
         }
         public long handle() { return handle; }
         public void execute() {
             long start = profile != null ? System.nanoTime() : 0;
-            profiled = profile != null && port.updateModelProfiled(handle, delta, cpu, profile);
-            if (!profiled) {
-                if (cpu) port.updateModel(handle, delta); else port.updateAnimationOnly(handle, delta);
+            try {
+                profiled = profile != null && port.updateModelProfiled(handle, delta, cpu, profile);
+                if (!profiled) {
+                    if (cpu) port.updateModel(handle, delta); else port.updateAnimationOnly(handle, delta);
+                }
+            } catch (RuntimeException | Error failure) {
+                owner.failedEvaluationFrame = frame;
+                throw failure;
             }
             if (start != 0) elapsed = System.nanoTime() - start;
         }
@@ -431,11 +464,11 @@ public abstract class BaseModelInstance implements ModelInstance {
             var profiler = RenderPerformanceProfiler.get();
             if (profile != null && profiler.samplingGeneration() == generation && profiler.isSamplingEnabled()) {
                 profiler.recordElapsed(RenderPerformanceProfiler.SECTION_NATIVE_MODEL_UPDATE, elapsed);
-                profiler.recordElapsed(RenderPerformanceProfiler.Scene.WORLD.nativeSection, elapsed);
-                if (profiled) profiler.recordNativeProfile(RenderPerformanceProfiler.Scene.WORLD, profile);
+                profiler.recordElapsed(scene.nativeSection, elapsed);
+                if (profiled) profiler.recordNativeProfile(scene, profile);
             }
-            profiler.recordEvaluation(RenderPerformanceProfiler.Scene.WORLD, physics);
-            owner.evaluationCache.capture(frame, port.poseInputRevision(handle));
+            profiler.recordEvaluation(scene, physics);
+            owner.evaluationCache.capture(frame, port.poseInputRevision(handle), scene);
             owner.logRustDiagnostics();
             owner.logPhysicsDiagnostic();
             owner.issueDiagnostics.sample(port, handle, owner.getModelName(), owner.getClass().getSimpleName());

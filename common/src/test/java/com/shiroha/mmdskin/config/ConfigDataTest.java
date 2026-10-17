@@ -179,6 +179,27 @@ class ConfigDataTest {
     }
 
     @Test
+    void toonDisableTransparencyDefaultsFalseAndPersists(@TempDir Path configDir) throws Exception {
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");
+        ConfigData loaded = ConfigData.load(configDir);
+        assertFalse(loaded.toonDisableTransparency);
+        assertFalse(new TestConfig(loaded).isToonDisableTransparency());
+
+        loaded.toonDisableTransparency = true;
+        loaded.save(configDir);
+        ConfigData roundTrip = ConfigData.load(configDir);
+        assertTrue(roundTrip.toonDisableTransparency);
+        assertTrue(new TestConfig(roundTrip).isToonDisableTransparency());
+        ConfigManager.init(new TestConfig(roundTrip));
+        try {
+            assertTrue(ConfigManager.isToonDisableTransparency());
+        } finally {
+            ConfigManager.init(null);
+        }
+    }
+
+    @Test
     void toonTransitionSoftnessReplacesNonFiniteValuesWithDefault() throws Exception {
         ConfigData data = new ConfigData();
         var normalize = ConfigData.class.getDeclaredMethod("normalize");
@@ -187,6 +208,41 @@ class ConfigDataTest {
             data.toonTransitionSoftness = invalid;
             normalize.invoke(data);
             assertEquals(1.2f, data.toonTransitionSoftness, 0.0001f);
+        }
+    }
+
+    @Test
+    void alphaCutoffsKeepOldDefaultsAndPersistIndependently(@TempDir Path configDir) throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");
+        ConfigData data = ConfigData.load(configDir);
+        assertEquals(0.001f, data.toonAlphaCutoff);
+        assertEquals(0.001f, data.toonHairAlphaCutoff);
+        data.toonAlphaCutoff = 0.2f;
+        data.toonHairAlphaCutoff = 0.05f;
+        data.save(configDir);
+        ConfigManager.init(new TestConfig(ConfigData.load(configDir)));
+        try {
+            assertEquals(0.2f, ConfigManager.getToonAlphaCutoff());
+            assertEquals(0.05f, ConfigManager.getToonHairAlphaCutoff());
+        } finally {
+            ConfigManager.init(null);
+        }
+        assertEquals(0.001f, ConfigManager.getToonAlphaCutoff());
+        assertEquals(0.001f, ConfigManager.getToonHairAlphaCutoff());
+    }
+
+    @Test
+    void alphaCutoffsClampAndRejectNonFiniteValues() throws Exception {
+        ConfigData data = new ConfigData();
+        var normalize = ConfigData.class.getDeclaredMethod("normalize");
+        normalize.setAccessible(true);
+        for (float[] pair : new float[][]{{-1, 0.001f}, {0, 0.001f}, {0.05f, 0.05f}, {1, 1}, {2, 1},
+                {Float.NaN, 0.001f}, {Float.POSITIVE_INFINITY, 0.001f}, {Float.NEGATIVE_INFINITY, 0.001f}}) {
+            data.toonAlphaCutoff = pair[0];
+            data.toonHairAlphaCutoff = pair[0];
+            normalize.invoke(data);
+            assertEquals(pair[1], data.toonAlphaCutoff);
+            assertEquals(pair[1], data.toonHairAlphaCutoff);
         }
     }
 

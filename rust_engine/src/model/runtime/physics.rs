@@ -201,7 +201,9 @@ impl MmdModel {
             }
         }
 
+        let timer = crate::evaluation_profile::timer();
         self.collect_physics_bone_transforms();
+        crate::evaluation_profile::detail_stage(timer, 0);
 
         let model_transform = self.model_transform;
 
@@ -255,17 +257,33 @@ impl MmdModel {
         }
 
         // 1. 同步运动学刚体
+        let timer = crate::evaluation_profile::timer();
         physics.sync_bodies_with_model_velocity(
             &self.physics_bone_transforms_buf,
             delta_time,
             model_transform,
         );
+        crate::evaluation_profile::detail_stage(timer, 1);
 
         // 2. Bullet3 步进
-        physics.step_simulation(delta_time);
+        if !physics.step_simulation(delta_time) {
+            self.physics = Some(physics);
+            return;
+        }
 
         // 3. 同步物理结果回骨骼（复用内部缓冲区）
+        let timer = crate::evaluation_profile::timer();
         self.writeback_physics_bones(&mut physics);
+        crate::evaluation_profile::detail_stage(timer, 4);
+
+        if crate::evaluation_profile::enabled() {
+            crate::evaluation_profile::physics_counts(
+                physics.rigid_bodies.len(),
+                physics.profile_constraint_count(),
+                physics.profile_manifold_count(),
+                physics.profile_contact_count(),
+            );
+        }
 
         // 归还所有权
         self.physics = Some(physics);

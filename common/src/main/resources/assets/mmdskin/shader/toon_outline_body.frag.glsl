@@ -14,6 +14,7 @@ uniform bool UseTextureAlpha;
 uniform float AlphaCutoff;
 uniform bool Premultiplied;
 uniform bool FollowLighting;
+uniform bool DisableTransparency;
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
@@ -23,6 +24,7 @@ void main() {
     // 纹理只提供遮罩，描边颜色仍然独立。
     float coverage = UseTextureAlpha ? texture(Sampler0, texCoord0).a : 1.0;
     if (coverage < AlphaCutoff) discard;
+    if (DisableTransparency) coverage = 1.0;
     vec3 normal = normalize(viewNormal);
     // 正交投影的视线不随屏幕位置与 GUI 图层深度改变。
     bool orthographic = abs(ProjMat[2][3]) < 0.000001 && abs(ProjMat[3][3] - 1.0) < 0.000001;
@@ -51,7 +53,9 @@ void main() {
     }
 
     // OutlineAlpha 已包含全局透明度，避免在描边中重复相乘。
-    float finalAlpha = OutlineAlpha * edge * coverage;
+    // 仅取消材质透明度，轮廓边缘的覆盖率仍保留。
+    float materialAlpha = DisableTransparency && OutlineAlpha >= 0.001 ? 1.0 : OutlineAlpha;
+    float finalAlpha = materialAlpha * edge * coverage;
     if (finalAlpha < 0.001) {
         discard;
     }

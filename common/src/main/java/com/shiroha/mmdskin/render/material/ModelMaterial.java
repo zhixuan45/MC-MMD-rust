@@ -29,11 +29,18 @@ public class ModelMaterial {
 
     private Boolean cachedIsFacialFeature;
     private Boolean cachedIsEye;
+    private Boolean cachedIsHair;
     private Float cachedEyeEmissionMaskMode;
 
     public float eyeEmissionMaskMode() {
         if (cachedEyeEmissionMaskMode == null) cachedEyeEmissionMaskMode = EyeMaterialMask.classify(name);
         return cachedEyeEmissionMaskMode;
+    }
+
+    public boolean isHair() {
+        // 只看材质名，避免共用图集把衣料归入发片。
+        if (cachedIsHair == null) cachedIsHair = HairMaterialClassifier.matches(name);
+        return cachedIsHair;
     }
 
     public boolean isEye() {

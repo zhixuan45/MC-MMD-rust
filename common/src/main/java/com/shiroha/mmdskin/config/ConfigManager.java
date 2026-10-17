@@ -74,6 +74,18 @@ public class ConfigManager {
         return provider != null ? provider.isToonRenderingEnabled() : false;
     }
 
+    public static boolean isToonDisableTransparency() {
+        return provider != null ? provider.isToonDisableTransparency() : false;
+    }
+
+    public static float getToonAlphaCutoff() {
+        return provider != null ? provider.getToonAlphaCutoff() : 0.001f;
+    }
+
+    public static float getToonHairAlphaCutoff() {
+        return provider != null ? provider.getToonHairAlphaCutoff() : 0.001f;
+    }
+
     public static int getToonLevels() {
         return provider != null ? provider.getToonLevels() : 4;
     }

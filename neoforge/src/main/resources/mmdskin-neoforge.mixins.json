@@ -21,7 +21,8 @@
     "EntityMixin",
     "compat.tacz.TaczGunItemRendererWrapperMixin",
     "compat.tacz.TaczRightHandRenderMixin",
-    "compat.tacz.TaczLeftHandRenderMixin"
+    "compat.tacz.TaczLeftHandRenderMixin",
+    "compat.IrisShadowEvaluationMixin"
   ],
   "injectors": {
     "defaultRequire": 1

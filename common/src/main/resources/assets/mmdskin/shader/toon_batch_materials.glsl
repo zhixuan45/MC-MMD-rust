@@ -5,7 +5,7 @@ struct MmdBatchMaterial {
     vec4 sphereMul;
     vec4 sphereAdd;
     vec4 shading; // eye mask, sphere mode, diffuse slot, sphere slot
-    vec4 flags;   // double sided
+    vec4 flags;   // double sided, hair
 };
 layout(std430, binding = 2) readonly buffer MmdBatchMaterials { MmdBatchMaterial mmdMaterials[]; };
 layout(std430, binding = 3) readonly buffer MmdBatchTriangles { int mmdTriangleRows[]; };
@@ -17,7 +17,7 @@ vec4 mmdColor, mmdSphereMul, mmdSphereAdd;
 vec3 mmdSpecular;
 float mmdPower, mmdEyeMask;
 int mmdSphereMode, mmdDiffuseSlot, mmdSphereSlot;
-bool mmdCull;
+bool mmdCull, mmdHairMaterial;
 vec2 mmdSphereUv, mmdSphereDx, mmdSphereDy;
 
 // Sampler selection is not dynamically uniform across primitives. Constant sampler
@@ -56,6 +56,7 @@ void mmdLoadMaterial() {
         mmdSphereMul = row.sphereMul;
         mmdSphereAdd = row.sphereAdd;
         mmdEyeMask = row.shading.x;
+        mmdHairMaterial = row.flags.y != 0.0;
         mmdSphereMode = int(row.shading.y);
         mmdDiffuseSlot = int(row.shading.z);
         mmdSphereSlot = int(row.shading.w);
@@ -69,6 +70,7 @@ void mmdLoadMaterial() {
         mmdSphereAdd = SphereAdd;
         mmdSphereMode = SphereMode;
         mmdEyeMask = EyeMaterialMask;
+        mmdHairMaterial = HairMaterial;
     }
 }
 vec4 mmdDiffuse(vec2 uv) {
@@ -97,3 +99,4 @@ void mmdPrepareSphere(vec3 normal) {
 #define SphereAdd mmdSphereAdd
 #define SphereMode mmdSphereMode
 #define EyeMaterialMask mmdEyeMask
+#define HairMaterial mmdHairMaterial

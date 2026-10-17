@@ -23,9 +23,14 @@ public final class NativeRuntimeBridge implements
         PlatformCapabilityPort {
     private static final Logger logger = LogManager.getLogger();
     private static volatile boolean evaluationProfilingAvailable = true;
+    private static final NativeParallelEvaluation parallelEvaluation = NativeParallelEvaluation.create();
 
     @Override
     public boolean updateModelProfiled(long handle, float delta, boolean cpuSkinning, ByteBuffer output) {
+        if (parallelEvaluation.update(handle, delta, cpuSkinning, output)) {
+            NativePoseInputs.changed(handle);
+            return true;
+        }
         if (!evaluationProfilingAvailable) return false;
         try {
             if (!nativeFunc().UpdateModelProfiled(handle, delta, cpuSkinning, output)) return false;
@@ -139,13 +144,13 @@ public final class NativeRuntimeBridge implements
     @Override
     public void updateModel(long modelHandle, float deltaTime) {
         NativePoseInputs.changed(modelHandle);
-        nativeFunc().UpdateModel(modelHandle, deltaTime);
+        if (!parallelEvaluation.update(modelHandle, deltaTime, true, null)) nativeFunc().UpdateModel(modelHandle, deltaTime);
     }
 
     @Override
     public void updateAnimationOnly(long modelHandle, float deltaTime) {
         NativePoseInputs.changed(modelHandle);
-        nativeFunc().UpdateAnimationOnly(modelHandle, deltaTime);
+        if (!parallelEvaluation.update(modelHandle, deltaTime, false, null)) nativeFunc().UpdateAnimationOnly(modelHandle, deltaTime);
     }
 
     @Override

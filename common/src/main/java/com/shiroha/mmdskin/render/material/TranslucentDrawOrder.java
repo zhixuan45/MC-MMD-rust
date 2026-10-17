@@ -25,18 +25,25 @@ public final class TranslucentDrawOrder implements AutoCloseable {
         return !"false".equalsIgnoreCase(System.getProperty("mmdskin.reuseTranslucentPreparation"));
     }
     private final TranslucentBatchSubmission submission = new TranslucentBatchSubmission();
+    private ProgramSamplerLayout batchLayout;
     private final GpuTranslucentPreparation device = new GpuTranslucentPreparation();
     private TranslucentBatchPlan deviceMaterials;
     private boolean deviceActive;
+    private int batchWindowsSubmitted;
     private final PreparedGeometry prepared = new PreparedGeometry();
     private int topologyBuild = -1;
     private int[] topologyRows = new int[0], packedTopology = new int[0];
 
     int submitBatch(ModelMaterial[] materials, DrawMaterialCache materialCache) {
         if (!deviceActive && drawCount == 0) return 0;
-        return deviceActive ? submission.drawGpu(deviceMaterials, materials, materialCache, device)
-                : submission.draw(submeshes, drawCount, materials, materialCache);
+        batchWindowsSubmitted = deviceActive
+                ? submission.drawGpu(deviceMaterials, materials, materialCache, device, batchLayout)
+                : submission.draw(submeshes, drawCount, materials, materialCache, batchLayout);
+        return batchWindowsSubmitted;
     }
+
+    /** 本次透明 pass 实际提交的连续纹理窗口数。 */
+    public int batchWindowCount() { return Math.max(0, batchWindowsSubmitted); }
     public record Inputs(
             ByteBuffer positions,
             int positionBuffer,
@@ -177,6 +184,28 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                     ModelMaterial[] materials, ByteBuffer morphs,
                     SubMeshDrawHelper.AlphaResolver alphaResolver, SubMeshDrawHelper.TextureResolver textures,
                     DrawMaterialCache materialCache) {
+        return prepare(inputs, source, count, indexSize, materials, morphs, alphaResolver, textures, materialCache, true);
+    }
+
+    /** 批量提交不可用时仍按远近顺序绘制；仅 GPU 准备需要重建。 */
+    boolean prepareCompatibility(Inputs inputs, ByteBuffer source, int count, int indexSize,
+                                 ModelMaterial[] materials, ByteBuffer morphs,
+                                 SubMeshDrawHelper.AlphaResolver alphaResolver, SubMeshDrawHelper.TextureResolver textures,
+                                 DrawMaterialCache materialCache) {
+        return !deviceActive || prepare(inputs, source, count, indexSize, materials, morphs,
+                alphaResolver, textures, materialCache, false);
+    }
+
+    private boolean prepare(Inputs inputs, ByteBuffer source, int count, int indexSize,
+                            ModelMaterial[] materials, ByteBuffer morphs,
+                            SubMeshDrawHelper.AlphaResolver alphaResolver, SubMeshDrawHelper.TextureResolver textures,
+                            DrawMaterialCache materialCache, boolean allowDevice) {
+        var batchUniforms = com.shiroha.mmdskin.render.shader.TranslucentBatchShader.current();
+        int activeProgram = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
+        batchLayout = batchUniforms == null ? null : ProgramSamplerLayout.capture(activeProgram);
+        batchWindowsSubmitted = 0;
+        if (batchUniforms == null) TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_PROGRAM, 1);
+        else if (batchLayout == null) TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_SAMPLERS, 1);
         boolean previousDevice = deviceActive;
         deviceActive = false;
         int triangles = 0;
@@ -231,6 +260,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                                 power ? state.specularPower : 0,
                                 eye ? material.eyeEmissionMaskMode() : 0);
                 batches[s] = batchIds.computeIfAbsent(batch, k -> batchIds.size());
+                // 材质透明时，贴图实心像素也必须进入透明排序。
                 includeOpaque[s] = !splitPixels || state.alpha < MaterialRenderState.OPAQUE_ALPHA;
             }
         } finally {
@@ -291,9 +321,8 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 indexRevision = revision;
                 candidateValid = false;
             }
-            boolean deviceEligible = inputs.positions() == null && !packEntity
-                    && com.shiroha.mmdskin.render.shader.TranslucentBatchShader.current() != null
-                    && GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, 0) == 0 && GpuTranslucentPreparation.enabled();
+            boolean deviceEligible = allowDevice && inputs.positions() == null && !packEntity
+                    && batchLayout != null && GpuTranslucentPreparation.enabled();
             if (deviceEligible) {
                 // UV-morphed candidates remain a conservative superset; the fragment alpha pass
                 // still rejects opaque/empty pixels. Never read dynamic UVs back just to prune.
@@ -319,8 +348,8 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 // Alpha coverage can eliminate entire submeshes. Their unused textures must not
                 // push an otherwise valid single-window pass back onto the CPU.
                 var devicePlan = TranslucentBatchPlan.singleWindowForCandidates(source, count,
-                        candidateOwners, candidateCount, materials, materialCache::texture);
-                if (devicePlan != null && TranslucentBatchSubmission.supports(devicePlan.materials())) {
+                        candidateOwners, candidateCount, materials, materialCache::texture, batchLayout.capacity());
+                if (devicePlan != null && TranslucentBatchSubmission.supports(devicePlan.materials(), batchLayout)) {
                     boolean reuse = reusePreparation() && previousDevice && prepared.matches(inputs, candidateBuildCount, source, count, batches, packEntity);
                     if (reuse || device.prepare(inputs, deviceTopology(devicePlan.rowBySubmesh()))) {
                         deviceMaterials = devicePlan.materials();
@@ -332,6 +361,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                     }
                 } else {
                     TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.GPU_WINDOW_FALLBACK, 1);
+                    if (devicePlan == null) TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_CAPACITY, 1);
                 }
             }
             ByteBuffer positions = inputs.positions();

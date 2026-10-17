@@ -90,6 +90,17 @@ mod ffi {
 
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
+    pub struct BW_ParallelStats {
+        pub thread_width: c_int,
+        pub peak_active: c_int,
+        pub jobs: c_int,
+        pub islands: c_int,
+        pub max_island_bodies: c_int,
+        pub max_island_constraints: c_int,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
     pub struct BW_ConstraintDiagnostic {
         pub linear_position: [c_float; 3],
         pub angular_position: [c_float; 3],
@@ -121,6 +132,16 @@ mod ffi {
             max_substeps: c_int,
             fixed_dt: c_float,
         );
+        pub fn bw_world_step_parallel(
+            world: *mut BW_World,
+            dt: c_float,
+            max_substeps: c_int,
+            fixed_dt: c_float,
+            thread_budget: c_int,
+            parallel: bool,
+        ) -> c_int;
+        pub fn bw_parallel_available() -> bool;
+        pub fn bw_world_get_parallel_stats(world: *mut BW_World, output: *mut BW_ParallelStats);
         pub fn bw_world_get_render_time_offset(world: *mut BW_World) -> c_float;
         pub fn bw_world_get_step_info(world: *mut BW_World, info: *mut BW_ContactSampleInfo);
         pub fn bw_world_sync_render_states(world: *mut BW_World);
@@ -336,11 +357,57 @@ impl BulletWorld {
 
     pub fn step(&self, dt: f32, max_substeps: i32, fixed_dt: f32) {
         unsafe { ffi::bw_world_step(self.ptr, dt, max_substeps, fixed_dt) }
+        self.record_step_profile();
+    }
+
+    fn record_step_profile(&self) {
         if crate::evaluation_profile::enabled() {
             let mut info = ffi::BW_ContactSampleInfo::default();
             unsafe { ffi::bw_world_get_step_info(self.ptr, &mut info) };
             crate::evaluation_profile::step(info.substeps, info.requested_substeps);
         }
+    }
+
+    /// 单模型候选路径；C++ 按次选择 MT 或原顺序 world 内核。
+    pub fn step_parallel(
+        &self,
+        dt: f32,
+        max_substeps: i32,
+        fixed_dt: f32,
+        budget: usize,
+    ) -> Option<usize> {
+        let width = unsafe {
+            ffi::bw_world_step_parallel(
+                self.ptr,
+                dt,
+                max_substeps,
+                fixed_dt,
+                budget.min(63) as i32,
+                true,
+            )
+        };
+        if width < 0 {
+            return None;
+        }
+        self.record_step_profile();
+        Some(width.max(1) as usize)
+    }
+
+    pub fn parallel_available() -> bool {
+        unsafe { ffi::bw_parallel_available() }
+    }
+
+    pub fn parallel_stats(&self) -> (usize, usize, usize, usize, usize, usize) {
+        let mut stats = ffi::BW_ParallelStats::default();
+        unsafe { ffi::bw_world_get_parallel_stats(self.ptr, &mut stats) };
+        (
+            stats.thread_width.max(1) as usize,
+            stats.peak_active.max(0) as usize,
+            stats.jobs.max(0) as usize,
+            stats.islands.max(0) as usize,
+            stats.max_island_bodies.max(0) as usize,
+            stats.max_island_constraints.max(0) as usize,
+        )
     }
 
     /// 获取固定步后尚未模拟的渲染时间余数。

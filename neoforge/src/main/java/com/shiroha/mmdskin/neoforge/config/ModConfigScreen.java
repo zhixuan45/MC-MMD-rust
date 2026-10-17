@@ -206,6 +206,35 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_disable_transparency"),
+                data.toonDisableTransparency)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_disable_transparency.tooltip"))
+            .setSaveConsumer(value -> data.toonDisableTransparency = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_alpha_cutoff"),
+                Math.round(data.toonAlphaCutoff * 1000), 1, 1000)
+            .setDefaultValue(1)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.3f", value / 1000.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_alpha_cutoff.tooltip"))
+            .setSaveConsumer(value -> data.toonAlphaCutoff = value / 1000.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_hair_alpha_cutoff"),
+                Math.round(data.toonHairAlphaCutoff * 1000), 1, 1000)
+            .setDefaultValue(1)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.3f", value / 1000.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_hair_alpha_cutoff.tooltip"))
+            .setSaveConsumer(value -> data.toonHairAlphaCutoff = value / 1000.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_levels"),
                 data.toonLevels, 2, 5)

@@ -10,7 +10,7 @@ fn main() {
     // 收集所有 Bullet3 .cpp 文件
     let mut cpp_files: Vec<String> = Vec::new();
 
-    // LinearMath（排除 TaskScheduler 线程相关文件，我们不需要多线程物理）
+    // 固定调度池由 wrapper 提供，不引入 Bullet 默认线程生命周期。
     for entry in std::fs::read_dir(format!("{}/LinearMath", bullet3_dir)).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().map_or(false, |e| e == "cpp") {
@@ -68,6 +68,8 @@ fn main() {
 
     // C Wrapper
     cpp_files.push(format!("{}/bw_api.cpp", wrapper_dir));
+    cpp_files.push(format!("{}/bw_parallel_runtime.cpp", wrapper_dir));
+    cpp_files.push(format!("{}/bw_parallel_world.cpp", wrapper_dir));
 
     // 编译 Bullet3 + C Wrapper
     let mut build = cc::Build::new();
@@ -75,6 +77,7 @@ fn main() {
         .cpp(true)
         .include(bullet3_dir)
         .include(wrapper_dir)
+        .define("BT_THREADSAFE", "1")
         .warnings(false)
         .opt_level(2);
 

@@ -1,11 +1,12 @@
 package com.shiroha.mmdskin.render.shader;
 
 import com.shiroha.mmdskin.util.AssetsUtil;
+import com.shiroha.mmdskin.render.material.ProgramSamplerLayout;
 import java.util.HashMap;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL46C;
 
-/** Only programs compiled from our vanilla Toon source are eligible for material tables. */
+/** 只允许由本模组源码编译并登记的主体程序使用材质表。 */
 public final class TranslucentBatchShader {
     public record Uniforms(int program, int enabled, int triangleOffset, int cullMode, int textures, int alphaPass) { }
     private static final HashMap<Integer, Uniforms> PROGRAMS = new HashMap<>();
@@ -15,7 +16,7 @@ public final class TranslucentBatchShader {
         return !"false".equalsIgnoreCase(System.getProperty("mmdskin.translucentBatch"))
                 && GL.getCapabilities().OpenGL43
                 && GL46C.glGetInteger(GL46C.GL_MAX_FRAGMENT_SHADER_STORAGE_BLOCKS) >= 2
-                && GL46C.glGetInteger(GL46C.GL_MAX_TEXTURE_IMAGE_UNITS) >= 8;
+                && GL46C.glGetInteger(GL46C.GL_MAX_TEXTURE_IMAGE_UNITS) > 0;
     }
 
     static String source(String source) {
@@ -37,5 +38,8 @@ public final class TranslucentBatchShader {
         return PROGRAMS.get(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
     }
 
-    static void forget(int program) { PROGRAMS.remove(program); }
+    static void forget(int program) {
+        PROGRAMS.remove(program);
+        ProgramSamplerLayout.forget(program);
+    }
 }

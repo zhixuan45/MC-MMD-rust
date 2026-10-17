@@ -1,5 +1,6 @@
 # Rust
 /target/
+/target-evaluation-parallel/
 Cargo.lock
 **/*.rs.bk
 

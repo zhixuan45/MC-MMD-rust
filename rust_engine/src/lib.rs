@@ -1,6 +1,7 @@
 //! MMD Engine - Rust 实现的 MMD 运行时引擎
 
 pub mod animation;
+mod evaluation_parallelism;
 mod evaluation_profile;
 pub mod jni_bridge;
 mod jni_log;

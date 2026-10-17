@@ -22,15 +22,28 @@ final class TranslucentBatchPlan {
     static DevicePlan singleWindowForCandidates(ByteBuffer source, int count, int[] owners,
                                                 int candidateCount, ModelMaterial[] materials,
                                                 SubMeshDrawHelper.TextureResolver resolver) {
+        return singleWindowForCandidates(source, count, owners, candidateCount, materials, resolver, TEXTURE_SLOTS);
+    }
+
+    static DevicePlan singleWindowForCandidates(ByteBuffer source, int count, int[] owners,
+                                                int candidateCount, ModelMaterial[] materials,
+                                                SubMeshDrawHelper.TextureResolver resolver, int capacity) {
         int[] active = new int[count];
         java.util.Arrays.fill(active, -1);
         for (int i = 0; i < candidateCount; i++) active[owners[i]] = 0;
-        return singleWindow(source, count, active, materials, resolver);
+        return singleWindow(source, count, active, materials, resolver, capacity);
     }
 
     /** One material row per active source submesh, independent of the device's sorted order. */
     static DevicePlan singleWindow(ByteBuffer source, int count, int[] active,
                                    ModelMaterial[] materials, SubMeshDrawHelper.TextureResolver resolver) {
+        return singleWindow(source, count, active, materials, resolver, TEXTURE_SLOTS);
+    }
+
+    static DevicePlan singleWindow(ByteBuffer source, int count, int[] active,
+                                   ModelMaterial[] materials, SubMeshDrawHelper.TextureResolver resolver,
+                                   int capacity) {
+        if (capacity < 1 || capacity > TEXTURE_SLOTS) return null;
         var plan = new TranslucentBatchPlan(0);
         var slots = new HashMap<Integer, Integer>();
         int[] rows = new int[count];
@@ -43,7 +56,7 @@ final class TranslucentBatchPlan {
             boolean sphere = material.sphereTex > 0 && (material.sphereMode == 1 || material.sphereMode == 2);
             int diffuseSlot = slots.computeIfAbsent(diffuse, unused -> slots.size());
             int sphereSlot = sphere ? slots.computeIfAbsent(material.sphereTex, unused -> slots.size()) : -1;
-            if (slots.size() > TEXTURE_SLOTS) return null;
+            if (slots.size() > capacity) return null;
             rows[s] = plan.rows.size();
             plan.rows.add(new Row(new Key(id, Float.floatToRawIntBits(source.getFloat(b + 12)), source.get(b + 17) != 0),
                     diffuseSlot, sphereSlot));
@@ -54,6 +67,12 @@ final class TranslucentBatchPlan {
 
     static TranslucentBatchPlan build(ByteBuffer runs, int count, ModelMaterial[] materials,
                                       SubMeshDrawHelper.TextureResolver resolver) {
+        return build(runs, count, materials, resolver, TEXTURE_SLOTS);
+    }
+
+    static TranslucentBatchPlan build(ByteBuffer runs, int count, ModelMaterial[] materials,
+                                      SubMeshDrawHelper.TextureResolver resolver, int capacity) {
+        if (capacity < 1 || capacity > TEXTURE_SLOTS) throw new IllegalArgumentException("Invalid texture capacity");
         int indices = 0;
         for (int i = 0; i < count; i++) {
             int b = i * 20, n = runs.getInt(b + 8), id = runs.getInt(b);
@@ -75,7 +94,8 @@ final class TranslucentBatchPlan {
             boolean sphere = material.sphereTex > 0 && (material.sphereMode == 1 || material.sphereMode == 2);
             int extra = (textureSlots.containsKey(diffuse) ? 0 : 1)
                     + (sphere && material.sphereTex != diffuse && !textureSlots.containsKey(material.sphereTex) ? 1 : 0);
-            if (textureSlots.size() + extra > TEXTURE_SLOTS) {
+            if (extra > capacity) return null;
+            if (textureSlots.size() + extra > capacity) {
                 plan.addWindow(first, start, textureSlots);
                 first = start;
                 textureSlots.clear();

@@ -38,6 +38,7 @@ public abstract class ToonShaderBase {
     private int eyeMaterialMaskLocation = -1;
     private int outlinePremultipliedLocation = -1;
     private int outlineColorSlot;
+    private int disableTransparencyLocation = -1, outlineDisableTransparencyLocation = -1;
 
     private record Programs(int main, int outline) {}
 
@@ -62,6 +63,7 @@ public abstract class ToonShaderBase {
     protected int specularIntensityLocation = -1;
     protected int lightDirLocation = -1;
     protected int alphaCutoffLocation = -1;
+    private int hairAlphaCutoffLocation = -1;
     protected int globalAlphaLocation = -1;
 
     protected int outlineProjMatLocation = -1;
@@ -110,9 +112,9 @@ public abstract class ToonShaderBase {
             if (programs == null) {
                 String fragment = outputSource(MAIN_FRAGMENT_SHADER_BODY, profile);
                 int main = 0;
-                if (key.equals(ToonOutputProfile.vanilla().id()) && TranslucentBatchShader.supported()) {
+                if (supportsBatchProfile(key) && TranslucentBatchShader.supported()) {
                     main = compileProgram(getMainVertexShader(), TranslucentBatchShader.source(fragment),
-                            getShaderName() + "主着色器/材质批量");
+                            getShaderName() + "主着色器/材质批量/" + key);
                     if (main != 0) TranslucentBatchShader.register(main);
                     else logger.warn("Toon 批量材质编译失败，使用兼容提交路径");
                 }
@@ -161,6 +163,11 @@ public abstract class ToonShaderBase {
                 .replace("/* TOON_LIGHTING */", profile.lightingSource().isEmpty()
                         ? "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }"
                         : profile.lightingSource());
+    }
+
+    private static boolean supportsBatchProfile(String key) {
+        // BSL 只在输出协议已通过 ToonOutputProfile 校验后参与批量变体。
+        return key.equals(ToonOutputProfile.vanilla().id()) || key.startsWith("bsl:");
     }
 
     static String outlineSource(String body, ToonOutputProfile profile) {
@@ -222,6 +229,9 @@ public abstract class ToonShaderBase {
         specularIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "SpecularIntensity");
         lightDirLocation = GL46C.glGetUniformLocation(mainProgram, "LightDir");
         alphaCutoffLocation = GL46C.glGetUniformLocation(mainProgram, "AlphaCutoff");
+        hairAlphaCutoffLocation = GL46C.glGetUniformLocation(mainProgram, "HairAlphaCutoff");
+        disableTransparencyLocation = GL46C.glGetUniformLocation(mainProgram, "DisableTransparency");
+        outlineDisableTransparencyLocation = GL46C.glGetUniformLocation(outlineProgram, "DisableTransparency");
         globalAlphaLocation = GL46C.glGetUniformLocation(mainProgram, "GlobalAlpha");
         packLightingLocation = GL46C.glGetUniformLocation(mainProgram, "UsePackLighting");
         lightmapLocation = GL46C.glGetUniformLocation(mainProgram, "ToonLightmap");
@@ -260,6 +270,10 @@ public abstract class ToonShaderBase {
     public void useMain() {
         if (mainProgram > 0) {
             GL46C.glUseProgram(mainProgram);
+            ToonConfig config = ToonConfig.getInstance();
+            setAlphaCutoff(config.getAlphaCutoff());
+            setHairAlphaCutoff(config.getHairAlphaCutoff());
+            setDisableTransparency(ToonConfig.getInstance().isTransparencyDisabled());
             uploadOutputUniforms(mainOutputMatrixLocation, mainOutputFarLocation);
         }
     }
@@ -267,6 +281,8 @@ public abstract class ToonShaderBase {
     public void useOutline() {
         if (outlineProgram > 0) {
             GL46C.glUseProgram(outlineProgram);
+            if (outlineDisableTransparencyLocation >= 0) GL46C.glUniform1i(outlineDisableTransparencyLocation,
+                    ToonConfig.getInstance().isTransparencyDisabled() ? 1 : 0);
             outlineLighting.upload();
             setOutlinePremultiplied(false);
             if (outlineSamplerLocation >= 0) GL46C.glUniform1i(outlineSamplerLocation, 0);
@@ -408,6 +424,10 @@ public abstract class ToonShaderBase {
         }
     }
 
+    public void setHairAlphaCutoff(float cutoff) {
+        if (hairAlphaCutoffLocation >= 0) GL46C.glUniform1f(hairAlphaCutoffLocation, cutoff);
+    }
+
     public void setOutlineProjectionMatrix(FloatBuffer matrix) {
         if (outlineProjMatLocation >= 0) {
             matrix.position(0);
@@ -448,6 +468,10 @@ public abstract class ToonShaderBase {
         if (outlineUseTextureAlphaLocation >= 0) GL46C.glUniform1i(outlineUseTextureAlphaLocation, enabled ? 1 : 0);
     }
 
+    public void setDisableTransparency(boolean disabled) {
+        if (disableTransparencyLocation >= 0) GL46C.glUniform1i(disableTransparencyLocation, disabled ? 1 : 0);
+    }
+
     public void setGlobalAlpha(float alpha) {
         if (globalAlphaLocation >= 0) {
             GL46C.glUniform1f(globalAlphaLocation, alpha);
@@ -468,6 +492,7 @@ public abstract class ToonShaderBase {
     public boolean isInitialized() { return initialized; }
 
     public void cleanup() {
+        com.shiroha.mmdskin.render.material.ToonTransparencyLayers.cleanup();
         com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
         com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.releaseCache();
         variants.values().forEach(ToonShaderBase::deletePrograms);

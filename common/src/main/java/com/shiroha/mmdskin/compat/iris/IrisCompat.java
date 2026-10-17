@@ -17,6 +17,9 @@ public class IrisCompat {
 
     private static volatile boolean shadowStateDetected = false;
     private static Method areShadowsBeingRenderedMethod = null;
+    private static volatile boolean shadowTickDetected = false;
+    private static Method realShadowTickDeltaMethod = null;
+    private static Object shadowTickStateInstance;
 
     /** 背包的原版程序不能按全局光影开关判断。 */
     public static boolean isIrisProgram(net.minecraft.client.renderer.ShaderInstance shader) {
@@ -87,6 +90,14 @@ public class IrisCompat {
         }
     }
 
+    /** 读取阴影实体循环使用的真实 tick delta，缺少 Iris API 时退回入口值。 */
+    public static float shadowRealTickDelta(float fallback) {
+        if (!shadowTickDetected) detectShadowTickDelta();
+        if (realShadowTickDeltaMethod == null) return fallback;
+        try { return ((Number) realShadowTickDeltaMethod.invoke(shadowTickStateInstance)).floatValue(); }
+        catch (Exception ignored) { return fallback; }
+    }
+
     private static void detectShadowState() {
         shadowStateDetected = true;
 
@@ -103,6 +114,18 @@ public class IrisCompat {
         }
     }
 
+    private static void detectShadowTickDelta() {
+        shadowTickDetected = true;
+        try {
+            Class<?> state = Class.forName("net.irisshaders.iris.uniforms.CapturedRenderingState");
+            shadowTickStateInstance = state.getField("INSTANCE").get(null);
+            realShadowTickDeltaMethod = state.getMethod("getRealTickDelta");
+        } catch (Exception ignored) {
+            realShadowTickDeltaMethod = null;
+            shadowTickStateInstance = null;
+        }
+    }
+
     public static void reset() {
         IrisToonCompat.reset();
         IrisEntityDiagnostics.reset();
@@ -111,5 +134,8 @@ public class IrisCompat {
         irisApiInstance = null;
         shadowStateDetected = false;
         areShadowsBeingRenderedMethod = null;
+        shadowTickDetected = false;
+        realShadowTickDeltaMethod = null;
+        shadowTickStateInstance = null;
     }
 }

@@ -19,6 +19,18 @@ public class ToonConfig {
         return ConfigManager.isToonRenderingEnabled();
     }
 
+    public boolean isTransparencyDisabled() {
+        return ConfigManager.isToonDisableTransparency();
+    }
+
+    public float getAlphaCutoff() {
+        return ConfigManager.getToonAlphaCutoff();
+    }
+
+    public float getHairAlphaCutoff() {
+        return ConfigManager.getToonHairAlphaCutoff();
+    }
+
     public int getToonLevels() {
         return ConfigManager.getToonLevels();
     }
