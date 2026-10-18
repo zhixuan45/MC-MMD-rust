@@ -137,3 +137,5 @@ rust_engine/deps/bullet3/
 /.gradle-user-home/
 /.gradle-tmp-stage-a/
 /.gradle-local/
+__pycache__/
+*.py[cod]

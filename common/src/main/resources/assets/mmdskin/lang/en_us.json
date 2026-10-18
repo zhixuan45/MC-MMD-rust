@@ -107,6 +107,8 @@
   "gui.mmdskin.mod_settings.physics_gravity.tooltip": "Gravity acceleration (MMD standard 98, higher = heavier hair, faster falling)",
   "gui.mmdskin.mod_settings.physics_fps": "Physics FPS",
   "gui.mmdskin.mod_settings.physics_fps.tooltip": "Physics simulation framerate (30-120), higher = more accurate but more CPU intensive",
+  "gui.mmdskin.mod_settings.physics_solver_iterations": "Physics Solver Iterations",
+  "gui.mmdskin.mod_settings.physics_solver_iterations.tooltip": "Range 1–80, default 10. Lower values cost less but may increase penetration or constraint error; higher values are not always steadier. Compare gradually for each model.",
   "gui.mmdskin.mod_settings.physics_substeps": "Max Substeps",
   "gui.mmdskin.mod_settings.physics_substeps.tooltip": "Maximum substeps per frame, prevents physics explosion during lag",
   "gui.mmdskin.mod_settings.physics_inertia": "Inertia Strength",

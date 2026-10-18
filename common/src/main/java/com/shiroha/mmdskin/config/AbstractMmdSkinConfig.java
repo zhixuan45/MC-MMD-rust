@@ -48,6 +48,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
 
     @Override public float getPhysicsGravityY() { return data.physicsGravityY; }
     @Override public float getPhysicsFps() { return data.physicsFps; }
+    @Override public int getPhysicsSolverIterations() { return data.physicsSolverIterations; }
     @Override public int getPhysicsMaxSubstepCount() { return data.physicsMaxSubstepCount; }
     @Override public float getPhysicsInertiaStrength() { return data.physicsInertiaStrength; }
     @Override public float getPhysicsMaxLinearVelocity() { return data.physicsMaxLinearVelocity; }

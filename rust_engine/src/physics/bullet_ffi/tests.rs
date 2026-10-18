@@ -7,6 +7,12 @@ mod contact_point_tests;
 #[path = "tests/evaluation_profile.rs"]
 mod evaluation_profile_tests;
 
+#[path = "tests/render_prediction.rs"]
+mod render_prediction_tests;
+
+#[path = "tests/solver_settings.rs"]
+mod solver_settings_tests;
+
 fn body(shape: &BulletShape, transform: Mat4) -> BulletRigidBody {
     BulletRigidBody::new(
         &RigidBodyInfo {

@@ -62,6 +62,7 @@ public class ConfigData {
     public boolean physicsEnabled = true;
     public float physicsGravityY = -98.0f;
     public float physicsFps = 60.0f;
+    public int physicsSolverIterations = 10;
     public int physicsMaxSubstepCount = 5;
     public float physicsInertiaStrength = 0.5f;
     public float physicsMaxLinearVelocity = 20.0f;
@@ -196,6 +197,8 @@ public class ConfigData {
         toonOutlineG = clamp(toonOutlineG, 0.0f, 1.0f);
         toonOutlineB = clamp(toonOutlineB, 0.0f, 1.0f);
         maxPhysicsModelsPerFrame = Math.max(1, maxPhysicsModelsPerFrame);
+        // 允许低迭代对照，缺省值仍为 10。
+        physicsSolverIterations = Math.max(1, Math.min(80, physicsSolverIterations));
         physicsLodMaxDistance = Math.max(0.0f, physicsLodMaxDistance);
         // 身体/下半身碰撞体缩放倍率，范围 0.1x ~ 1.5x
         physicsStaticColliderScale = clamp(physicsStaticColliderScale, 0.1f, 1.5f);

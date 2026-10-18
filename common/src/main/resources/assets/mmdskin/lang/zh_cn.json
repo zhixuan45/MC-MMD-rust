@@ -111,6 +111,8 @@
   "gui.mmdskin.mod_settings.physics_gravity.tooltip": "重力加速度（MMD 标准 98，值越大头发越重、下垂越快）",
   "gui.mmdskin.mod_settings.physics_fps": "物理帧率",
   "gui.mmdskin.mod_settings.physics_fps.tooltip": "物理模拟帧率（30-120），越高越精确但更耗性能",
+  "gui.mmdskin.mod_settings.physics_solver_iterations": "物理求解迭代次数",
+  "gui.mmdskin.mod_settings.physics_solver_iterations.tooltip": "范围 1～80，默认 10。较低值开销更小，但可能增加穿透或约束误差；更高不一定更稳，请按模型逐步对照。",
   "gui.mmdskin.mod_settings.physics_substeps": "最大子步数",
   "gui.mmdskin.mod_settings.physics_substeps.tooltip": "每帧最大子步数，防止卡顿时物理爆炸",
   "gui.mmdskin.mod_settings.physics_inertia": "惯性强度",

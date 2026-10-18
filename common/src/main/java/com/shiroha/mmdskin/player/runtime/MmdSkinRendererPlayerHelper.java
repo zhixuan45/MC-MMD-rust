@@ -60,6 +60,8 @@ public final class MmdSkinRendererPlayerHelper {
         model.resetPhysics();
         modelData.entityState().invalidateStateLayers();
         model.transitionAnim(animHandle, 0, STAGE_TRANSITION_TIME);
+        // 舞台帧由 StageAnimSyncHelper 外部 seek，禁止 native elapsed 再推进一次。
+        model.setLayerSpeed(0, 0.0f);
         modelData.entityState().playCustomAnim = true;
         modelData.entityState().playStageAnim = true;
     }
@@ -72,6 +74,7 @@ public final class MmdSkinRendererPlayerHelper {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null) return;
 
         ModelInstance model = modelData.modelInstance();
+        model.setLayerSpeed(0, 1.0f);
         modelData.entityState().playCustomAnim = false;
         modelData.entityState().playStageAnim = false;
         model.changeAnim(modelData.animationLibrary().animation("idle"), 0);
@@ -88,6 +91,7 @@ public final class MmdSkinRendererPlayerHelper {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null) return;
 
         ModelInstance model = modelData.modelInstance();
+        model.setLayerSpeed(0, 1.0f);
         modelData.entityState().playCustomAnim = false;
         modelData.entityState().playStageAnim = false;
         model.changeAnim(0, 0);

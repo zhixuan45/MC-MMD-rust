@@ -162,6 +162,10 @@ public class ConfigManager {
         return provider != null ? provider.getPhysicsFps() : 60.0f;
     }
 
+    public static int getPhysicsSolverIterations() {
+        return provider != null ? provider.getPhysicsSolverIterations() : 10;
+    }
+
     public static int getPhysicsMaxSubstepCount() {
         return provider != null ? provider.getPhysicsMaxSubstepCount() : 5;
     }

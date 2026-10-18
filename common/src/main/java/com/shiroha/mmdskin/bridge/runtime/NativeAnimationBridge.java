@@ -48,6 +48,12 @@ public final class NativeAnimationBridge implements NativeAnimationPort {
     }
 
     @Override
+    public void setLayerSpeed(long modelHandle, long layer, float speed) {
+        NativePoseInputs.changed(modelHandle);
+        NativeFunc.GetInst().SetLayerSpeed(modelHandle, layer, speed);
+    }
+
+    @Override
     public void getCameraTransform(long animationHandle, float frame, ByteBuffer targetBuffer) {
         NativeFunc.GetInst().GetCameraTransform(animationHandle, frame, targetBuffer);
     }

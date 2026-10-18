@@ -236,7 +236,7 @@ mod tests {
                 };
             if frame >= 60 {
                 serial_total.push(serial_ns);
-                parallel_total.push(parallel_ns);
+                parallel_total.push(sample_parallel_ns);
                 serial_matrix.push(sample.detail_nanos[5]);
                 parallel_matrix.push(sample_parallel.detail_nanos[5]);
                 serial_bullet.push(sample.detail_nanos[2]);

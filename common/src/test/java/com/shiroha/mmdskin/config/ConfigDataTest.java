@@ -12,6 +12,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigDataTest {
     @Test
+    void solverIterationsDefaultPersistAndMatchStartupSnapshot(@TempDir Path configDir) throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{\"physicsFps\":60}");
+        ConfigData oldConfig = ConfigData.load(configDir);
+        assertEquals(10, oldConfig.physicsSolverIterations);
+        assertEquals(10, PhysicsConfigSnapshot.from(oldConfig).solverIterations());
+
+        oldConfig.physicsSolverIterations = 40;
+        oldConfig.save(configDir);
+        ConfigData loaded = ConfigData.load(configDir);
+        assertEquals(40, loaded.physicsSolverIterations);
+        assertEquals(40, new TestConfig(loaded).getPhysicsSolverIterations());
+        assertEquals(40, PhysicsConfigSnapshot.from(loaded).solverIterations());
+
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            assertEquals(40, ConfigManager.getPhysicsSolverIterations());
+            assertEquals(PhysicsConfigSnapshot.from(loaded).solverIterations(),
+                    PhysicsConfigSnapshot.fromConfigManager().solverIterations());
+        } finally {
+            ConfigManager.init(null);
+        }
+    }
+
+    @Test
+    void solverIterationsClampToSupportedRangeOnLoad(@TempDir Path configDir) throws Exception {
+        // 覆盖新下限、低于旧下限的值及用户当前工作点。
+        for (int[] sample : new int[][]{{-5, 1}, {0, 1}, {1, 1}, {9, 9}, {30, 30}, {80, 80}, {100, 80}}) {
+            ConfigData data = new ConfigData();
+            data.physicsSolverIterations = sample[0];
+            data.save(configDir);
+            ConfigData loaded = ConfigData.load(configDir);
+            assertEquals(sample[1], loaded.physicsSolverIterations);
+            assertEquals(sample[1], PhysicsConfigSnapshot.from(loaded).solverIterations());
+        }
+    }
+
+    @Test
     void bodyFillSwitchesDefaultForOldFilesAndPersistIndependently(@TempDir Path configDir)
             throws Exception {
         Files.writeString(configDir.resolve("config.json"), "{\"physicsEnabled\":true}");

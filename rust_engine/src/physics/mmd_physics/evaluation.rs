@@ -6,6 +6,7 @@ impl MMDPhysics {
     /// Bullet3 没有内置全局速度限制，需在每步后手动截断超速刚体，
     /// 防止卡顿帧或极端力导致的物理爆炸。
     pub fn step_simulation(&mut self, delta_time: f32) -> bool {
+        self.sync_default_solver_iterations();
         if !delta_time.is_finite() || delta_time <= 0.0 {
             if get_config().debug_log {
                 self.debug_telemetry.invalid_step_count += 1;

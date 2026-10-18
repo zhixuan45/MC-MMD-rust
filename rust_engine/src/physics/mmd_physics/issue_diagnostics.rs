@@ -15,6 +15,12 @@ impl MMDPhysics {
         rebuild_pending: bool,
     ) {
         let requested = crate::physics::config::get_config();
+        // 读取实际世界参数，便于确认热设置已生效。
+        if let Some(solver) = self.world.solver_settings() {
+            let _ = writeln!(out,
+                "[MMD诊断][SOLVER] iterations={} contact_erp={:.4} split_impulse={}",
+                solver.iterations, solver.contact_erp, solver.split_impulse);
+        }
         let _ = writeln!(out,
             "[MMD诊断][COLLIDER_FILL] active_upper={} active_lower={} requested_upper={} requested_lower={}",
             self.active_debug_config.auto_upper_body_colliders, self.active_debug_config.auto_lower_body_colliders,

@@ -47,7 +47,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     private boolean eyeEmissionInitialized;
     private String cachedModelName;
 
-    protected long lastUpdateTime = -1;
+    private final ModelUpdateClock updateClock = new ModelUpdateClock();
     private final ModelIssueDiagnostics issueDiagnostics = new ModelIssueDiagnostics();
 
     protected final Quaternionf tempQuat = new Quaternionf();
@@ -245,6 +245,11 @@ public abstract class BaseModelInstance implements ModelInstance {
     }
 
     @Override
+    public void setLayerSpeed(long layer, float speed) {
+        if (model != 0) backendPort().setLayerSpeed(model, layer, speed);
+    }
+
+    @Override
     public void setLayerWeight(long layer, float weight) {
         if (model != 0) backendPort().setLayerWeight(model, layer, weight);
     }
@@ -338,16 +343,7 @@ public abstract class BaseModelInstance implements ModelInstance {
             RenderPerformanceProfiler.get().recordEvaluationReuse(evaluationScene);
             return true;
         }
-        long currentTime = System.currentTimeMillis();
-        if (lastUpdateTime < 0) {
-            lastUpdateTime = currentTime;
-            if (!forceEvaluation) {
-                return false;
-            }
-        }
-
-        float deltaTime = (currentTime - lastUpdateTime) / 1000.0f;
-        lastUpdateTime = currentTime;
+        float deltaTime = updateClock.sampleDeltaSeconds(System.nanoTime());
 
         if (deltaTime <= 0.0f && !forceEvaluation) return false;
         if (deltaTime < 0.0f) deltaTime = 0.0f;
@@ -414,11 +410,8 @@ public abstract class BaseModelInstance implements ModelInstance {
         LivingEntityModelStateHelper.syncModelState(model, entity, yaw, tickDelta,
                 RenderScene.WORLD, getModelName(), false, false);
         profiler.endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
-        long now = System.currentTimeMillis();
-        if (lastUpdateTime < 0) { lastUpdateTime = now; return null; }
-        float delta = Math.min(MAX_DELTA_TIME, (now - lastUpdateTime) / 1000.0f);
+        float delta = updateClock.sampleDeltaSeconds(System.nanoTime());
         if (delta <= 0) return null;
-        lastUpdateTime = now;
         boolean sample = profiler.isSamplingEnabled();
         long generation = profiler.samplingGeneration();
         if (sample && nativeProfile == null) nativeProfile = ByteBuffer.allocateDirect(

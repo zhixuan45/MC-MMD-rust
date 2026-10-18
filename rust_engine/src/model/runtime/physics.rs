@@ -164,6 +164,30 @@ impl MmdModel {
         self.physics.is_some()
     }
 
+    /// 配置当前模型的求解器诊断参数，不影响全局默认值。
+    pub fn configure_physics_solver_diagnostic(
+        &mut self,
+        iterations: Option<i32>,
+        contact_erp: Option<f32>,
+        split_impulse: Option<bool>,
+        joint_stop_erp: Option<f32>,
+    ) -> bool {
+        self.physics.as_mut().is_some_and(|physics| {
+            physics.configure_solver_diagnostic(
+                iterations,
+                contact_erp,
+                split_impulse,
+                joint_stop_erp,
+            )
+        })
+    }
+
+    pub fn physics_solver_settings(
+        &self,
+    ) -> Option<crate::physics::bullet_ffi::BulletSolverSettings> {
+        self.physics.as_ref()?.solver_settings()
+    }
+
     /// 读取匹配名称的 Bullet 关节快照，仅供命令行物理诊断工具使用。
     pub fn physics_joint_snapshots_matching(
         &self,

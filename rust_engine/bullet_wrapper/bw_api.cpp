@@ -148,6 +148,35 @@ BW_World* bw_world_create(float gravity_x, float gravity_y, float gravity_z) {
     BW_CATCH_NULL
 }
 
+bool bw_world_get_solver_settings(BW_World* w, BW_SolverSettings* output) {
+    if (!w || !output) return false;
+    const btContactSolverInfo& info = w->world->getSolverInfo();
+    output->iterations = info.m_numIterations;
+    output->contact_erp = (float)info.m_erp2;
+    output->split_impulse = info.m_splitImpulse;
+    output->split_impulse_penetration_threshold =
+        (float)info.m_splitImpulsePenetrationThreshold;
+    return true;
+}
+
+bool bw_world_set_solver_settings(BW_World* w, const BW_SolverSettings* settings) {
+    if (!w || !settings || settings->iterations < 1 || settings->iterations > 256 ||
+        !std::isfinite(settings->contact_erp) || settings->contact_erp < 0.0f ||
+        settings->contact_erp > 1.0f ||
+        !std::isfinite(settings->split_impulse_penetration_threshold) ||
+        settings->split_impulse_penetration_threshold > 0.0f) {
+        return false;
+    }
+
+    btContactSolverInfo& info = w->world->getSolverInfo();
+    info.m_numIterations = settings->iterations;
+    info.m_erp2 = settings->contact_erp;
+    info.m_splitImpulse = settings->split_impulse;
+    info.m_splitImpulsePenetrationThreshold =
+        settings->split_impulse_penetration_threshold;
+    return true;
+}
+
 void bw_world_destroy(BW_World* w) {
     if (!w) return;
     delete w->kinematicFilter;

@@ -92,6 +92,27 @@ fn authored_hair_chain_does_not_acquire_fourteen_degree_limits_or_springs() {
 }
 
 #[test]
+fn mirrored_long_hair_chain_gets_extreme_angle_stability_fallback() {
+    let a = body("M-后长发_0_1", RigidBodyMode::Dynamic, Vec3::new(0.0, 9.0, 1.0));
+    let b = body("M-后长发_1_1", RigidBodyMode::Dynamic, Vec3::new(0.0, 7.0, 1.0));
+    let expected = JointParameters::from_pmx(
+        [0.0; 3],
+        [0.0; 3],
+        [-1.0; 3],
+        [1.0; 3],
+        [0.0; 3],
+        [0.0; 3],
+    );
+    let mut actual = expected;
+    apply(&mut actual, &a, &b, "");
+    assert!(actual.angular.iter().all(|axis| axis.spring_enabled));
+    assert!(actual
+        .angular
+        .iter()
+        .all(|axis| axis.upper <= 14.0_f32.to_radians()));
+}
+
+#[test]
 fn authored_locked_and_free_hair_axes_stay_locked_and_free() {
     let a = body("頭", RigidBodyMode::Static, Vec3::Y * 11.0);
     let b = body("后长发", RigidBodyMode::Dynamic, Vec3::new(0.0, 9.0, 1.0));

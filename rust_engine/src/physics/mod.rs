@@ -17,6 +17,7 @@ mod mmd_joint;
 mod mmd_physics;
 mod mmd_rigid_body;
 mod physics_diagnostics;
+pub mod solver_quality;
 pub(crate) mod skirt_cross_joints;
 mod skirt_cross_topology;
 mod tail_forces;

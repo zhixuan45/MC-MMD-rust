@@ -67,6 +67,8 @@
   `physics.rs` 的跳帧、无效时间和零步求值路径同样回写已有物理姿态；`physics_tests.rs` 验证蒙皮连续性和显式重同步请求。穿模修复验证见 `doc/physics/PHYSICS_CLIPPING_FIX_VALIDATION.md`，Oguri 资产交接标准见 `doc/physics/OGURI_PHYSICS_ASSET_STANDARD.md`。
 - `rust_engine/src/skeleton/physics_writeback.rs`：按真实父子层级回写物理；模式 2 保留沿本帧父姿态传播的骨骼位置，模式 1 使用完整物理姿态，刷新非物理中间骨骼。
 - `rust_engine/src/physics/bullet_ffi.rs` 与 `bullet_ffi/tests.rs`：安全封装和原生回归。求解诊断读取真实刚体姿态，渲染继续使用 MotionState 插值；初始接触建立后变更禁碰时，通过 `refresh_body_collision_filter` 释放旧接触缓存。物理析构先移除并释放 constraint/body/shape，再销毁 world；调试计数区分各阶段。`jni_bridge/resource_lifecycle_tests.rs` 独立串行验证 20 轮句柄删除、在途 Arc、重复删除和全部 Bullet 对象回到基线，不包含 JVM 或游戏切换验收。
+  `solver_quality.rs` 与独立 `jni_bridge/solver_quality.rs` 接入全局求解迭代次数：Java `physicsSolverIterations` 默认 10、范围 1～80，Fabric/NeoForge 物理页保存后热应用；新建世界和异步注册后的首次步进补齐当前值，不重置姿态。`mmd_physics/solver_controls.rs`、`bullet_ffi/solver_settings.rs` 提供只改显式字段的探针对照，接触 ERP 对应 Bullet `m_erp2`。`[MMD诊断][SOLVER]` 读回世界实际值。杏辞游戏反馈 40 次变差、30 次仅极端情况有强抖动，因此开放低迭代对照，保留默认 10，详见 `plans/physics-stability/solver-investigation.md`。
+  `bullet_wrapper/bw_kinematic_world.h` 的显示预测按接触双方的相对点位移限制侵入，按动态体逆质量分摊平移修正；共同运动和零子步的跟骨新目标不再被当作静止墙面裁剪。普通单面接触保留预测旋转，冲突接触保留回退。回归见 `bullet_ffi/tests/render_prediction.rs`，游戏前发、蝴蝶结与袖子观感仍需验收。
 - `rust_engine/src/jni_bridge/native_func.rs`：JNI 本地方法集中导出点，提供 159 个跨语言交互函数。
 
 ### JNI 桥接规范与数据交互契约
@@ -85,6 +87,7 @@ Java 端与 Rust 端的内存安全依靠句柄路由机制保障。Rust 端使�
 - `com.shiroha.mmdskin`：通用引导入口 `MmdSkin`、客户端总入口 `MmdSkinClient` 与跨平台原生库安全加载器 `NativeLibraryLoader`。
 - `bridge.runtime`：接口隔离层。定义了 `NativeRuntimePort`、`NativeAnimationPort`、`NativeBoneOverridePort` 等细分接口，由 `NativeRuntimeBridge` 统一实现，在 JNI 边界前置完成非法浮点与畸变矩阵拦截。
 - `render.backend`：统一模型实例抽象。下分 `render.backend.opengl`（基于版本脏标记更新的 CPU 蒙皮后端）与 `render.backend.gpu`（基于计算着色器的 GPU 蒙皮后端）。
+  `BaseModelInstance` 的串行求值与并行准备共用 `ModelUpdateClock`，使用单调纳秒时钟保留亚毫秒步长；首帧零步与长间隔限幅维持原语义，`ModelUpdateClockTest` 提供确定性回归。
 - `render.shader`：赛璐珞渲染管线 `ToonShader`、计算着色器与 `SSBOBindings` 缓冲区状态治理。
 - `render.outline.OutlineRenderPass`：CPU/GPU 共用的独立纯色描边通道，集中管理位置/法线/动态 UV 输入、描边配置、子网格遍历、GL_FRONT 与深度状态恢复。两个 renderer 适配自身缓冲、矩阵、现有模型根缩放与逐材质纹理；主材质绘制不调用描边逻辑。描边仅采样贴图 alpha 裁掉透明孔洞，RGB 仍由 OutlineColor 决定；无纹理材质关闭遮罩，正常/异常后恢复纹理单元和绑定。保留子网格可见性、材质有效 alpha、人脸过滤与全局 alpha。倒置外壳在正交 GUI 下按实际显示缩放换算世界基础宽度，使用固定视线，不把 GUI 图层深度当作世界距离；临时 GL_LESS 防止同深度薄片覆黑，随后恢复原深度函数。透视分支保留原计算。游戏内长袖与透明裁切部件仍待视觉验收；验证见 `tools/outline-probe/run.ps1` 与 `doc/render/OUTLINE_RENDER_ISOLATION.md`。
 - `player`：玩家交互核心。包含第一人称近视锥裁剪与双眼相机同帧求解（`FirstPersonManager`）、防走光评估（`AntiPeekEvaluator`）、独立模型替换与网络广播（`PlayerModelSelectionSyncService`）以及多层动画状态机（`AnimationStateManager`）。
@@ -108,7 +111,7 @@ Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度�
 
 2026-10-15 的诊断接入由 `render/pipeline/TranslucentDiagnostics` 按模型、场景和蒙皮策略限频输出 `[MMD透明性能]` JSON，覆盖候选构建/复用、深度键、排序、索引生成/上传、回读和各 pass 的实际 draw 数。窗口有界，关闭采样不创建模型作用域或读取时钟；`debugGpuLog` 对应“调试”分类的独立“GPU 日志”开关，默认关闭、保存生效；开启后自动采样并输出诊断，切换会重置窗口，HUD 或通用性能采样不会单独输出 GPU 诊断。`GpuTimerQueryPool` 保留宿主 query 所有权、异步结果独立窗口及退出清理。HUD 不把不同查询样本相加为整帧 GPU 时间。`tools/translucent-performance/summarize.py` 按站立/走路/跑步标签汇总计数与间隔均值，保留最新窗口分位数。实施状态和验证证据见 `plans/translucent-rendering/implementation_status.md`；已实施 vanilla Toon 提交碎片修复、GPU 透明准备和准备结果缓存，计数新增 `GPU_PREPARE`、`PREPARED_REUSE`。纸娃娃条件姿态复用和可选离屏缓存的取舍见 `plans/translucent-rendering/paperdoll_optimization.md`。游戏性能验收待完成。
 
-2026-10-15 22:42–22:47 新游戏日志已确认 WORLD/PAPERDOLL 的透明合批生效，每调用 1 个透明 draw、无回退；每视图回读与索引生成及独立原生求值仍有显著成本。2026-10-16 已实现真实帧时钟、同帧精确求值复用、分场景统计、GPU 透明准备、同内容不可变 GPU 缓冲共享、纸娃娃条件复用和距离调度错峰／滞回。证据、开关和边界见 `plans/multi-model-performance/implementation_plan.md`；物理启用求值数不等于实际物理步数，独立实例并行 JNI 尚未实现。真实多人扩展和新方案收益仍待测量。
+2026-10-15 22:42–22:47 新游戏日志已确认 WORLD/PAPERDOLL 的透明合批生效，每调用 1 个透明 draw、无回退；每视图回读与索引生成及独立原生求值仍有显著成本。2026-10-16 已实现真实帧时钟、同帧精确求值复用、分场景统计、GPU 透明准备、同内容不可变 GPU 缓冲共享、纸娃娃条件复用和距离调度错峰／滞回。证据、开关和边界见 `plans/multi-model-performance/implementation_plan.md`；物理启用求值数不等于实际物理步数。当前 `NativeEvaluationBatch` 已提供独立实例并行 JNI，批内各模型内部预算为1；单模型经 `NativeParallelEvaluation` 使用内部预算，`BW_ParallelWorld` 对达到64刚体或约束的世界启用 Bullet MT。跨世界 MT 共享协调线程提交锁，同一模型仍受实例锁保护。2026-10-18 杏辞实测确认内部物理任务并发，4线程在40次迭代的短测中小幅获益，8线程反而更慢，详见 `plans/physics-stability/solver-investigation.md`。真实多人扩展和游戏帧率收益仍待测量。
 
 无主贴图材质由 `render/material/MaterialTextureLoader` 统一加载：空路径通过既有 JNI `GetMaterialDiffuse` 读取材质 RGBA，生成实例独占的 1×1 纹理，供 CPU/GPU 与各着色路径采样；非空路径加载失败仍显示缺图提示。两个后端的生命周期与构造失败清理会释放默认纹理，共享文件纹理继续按引用计数回收。默认纹理计入模型显存统计。
 
@@ -119,6 +122,8 @@ Iris 与 Toon 并用由 `compat/iris/IrisToonMetadata` 读取当前包、维度�
 PMX 球面模式保存在 `model/material.rs`，通过独立 `jni_bridge/material_sphere.rs` 与 `SphereMaterialNative` 查询；Java 异步预加载与 `MaterialTextureLoader` 引用计数加载球面纹理。CPU/GPU 共用的 `SphereTextureBinding` 为 Toon 主体绑定未被光影采样器占用的单元，主体实现 SPH 乘法、SPA 加法和球面材质 morph，保持表面 alpha；透明排序区分球面材质。解码按内容识别 `.spa/.sph` 中的 PNG/BMP。非 Toon 程序及模式 3 扩展 UV 暂未补齐；真实珍珠 PNG 的离线球面 A/B、状态恢复与双平台包验证见 `doc/render/SPHERE_TEXTURE_SUPPORT.md`、`tools/sphere-texture-probe/`，仍需游戏验收。
 
 2026-10-17 三渲二透明 pass 通过 `render/material/ToonTransparencyLayers` 对最近 4 层进行逐像素深度剥离和颜色重放，深层保留原排序；共享深度池预算 128 MiB，深度阶段跳过照明，CPU/GPU 共用且不读回查询结果。Fabric/NeoForge 三渲二分页新增默认关闭的 `toonDisableTransparency`，将可见半透明像素作为实心绘制，保留透明孔洞。合成相交面、状态/异常恢复、BSL profile 与成本边界见 `doc/render/TOON_TRANSPARENCY_LAYERS.md`、`tools/translucent-performance/run-toon-transparency-probe.ps1`。原截图与游戏性能仍待同条件验收。
+
+2026-10-18 发梢白色覆盖回归：主体透明混合后的深度补写必须保留可见半透明像素，不能限定为实心像素，否则后绘制的白描边会穿出。已撤销该实验改动；`DepthSealOutlineGlProbe` 验证生产主体/描边、真孔洞及 CPU/GPU、合批、分层、覆盖率开关组合。原三角块未闭环，证据边界见 `Logs/triangle-artifacts-20261018/diagnosis.md`。
 
 同页的 `toonAlphaCutoff` / `toonHairAlphaCutoff` 为全局与发片独立裁切滑块，范围 0.001～1.000、默认 0.001，保存后生效。`HairMaterialClassifier` 按材质名识别发片并排除发饰，避免共用图集误判；主体、透明合批和描边共用选择结果。阈值在实心化和分层前应用，发片覆盖全局；复用材质表空闲标记，不新增 draw 或缓冲。普通/合批 CPU/GPU 回读与描边状态探针已覆盖独立裁切和恢复，截图根因仍需游戏对照。
 

@@ -194,8 +194,22 @@ fn apply_hair_joint_control(
     control: &str,
 ) {
     // legacy 只作同输入 A/B；两个分项保留用于定位，不写入用户配置。
-    let legacy_root = matches!(control, "legacy" | "authored-chain");
-    let legacy_chain = matches!(control, "legacy" | "authored-root");
+    // 杏辞模型的 M- 镜像长发链在头部极限角度下会把无阻尼的
+    // PMX 约束误差放大到蝴蝶结；只对这类镜像链启用局部兜底。
+    let mirrored_long_hair = control.is_empty()
+        && [body_a, body_b].iter().any(|body| {
+            body.local_name
+                .strip_prefix("M-")
+                .map(|name| name.contains("长发") || name.contains("長髮"))
+                .unwrap_or(false)
+        });
+    let effective_control = if mirrored_long_hair {
+        "legacy"
+    } else {
+        control
+    };
+    let legacy_root = matches!(effective_control, "legacy" | "authored-chain");
+    let legacy_chain = matches!(effective_control, "legacy" | "authored-root");
     let clamped_root =
         legacy_root && apply_wide_back_hair_root_fallback(parameters, body_a, body_b);
     if legacy_chain {

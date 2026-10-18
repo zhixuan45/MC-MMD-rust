@@ -94,11 +94,13 @@ fn authored_garment_roots_survive_legacy_skirt_heuristic() {
         );
         let d = c.constraint.as_ref().unwrap().diagnostic().unwrap();
         assert!(
-            d.angular_lower.abs_diff_eq(Vec3::from(j.rotation_min), 1e-5),
+            d.angular_lower
+                .abs_diff_eq(Vec3::from(j.rotation_min), 1e-5),
             "{local}: {d:?}"
         );
         assert!(
-            d.angular_upper.abs_diff_eq(Vec3::from(j.rotation_max), 1e-5),
+            d.angular_upper
+                .abs_diff_eq(Vec3::from(j.rotation_max), 1e-5),
             "{local}: {d:?}"
         );
         assert_eq!(&d.stiffness[3..], &[0.0; 3], "{local}");
@@ -115,7 +117,12 @@ fn authored_garment_chains_survive_legacy_skirt_heuristic() {
             RigidBodyMode::DynamicWithBonePosition,
         ),
         ("裙_0_0", "裙_1_0", false, RigidBodyMode::Dynamic),
-        ("Skirt_0_0", "Skirt_1_0", false, RigidBodyMode::DynamicWithBonePosition),
+        (
+            "Skirt_0_0",
+            "Skirt_1_0",
+            false,
+            RigidBodyMode::DynamicWithBonePosition,
+        ),
     ] {
         let shape = BulletShape::sphere(0.1).unwrap();
         let mut a = pmx_body(parent_name, mode, Vec3::new(0.0, 10.0, 0.0));
@@ -140,11 +147,13 @@ fn authored_garment_chains_survive_legacy_skirt_heuristic() {
         );
         let d = c.constraint.as_ref().unwrap().diagnostic().unwrap();
         assert!(
-            d.angular_lower.abs_diff_eq(Vec3::from(j.rotation_min), 1e-5),
+            d.angular_lower
+                .abs_diff_eq(Vec3::from(j.rotation_min), 1e-5),
             "{parent_name}: {d:?}"
         );
         assert!(
-            d.angular_upper.abs_diff_eq(Vec3::from(j.rotation_max), 1e-5),
+            d.angular_upper
+                .abs_diff_eq(Vec3::from(j.rotation_max), 1e-5),
             "{parent_name}: {d:?}"
         );
         assert_eq!(&d.stiffness[3..], &[0.0; 3], "{parent_name}");

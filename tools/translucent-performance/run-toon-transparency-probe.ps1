@@ -15,12 +15,13 @@ foreach ($taskModule in @('lwjgl', 'lwjgl-glfw', 'lwjgl-opengl')) {
 }
 Push-Location $taskRoot
 try {
-    $taskSources = @('BatchGlProbe.java', 'ToonTransparencyGlProbe.java', 'ToonTransparencyLayersGlProbe.java') |
+    $taskSources = @('BatchGlProbe.java', 'ToonTransparencyGlProbe.java', 'ToonTransparencyLayersGlProbe.java', 'DepthSealOutlineGlProbe.java') |
         ForEach-Object { Join-Path $PSScriptRoot $_ }
     & (Join-Path $Jdk 'bin/javac.exe') -proc:none -encoding UTF-8 -cp $taskCp -d $taskOutput $taskSources
     if ($LASTEXITCODE -ne 0) { throw '透明探针编译失败' }
-    foreach ($taskProbe in @('ToonTransparencyGlProbe', 'ToonTransparencyLayersGlProbe')) {
-        & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskCp" "com.shiroha.mmdskin.render.material.$taskProbe"
+    # 优先加载 Gradle 的生产类，避免旧探针目录中的同名类遮住新实现。
+    foreach ($taskProbe in @('ToonTransparencyGlProbe', 'ToonTransparencyLayersGlProbe', 'DepthSealOutlineGlProbe')) {
+        & (Join-Path $Jdk 'bin/java.exe') -cp "$taskCp;$taskOutput" "com.shiroha.mmdskin.render.material.$taskProbe"
         if ($LASTEXITCODE -ne 0) { throw "透明探针失败: $taskProbe" }
     }
     if ($BslPack) {
@@ -35,7 +36,7 @@ try {
             (Join-Path $taskRoot 'tools/iris-toon-probe/BslTransparencyGlProbe.java')
         if ($LASTEXITCODE -ne 0) { throw 'BSL 分层探针编译失败' }
         foreach ($taskDimension in @('world0', 'world-1', 'world1')) {
-            & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskBslCp" BslTransparencyGlProbe $BslPack $taskDimension
+            & (Join-Path $Jdk 'bin/java.exe') -cp "$taskBslCp" BslTransparencyGlProbe $BslPack $taskDimension
             if ($LASTEXITCODE -ne 0) { throw "BSL 分层探针失败: $taskDimension" }
         }
     }

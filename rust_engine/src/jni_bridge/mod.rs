@@ -7,6 +7,7 @@ mod material_sphere;
 mod model_handle;
 mod native_func;
 mod render_view;
+mod solver_quality;
 pub(crate) mod tacz_arm_target;
 mod tail_options;
 

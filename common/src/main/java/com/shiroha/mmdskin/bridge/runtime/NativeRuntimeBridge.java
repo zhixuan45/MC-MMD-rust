@@ -73,6 +73,9 @@ public final class NativeRuntimeBridge implements
                     physicsConfig.debugLog());
             nativeFunc().SetBodyColliderFillConfig(
                     physicsConfig.autoUpperBodyColliders(), physicsConfig.autoLowerBodyColliders());
+            if (PhysicsSolverNative.apply(physicsConfig.solverIterations())) {
+                logger.info("物理 solver 迭代次数已应用: {}", physicsConfig.solverIterations());
+            }
         } catch (UnsatisfiedLinkError e) {
             logger.warn("物理配置 JNI 方法未找到，请重新编译 Rust 库");
         }
@@ -121,6 +124,12 @@ public final class NativeRuntimeBridge implements
     public void setLayerLoop(long modelHandle, long layer, boolean loop) {
         NativePoseInputs.assign(modelHandle, "loop." + layer, loop ? 1 : 0);
         nativeFunc().SetLayerLoop(modelHandle, layer, loop);
+    }
+
+    @Override
+    public void setLayerSpeed(long modelHandle, long layer, float speed) {
+        NativePoseInputs.assign(modelHandle, "speed." + layer, NativePoseInputs.bits(speed));
+        nativeFunc().SetLayerSpeed(modelHandle, layer, speed);
     }
 
     @Override

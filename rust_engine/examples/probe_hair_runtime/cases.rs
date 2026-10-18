@@ -57,6 +57,7 @@ pub(super) fn run_case(
     if !model.init_physics() {
         return Err("完整 MmdModel 物理初始化失败".to_owned());
     }
+    let solver_control = opts.solver.apply(&mut model)?;
     setup_animation(&mut model, &idle_path)?;
     let reps = representative_vertices(&model, &bone_indices);
     if reps.is_empty() {
@@ -70,7 +71,8 @@ pub(super) fn run_case(
         "kind": "case_start", "model_path": model_path, "model_name": model.name,
         "case": case, "render_fps": fps, "physics_fps": physics_fps,
         "idle_vmd": idle_path, "walk_vmd": walk_path,
-        "input_physics_parameters_changed": !control_changes.is_empty(),
+        "input_physics_parameters_changed": !control_changes.is_empty() || opts.solver.active(),
+        "solver_diagnostic_override": solver_control,
         "diagnostic_control":opts.diagnostic_control,"diagnostic_control_changes":control_changes,
         "watch_body":opts.watch_body,
         "physics_config_path": physics_config_path,

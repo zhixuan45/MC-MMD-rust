@@ -11,6 +11,10 @@ public interface NativeRenderBackendPort extends NativeModelPort, NativeModelLoa
 
     void setLayerLoop(long modelHandle, long layer, boolean loop);
 
+    /** 设置动画层播放速度；用于舞台外部帧驱动。 */
+    default void setLayerSpeed(long modelHandle, long layer, float speed) {
+    }
+
     default void setLayerWeight(long modelHandle, long layer, float weight) {
         // 兼容不需要动画混合能力的轻量测试后端。
     }

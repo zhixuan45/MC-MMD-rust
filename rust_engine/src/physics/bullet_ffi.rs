@@ -90,6 +90,15 @@ mod ffi {
 
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
+    pub struct BW_SolverSettings {
+        pub iterations: c_int,
+        pub contact_erp: c_float,
+        pub split_impulse: bool,
+        pub split_impulse_penetration_threshold: c_float,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
     pub struct BW_ParallelStats {
         pub thread_width: c_int,
         pub peak_active: c_int,
@@ -126,6 +135,14 @@ mod ffi {
         // 物理世界
         pub fn bw_world_create(gx: c_float, gy: c_float, gz: c_float) -> *mut BW_World;
         pub fn bw_world_destroy(world: *mut BW_World);
+        pub fn bw_world_get_solver_settings(
+            world: *mut BW_World,
+            output: *mut BW_SolverSettings,
+        ) -> bool;
+        pub fn bw_world_set_solver_settings(
+            world: *mut BW_World,
+            settings: *const BW_SolverSettings,
+        ) -> bool;
         pub fn bw_world_step(
             world: *mut BW_World,
             dt: c_float,
@@ -324,6 +341,9 @@ pub use contact_points::{
     ContactPoint, ContactPointQuery, ContactPointQueryError, ContactSamplePhase,
     MAX_CONTACT_QUERY_CAPACITY, MAX_CONTACT_QUERY_TARGETS,
 };
+
+mod solver_settings;
+pub use solver_settings::BulletSolverSettings;
 
 // Bullet3 约束参数常量
 pub const BT_CONSTRAINT_STOP_ERP: i32 = 2;

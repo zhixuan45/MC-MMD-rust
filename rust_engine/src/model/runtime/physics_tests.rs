@@ -78,6 +78,46 @@ fn body_pose(model: &MmdModel, index: usize) -> Mat4 {
 }
 
 #[test]
+fn solver_iterations_hot_apply_without_changing_existing_body_state() {
+    let mut model = physics_test_model();
+    assert_eq!(model.physics_solver_settings().unwrap().iterations, 10);
+    let poses: Vec<_> = (0..2).map(|index| body_pose(&model, index)).collect();
+    let velocities: Vec<_> = model
+        .physics
+        .as_ref()
+        .unwrap()
+        .rigid_bodies
+        .iter()
+        .map(|body| {
+            let body = body.bullet_body.as_ref().unwrap();
+            (body.get_linear_velocity(), body.get_angular_velocity())
+        })
+        .collect();
+
+    assert!(model.configure_physics_solver_diagnostic(Some(40), None, None, None));
+    assert_eq!(model.physics_solver_settings().unwrap().iterations, 40);
+    for index in 0..2 {
+        assert!(body_pose(&model, index).abs_diff_eq(poses[index], 1.0e-6));
+        let body = model.physics.as_ref().unwrap().rigid_bodies[index]
+            .bullet_body
+            .as_ref()
+            .unwrap();
+        assert!(body
+            .get_linear_velocity()
+            .abs_diff_eq(velocities[index].0, 1.0e-6));
+        assert!(body
+            .get_angular_velocity()
+            .abs_diff_eq(velocities[index].1, 1.0e-6));
+    }
+    assert!(model
+        .physics
+        .as_mut()
+        .unwrap()
+        .step_simulation(1.0 / 60.0));
+    assert_eq!(model.physics_solver_settings().unwrap().iterations, 40);
+}
+
+#[test]
 fn skipped_and_zero_steps_keep_bullet_poses_in_the_rendered_skeleton() {
     for delta_time in [0.1, 0.0, -0.01] {
         let mut model = physics_test_model();

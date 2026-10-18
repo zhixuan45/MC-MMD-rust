@@ -173,6 +173,11 @@ public final class StageAnimSyncHelper {
 
     public void disconnect() {
         pendingAnims.clear();
+        for (Long modelHandle : remoteStageModels.values()) {
+            if (modelHandle != null && modelHandle != 0L) {
+                animationPort.setLayerSpeed(modelHandle, 0, 1.0f);
+            }
+        }
         remoteStageModels.clear();
         if (remoteStageAnims.isEmpty()) {
             return;
@@ -246,7 +251,10 @@ public final class StageAnimSyncHelper {
     }
 
     private void cleanupRemoteStageAnim(UUID playerUUID) {
-        remoteStageModels.remove(playerUUID);
+        Long modelHandle = remoteStageModels.remove(playerUUID);
+        if (modelHandle != null && modelHandle != 0L) {
+            animationPort.setLayerSpeed(modelHandle, 0, 1.0f);
+        }
         List<Long> animations = remoteStageAnims.remove(playerUUID);
         if (animations == null) {
             return;

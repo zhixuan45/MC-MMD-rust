@@ -12,6 +12,8 @@ public interface IPhysicsConfig {
 
     default float getPhysicsFps() { return 60.0f; }
 
+    default int getPhysicsSolverIterations() { return 10; }
+
     default int getPhysicsMaxSubstepCount() { return 5; }
 
     default float getPhysicsInertiaStrength() { return 0.5f; }

@@ -124,6 +124,9 @@ public class NativeFunc {
 
     public native void SetLayerLoop(long model, long layer, boolean loop);
 
+    /** 设置动画层播放速度；舞台逐帧 seek 时使用 0，避免同帧再次按 elapsed 推进。 */
+    public native void SetLayerSpeed(long model, long layer, float speed);
+
     public native void SetLayerWeight(long model, long layer, float weight);
 
     public native boolean IsLayerAnimationFinished(long model, long layer);

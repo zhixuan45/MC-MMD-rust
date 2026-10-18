@@ -64,6 +64,14 @@ typedef struct {
     int phase; /* 0=尚无采样更新，1=碰撞检测后，2=物理步后 */
 } BW_ContactSampleInfo;
 
+/* Bullet 世界级接触求解设置，仅供显式诊断实验使用。 */
+typedef struct {
+    int iterations;
+    float contact_erp;
+    bool split_impulse;
+    float split_impulse_penetration_threshold;
+} BW_SolverSettings;
+
 /* Constant-time telemetry; does not enumerate contacts or advance simulation. */
 void bw_world_get_step_info(BW_World* world, BW_ContactSampleInfo* info);
 
@@ -118,6 +126,8 @@ typedef struct {
 /* ===== 物理世界 ===== */
 BW_World* bw_world_create(float gravity_x, float gravity_y, float gravity_z);
 void bw_world_destroy(BW_World* world);
+bool bw_world_get_solver_settings(BW_World* world, BW_SolverSettings* output);
+bool bw_world_set_solver_settings(BW_World* world, const BW_SolverSettings* settings);
 void bw_world_step(BW_World* world, float dt, int max_substeps, float fixed_dt);
 typedef struct BW_ParallelStats {
     int thread_width;

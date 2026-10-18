@@ -501,6 +501,15 @@ public class ModConfigScreen {
 
         physicsCategory.addEntry(entryBuilder
             .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_solver_iterations"),
+                data.physicsSolverIterations, 1, 80)
+            .setDefaultValue(10)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_solver_iterations.tooltip"))
+            .setSaveConsumer(value -> data.physicsSolverIterations = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.physics_substeps"),
                 data.physicsMaxSubstepCount, 1, 10)
             .setDefaultValue(5)

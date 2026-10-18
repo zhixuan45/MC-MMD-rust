@@ -36,6 +36,7 @@ mod hair_diagnostics;
 mod issue_diagnostics;
 mod motion_forces;
 mod snapshots;
+mod solver_controls;
 
 pub use garment_diagnostics::{GarmentContactSnapshot, GarmentPhysicsSnapshot};
 pub use snapshots::{
@@ -58,6 +59,8 @@ pub struct MMDPhysics {
     fps: f32,
     /// 最大子步数
     max_substep_count: i32,
+    /// 构建物理世界时观察到的全局迭代数。
+    solver_iterations_snapshot: i32,
 
     // --- 预分配缓冲区（避免每帧堆分配） ---
     /// 动态刚体关联的骨骼索引集合（构建时计算一次）
@@ -137,6 +140,14 @@ impl MMDPhysics {
     pub fn new() -> Option<Self> {
         let config = get_config();
         let world = BulletWorld::new(0.0, config.gravity_y, 0.0)?;
+        let iterations = super::solver_quality::default_iterations();
+        if iterations != 10 {
+            let mut settings = world.solver_settings()?;
+            settings.iterations = iterations;
+            if !world.set_solver_settings(settings) {
+                return None;
+            }
+        }
 
         if config.debug_log {
             log::info!(
@@ -152,6 +163,7 @@ impl MMDPhysics {
             world,
             fps: config.physics_fps,
             max_substep_count: config.max_substep_count,
+            solver_iterations_snapshot: iterations,
             dynamic_bone_indices: HashSet::new(),
             dynamic_bone_buf: Vec::new(),
             debug_body_target_positions: Vec::new(),

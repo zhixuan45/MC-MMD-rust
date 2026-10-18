@@ -21,5 +21,9 @@ public interface NativeAnimationPort {
 
     void seekLayer(long modelHandle, long layer, float frame);
 
+    /** 设置动画层播放速度；默认实现保持轻量测试替身兼容。 */
+    default void setLayerSpeed(long modelHandle, long layer, float speed) {
+    }
+
     void getCameraTransform(long animationHandle, float frame, ByteBuffer targetBuffer);
 }

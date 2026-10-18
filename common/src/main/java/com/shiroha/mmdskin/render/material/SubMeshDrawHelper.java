@@ -69,7 +69,8 @@ public final class SubMeshDrawHelper {
             try {
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
                 // Toon 对同一贴图的实心与半透明像素也分开，避免黑睫毛的实心部分丢失遮挡。
-                for (int pass = 0; pass < (shadowPass || forceOpaque ? 1 : 3); pass++) {
+                int passCount = shadowPass || forceOpaque ? 1 : 3;
+                for (int pass = 0; pass < passCount; pass++) {
                     if (pass == 2 && !hasTranslucentDraws) break;
                     int stages = pass == 1 && layers != null ? layers.layers() * 2 + 1 : 1;
                     for (int stage = 0; stage < stages; stage++) {
@@ -132,6 +133,8 @@ public final class SubMeshDrawHelper {
                                         if (translucent != (pass != 0)) continue;
                                     }
                                 }
+                                // 混合结束后为可见半透明像素补深度，阻挡后画的描边与云；
+                                // 透明孔洞仍由当前 shader 的 alpha 裁切保留。
                                 binding.apply(state, shadowPass || pass == 2 ? 0 : pass + 1);
                                 sphere.apply(material, state);
 

@@ -15,48 +15,69 @@ class BW_KinematicStepWorld final : public BW_ParallelWorld {
     btScalar batchDuration = 0;
     btScalar elapsedDuration = 0;
 
+    static btTransform renderTransform(btRigidBody* body) {
+        btTransform transform = body->getCenterOfMassTransform();
+        if (body->getMotionState()) {
+            body->getMotionState()->getWorldTransform(transform);
+        }
+        return transform;
+    }
+
+    static btVector3 renderContactDelta(btRigidBody* body, const btVector3& worldPoint) {
+        if (!body) {
+            return btVector3(0, 0, 0);
+        }
+        const btTransform& solved = body->getCenterOfMassTransform();
+        const btVector3 localPoint = solved.invXform(worldPoint);
+        return renderTransform(body) * localPoint - worldPoint;
+    }
+
+    static btScalar relativeContactDelta(
+        btRigidBody* bodyA, btRigidBody* bodyB, const btManifoldPoint& point) {
+        const btVector3 deltaA = renderContactDelta(bodyA, point.getPositionWorldOnA());
+        const btVector3 deltaB = renderContactDelta(bodyB, point.getPositionWorldOnB());
+        return (deltaA - deltaB).dot(point.m_normalWorldOnB);
+    }
+
     static void constrainRenderPrediction(
-        btRigidBody* body, const btManifoldPoint& point, const btVector3& normal, bool isBodyA) {
-        if (!body || body->isStaticOrKinematicObject() || !body->getMotionState()) {
+        btRigidBody* bodyA, btRigidBody* bodyB, const btManifoldPoint& point) {
+        const btScalar relativeDelta = relativeContactDelta(bodyA, bodyB, point);
+        if (relativeDelta >= -SIMD_EPSILON) {
             return;
         }
 
-        const btTransform& solved = body->getCenterOfMassTransform();
-        btTransform predicted;
-        body->getMotionState()->getWorldTransform(predicted);
-        const btVector3 worldPoint = isBodyA
-            ? point.getPositionWorldOnA()
-            : point.getPositionWorldOnB();
-        const btVector3 localPoint = solved.invXform(worldPoint);
-        const btVector3 rotationDelta =
-            predicted.getBasis() * localPoint - solved.getBasis() * localPoint;
-        if (rotationDelta.dot(normal) < -SIMD_EPSILON) {
-            predicted.setBasis(solved.getBasis());
+        const btScalar inverseMassA = bodyA ? bodyA->getInvMass() : 0;
+        const btScalar inverseMassB = bodyB ? bodyB->getInvMass() : 0;
+        const btScalar inverseMassSum = inverseMassA + inverseMassB;
+        if (inverseMassSum <= SIMD_EPSILON) {
+            return;
         }
 
-        btVector3 translation = predicted.getOrigin() - solved.getOrigin();
-        const btScalar inward = translation.dot(normal);
-        if (inward < 0.0f) {
-            translation -= normal * inward;
-            predicted.setOrigin(solved.getOrigin() + translation);
+        // 按逆质量分摊净内侵，保留两侧预测旋转。
+        const btVector3 correction =
+            point.m_normalWorldOnB * (-relativeDelta / inverseMassSum);
+        if (inverseMassA > 0 && bodyA->getMotionState()) {
+            btTransform predicted = renderTransform(bodyA);
+            predicted.setOrigin(predicted.getOrigin() + correction * inverseMassA);
+            bodyA->getMotionState()->setWorldTransform(predicted);
         }
-        body->getMotionState()->setWorldTransform(predicted);
+        if (inverseMassB > 0 && bodyB->getMotionState()) {
+            btTransform predicted = renderTransform(bodyB);
+            predicted.setOrigin(predicted.getOrigin() - correction * inverseMassB);
+            bodyB->getMotionState()->setWorldTransform(predicted);
+        }
     }
 
     static bool predictionMovesIntoContact(
-        btRigidBody* body, const btManifoldPoint& point, const btVector3& normal, bool isBodyA) {
-        if (!body || body->isStaticOrKinematicObject() || !body->getMotionState()) {
-            return false;
+        btRigidBody* bodyA, btRigidBody* bodyB, const btManifoldPoint& point) {
+        return relativeContactDelta(bodyA, bodyB, point) < -SIMD_EPSILON;
+    }
+
+    static void rollbackRenderPose(btRigidBody* body) {
+        if (!body || body->getInvMass() <= 0 || !body->getMotionState()) {
+            return;
         }
-        const btTransform& solved = body->getCenterOfMassTransform();
-        btTransform predicted;
-        body->getMotionState()->getWorldTransform(predicted);
-        const btVector3 worldPoint = isBodyA
-            ? point.getPositionWorldOnA()
-            : point.getPositionWorldOnB();
-        const btVector3 localPoint = solved.invXform(worldPoint);
-        const btVector3 pointDelta = predicted * localPoint - worldPoint;
-        return pointDelta.dot(normal) < -SIMD_EPSILON;
+        body->getMotionState()->setWorldTransform(body->getCenterOfMassTransform());
     }
 
 public:
@@ -102,13 +123,13 @@ public:
                     if (point.getDistance() > 0.0f) {
                         continue;
                     }
-                    constrainRenderPrediction(bodyA, point, point.m_normalWorldOnB, true);
-                    constrainRenderPrediction(bodyB, point, -point.m_normalWorldOnB, false);
+                    constrainRenderPrediction(bodyA, bodyB, point);
                 }
             }
         }
 
-        // 斜向法线反复投影仍冲突时，退回真实解算姿态。
+        // 多接触无法仅靠平移满足时，恢复参与动态体的求解姿态。
+        bool rolledBack = false;
         for (int i = 0; i < getDispatcher()->getNumManifolds(); ++i) {
             const btPersistentManifold* manifold = getDispatcher()->getManifoldByIndexInternal(i);
             btRigidBody* bodyA = btRigidBody::upcast(
@@ -120,11 +141,28 @@ public:
                 if (point.getDistance() > 0.0f) {
                     continue;
                 }
-                if (predictionMovesIntoContact(bodyA, point, point.m_normalWorldOnB, true)) {
-                    bodyA->getMotionState()->setWorldTransform(bodyA->getCenterOfMassTransform());
+                if (predictionMovesIntoContact(bodyA, bodyB, point)) {
+                    rollbackRenderPose(bodyA);
+                    rollbackRenderPose(bodyB);
+                    rolledBack = true;
                 }
-                if (predictionMovesIntoContact(bodyB, point, -point.m_normalWorldOnB, false)) {
-                    bodyB->getMotionState()->setWorldTransform(bodyB->getCenterOfMassTransform());
+            }
+        }
+        if (rolledBack) {
+            for (int pass = 0; pass < 4; ++pass) {
+                for (int i = 0; i < getDispatcher()->getNumManifolds(); ++i) {
+                    const btPersistentManifold* manifold =
+                        getDispatcher()->getManifoldByIndexInternal(i);
+                    btRigidBody* bodyA = btRigidBody::upcast(
+                        const_cast<btCollisionObject*>(manifold->getBody0()));
+                    btRigidBody* bodyB = btRigidBody::upcast(
+                        const_cast<btCollisionObject*>(manifold->getBody1()));
+                    for (int j = 0; j < manifold->getNumContacts(); ++j) {
+                        const btManifoldPoint& point = manifold->getContactPoint(j);
+                        if (point.getDistance() <= 0.0f) {
+                            constrainRenderPrediction(bodyA, bodyB, point);
+                        }
+                    }
                 }
             }
         }

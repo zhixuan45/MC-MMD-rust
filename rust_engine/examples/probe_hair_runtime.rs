@@ -18,6 +18,8 @@ mod controls;
 mod mesh;
 #[path = "probe_hair_runtime/watch.rs"]
 mod watch;
+#[path = "probe_hair_runtime/solver.rs"]
+mod solver;
 use cases::run_case;
 use mmd::pmx::rigid_body::RigidBodyMode;
 use mmd_engine::{
@@ -47,6 +49,7 @@ struct Options {
     mesh_dir: Option<PathBuf>,
     diagnostic_control: String,
     watch_body: Option<String>,
+    solver: solver::SolverOverrides,
 }
 
 impl Options {
@@ -80,6 +83,7 @@ impl Options {
             mesh_dir: None,
             diagnostic_control: "authored".to_owned(),
             watch_body: None,
+            solver: solver::SolverOverrides::default(),
         };
         while let Some(arg) = args.next() {
             let next = |args: &mut std::iter::Skip<std::env::Args>, key: &str| {
@@ -130,6 +134,9 @@ impl Options {
                         return Err("--watch-body 不可为空".to_owned());
                     }
                     value.watch_body = Some(needle);
+                }
+                key @ ("--solver-iterations" | "--contact-erp" | "--split-impulse" | "--joint-stop-erp") => {
+                    value.solver.parse(key, &mut args)?;
                 }
                 "-h" | "--help" => return Err(usage().to_owned()),
                 path if !path.starts_with('-') => value.models.push(PathBuf::from(path)),
@@ -205,6 +212,7 @@ impl Options {
         if value.mesh_dir.is_some() && (value.models.len() != 1 || value.fps.len() != 1) {
             return Err("网格导出需单模型、单 FPS，避免覆盖不同条件的证据".to_owned());
         }
+        value.solver.validate()?;
         Ok(value)
     }
 }
@@ -789,10 +797,15 @@ fn push_tick_at(
 ) {
     model.set_model_position_and_yaw(root.x, root.y, root.z, 0.0);
     model.set_head_angle(0.0, head_y, 0.0);
+    let update_started = std::time::Instant::now();
     model.tick_animation(dt);
+    let update_ns = update_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
     *elapsed += dt;
     if *elapsed - *last_sample + 1e-6 >= interval {
-        output.push(sample(model, stage, *elapsed, bone_samples));
+        let mut row = sample(model, stage, *elapsed, bone_samples);
+        row["model_update_ns"] = json!(update_ns);
+        row["timing_boundary"] = json!("CPU模型求值含物理/CPU蒙皮，不含JSON采样与文件写入");
+        output.push(row);
         *last_sample = *elapsed;
     }
 }
