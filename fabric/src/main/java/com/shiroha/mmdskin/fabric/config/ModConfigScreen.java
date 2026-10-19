@@ -215,6 +215,24 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_disable_depth_seal"),
+                data.toonDisableDepthSeal)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_disable_depth_seal.tooltip"))
+            .setSaveConsumer(value -> data.toonDisableDepthSeal = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_transparency_layers"),
+                data.toonTransparencyLayerCount, 0, 16)
+            .setDefaultValue(4)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_transparency_layers.tooltip"))
+            .setSaveConsumer(value -> data.toonTransparencyLayerCount = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_alpha_cutoff"),
                 Math.round(data.toonAlphaCutoff * 1000), 1, 1000)

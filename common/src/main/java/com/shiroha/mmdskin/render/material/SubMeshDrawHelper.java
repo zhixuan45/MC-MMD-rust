@@ -69,7 +69,8 @@ public final class SubMeshDrawHelper {
             try {
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
                 // Toon 对同一贴图的实心与半透明像素也分开，避免黑睫毛的实心部分丢失遮挡。
-                int passCount = shadowPass || forceOpaque ? 1 : 3;
+                int passCount = shadowPass || forceOpaque ? 1
+                        : binding.isToon() && ToonTransparencySettings.disableDepthSeal() ? 2 : 3;
                 for (int pass = 0; pass < passCount; pass++) {
                     if (pass == 2 && !hasTranslucentDraws) break;
                     int stages = pass == 1 && layers != null ? layers.layers() * 2 + 1 : 1;
@@ -78,6 +79,7 @@ public final class SubMeshDrawHelper {
                         // 保留半透明层间混合，再补覆盖深度，避免后画的云穿过模型。
                         RenderSystem.depthMask(pass != 1);
                         boolean layerStageStarted = false;
+                        boolean stageCompleted = false;
                         if (pass == 1 && layers != null) {
                             if (stage < layers.layers()) layers.beginPeel(stage);
                             else if (stage == layers.layers()) layers.beginTail();
@@ -97,6 +99,7 @@ public final class SubMeshDrawHelper {
                                 if (batchDraws >= 0) {
                                     passDraws = batchDraws;
                                     hasTranslucentDraws = batchDraws > 0;
+                                    stageCompleted = true;
                                     continue;
                                 }
                                 // 保留 CPU 排序；GPU 晚期回退时补建同帧的 CPU 排序。
@@ -158,10 +161,11 @@ public final class SubMeshDrawHelper {
                                 GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, ordered?GL46C.GL_UNSIGNED_INT:indexType, startPos);
                                 passDraws++;
                             }
+                            stageCompleted = true;
                         } finally {
                             if (layerStageStarted) {
                                 if (stage < layers.layers()) layers.endPeel();
-                                else layers.endStage();
+                                else layers.endStage(stageCompleted);
                             }
                             TranslucentDiagnostics.add(
                                     shadowPass ? TranslucentDiagnostics.Counter.DRAW_SHADOW

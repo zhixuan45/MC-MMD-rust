@@ -216,6 +216,27 @@ class ConfigDataTest {
     }
 
     @Test
+    void transparencyControlsMigratePersistAndClamp(@TempDir Path configDir) throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{}");
+        ConfigData loaded = ConfigData.load(configDir);
+        assertEquals(4, loaded.toonTransparencyLayerCount);
+        assertFalse(loaded.toonDisableDepthSeal);
+        for (int value : new int[]{0, 1, 4, 8, 16, -1, 17}) {
+            loaded.toonTransparencyLayerCount = value;
+            loaded.toonDisableDepthSeal = true;
+            loaded.save(configDir);
+            var roundTrip = ConfigData.load(configDir);
+            ConfigManager.init(new TestConfig(roundTrip));
+            try {
+                assertEquals(Math.clamp(value, 0, 16), ConfigManager.getToonTransparencyLayerCount());
+                assertTrue(ConfigManager.isToonDisableDepthSeal());
+            } finally {
+                ConfigManager.init(null);
+            }
+        }
+    }
+
+    @Test
     void toonDisableTransparencyDefaultsFalseAndPersists(@TempDir Path configDir) throws Exception {
         Files.createDirectories(configDir);
         Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");

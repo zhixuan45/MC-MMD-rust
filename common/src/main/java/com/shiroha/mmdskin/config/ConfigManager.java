@@ -78,6 +78,14 @@ public class ConfigManager {
         return provider != null ? provider.isToonDisableTransparency() : false;
     }
 
+    public static boolean isToonDisableDepthSeal() {
+        return provider != null && provider.isToonDisableDepthSeal();
+    }
+
+    public static int getToonTransparencyLayerCount() {
+        return provider != null ? provider.getToonTransparencyLayerCount() : 4;
+    }
+
     public static float getToonAlphaCutoff() {
         return provider != null ? provider.getToonAlphaCutoff() : 0.001f;
     }

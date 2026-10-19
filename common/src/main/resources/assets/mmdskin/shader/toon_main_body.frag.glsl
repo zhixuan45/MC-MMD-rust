@@ -55,23 +55,23 @@ void main() {
 
     if (ToonTransparencyMode != 0) {
         if (ToonTransparencyMode == 1 && !ToonTransparencyHasPrevious) {
-            toonOutput0 = vec4(1.0);
+            toonOutput0 = vec4(gl_FragCoord.z);
             return;
         }
-        // 空层的复制深度不是透明表面，必须按像素验证覆盖标记。
-        if (texelFetch(ToonTransparencyCoverage, ivec2(gl_FragCoord.xy), 0).r < 0.5) discard;
+        // R32F 原始深度以 2 标记空层，保留远平面 z=1；不受宿主 D24 量化影响。
+        if (texelFetch(ToonTransparencyCoverage, ivec2(gl_FragCoord.xy), 0).r > 1.0) discard;
         float layerDepth = texelFetch(ToonTransparencyDepth, ivec2(gl_FragCoord.xy), 0).r;
-        // 容纳 D24 深度纹理量化，不按三角形中心决定前后关系。
-        const float depthEpsilon = 0.0000001;
+        uint fragmentKey = floatBitsToUint(gl_FragCoord.z);
+        uint layerKey = floatBitsToUint(layerDepth);
         if ((ToonTransparencyMode == 1 && ToonTransparencyHasPrevious)
                 || ToonTransparencyMode == 2) {
-            if (gl_FragCoord.z <= layerDepth + depthEpsilon) discard;
+            if (fragmentKey <= layerKey) discard;
         } else if (ToonTransparencyMode == 3) {
-            if (abs(gl_FragCoord.z - layerDepth) > depthEpsilon) discard;
+            if (fragmentKey != layerKey) discard;
         }
-        // 深度采集不计算光照，也不写入颜色目标。
+        // 深度采集仅写内部 R32F，不计算光照或写宿主颜色目标。
         if (ToonTransparencyMode == 1) {
-            toonOutput0 = vec4(1.0);
+            toonOutput0 = vec4(gl_FragCoord.z);
             return;
         }
     }

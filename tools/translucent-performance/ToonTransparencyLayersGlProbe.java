@@ -462,13 +462,64 @@ public final class ToonTransparencyLayersGlProbe {
         return System.nanoTime() - start;
     }
 
+    // 可独立在旧 ToonTransparencyLayers 上执行，用于修复前后回归。
+    private static void capacityProbe(ToonShaderCpu shader) {
+        ToonTransparencyLayers.cleanup();
+        int fbo = GL46C.glGenFramebuffers(), depth = GL46C.glGenRenderbuffers();
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, fbo);
+        GL46C.glBindRenderbuffer(GL46C.GL_RENDERBUFFER, depth);
+        GL46C.glFramebufferRenderbuffer(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_RENDERBUFFER, depth);
+        GL46C.glDrawBuffer(GL46C.GL_NONE); GL46C.glReadBuffer(GL46C.GL_NONE);
+        setupShader(shader);
+        GL46C.glDepthFunc(GL46C.GL_LEQUAL);
+        System.setProperty("mmdskin.toonTransparencyLayers", "true");
+        try {
+            int[][] requests = {{1500, 8}, {2200, 4}, {2200, 16}, {320, 16}};
+            for (int[] request : requests) {
+                int size = request[0], count = request[1];
+                GL46C.glRenderbufferStorage(GL46C.GL_RENDERBUFFER, GL46C.GL_DEPTH_COMPONENT24, size, size);
+                GL46C.glViewport(0, 0, size, size);
+                System.setProperty("mmdskin.toonTransparencyLayerCount", Integer.toString(count));
+                check(GL46C.glCheckFramebufferStatus(GL46C.GL_FRAMEBUFFER) == GL46C.GL_FRAMEBUFFER_COMPLETE, "capacity source FBO");
+                GL46C.glBlendEquationSeparatei(0, GL46C.GL_FUNC_ADD, GL46C.GL_FUNC_REVERSE_SUBTRACT);
+                try (ToonTransparencyLayers layers = ToonTransparencyLayers.begin()) {
+                    int expected = (int) Math.min(count, 128L * 1024 * 1024 / (size * (long) size * 5));
+                    check(layers != null, "current request fits budget after historical allocation: " + size + "x" + size + " layers=" + count);
+                    check(layers.layers() == expected, "budget-reduced layer count");
+                    check(ToonTransparencyLayers.allocatedBytes() <= 128L * 1024 * 1024, "shared pool budget");
+                    System.out.println("PASS capacity " + size + "x" + size + " requested=" + count
+                            + " actual=" + layers.layers() + " bytes=" + ToonTransparencyLayers.allocatedBytes());
+                }
+            }
+            for (String invalid : new String[]{"0", "-1", "17", "invalid"}) {
+                System.setProperty("mmdskin.toonTransparencyLayerCount", invalid);
+                check(ToonTransparencyLayers.begin() == null, "invalid or disabled count falls back");
+                var snapshot = ToonTransparencyDiagnostics.latest();
+                check(!snapshot.enabled() && snapshot.actualLayers() == 0, "fallback diagnostics expose disabled state");
+                check(snapshot.reason() == (invalid.equals("0") ? ToonTransparencyDiagnostics.Reason.DISABLED
+                        : ToonTransparencyDiagnostics.Reason.INVALID_COUNT), "explicit count reason code");
+            }
+            check(GL46C.glGetIntegeri(GL46C.GL_BLEND_EQUATION_RGB, 0) == GL46C.GL_FUNC_ADD
+                    && GL46C.glGetIntegeri(GL46C.GL_BLEND_EQUATION_ALPHA, 0) == GL46C.GL_FUNC_REVERSE_SUBTRACT,
+                    "independent blend equations restored");
+            check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "capacity GL state");
+        } finally {
+            ToonTransparencyLayers.cleanup();
+            System.clearProperty("mmdskin.toonTransparencyLayerCount");
+            GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, 0);
+            GL46C.glDeleteRenderbuffers(depth); GL46C.glDeleteFramebuffers(fbo);
+            GL46C.glBlendEquation(GL46C.GL_FUNC_ADD);
+        }
+    }
+
     private static void benchmark(ToonShaderCpu shader, Target target, Geometry geometry,
                                   ModelMaterial[] materials, int ebo) {
         final int warmups = 3, iterations = 24;
         int query = GL46C.glGenQueries();
         try {
             ToonTransparencyLayers.cleanup();
-            for (int count : new int[]{0, 1, 2, 4, 8}) {
+            for (int count : Boolean.getBoolean("mmdskin.probeBaseline")
+                    ? new int[]{0, 1, 2, 4, 8} : new int[]{0, 1, 2, 4, 8, 16}) {
                 boolean layers = count != 0;
                 int layerCount = layers ? count : 4;
                 ByteBuffer submeshes = runs(false);
@@ -505,7 +556,11 @@ public final class ToonTransparencyLayersGlProbe {
             try (var debug = org.lwjgl.opengl.GLUtil.setupDebugMessageCallback()) {
                 GL46C.glDebugMessageControl(GL46C.GL_DONT_CARE, GL46C.GL_DONT_CARE,
                         GL46C.GL_DEBUG_SEVERITY_NOTIFICATION, (java.nio.IntBuffer) null, false);
-                run();
+                if (args.length > 0 && args[0].equals("--capacity-only")) {
+                    RenderSystem.initRenderThread();
+                    ToonShaderCpu shader = new ToonShaderCpu(); check(shader.init(), "Toon shader");
+                    try { capacityProbe(shader); } finally { shader.cleanup(); }
+                } else run();
             }
         } finally { GLFW.glfwDestroyWindow(window); GLFW.glfwTerminate(); }
     }

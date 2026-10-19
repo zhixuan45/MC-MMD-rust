@@ -15,7 +15,7 @@ foreach ($taskModule in @('lwjgl', 'lwjgl-glfw', 'lwjgl-opengl')) {
 }
 Push-Location $taskRoot
 try {
-    $taskSources = @('BatchGlProbe.java', 'ToonTransparencyGlProbe.java', 'ToonTransparencyLayersGlProbe.java', 'DepthSealOutlineGlProbe.java') |
+    $taskSources = @('BatchGlProbe.java', 'ToonTransparencyGlProbe.java', 'ToonTransparencyLayersGlProbe.java', 'DepthSealOutlineGlProbe.java', 'TransparencyStackGlProbe.java') |
         ForEach-Object { Join-Path $PSScriptRoot $_ }
     & (Join-Path $Jdk 'bin/javac.exe') -proc:none -encoding UTF-8 -cp $taskCp -d $taskOutput $taskSources
     if ($LASTEXITCODE -ne 0) { throw '透明探针编译失败' }
@@ -23,6 +23,12 @@ try {
     foreach ($taskProbe in @('ToonTransparencyGlProbe', 'ToonTransparencyLayersGlProbe', 'DepthSealOutlineGlProbe')) {
         & (Join-Path $Jdk 'bin/java.exe') -cp "$taskCp;$taskOutput" "com.shiroha.mmdskin.render.material.$taskProbe"
         if ($LASTEXITCODE -ne 0) { throw "透明探针失败: $taskProbe" }
+    }
+    & (Join-Path $Jdk 'bin/java.exe') -cp "$taskCp;$taskOutput" 'com.shiroha.mmdskin.render.material.ToonTransparencyLayersGlProbe' --capacity-only
+    if ($LASTEXITCODE -ne 0) { throw '透明容量探针失败' }
+    foreach ($taskMode in @('--close', '--full')) {
+        & (Join-Path $Jdk 'bin/java.exe') -cp "$taskCp;$taskOutput" 'com.shiroha.mmdskin.render.material.TransparencyStackGlProbe' $taskMode
+        if ($LASTEXITCODE -ne 0) { throw "透明叠层探针失败: $taskMode" }
     }
     if ($BslPack) {
         $taskIris = Get-ChildItem -LiteralPath (Join-Path $Instance 'mods') -Filter 'iris-*.jar' | Select-Object -First 1

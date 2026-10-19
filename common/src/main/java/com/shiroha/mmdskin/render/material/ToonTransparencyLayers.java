@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.material;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import static com.shiroha.mmdskin.render.material.ToonTransparencyDiagnostics.Reason.*;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -11,11 +12,11 @@ import org.lwjgl.system.MemoryStack;
 
 /** 三渲二透明深度层资源及原始 GL 状态作用域。 */
 public final class ToonTransparencyLayers implements AutoCloseable {
-    private static final int MAX_LAYERS = 8;
-    private static final long MAX_BYTES = 128L * 1024 * 1024;
+    private static final int MAX_LAYERS = ToonTransparencySettings.MAX_LAYERS;
+    private static final long MAX_BYTES = ToonTransparencySettings.MAX_BYTES;
     private static final int[] DEPTH_TEXTURES = new int[MAX_LAYERS];
-    private static final int[] COVERAGE_TEXTURES = new int[MAX_LAYERS];
     private static final int[] LAYER_QUERIES = new int[MAX_LAYERS];
+    private static int opaqueDepthTexture;
     private static int framebuffer, poolWidth, poolHeight, poolFormat, poolCount;
     private static boolean warned;
 
@@ -26,6 +27,7 @@ public final class ToonTransparencyLayers implements AutoCloseable {
     private final int layers;
     private boolean closed;
     private boolean queryActive, conditionalActive;
+    private int overflowQuery;
     private int peelPasses, colorPasses;
 
     private ToonTransparencyLayers(int program, int modeLocation, int depthLocation, int coverageLocation,
@@ -48,36 +50,48 @@ public final class ToonTransparencyLayers implements AutoCloseable {
 
     /** 不支持当前 Toon 程序或目标帧缓冲时返回 null。 */
     public static ToonTransparencyLayers begin() {
-        if ("false".equalsIgnoreCase(System.getProperty("mmdskin.toonTransparencyLayers"))) return null;
-        if (!GL.getCapabilities().OpenGL40 || !RenderSystem.isOnRenderThread()) return null;
+        int requestedLayers = ToonTransparencySettings.requestedLayers();
+        var diagnostic = new ToonTransparencyDiagnostics.Attempt(requestedLayers);
+        if ("false".equalsIgnoreCase(System.getProperty("mmdskin.toonTransparencyLayers")) || requestedLayers == 0) {
+            diagnostic.publish(DISABLED, 0); return null;
+        }
+        if (requestedLayers < 0) { diagnostic.publish(INVALID_COUNT, 0); return null; }
+        if (!RenderSystem.isOnRenderThread()) { diagnostic.publish(WRONG_THREAD, 0); return null; }
+        if (!GL.getCapabilities().OpenGL40) { diagnostic.publish(UNSUPPORTED_GL, 0); return null; }
+        ToonTransparencyDiagnostics.poll();
         if (activeQuery(GL46C.GL_SAMPLES_PASSED) || activeQuery(GL46C.GL_ANY_SAMPLES_PASSED)
-                || (GL.getCapabilities().OpenGL43 && activeQuery(GL46C.GL_ANY_SAMPLES_PASSED_CONSERVATIVE))) return null;
+                || (GL.getCapabilities().OpenGL43 && activeQuery(GL46C.GL_ANY_SAMPLES_PASSED_CONSERVATIVE))) {
+            diagnostic.publish(ACTIVE_QUERY, 0); return null;
+        }
         int program = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
-        if (program <= 0) return null;
+        if (program <= 0) { diagnostic.publish(NO_PROGRAM, 0); return null; }
         int mode = GL46C.glGetUniformLocation(program, "ToonTransparencyMode");
         int depth = GL46C.glGetUniformLocation(program, "ToonTransparencyDepth");
         int coverage = GL46C.glGetUniformLocation(program, "ToonTransparencyCoverage");
         int previous = GL46C.glGetUniformLocation(program, "ToonTransparencyHasPrevious");
-        if (mode < 0 || depth < 0 || coverage < 0 || previous < 0) return null;
-
-        int requestedLayers = requestedLayers();
-        if (requestedLayers <= 0) return null;
+        if (mode < 0 || depth < 0 || coverage < 0 || previous < 0) {
+            diagnostic.publish(MISSING_UNIFORMS, 0); return null;
+        }
         GlState state = new GlState();
         ToonTransparencyLayers scope = null;
         try {
             int[] units = freeTextureUnits(program, depth, coverage);
-            if (units == null) return null;
-            DepthTarget target = depthTarget(state);
-            if (target == null || (state.depthFunc != GL46C.GL_LESS && state.depthFunc != GL46C.GL_LEQUAL)) return null;
-            long bytesPerLayer = (long) target.width * target.height * (bytesPerPixel(target.format) + 1);
-            int layers = (int) Math.min(requestedLayers, Math.min(MAX_LAYERS, MAX_BYTES / bytesPerLayer));
-            if (layers < 1 || !allocate(target, layers)) {
-                return null;
+            if (units == null) { diagnostic.publish(TEXTURE_UNITS, 0); return null; }
+            DepthTarget target = depthTarget(state, diagnostic);
+            if (target == null) { diagnostic.publish(diagnostic.reason, 0); return null; }
+            if (state.depthFunc != GL46C.GL_LESS && state.depthFunc != GL46C.GL_LEQUAL) {
+                diagnostic.publish(DEPTH_FUNCTION, 0); return null;
             }
+            long pixels = (long) target.width * target.height;
+            int layers = (int) Math.min(requestedLayers,
+                    Math.min(MAX_LAYERS, (MAX_BYTES / pixels - bytesPerPixel(target.format)) / Float.BYTES));
+            if (layers < 1) { diagnostic.publish(BUDGET_EXHAUSTED, 0); return null; }
+            if (!allocate(target, layers)) { diagnostic.publish(POOL_FORMAT_CONFLICT, 0); return null; }
             scope = new ToonTransparencyLayers(program, mode, depth, coverage, previous,
                     units[0], units[1], state, layers);
             if (framebuffer == 0) {
                 scope.close();
+                diagnostic.publish(ALLOCATION_FAILED, 0);
                 return null;
             }
             ensureQueries(layers);
@@ -88,25 +102,32 @@ public final class ToonTransparencyLayers implements AutoCloseable {
             GL46C.glUniform1i(mode, 0);
             GL46C.glUniform1i(previous, 0);
             GL46C.glUseProgram(state.program);
+            diagnostic.publish(layers < requestedLayers ? BUDGET_REDUCED : ACTIVE, layers);
             return scope;
         } catch (RuntimeException e) {
             if (scope != null) scope.close(); else state.close();
+            diagnostic.publish(EXCEPTION, 0);
             if (!warned) {
                 warned = true;
                 LogManager.getLogger().warn("Toon 透明深度分层不可用，保持现有透明绘制: {}", e.getMessage());
             }
             return null;
+        } finally {
+            if (scope == null) state.close();
         }
     }
 
     public int layers() { return layers; }
     public int peelPasses() { return peelPasses; }
     public int colorPasses() { return colorPasses; }
+    static int allocatedWidth() { return poolWidth; }
+    static int allocatedHeight() { return poolHeight; }
+    static int allocatedLayers() { return poolCount; }
     public static long allocatedBytes() {
-        return (long) poolWidth * poolHeight * (bytesPerPixel(poolFormat) + 1) * poolCount;
+        return poolCount == 0 ? 0 : poolBytes(poolWidth, poolHeight, poolFormat, poolCount);
     }
 
-    /** 把当前不透明深度复制到目标层，再记录本层最近的透明片元。 */
+    /** 原格式不透明深度只复制一次；MIN 混合在 R32F 中保留原始片元深度。 */
     public void beginPeel(int layer) {
         checkLayer(layer);
         requireProgram();
@@ -116,25 +137,27 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         GL46C.glFramebufferTexture2D(GL46C.GL_DRAW_FRAMEBUFFER,
                 poolFormat == GL46C.GL_DEPTH24_STENCIL8 || poolFormat == GL46C.GL_DEPTH32F_STENCIL8
                         ? GL46C.GL_DEPTH_STENCIL_ATTACHMENT : GL46C.GL_DEPTH_ATTACHMENT,
-                GL46C.GL_TEXTURE_2D, DEPTH_TEXTURES[layer], 0);
+                GL46C.GL_TEXTURE_2D, opaqueDepthTexture, 0);
         GL46C.glFramebufferTexture2D(GL46C.GL_DRAW_FRAMEBUFFER, GL46C.GL_COLOR_ATTACHMENT0,
-                GL46C.GL_TEXTURE_2D, COVERAGE_TEXTURES[layer], 0);
+                GL46C.GL_TEXTURE_2D, DEPTH_TEXTURES[layer], 0);
         GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
         if (GL46C.glCheckFramebufferStatus(GL46C.GL_DRAW_FRAMEBUFFER) != GL46C.GL_FRAMEBUFFER_COMPLETE)
             throw new IllegalStateException("深度层附件不完整");
         GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, state.drawFbo);
         GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
         int x = state.viewport[0], y = state.viewport[1];
-        GL46C.glBlitFramebuffer(x, y, x + state.viewport[2], y + state.viewport[3],
+        if (layer == 0) GL46C.glBlitFramebuffer(x, y, x + state.viewport[2], y + state.viewport[3],
                 x, y, x + state.viewport[2], y + state.viewport[3],
                 GL46C.GL_DEPTH_BUFFER_BIT, GL46C.GL_NEAREST);
         GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, framebuffer);
         GL46C.glColorMaski(0, true, true, true, true);
-        GL46C.glDisablei(GL46C.GL_BLEND, 0);
+        GL46C.glEnablei(GL46C.GL_BLEND, 0);
+        GL46C.glBlendEquationi(0, GL46C.GL_MIN);
         GL46C.glScissor(x, y, state.viewport[2], state.viewport[3]);
         GL46C.glEnable(GL46C.GL_SCISSOR_TEST);
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            FloatBuffer clear = stack.callocFloat(4);
+            // 2 超过所有合法窗口深度，明确区分空层与远平面上的片元。
+            FloatBuffer clear = stack.floats(2, 2, 2, 2);
             GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, clear);
         }
         restoreReadTarget();
@@ -142,8 +165,8 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         GL46C.glViewport(state.viewport[0], state.viewport[1], state.viewport[2], state.viewport[3]);
         restoreScissor();
         GL46C.glEnable(GL46C.GL_DEPTH_TEST);
-        GL46C.glDepthFunc(GL46C.GL_LEQUAL);
-        GL46C.glDepthMask(true);
+        GL46C.glDepthFunc(state.depthFunc);
+        GL46C.glDepthMask(false);
         bindLayer(layer == 0 ? -1 : layer - 1);
         setUniforms(1, layer > 0 ? 1 : 0);
         if (layer > 0) beginConditional(LAYER_QUERIES[layer - 1]);
@@ -176,6 +199,7 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         bindLayer(layers - 1);
         setUniforms(2, 1);
         beginConditional(LAYER_QUERIES[layers - 1]);
+        overflowQuery = ToonTransparencyDiagnostics.beginTail(layers);
         colorPasses++;
     }
 
@@ -195,11 +219,23 @@ public final class ToonTransparencyLayers implements AutoCloseable {
 
     /** 结束透明阶段，恢复原目标和 Toon shader 的普通模式。 */
     public void endStage() {
+        endStage(true);
+    }
+
+    void endStage(boolean completed) {
         requireOpen();
+        endOverflow(!completed);
         endConditional();
         restoreTarget();
         restoreDepthState();
         setUniforms(0, 0);
+    }
+
+    private void endOverflow(boolean cancel) {
+        if (overflowQuery == 0) return;
+        GL46C.glEndQuery(GL46C.GL_ANY_SAMPLES_PASSED);
+        if (cancel) ToonTransparencyDiagnostics.cancel(overflowQuery);
+        overflowQuery = 0;
     }
 
     private void checkLayer(int layer) {
@@ -238,7 +274,7 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, layer < 0 ? 0 : DEPTH_TEXTURES[layer]);
         GL46C.glBindSampler(depthUnit, 0);
         GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + coverageUnit);
-        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, layer < 0 ? 0 : COVERAGE_TEXTURES[layer]);
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, layer < 0 ? 0 : DEPTH_TEXTURES[layer]);
         GL46C.glBindSampler(coverageUnit, 0);
         GL46C.glActiveTexture(state.activeTexture);
     }
@@ -272,6 +308,7 @@ public final class ToonTransparencyLayers implements AutoCloseable {
     @Override public void close() {
         if (closed) return;
         closed = true;
+        endOverflow(true);
         if (queryActive) GL46C.glEndQuery(GL46C.GL_ANY_SAMPLES_PASSED);
         queryActive = false;
         endConditional();
@@ -287,26 +324,20 @@ public final class ToonTransparencyLayers implements AutoCloseable {
 
     /** 渲染线程调用；释放共享分层目标。 */
     public static void cleanup() {
-        if (framebuffer != 0) GL46C.glDeleteFramebuffers(framebuffer);
-        for (int texture : DEPTH_TEXTURES) if (texture != 0) GL46C.glDeleteTextures(texture);
-        for (int texture : COVERAGE_TEXTURES) if (texture != 0) GL46C.glDeleteTextures(texture);
-        for (int query : LAYER_QUERIES) if (query != 0) GL46C.glDeleteQueries(query);
-        java.util.Arrays.fill(DEPTH_TEXTURES, 0);
-        java.util.Arrays.fill(COVERAGE_TEXTURES, 0);
-        java.util.Arrays.fill(LAYER_QUERIES, 0);
-        framebuffer = poolWidth = poolHeight = poolFormat = poolCount = 0;
+        releasePool();
+        ToonTransparencyDiagnostics.cleanup();
         warned = false;
     }
 
-    private static int requestedLayers() {
-        String value = System.getProperty("mmdskin.toonTransparencyLayerCount");
-        if (value == null) return 4;
-        try {
-            int count = Integer.parseInt(value);
-            return count >= 1 && count <= MAX_LAYERS ? count : 0;
-        } catch (NumberFormatException ignored) {
-            return 0;
-        }
+    private static void releasePool() {
+        if (framebuffer != 0) GL46C.glDeleteFramebuffers(framebuffer);
+        for (int texture : DEPTH_TEXTURES) if (texture != 0) GL46C.glDeleteTextures(texture);
+        if (opaqueDepthTexture != 0) GL46C.glDeleteTextures(opaqueDepthTexture);
+        opaqueDepthTexture = 0;
+        for (int query : LAYER_QUERIES) if (query != 0) GL46C.glDeleteQueries(query);
+        java.util.Arrays.fill(DEPTH_TEXTURES, 0);
+        java.util.Arrays.fill(LAYER_QUERIES, 0);
+        framebuffer = poolWidth = poolHeight = poolFormat = poolCount = 0;
     }
 
     private static boolean activeQuery(int target) {
@@ -372,15 +403,16 @@ public final class ToonTransparencyLayers implements AutoCloseable {
     private record DepthTarget(int format, int width, int height, int viewportX, int viewportY,
                                int viewportWidth, int viewportHeight, boolean stencil) { }
 
-    private static DepthTarget depthTarget(GlState state) {
-        if (state.drawFbo == 0 || GL46C.glIsEnabled(GL46C.GL_STENCIL_TEST)) return null;
+    private static DepthTarget depthTarget(GlState state, ToonTransparencyDiagnostics.Attempt diagnostic) {
+        if (state.drawFbo == 0) { diagnostic.reason = DEFAULT_FRAMEBUFFER; return null; }
+        if (GL46C.glIsEnabled(GL46C.GL_STENCIL_TEST)) { diagnostic.reason = STENCIL_TEST; return null; }
         int kind = GL46C.glGetFramebufferAttachmentParameteri(GL46C.GL_DRAW_FRAMEBUFFER,
                 GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-        if (kind == GL46C.GL_NONE) return null;
+        if (kind == GL46C.GL_NONE) { diagnostic.reason = NO_DEPTH; return null; }
         int id = GL46C.glGetFramebufferAttachmentParameteri(GL46C.GL_DRAW_FRAMEBUFFER,
                 GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
         int format, width, height;
-        int samples = GL46C.glGetInteger(GL46C.GL_SAMPLES);
+        int samples = diagnostic.samples = GL46C.glGetInteger(GL46C.GL_SAMPLES);
         if (kind == GL46C.GL_RENDERBUFFER) {
             int old = GL46C.glGetInteger(GL46C.GL_RENDERBUFFER_BINDING);
             GL46C.glBindRenderbuffer(GL46C.GL_RENDERBUFFER, id);
@@ -401,8 +433,12 @@ public final class ToonTransparencyLayers implements AutoCloseable {
             height = GL46C.glGetTextureLevelParameteri(id, level, GL46C.GL_TEXTURE_HEIGHT);
         } else return null;
         int x = state.viewport[0], y = state.viewport[1], w = state.viewport[2], h = state.viewport[3];
-        if (samples != 0 || x < 0 || y < 0 || w <= 0 || h <= 0
+        diagnostic.width = width; diagnostic.height = height; diagnostic.format = format;
+        if (samples != 0) { diagnostic.reason = MULTISAMPLE; return null; }
+        diagnostic.reason = VIEWPORT;
+        if (x < 0 || y < 0 || w <= 0 || h <= 0
                 || (long) x + w > width || (long) y + h > height) return null;
+        diagnostic.reason = DEPTH_FORMAT;
         boolean stencil = format == GL46C.GL_DEPTH24_STENCIL8 || format == GL46C.GL_DEPTH32F_STENCIL8;
         return switch (format) {
             case GL46C.GL_DEPTH_COMPONENT24, GL46C.GL_DEPTH_COMPONENT32,
@@ -412,8 +448,12 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         };
     }
 
+    private static long poolBytes(int width, int height, int format, int count) {
+        return (long) width * height * (bytesPerPixel(format) + Float.BYTES * count);
+    }
+
     private static boolean allocate(DepthTarget target, int layers) {
-        if ((long) target.width * target.height * (bytesPerPixel(target.format) + 1) * layers > MAX_BYTES) return false;
+        if (poolBytes(target.width, target.height, target.format, layers) > MAX_BYTES) return false;
         if (framebuffer != 0 && poolWidth >= target.width && poolHeight >= target.height
                 && poolFormat == target.format && poolCount >= layers) return true;
         // 小型 GUI 目标不能反复挤掉世界目标的共享缓冲。
@@ -422,49 +462,41 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         if (framebuffer != 0 && poolFormat == target.format) {
             int width = Math.max(poolWidth, target.width), height = Math.max(poolHeight, target.height);
             int count = Math.max(poolCount, layers);
-            if ((long) width * height * (bytesPerPixel(target.format) + 1) * count > MAX_BYTES) return false;
-            target = new DepthTarget(target.format, width, height, target.viewportX, target.viewportY,
-                    target.viewportWidth, target.viewportHeight, target.stencil);
-            layers = count;
+            if (poolBytes(width, height, target.format, count) <= MAX_BYTES) {
+                target = new DepthTarget(target.format, width, height, target.viewportX, target.viewportY,
+                        target.viewportWidth, target.viewportHeight, target.stencil);
+                layers = count;
+            }
+            // 历史高水位装不下时重建为当前已通过预算检查的请求。
         }
-        cleanup();
+        releasePool();
         int oldDraw = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
         int oldRead = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
-        int oldRenderbuffer = GL46C.glGetInteger(GL46C.GL_RENDERBUFFER_BINDING);
         int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
         GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
         int oldTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
         try {
             framebuffer = GL46C.glGenFramebuffers();
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, framebuffer);
+            opaqueDepthTexture = GL46C.glGenTextures();
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, opaqueDepthTexture);
+            int external = target.stencil ? GL46C.GL_DEPTH_STENCIL : GL46C.GL_DEPTH_COMPONENT;
+            int type = target.format == GL46C.GL_DEPTH_COMPONENT32F ? GL46C.GL_FLOAT
+                    : target.format == GL46C.GL_DEPTH32F_STENCIL8 ? GL46C.GL_FLOAT_32_UNSIGNED_INT_24_8_REV
+                    : target.stencil ? GL46C.GL_UNSIGNED_INT_24_8 : GL46C.GL_UNSIGNED_INT;
+            GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, target.format, target.width, target.height, 0, external, type, 0L);
+            textureParameters();
+            GL46C.glFramebufferTexture2D(GL46C.GL_DRAW_FRAMEBUFFER,
+                    target.stencil ? GL46C.GL_DEPTH_STENCIL_ATTACHMENT : GL46C.GL_DEPTH_ATTACHMENT,
+                    GL46C.GL_TEXTURE_2D, opaqueDepthTexture, 0);
             for (int i = 0; i < layers; i++) {
                 DEPTH_TEXTURES[i] = GL46C.glGenTextures();
                 GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, DEPTH_TEXTURES[i]);
-                int external = target.stencil ? GL46C.GL_DEPTH_STENCIL : GL46C.GL_DEPTH_COMPONENT;
-                int type = target.format == GL46C.GL_DEPTH_COMPONENT16 ? GL46C.GL_UNSIGNED_SHORT
-                        : target.format == GL46C.GL_DEPTH_COMPONENT32F ? GL46C.GL_FLOAT
-                        : target.format == GL46C.GL_DEPTH32F_STENCIL8 ? GL46C.GL_FLOAT_32_UNSIGNED_INT_24_8_REV
-                        : target.stencil ? GL46C.GL_UNSIGNED_INT_24_8 : GL46C.GL_UNSIGNED_INT;
-                GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, target.format, target.width, target.height,
-                        0, external, type, 0L);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER, GL46C.GL_NEAREST);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, GL46C.GL_NEAREST);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_S, GL46C.GL_CLAMP_TO_EDGE);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_T, GL46C.GL_CLAMP_TO_EDGE);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_COMPARE_MODE, GL46C.GL_NONE);
-                COVERAGE_TEXTURES[i] = GL46C.glGenTextures();
-                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, COVERAGE_TEXTURES[i]);
-                GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_R8, target.width, target.height,
-                        0, GL46C.GL_RED, GL46C.GL_UNSIGNED_BYTE, 0L);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER, GL46C.GL_NEAREST);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, GL46C.GL_NEAREST);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_S, GL46C.GL_CLAMP_TO_EDGE);
-                GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_T, GL46C.GL_CLAMP_TO_EDGE);
-                GL46C.glFramebufferTexture2D(GL46C.GL_DRAW_FRAMEBUFFER,
-                        target.stencil ? GL46C.GL_DEPTH_STENCIL_ATTACHMENT : GL46C.GL_DEPTH_ATTACHMENT,
-                        GL46C.GL_TEXTURE_2D, DEPTH_TEXTURES[i], 0);
+                GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_R32F, target.width, target.height,
+                        0, GL46C.GL_RED, GL46C.GL_FLOAT, 0L);
+                textureParameters();
                 GL46C.glFramebufferTexture2D(GL46C.GL_DRAW_FRAMEBUFFER, GL46C.GL_COLOR_ATTACHMENT0,
-                        GL46C.GL_TEXTURE_2D, COVERAGE_TEXTURES[i], 0);
+                        GL46C.GL_TEXTURE_2D, DEPTH_TEXTURES[i], 0);
                 GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
                 if (GL46C.glCheckFramebufferStatus(GL46C.GL_DRAW_FRAMEBUFFER) != GL46C.GL_FRAMEBUFFER_COMPLETE)
                     throw new IllegalStateException("深度分层 FBO 不完整");
@@ -474,16 +506,23 @@ public final class ToonTransparencyLayers implements AutoCloseable {
             poolWidth = target.width; poolHeight = target.height; poolFormat = target.format; poolCount = layers;
             return true;
         } catch (RuntimeException e) {
-            cleanup();
+            releasePool();
             throw e;
         } finally {
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, oldDraw);
             GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, oldRead);
-            GL46C.glBindRenderbuffer(GL46C.GL_RENDERBUFFER, oldRenderbuffer);
             GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, oldTexture);
             GL46C.glActiveTexture(active);
         }
+    }
+
+    private static void textureParameters() {
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER, GL46C.GL_NEAREST);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, GL46C.GL_NEAREST);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_S, GL46C.GL_CLAMP_TO_EDGE);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_T, GL46C.GL_CLAMP_TO_EDGE);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_COMPARE_MODE, GL46C.GL_NONE);
     }
 
     private static int bytesPerPixel(int format) {
@@ -507,6 +546,8 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         int depthUnit = -1, coverageUnit = -1;
         int textureBinding, samplerBinding, coverageTextureBinding, coverageSamplerBinding;
         final boolean blend0 = GL46C.glIsEnabledi(GL46C.GL_BLEND, 0);
+        final int equationRgb0 = GL46C.glGetIntegeri(GL46C.GL_BLEND_EQUATION_RGB, 0);
+        final int equationAlpha0 = GL46C.glGetIntegeri(GL46C.GL_BLEND_EQUATION_ALPHA, 0);
         final boolean[] colorMask0 = new boolean[4];
 
         GlState() {
@@ -531,6 +572,7 @@ public final class ToonTransparencyLayers implements AutoCloseable {
         }
 
         void restoreCoverageColorState() {
+            GL46C.glBlendEquationSeparatei(0, equationRgb0, equationAlpha0);
             GL46C.glColorMaski(0, colorMask0[0], colorMask0[1], colorMask0[2], colorMask0[3]);
             enabledi(GL46C.GL_BLEND, 0, blend0);
         }

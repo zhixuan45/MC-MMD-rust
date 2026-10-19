@@ -27,6 +27,8 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
 
     @Override public boolean isToonRenderingEnabled() { return data.toonRenderingEnabled; }
     @Override public boolean isToonDisableTransparency() { return data.toonDisableTransparency; }
+    @Override public boolean isToonDisableDepthSeal() { return data.toonDisableDepthSeal; }
+    @Override public int getToonTransparencyLayerCount() { return data.toonTransparencyLayerCount; }
     @Override public float getToonAlphaCutoff() { return data.toonAlphaCutoff; }
     @Override public float getToonHairAlphaCutoff() { return data.toonHairAlphaCutoff; }
     @Override public int getToonLevels() { return data.toonLevels; }

@@ -10,6 +10,10 @@ public interface IToonConfig {
 
     default boolean isToonDisableTransparency() { return false; }
 
+    default boolean isToonDisableDepthSeal() { return false; }
+
+    default int getToonTransparencyLayerCount() { return 4; }
+
     default float getToonAlphaCutoff() { return 0.001f; }
 
     default float getToonHairAlphaCutoff() { return 0.001f; }

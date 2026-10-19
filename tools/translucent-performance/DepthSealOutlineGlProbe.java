@@ -56,10 +56,11 @@ public final class DepthSealOutlineGlProbe {
         return color;
     }
 
-    private static void scenario(boolean batch, boolean gpu, boolean layers, boolean sampled) {
+    private static void scenario(boolean batch, boolean gpu, boolean layers, boolean sampled, boolean disableSeal) {
         System.setProperty("mmdskin.translucentBatch", Boolean.toString(batch));
         System.setProperty("mmdskin.toonTransparencyLayers", Boolean.toString(layers));
         ConfigData config = new ConfigData();
+        config.toonDisableDepthSeal = disableSeal;
         config.toonRenderingEnabled = true; config.toonOutlineEnabled = true;
         config.toonOutlineFollowLighting = false;
         config.toonOutlineR = config.toonOutlineG = config.toonOutlineB = 1;
@@ -126,17 +127,24 @@ public final class DepthSealOutlineGlProbe {
             float[] solidBefore = readColor(50);
             float[] z = new float[1];
             GL46C.glReadPixels(30, SIZE / 2, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, z);
+            check(before[3] > .49f && before[3] < .51f, "translucent alpha preserved with either depth setting");
+            float[] opaqueDepth = new float[1];
+            GL46C.glReadPixels(50, SIZE / 2, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, opaqueDepth);
+            check(Math.abs(opaqueDepth[0] - .3f) < .00001f, "opaque pass must always write depth");
             OutlineRenderPass.draw(shader, new OutlineRenderPass.Inputs(positions, normals, uvs, run(3),
                     1, 4, GL46C.GL_UNSIGNED_INT, matrix, matrix, 1), (id,a) -> a, id -> white);
             float[] after = readColor(30), hole = readColor(10), solid = readColor(50);
-            String tag = "batch=" + batch + " gpu=" + gpu + " layers=" + layers + " sampled=" + sampled;
+            String tag = "batch=" + batch + " gpu=" + gpu + " layers=" + layers + " sampled=" + sampled + " disableSeal=" + disableSeal;
             System.out.println(tag + " depth=" + z[0] + " hair before=" + java.util.Arrays.toString(before)
                     + " after=" + java.util.Arrays.toString(after));
             for (int c = 0; c < 4; c++) {
-                check(Math.abs(before[c] - after[c]) <= .005f, "rear white outline overwrote translucent hair: " + tag);
+                if (!disableSeal)
+                    check(Math.abs(before[c] - after[c]) <= .005f, "rear white outline overwrote translucent hair: " + tag);
                 check(Math.abs(solidBefore[c] - solid[c]) <= .005f, "opaque hair occlusion: " + tag);
             }
-            check(Math.abs(z[0] - .3f) < .00001f, "visible hair must retain surface depth: " + tag);
+            check(Math.abs(z[0] - (disableSeal ? 1.0f : .3f)) < .00001f,
+                    "depth seal toggle changes only translucent depth: " + tag);
+            if (disableSeal) check(after[0] > .95f && after[3] > .95f, "rear outline demonstrates missing depth seal");
             check(hole[0] > .95f && hole[3] > .95f, "true alpha hole must remain open: " + tag);
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "GL error: " + tag);
             System.out.println("PASS depth seal + production outline: " + tag);
@@ -163,7 +171,8 @@ public final class DepthSealOutlineGlProbe {
             for (boolean batch : new boolean[]{false, true})
                 for (boolean gpu : new boolean[]{false, true})
                     for (boolean sampled : new boolean[]{false, true})
-                        for (boolean layers : new boolean[]{false, true}) scenario(batch, gpu, layers, sampled);
+                        for (boolean layers : new boolean[]{false, true})
+                            for (boolean disableSeal : new boolean[]{false, true}) scenario(batch, gpu, layers, sampled, disableSeal);
         } finally {
             System.clearProperty("mmdskin.translucentBatch");
             System.clearProperty("mmdskin.toonTransparencyLayers");

@@ -10,6 +10,7 @@ final class MaterialShaderBinding implements AutoCloseable {
     private final int alphaPass;
     private final int hairMaterial;
     private final boolean disableTransparency;
+    private final boolean toon;
     private final int colorModulator;
     private final float[] previousModulator = new float[4];
     private final int[] attributes;
@@ -31,6 +32,7 @@ final class MaterialShaderBinding implements AutoCloseable {
         alphaPass = GL46C.glGetUniformLocation(program, "AlphaPass");
         hairMaterial = GL46C.glGetUniformLocation(program, "HairMaterial");
         int opaque = GL46C.glGetUniformLocation(program, "DisableTransparency");
+        toon = materialColor >= 0 && opaque >= 0;
         disableTransparency = materialColor >= 0 && opaque >= 0 && GL46C.glGetUniformi(program, opaque) != 0;
         int modulator = GL46C.glGetUniformLocation(program, "ColorModulator");
         colorModulator = modulator >= 0 ? modulator : GL46C.glGetUniformLocation(program, "iris_ColorModulator");
@@ -52,6 +54,7 @@ final class MaterialShaderBinding implements AutoCloseable {
 
     boolean splitsTextureAlpha() { return alphaPass >= 0; }
     boolean disablesTransparency() { return disableTransparency; }
+    boolean isToon() { return toon; }
 
     void apply(MaterialRenderState state, int pass) {
         int hair = state.hair ? 1 : 0;
