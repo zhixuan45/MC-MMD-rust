@@ -63,6 +63,7 @@ public final class PassStateProbe {
         mesh.putInt(8, 0); // resolver 返 0 alpha，因此无需实际 draw。
         mesh.putFloat(12, 1.0f);
         mesh.put(16, (byte) 1);
+        mesh.put(18, (byte) 1);
         FloatBuffer projection = matrix(projectionKind);
         projection.position(3); // 分类必须按当前 position 读取矩阵。
         float rootScale = 0.09f * modelScale;
@@ -119,6 +120,7 @@ public final class PassStateProbe {
             meshes.putInt(i * 20, i);
             meshes.putFloat(i * 20 + 12, 1);
             meshes.put(i * 20 + 16, (byte) 1);
+            meshes.put(i * 20 + 18, (byte) 1);
         }
         FloatBuffer projection = matrix(ORTHOGRAPHIC).position(3);
         FloatBuffer modelView = modelView(1, 0, 0, false).position(2);

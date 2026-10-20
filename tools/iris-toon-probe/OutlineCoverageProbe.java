@@ -40,7 +40,8 @@ public final class OutlineCoverageProbe {
         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,indices);
         GL46C.glBufferData(GL46C.GL_ELEMENT_ARRAY_BUFFER,new int[]{0,1,2},GL46C.GL_STATIC_DRAW);
         ByteBuffer meshes = BufferUtils.createByteBuffer(20).order(ByteOrder.nativeOrder());
-        meshes.putInt(0,0).putInt(4,0).putInt(8,3).putFloat(12,.5f).put(16,(byte)1);
+        meshes.putInt(0,0).putInt(4,0).putInt(8,3).putFloat(12,.5f)
+                .put(16,(byte)1).put(18,(byte)1);
         FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
         matrix.put(new float[]{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}).flip();
         GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER,fbo);

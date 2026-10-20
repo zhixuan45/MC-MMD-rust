@@ -126,6 +126,9 @@ public final class SubMeshDrawHelper {
                                 ModelMaterial material = materials[materialId];
                                 MaterialRenderState state = materialCache.resolve(materialId, alpha);
                                 if (state.alpha < 0.001f) continue;
+                                // 半透明边缘不能进入阴影图，否则发片抗锯齿会按整三角形投影成阴影块。
+                                if (shadowPass && (state.alpha < MaterialRenderState.OPAQUE_ALPHA
+                                        || material.hasTranslucentPixels)) continue;
                                 if (!shadowPass && !forceOpaque) {
                                     if (binding.splitsTextureAlpha()) {
                                         if (pass == 0 && state.alpha < MaterialRenderState.OPAQUE_ALPHA) continue;

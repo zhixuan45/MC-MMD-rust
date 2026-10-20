@@ -117,7 +117,10 @@ public final class OutlineRenderPass {
         ByteBuffer data = inputs.subMeshData();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
             int base = i * SUB_MESH_STRIDE;
-            if (!occlusion && data.get(base + 16) == 0) continue;
+            // 私有遮挡缓冲也只能收集当前可见的子网格；offset 16 是 Rust 侧 isVisible。
+            if (data.get(base + 16) == 0) continue;
+            // 可见性与描边资格独立；无边缘材质不应影响遮挡，也不应绘制轮廓。
+            if (data.get(base + 18) == 0) continue;
             if (occlusion) {
                 if (data.get(base + 17) != 0) GL46C.glDisable(GL46C.GL_CULL_FACE);
                 else { GL46C.glEnable(GL46C.GL_CULL_FACE); GL46C.glCullFace(GL46C.GL_BACK); }

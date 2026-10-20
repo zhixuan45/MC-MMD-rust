@@ -46,7 +46,8 @@ public final class DepthSealOutlineGlProbe {
 
     private static ByteBuffer run(int begin) {
         ByteBuffer data = buffer(20);
-        data.putInt(0).putInt(begin).putInt(3).putFloat(1).put((byte) 1).put((byte) 1);
+        data.putInt(0).putInt(begin).putInt(3).putFloat(1)
+                .put((byte) 1).put((byte) 1).put((byte) 1).put((byte) 0);
         return data;
     }
 
