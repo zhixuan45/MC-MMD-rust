@@ -15,7 +15,7 @@ use super::bullet_ffi::{self, BulletWorld};
 use super::collision_topology::{
     build_filter_plan, CollisionAabb, CollisionBody, CollisionFilterPlan, CollisionStabilityMode,
 };
-use super::config::get_config;
+use super::config::{get_config, PhysicsConfig};
 use super::garment_contacts::build_garment_contact_plan;
 use super::kinematic_target_filter::KinematicTargetFilter;
 use super::mmd_joint::MmdJointData;
@@ -229,8 +229,23 @@ impl MMDPhysics {
         proxies: &[super::hair_collision_proxies::HairCollisionProxy],
     ) {
         let config = get_config();
+        self.build_physics_with_proxies_config(
+            pmx_rigid_bodies, pmx_joints, bone_transforms, bone_names, proxies, &config,
+        );
+    }
+
+    /// 使用同一配置快照构建；测试可注入独立配置，避免污染并行测试的全局状态。
+    fn build_physics_with_proxies_config(
+        &mut self,
+        pmx_rigid_bodies: &[PmxRigidBody],
+        pmx_joints: &[PmxJoint],
+        bone_transforms: &[Mat4],
+        bone_names: &[String],
+        proxies: &[super::hair_collision_proxies::HairCollisionProxy],
+        config: &PhysicsConfig,
+    ) {
         let active_gravity_y = self.active_debug_config.gravity_y.get();
-        self.active_debug_config = ActivePhysicsDebugConfig::from_config(&config);
+        self.active_debug_config = ActivePhysicsDebugConfig::from_config(config);
         // BulletWorld 已在 new() 按当时配置创建，构建快照保留它的真实重力值。
         self.active_debug_config.gravity_y.set(active_gravity_y);
         self.collision_stability_mode = config.collision_stability_mode;

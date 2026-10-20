@@ -53,7 +53,7 @@ class NativeEvaluationBatchTest {
                         assertEquals(1, finished.get()); completed.incrementAndGet();
                     }),
                     job(2, () -> { callerFailed.countDown(); throw failure; }, () -> fail("Failed job cannot publish"))
-            ), executor));
+            ), executor, 4)); // 此用例验证并行异常收尾，不依赖 CI 主机的逻辑 CPU 数。
             assertSame(failure, error.getCause());
             assertEquals(1, completed.get());
         }

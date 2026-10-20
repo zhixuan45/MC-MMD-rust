@@ -140,23 +140,18 @@ fn invalid_proxy_falls_back_and_snapshot_reads_do_not_advance_or_mutate_world() 
 
 #[test]
 fn geometry_proxy_keeps_authored_masks_in_every_stability_mode() {
-    use crate::physics::{get_config, set_config, CollisionStabilityMode};
-    struct Restore(crate::physics::PhysicsConfig);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            set_config(self.0.clone());
-        }
-    }
-    let _restore = Restore(get_config());
+    use crate::physics::{get_config, CollisionStabilityMode, PhysicsConfig};
+    let original_mode = get_config().collision_stability_mode;
     for mode in [
         CollisionStabilityMode::Strict,
         CollisionStabilityMode::Stable,
         CollisionStabilityMode::Relaxed,
     ] {
-        let mut config = get_config();
-        config.collision_stability_mode = mode;
-        config.collision_enabled = true;
-        set_config(config);
+        let config = PhysicsConfig {
+            collision_stability_mode: mode,
+            collision_enabled: true,
+            ..PhysicsConfig::default()
+        };
         for masks in [
             (0xffff, 0xffff, true),
             (0, 0xffff, false),
@@ -172,10 +167,12 @@ fn geometry_proxy_keeps_authored_masks_in_every_stability_mode() {
             raw[1].un_collision_group_flag = masks.1;
             let planned = [proxy(&raw[1], 1)];
             let mut physics = MMDPhysics::new().unwrap();
-            physics.build_physics_with_proxies(&raw, &[], &[], &[], &planned);
+            physics.build_physics_with_proxies_config(&raw, &[], &[], &[], &planned, &config);
+            assert_eq!(physics.collision_stability_mode, mode);
             physics.world.detect_collisions();
             let points = physics.contact_points_matching("HairTip", 64);
             assert_eq!(!points.points.is_empty(), masks.2, "mode={mode:?}");
         }
     }
+    assert_eq!(get_config().collision_stability_mode, original_mode);
 }
