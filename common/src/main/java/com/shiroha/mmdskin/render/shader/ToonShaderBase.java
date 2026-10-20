@@ -37,6 +37,7 @@ public abstract class ToonShaderBase {
     private int eyeEmissionLocation = -1;
     private int eyeMaterialMaskLocation = -1;
     private int outlinePremultipliedLocation = -1;
+    private int outlineOcclusionLocation = -1;
     private int outlineColorSlot;
     private int disableTransparencyLocation = -1, outlineDisableTransparencyLocation = -1;
 
@@ -185,6 +186,10 @@ public abstract class ToonShaderBase {
         if (outlinePremultipliedLocation >= 0) GL46C.glUniform1i(outlinePremultipliedLocation, value ? 1 : 0);
     }
 
+    public void setOutlineOcclusion(boolean value) {
+        if (outlineOcclusionLocation >= 0) GL46C.glUniform1i(outlineOcclusionLocation, value ? 1 : 0);
+    }
+
     public void setOutlineFollowLighting(boolean value) {
         outlineLighting.setEnabled(value);
     }
@@ -241,6 +246,7 @@ public abstract class ToonShaderBase {
         genericLighting.select(mainProgram);
         eyeMaterialMaskLocation = GL46C.glGetUniformLocation(mainProgram, "EyeMaterialMask");
         outlinePremultipliedLocation = GL46C.glGetUniformLocation(outlineProgram, "Premultiplied");
+        outlineOcclusionLocation = GL46C.glGetUniformLocation(outlineProgram, "OcclusionPass");
 
         outlineProjMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ProjMat");
         outlineModelViewMatLocation = GL46C.glGetUniformLocation(outlineProgram, "ModelViewMat");

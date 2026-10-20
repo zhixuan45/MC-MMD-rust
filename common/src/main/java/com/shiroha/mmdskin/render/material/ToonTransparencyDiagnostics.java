@@ -11,11 +11,12 @@ public final class ToonTransparencyDiagnostics {
         ACTIVE, BUDGET_REDUCED, DISABLED, INVALID_COUNT, WRONG_THREAD, UNSUPPORTED_GL,
         ACTIVE_QUERY, NO_PROGRAM, MISSING_UNIFORMS, TEXTURE_UNITS, DEFAULT_FRAMEBUFFER,
         STENCIL_TEST, NO_DEPTH, DEPTH_TARGET, MULTISAMPLE, VIEWPORT, DEPTH_FORMAT,
-        DEPTH_FUNCTION, BUDGET_EXHAUSTED, POOL_FORMAT_CONFLICT, ALLOCATION_FAILED, EXCEPTION
+        DEPTH_COPY_FAILED, DEPTH_FUNCTION, BUDGET_EXHAUSTED, POOL_FORMAT_CONFLICT, ALLOCATION_FAILED, EXCEPTION
     }
 
     public record Snapshot(int schemaVersion, boolean enabled, Reason reason, int requestedLayers, int actualLayers,
                            int width, int height, int depthFormat, int samples,
+                           int resolvedDepthFormat, int depthBits, int stencilBits, int componentType, int attachmentType,
                            long budgetBytes, long allocatedBytes, int allocatedWidth, int allocatedHeight,
                            int allocatedLayers, boolean depthSealDisabled) { }
     public record Overflow(long frame, long submission, int layers, boolean remainingFragments) { }
@@ -29,11 +30,12 @@ public final class ToonTransparencyDiagnostics {
 
     static final class Attempt {
         final int requested;
-        int width, height, format, samples;
+        int width, height, format, samples, resolvedFormat, depthBits, stencilBits, componentType, attachmentType;
         Reason reason = Reason.DEPTH_TARGET;
         Attempt(int requested) { this.requested = requested; }
         void publish(Reason reason, int actual) {
-            latest = new Snapshot(1, actual > 0, reason, requested, actual, width, height, format, samples,
+            latest = new Snapshot(2, actual > 0, reason, requested, actual, width, height, format, samples,
+                    resolvedFormat, depthBits, stencilBits, componentType, attachmentType,
                     ToonTransparencySettings.MAX_BYTES, ToonTransparencyLayers.allocatedBytes(),
                     ToonTransparencyLayers.allocatedWidth(), ToonTransparencyLayers.allocatedHeight(),
                     ToonTransparencyLayers.allocatedLayers(),

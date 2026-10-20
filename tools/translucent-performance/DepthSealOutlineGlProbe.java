@@ -131,8 +131,12 @@ public final class DepthSealOutlineGlProbe {
             float[] opaqueDepth = new float[1];
             GL46C.glReadPixels(50, SIZE / 2, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, opaqueDepth);
             check(Math.abs(opaqueDepth[0] - .3f) < .00001f, "opaque pass must always write depth");
-            OutlineRenderPass.draw(shader, new OutlineRenderPass.Inputs(positions, normals, uvs, run(3),
-                    1, 4, GL46C.GL_UNSIGNED_INT, matrix, matrix, 1), (id,a) -> a, id -> white);
+            // Include non-outlined foreground geometry: it still occludes rear outlines.
+            ByteBuffer outlineMeshes = buffer(40);
+            outlineMeshes.putInt(0).putInt(0).putInt(3).putFloat(1).put((byte)0).put((byte)1).putShort((short)0);
+            outlineMeshes.putInt(1).putInt(3).putInt(3).putFloat(1).put((byte)1).put((byte)1).putShort((short)0);
+            OutlineRenderPass.draw(shader, new OutlineRenderPass.Inputs(positions, normals, uvs, outlineMeshes,
+                    2, 4, GL46C.GL_UNSIGNED_INT, matrix, matrix, 1), (id,a) -> a, id -> id == 0 ? atlas : white);
             float[] after = readColor(30), hole = readColor(10), solid = readColor(50);
             String tag = "batch=" + batch + " gpu=" + gpu + " layers=" + layers + " sampled=" + sampled + " disableSeal=" + disableSeal;
             System.out.println(tag + " depth=" + z[0] + " hair before=" + java.util.Arrays.toString(before)
@@ -144,7 +148,17 @@ public final class DepthSealOutlineGlProbe {
             }
             check(Math.abs(z[0] - (disableSeal ? 1.0f : .3f)) < .00001f,
                     "depth seal toggle changes only translucent depth: " + tag);
-            if (disableSeal) check(after[0] > .95f && after[3] > .95f, "rear outline demonstrates missing depth seal");
+            if (disableSeal && sampled) {
+                // Two of four private coverage samples block the rear outline at alpha 128/255.
+                for (int c = 0; c < 4; c++)
+                    check(Math.abs(after[c] - (before[c] * .5f + .5f)) < .01f,
+                            "partial alpha attenuates rear outline: " + tag);
+                float[] afterDepth = new float[1];
+                GL46C.glReadPixels(30, SIZE / 2, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, afterDepth);
+                check(afterDepth[0] == 1.0f, "private outline coverage must not seal host depth");
+            } else if (disableSeal) {
+                check(after[0] > .95f && after[3] > .95f, "unsupported default framebuffer retains direct fallback");
+            }
             check(hole[0] > .95f && hole[3] > .95f, "true alpha hole must remain open: " + tag);
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "GL error: " + tag);
             System.out.println("PASS depth seal + production outline: " + tag);

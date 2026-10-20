@@ -9,11 +9,12 @@ probe_output="$repo_root/build/translucent-performance/linux-probes"
 mkdir -p "$probe_output"
 cd "$repo_root"
 javac -proc:none -encoding UTF-8 -cp "$classpath" -d "$probe_output" \
-    tools/translucent-performance/{BatchGlProbe,ToonTransparencyGlProbe,ToonTransparencyLayersGlProbe,DepthSealOutlineGlProbe,TransparencyStackGlProbe}.java
+    tools/translucent-performance/{BatchGlProbe,DepthAttachmentGlProbe,ToonTransparencyGlProbe,ToonTransparencyLayersGlProbe,DepthSealOutlineGlProbe,TransparencyStackGlProbe}.java
 run_probe() {
     local probe="$1"; shift
     java -cp "$classpath:$probe_output" "com.shiroha.mmdskin.render.material.$probe" "$@"
 }
+run_probe DepthAttachmentGlProbe
 run_probe ToonTransparencyLayersGlProbe --capacity-only
 run_probe TransparencyStackGlProbe --close
 run_probe TransparencyStackGlProbe
