@@ -3,7 +3,7 @@ package com.shiroha.mmdskin.render.material;
 import com.shiroha.mmdskin.config.ConfigManager;
 
 /** 可热更新的透明设置；JVM 参数保留为诊断覆盖。 */
-final class ToonTransparencySettings {
+public final class ToonTransparencySettings {
     static final int MAX_LAYERS = 16;
     static final long MAX_BYTES = 128L * 1024 * 1024;
 
@@ -20,7 +20,7 @@ final class ToonTransparencySettings {
         }
     }
 
-    static boolean disableDepthSeal() {
+    public static boolean disableDepthSeal() {
         String value = System.getProperty("mmdskin.toonDisableDepthSeal");
         return value == null ? ConfigManager.isToonDisableDepthSeal() : Boolean.parseBoolean(value);
     }

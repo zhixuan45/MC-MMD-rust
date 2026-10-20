@@ -13,6 +13,7 @@ uniform sampler2D Sampler0;
 uniform bool UseTextureAlpha;
 uniform float AlphaCutoff;
 uniform bool Premultiplied;
+uniform bool OcclusionPass;
 uniform bool FollowLighting;
 uniform bool DisableTransparency;
 
@@ -24,6 +25,15 @@ void main() {
     // 纹理只提供遮罩，描边颜色仍然独立。
     float coverage = UseTextureAlpha ? texture(Sampler0, texCoord0).a : 1.0;
     if (coverage < AlphaCutoff) discard;
+    if (OcclusionPass) {
+        float alpha = DisableTransparency ? 1.0 : clamp(coverage * OutlineAlpha, 0.0, 1.0);
+        // Four subpixels in the private 2x target approximate alpha coverage, not an opaque hair sheet.
+        ivec2 p = ivec2(gl_FragCoord.xy) & ivec2(1);
+        int rank = p.y == 0 ? p.x * 2 : 3 - p.x * 2;
+        if (alpha <= (float(rank) + 0.5) * 0.25) discard;
+        outlineColor = vec4(0.0);
+        return;
+    }
     if (DisableTransparency) coverage = 1.0;
     vec3 normal = normalize(viewNormal);
     // 正交投影的视线不随屏幕位置与 GUI 图层深度改变。

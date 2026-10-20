@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.outline;
 
 import com.shiroha.mmdskin.render.shader.ToonConfig;
+import com.shiroha.mmdskin.render.material.ToonTransparencySettings;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import org.lwjgl.opengl.GL46C;
 
@@ -77,6 +78,17 @@ public final class OutlineRenderPass {
             if (orthographic) width = orthographicWidth(width, inputs);
             shader.setOutlineProjectionMatrix(inputs.projection());
             shader.setOutlineModelViewMatrix(inputs.modelView());
+            if (pass.isSampled() && ToonTransparencySettings.disableDepthSeal()) {
+                pass.beginOcclusion();
+                shader.setOutlineWidth(0);
+                shader.setOutlineOcclusion(true);
+                try {
+                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, true);
+                } finally {
+                    shader.setOutlineOcclusion(false);
+                    pass.endOcclusion();
+                }
+            }
             shader.setOutlineWidth(width);
             shader.setOutlineColor(config.getOutlineColorR(), config.getOutlineColorG(), config.getOutlineColorB());
             GL46C.glDepthMask(false);
@@ -84,7 +96,7 @@ public final class OutlineRenderPass {
             if (orthographic) GL46C.glDepthFunc(GL46C.GL_LESS);
             GL46C.glCullFace(GL46C.GL_FRONT);
             GL46C.glEnable(GL46C.GL_CULL_FACE);
-            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config);
+            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, false);
             pass.composite();
         }
     }
@@ -101,16 +113,21 @@ public final class OutlineRenderPass {
     }
 
     private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver,
-                                      TextureResolver textureResolver, IntPredicate hairResolver, ToonConfig config) {
+                                      TextureResolver textureResolver, IntPredicate hairResolver, ToonConfig config, boolean occlusion) {
         ByteBuffer data = inputs.subMeshData();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
             int base = i * SUB_MESH_STRIDE;
-            if (data.get(base + 16) == 0) continue;
+            if (!occlusion && data.get(base + 16) == 0) continue;
+            if (occlusion) {
+                if (data.get(base + 17) != 0) GL46C.glDisable(GL46C.GL_CULL_FACE);
+                else { GL46C.glEnable(GL46C.GL_CULL_FACE); GL46C.glCullFace(GL46C.GL_BACK); }
+            }
             float alpha = alphaResolver.resolve(data.getInt(base), data.getFloat(base + 12));
             if (alpha < 0.001f) continue;
             float cutoff = hairResolver.test(data.getInt(base)) ? config.getHairAlphaCutoff() : config.getAlphaCutoff();
             // 主体裁掉的像素不留下描边；保留原贴图遮罩的 0.1 下限。
-            shader.setOutlineAlphaCutoff(Math.max(0.1f, cutoff / alpha));
+            shader.setOutlineAlphaCutoff(occlusion ? Math.max(0.001f, cutoff) / alpha
+                    : Math.max(0.1f, cutoff / alpha));
             // 无纹理材质沿用实心遮罩，不采样上一材质的残留绑定。
             int texture = textureResolver.resolve(data.getInt(base));
             shader.setOutlineUseTextureAlpha(texture > 0);
