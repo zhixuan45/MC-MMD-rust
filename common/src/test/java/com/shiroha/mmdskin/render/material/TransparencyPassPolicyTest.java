@@ -24,4 +24,11 @@ class TransparencyPassPolicyTest {
         assertTrue(TransparencyPassPolicy.useSortedSubmission(false, true, false));
         assertTrue(TransparencyPassPolicy.useSortedSubmission(true, false, false));
     }
+
+    @Test void unprunedCandidateSetMayReplacePrunedButNotViceVersa() {
+        assertTrue(TransparencyPassPolicy.candidateCoverageReusable(false, false));
+        assertTrue(TransparencyPassPolicy.candidateCoverageReusable(false, true));
+        assertTrue(TransparencyPassPolicy.candidateCoverageReusable(true, true));
+        assertFalse(TransparencyPassPolicy.candidateCoverageReusable(true, false));
+    }
 }

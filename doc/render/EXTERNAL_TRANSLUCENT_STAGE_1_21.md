@@ -44,3 +44,31 @@ The prior `classicDepthPrepass()` returned true for every world model when the s
 Disable the early depth-only prepass for world scenes entirely. World fallback always uses opaque + translucent color passes with depth writes disabled for translucent fragments, and no subsequent depth seal, even if the public callback has fired. The private Toon depth-peeling mechanism can still select layers without committing transparent pixels to world depth. This fixes the early-depth hazard; exact blending order of independent later block entities remains a separate cross-pass limitation requiring staged deferred compositing.
 
 Regression scenarios: place a chest / sign / banner immediately behind translucent MMD hair, while facing away and moving the camera, both with Toon peeling enabled and disabled and with BSL/NeOculus. Check water/glass and outline masks too. In particular, verify the actual depth mask and depth buffer via a GPU capture, not only the resulting screenshot.
+
+## BSL v10.1.8 / GPU batch-capacity fallback
+
+The user log with BSL v10.1.8 after the shader-pack switch shows 384 model render calls,
+768 candidate-set builds, 768 GPU-to-CPU readbacks (295,142,400 bytes), and
+`GPU_PREPARE=0`, `GPU_WINDOW_FALLBACK=384`. This is a fallback pattern, not proof
+of a bug in BSL itself. The initial GPU plan can fail when a model needs more than
+the available batch-texture slots.
+
+If the GPU path has already built a conservative (unpruned) candidate set, let
+the CPU path reuse it even when the CPU path would prefer alpha-coverage pruning.
+The extra candidates are conservative and are still subject to the fragment
+alpha test. Reuse also skips the unnecessary UV buffer readback for that fallback.
+When a stricter candidate list is already cached, never reuse it for a pass
+that needs unpruned candidates. This changes no GPU capacity limits and
+does not pretend to solve the lack of a multi-window GPU submission plan.
+
+BSL official release: https://modrinth.com/shader/bsl-shaders/version/Y68yiql9 .
+The user's Google Drive `using models` folder contains PMX/model archives, not
+this shaderpack. The official binary could not be downloaded in the current
+environment; do not treat third-party older GLSL mirrors as equivalent to v10.1.8.
+
+Validation:
+- Compare `CANDIDATE_BUILD`, `CANDIDATE_REUSE`, `READBACK_CALLS`,
+  `READBACK_BYTES`, and `GPU_WINDOW_FALLBACK` on the same world and PMX.
+- Verify visual blending of complex alpha hair with BSL v10.1.8, including
+  4-layer depth peeling, chests and water.
+- A proper cross-texture GPU multi-window sort would require further design.

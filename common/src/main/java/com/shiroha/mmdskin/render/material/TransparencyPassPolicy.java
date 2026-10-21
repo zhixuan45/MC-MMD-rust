@@ -17,4 +17,13 @@ final class TransparencyPassPolicy {
     static boolean useSortedSubmission(boolean toon, boolean hasCpuPositions, boolean optInReadback) {
         return toon || hasCpuPositions || optInReadback;
     }
+
+    /**
+     * An unpruned candidate list includes every potentially contributing triangle.
+     * Reusing it when alpha coverage pruning is requested costs extra fragments
+     * but cannot remove a visible one. A pruned list may not satisfy an unpruned pass.
+     */
+    static boolean candidateCoverageReusable(boolean cachedPruned, boolean requestedPruned) {
+        return !cachedPruned || requestedPruned;
+    }
 }
