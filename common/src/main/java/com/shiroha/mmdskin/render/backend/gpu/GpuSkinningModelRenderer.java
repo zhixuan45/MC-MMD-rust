@@ -19,6 +19,7 @@ import com.shiroha.mmdskin.render.pipeline.GpuTimerQueryPool;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKind;
 import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.SkinningComputeShader;
 import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
@@ -55,7 +56,8 @@ final class GpuSkinningModelRenderer {
         if (!samplingEnabled) GpuTimerQueryPool.releasePendingWhenSamplingDisabled();
         try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
                 target.nativeModelHandle(), target.getModelName(), "GPU_COMPUTE",
-                samplingEnabled ? sceneKey(context) : "OTHER")) {
+                samplingEnabled ? sceneKey(context) : "OTHER");
+             var worldTransparency = WorldTransparencyPipeline.modelScene(context)) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, context);
         }
     }

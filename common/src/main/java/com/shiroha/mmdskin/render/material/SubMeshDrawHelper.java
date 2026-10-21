@@ -2,6 +2,7 @@ package com.shiroha.mmdskin.render.material;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
 import org.lwjgl.opengl.GL46C;
 
 import java.nio.ByteBuffer;
@@ -57,12 +58,21 @@ public final class SubMeshDrawHelper {
         DrawMaterialCache materialCache = new DrawMaterialCache(materials, materialMorphs, alphaResolver, textureResolver);
         try (EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
              MaterialShaderBinding binding = new MaterialShaderBinding();
-             SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials));
-             ToonTransparencyLayers layers = !shadowPass && !binding.disablesTransparency()
+             SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
+            boolean sharedWorld = !shadowPass && !binding.disablesTransparency()
+                    && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
+                    && WorldTransparencyPipeline.prepareModel();
+            boolean classicDepthPrepass = !sharedWorld && !shadowPass && !binding.disablesTransparency()
+                    && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
+                    && WorldTransparencyPipeline.classicDepthPrepass();
+            boolean worldFallback = !sharedWorld && !classicDepthPrepass && !shadowPass && !binding.disablesTransparency()
+                    && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
+                    && WorldTransparencyPipeline.worldFallback();
+            try (ToonTransparencyLayers layers = !sharedWorld && !shadowPass && !binding.disablesTransparency()
                      && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
                      ? ToonTransparencyLayers.begin() : null) {
             boolean forceOpaque = !shadowPass && binding.disablesTransparency();
-            boolean sorted=!forceOpaque && !shadowPass && order!=null && geometry!=null
+            boolean sorted=!sharedWorld && !forceOpaque && !shadowPass && order!=null && geometry!=null
                     && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,
                     alphaResolver,textureResolver,materialCache);
             long submitTimer = TranslucentDiagnostics.startTimer();
@@ -70,14 +80,22 @@ public final class SubMeshDrawHelper {
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
                 // Toon 对同一贴图的实心与半透明像素也分开，避免黑睫毛的实心部分丢失遮挡。
                 int passCount = shadowPass || forceOpaque ? 1
+                        : sharedWorld ? 2
+                        : classicDepthPrepass ? 3
+                        : worldFallback ? 2
                         : binding.isToon() && ToonTransparencySettings.disableDepthSeal() ? 2 : 3;
+                boolean previousColorMask = GL46C.glGetBoolean(GL46C.GL_COLOR_WRITEMASK);
                 for (int pass = 0; pass < passCount; pass++) {
                     if (pass == 2 && !hasTranslucentDraws) break;
                     int stages = pass == 1 && layers != null ? layers.layers() * 2 + 1 : 1;
                     for (int stage = 0; stage < stages; stage++) {
                         long passDraws = 0;
                         // 保留半透明层间混合，再补覆盖深度，避免后画的云穿过模型。
-                        RenderSystem.depthMask(pass != 1);
+                        boolean depthOnly = classicDepthPrepass && pass == 1;
+                        boolean translucentColor = classicDepthPrepass && pass == 2;
+                        RenderSystem.depthMask(!(!depthOnly && (pass == 1 || translucentColor)));
+                        if (depthOnly) GL46C.glColorMask(false, false, false, false);
+                        else GL46C.glColorMask(previousColorMask, previousColorMask, previousColorMask, previousColorMask);
                         boolean layerStageStarted = false;
                         boolean stageCompleted = false;
                         if (pass == 1 && layers != null) {
@@ -93,7 +111,7 @@ public final class SubMeshDrawHelper {
                         int drawCount;
                         // 批量材质表与排序索引必须使用同一三角形顺序。
                         GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, ordered ? order.indexBuffer() : originalIndices);
-                        try (MaterialDepthSeal seal = pass == 2 ? new MaterialDepthSeal() : null) {
+                        try (MaterialDepthSeal seal = pass == 2 && !classicDepthPrepass && !worldFallback ? new MaterialDepthSeal() : null) {
                             if (ordered) {
                                 int batchDraws = order.submitBatch(materials, materialCache);
                                 if (batchDraws >= 0) {
@@ -132,8 +150,8 @@ public final class SubMeshDrawHelper {
                                 if (!shadowPass && !forceOpaque) {
                                     if (binding.splitsTextureAlpha()) {
                                         if (pass == 0 && state.alpha < MaterialRenderState.OPAQUE_ALPHA) continue;
-                                        if (pass == 1 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasAlpha) continue;
-                                        if (pass == 2 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasTranslucentPixels) continue;
+                                        if ((pass == 1 || pass == 2) && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasAlpha) continue;
+                                        if (!classicDepthPrepass && pass == 2 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasTranslucentPixels) continue;
                                     } else {
                                         boolean translucent = state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasTranslucentPixels;
                                         if (translucent != (pass != 0)) continue;
@@ -141,7 +159,10 @@ public final class SubMeshDrawHelper {
                                 }
                                 // 混合结束后为可见半透明像素补深度，阻挡后画的描边与云；
                                 // 透明孔洞仍由当前 shader 的 alpha 裁切保留。
-                                binding.apply(state, shadowPass || pass == 2 ? 0 : pass + 1);
+                                int alphaPass = shadowPass ? 0
+                                        : pass == 0 ? 1
+                                        : pass == 2 && !classicDepthPrepass && !sharedWorld && !worldFallback ? 0 : 2;
+                                binding.apply(state, alphaPass);
                                 sphere.apply(material, state);
 
                                 if (bothFace) {
@@ -159,9 +180,13 @@ public final class SubMeshDrawHelper {
                                 }
 
                                 beforeDraw.accept(materialId);
-                                if (pass == 1) hasTranslucentDraws = true;
+                                if (pass == 1 || (pass == 2 && classicDepthPrepass)) hasTranslucentDraws = true;
                                 long startPos = (long) beginIndex * (ordered?4:indexElementSize);
-                                GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, ordered?GL46C.GL_UNSIGNED_INT:indexType, startPos);
+                                // Upload all material uniforms to their owning program before binding its capture clone.
+                                    try (WorldTransparencyPipeline.Capture capture = sharedWorld && pass == 1
+                                        ? WorldTransparencyPipeline.capture() : null) {
+                                    GL46C.glDrawElements(GL46C.GL_TRIANGLES, vertexCount, ordered?GL46C.GL_UNSIGNED_INT:indexType, startPos);
+                                }
                                 passDraws++;
                             }
                             stageCompleted = true;
@@ -179,8 +204,10 @@ public final class SubMeshDrawHelper {
                         }
                         }
                 }
+                GL46C.glColorMask(previousColorMask, previousColorMask, previousColorMask, previousColorMask);
             } finally {
                 TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.SUBMIT, submitTimer);
+            }
             }
         } finally {
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,originalIndices);

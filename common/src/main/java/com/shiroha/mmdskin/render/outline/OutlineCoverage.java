@@ -29,12 +29,17 @@ public final class OutlineCoverage implements AutoCloseable {
     }
 
     public static OutlineCoverage begin(int colorSlot) {
+        return begin(colorSlot, false);
+    }
+
+    /** Shared world fragments need original geometry depth, so bypass the flattened private color image. */
+    public static OutlineCoverage begin(int colorSlot, boolean sharedWorld) {
         OutlineCoverage pass = new OutlineCoverage(colorSlot);
         try {
             if (geometryVao == 0) geometryVao = GL46C.glGenVertexArrays();
             GL46C.glBindVertexArray(geometryVao);
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, pass.state.ebo);
-            int format = pass.sourceDepthFormat();
+            int format = sharedWorld ? 0 : pass.sourceDepthFormat();
             if (format != 0) pass.fallbackReason = "SIZE_BUDGET_OR_GL";
             int w = pass.state.viewport[2], h = pass.state.viewport[3];
             int maxSize = Math.min(GL46C.glGetInteger(GL46C.GL_MAX_TEXTURE_SIZE), GL46C.glGetInteger(GL46C.GL_MAX_RENDERBUFFER_SIZE));
@@ -45,7 +50,7 @@ public final class OutlineCoverage implements AutoCloseable {
                 pass.fallbackReason = pass.sampled ? "ACTIVE" : "DEPTH_COPY_FAILED";
             }
             if (!pass.sampled) {
-                if (!warned) {
+                if (!sharedWorld && !warned) {
                     warned = true;
                     LogManager.getLogger().warn("描边覆盖率采样不可用，保持直接描边: reason={}, FBO={}, depth={}, viewport={}x{}",
                             pass.fallbackReason, pass.state.drawFbo, pass.sourceDepth, w, h);

@@ -8,6 +8,10 @@ import com.shiroha.mmdskin.player.sync.PlayerModelSyncService;
 import net.minecraft.client.Camera;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.RenderType;
+import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyHooks;
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -29,6 +33,41 @@ public abstract class LevelRendererMixin {
     @Shadow private Frustum cullingFrustum;
     @Shadow private Frustum capturedFrustum;
     @Shadow public abstract boolean isSectionCompiled(BlockPos pos);
+
+    @Inject(method = "renderLevel", at = @At("HEAD"))
+    private void mmdskin$beginWorldTransparency(DeltaTracker delta, boolean blockOutline, Camera camera,
+            GameRenderer renderer, LightTexture light, Matrix4f view, Matrix4f projection, CallbackInfo ci) {
+        WorldTransparencyHooks.beginFrame(((LevelRenderer) (Object) this).getTranslucentTarget() != null);
+    }
+
+    @Inject(method = "renderLevel", at = @At("RETURN"))
+    private void mmdskin$endWorldTransparency(CallbackInfo ci) {
+        WorldTransparencyPipeline.endFrame();
+    }
+
+    @Inject(method = "renderSectionLayer", at = @At("HEAD"))
+    private void mmdskin$beginTranslucentTerrain(RenderType type, double x, double y, double z,
+            Matrix4f view, Matrix4f projection, CallbackInfo ci) {
+        WorldTransparencyPipeline.beginTerrain(type == RenderType.translucent());
+    }
+
+    @Redirect(method = "renderSectionLayer", at = @At(value = "INVOKE",
+            target = "Lcom/mojang/blaze3d/vertex/VertexBuffer;draw()V"))
+    private void mmdskin$captureTranslucentTerrain(VertexBuffer buffer) {
+        if (!WorldTransparencyPipeline.captureTerrain(buffer::draw)) buffer.draw();
+    }
+
+    // The RenderType still owns the active output target here, including Fabulous's translucent FBO.
+    @Inject(method = "renderSectionLayer", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/RenderType;clearRenderState()V"))
+    private void mmdskin$resolveWorldTransparency(CallbackInfo ci) {
+        WorldTransparencyPipeline.endTerrain();
+    }
+
+    @Inject(method = {"allChanged", "close"}, at = @At("HEAD"))
+    private void mmdskin$releaseWorldTransparency(CallbackInfo ci) {
+        WorldTransparencyPipeline.release();
+    }
 
     @Inject(method = "renderLevel", at = @At(value = "INVOKE",
         target = "Lnet/minecraft/client/multiplayer/ClientLevel;entitiesForRendering()Ljava/lang/Iterable;", ordinal = 0), require = 0)

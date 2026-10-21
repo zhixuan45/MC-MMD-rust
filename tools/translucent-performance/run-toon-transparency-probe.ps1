@@ -15,12 +15,12 @@ foreach ($taskModule in @('lwjgl', 'lwjgl-glfw', 'lwjgl-opengl')) {
 }
 Push-Location $taskRoot
 try {
-    $taskSources = @('BatchGlProbe.java', 'ToonTransparencyGlProbe.java', 'ToonTransparencyLayersGlProbe.java', 'DepthSealOutlineGlProbe.java', 'TransparencyStackGlProbe.java') |
+    $taskSources = @('BatchGlProbe.java', 'ToonTransparencyGlProbe.java', 'ToonTransparencyLayersGlProbe.java', 'DepthSealOutlineGlProbe.java', 'TransparencyStackGlProbe.java', 'WorldTransparencyGlProbe.java') |
         ForEach-Object { Join-Path $PSScriptRoot $_ }
     & (Join-Path $Jdk 'bin/javac.exe') -proc:none -encoding UTF-8 -cp $taskCp -d $taskOutput $taskSources
     if ($LASTEXITCODE -ne 0) { throw '透明探针编译失败' }
     # 优先加载 Gradle 的生产类，避免旧探针目录中的同名类遮住新实现。
-    foreach ($taskProbe in @('ToonTransparencyGlProbe', 'ToonTransparencyLayersGlProbe', 'DepthSealOutlineGlProbe')) {
+    foreach ($taskProbe in @('WorldTransparencyGlProbe', 'ToonTransparencyGlProbe', 'ToonTransparencyLayersGlProbe', 'DepthSealOutlineGlProbe')) {
         & (Join-Path $Jdk 'bin/java.exe') -cp "$taskCp;$taskOutput" "com.shiroha.mmdskin.render.material.$taskProbe"
         if ($LASTEXITCODE -ne 0) { throw "透明探针失败: $taskProbe" }
     }

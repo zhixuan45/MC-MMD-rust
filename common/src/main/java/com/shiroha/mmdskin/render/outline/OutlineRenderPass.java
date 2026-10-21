@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.render.outline;
 import com.shiroha.mmdskin.render.shader.ToonConfig;
 import com.shiroha.mmdskin.render.material.ToonTransparencySettings;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
 import org.lwjgl.opengl.GL46C;
 
 import java.nio.ByteBuffer;
@@ -53,7 +54,8 @@ public final class OutlineRenderPass {
         int projectionStart = projection.position();
         boolean orthographic = Math.abs(projection.get(projectionStart + 11)) < 0.000001f
                 && Math.abs(projection.get(projectionStart + 15) - 1.0f) < 0.000001f;
-        try (OutlineCoverage pass = OutlineCoverage.begin(shader.getOutlineColorSlot())) {
+        boolean sharedWorld = WorldTransparencyPipeline.hasWorldQueue();
+        try (OutlineCoverage pass = OutlineCoverage.begin(shader.getOutlineColorSlot(), sharedWorld)) {
             shader.useOutline();
             shader.setOutlinePremultiplied(pass.isSampled());
             shader.setOutlineAlphaCutoff(0.1f);
@@ -83,7 +85,7 @@ public final class OutlineRenderPass {
                 shader.setOutlineWidth(0);
                 shader.setOutlineOcclusion(true);
                 try {
-                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, true);
+                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, true, false);
                 } finally {
                     shader.setOutlineOcclusion(false);
                     pass.endOcclusion();
@@ -96,7 +98,8 @@ public final class OutlineRenderPass {
             if (orthographic) GL46C.glDepthFunc(GL46C.GL_LESS);
             GL46C.glCullFace(GL46C.GL_FRONT);
             GL46C.glEnable(GL46C.GL_CULL_FACE);
-            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, false);
+            boolean capture = sharedWorld && WorldTransparencyPipeline.prepareModel();
+            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, false, capture);
             pass.composite();
         }
     }
@@ -113,7 +116,8 @@ public final class OutlineRenderPass {
     }
 
     private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver,
-                                      TextureResolver textureResolver, IntPredicate hairResolver, ToonConfig config, boolean occlusion) {
+                                      TextureResolver textureResolver, IntPredicate hairResolver, ToonConfig config,
+                                      boolean occlusion, boolean sharedWorld) {
         ByteBuffer data = inputs.subMeshData();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
             int base = i * SUB_MESH_STRIDE;
@@ -136,8 +140,10 @@ public final class OutlineRenderPass {
             shader.setOutlineUseTextureAlpha(texture > 0);
             if (texture > 0) GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
             shader.setOutlineAlpha(alpha);
-            GL46C.glDrawElements(GL46C.GL_TRIANGLES, data.getInt(base + 8), inputs.indexType(),
-                    (long) data.getInt(base + 4) * inputs.indexElementSize());
+            try (var capture = sharedWorld ? WorldTransparencyPipeline.capture() : null) {
+                GL46C.glDrawElements(GL46C.GL_TRIANGLES, data.getInt(base + 8), inputs.indexType(),
+                        (long) data.getInt(base + 4) * inputs.indexElementSize());
+            }
         }
     }
 }

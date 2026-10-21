@@ -16,6 +16,7 @@ import com.shiroha.mmdskin.render.pipeline.LightingHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.pipeline.GpuTimerQueryPool;
 import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKind;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.scene.RenderScene;
@@ -48,7 +49,8 @@ final class OpenGlModelRenderer {
         if (!samplingEnabled) GpuTimerQueryPool.releasePendingWhenSamplingDisabled();
         try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
                 target.nativeModelHandle(), target.getModelName(), "CPU",
-                samplingEnabled ? sceneKey(context) : "OTHER")) {
+                samplingEnabled ? sceneKey(context) : "OTHER");
+             var worldTransparency = WorldTransparencyPipeline.modelScene(context)) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, packedLight, context);
         }
     }
