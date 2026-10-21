@@ -25,6 +25,8 @@ public final class WorldTransparencyPipeline {
     private static final boolean QUEUE_ENABLED = Boolean.parseBoolean(
             System.getProperty("mmdskin.worldTransparencyQueue", "true"));
     private static final WorldTransparencyPipeline INSTANCE = new WorldTransparencyPipeline();
+    /** Opt-in runtime FBO verification: -Dmmdskin.debugTransparencyStages=true. */
+    private static final boolean DEBUG_STAGES = Boolean.getBoolean("mmdskin.debugTransparencyStages");
     private static final String FULLSCREEN = """
             #version 430 core
             void main() {
@@ -36,6 +38,8 @@ public final class WorldTransparencyPipeline {
     private final WorldTransparencyStageGate stageGate = new WorldTransparencyStageGate();
     private boolean frame, queueActive, worldScene, queued, fabulous, shaderPack;
     private boolean warnedTargetMismatch;
+    private int debugFrame;
+    private boolean debugModelLogged;
     private FramebufferColorTarget previousTranslucentColor, previousOpaqueColor, sourceColor;
     private boolean opaqueDepthCaptured, fallbackDepthCaptured;
     private int sourceDepthObjectType, sourceDepthObjectId;
@@ -51,6 +55,8 @@ public final class WorldTransparencyPipeline {
     /** The public stage must have fired in the preceding frame before we defer any draw. */
     public static void beginFrame(boolean fabulous, boolean supportedShaderMode, boolean shaderPack) {
         INSTANCE.frame = true;
+        INSTANCE.debugFrame++;
+        INSTANCE.debugModelLogged = false;
         INSTANCE.shaderPack = shaderPack;
         INSTANCE.sourceColor = null;
         INSTANCE.sourceDrawBuffers = null;
@@ -83,6 +89,10 @@ public final class WorldTransparencyPipeline {
         FramebufferColorTarget opaqueColor = INSTANCE.shaderPack
                 ? FramebufferColorTarget.capture() : null;
         INSTANCE.previousOpaqueColor = opaqueColor;
+        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+            LogManager.getLogger().info("[MMD transparency] after-block-entities color={},"
+                    + " sourceColor={}, queued={}, queueActive={}", opaqueColor,
+                    INSTANCE.sourceColor, INSTANCE.queued, INSTANCE.queueActive);
         if (!INSTANCE.shaderPack || !INSTANCE.queueActive || !INSTANCE.queued
                 || !FramebufferColorTarget.compatible(INSTANCE.sourceColor, opaqueColor))
             return;
@@ -96,6 +106,9 @@ public final class WorldTransparencyPipeline {
         // scene including rendered block entities (but still excluding water).
         INSTANCE.opaqueDepthCaptured = INSTANCE.copyDepthSnapshot(
                 GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
+        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+            LogManager.getLogger().info("[MMD transparency] opaque-depth captured={}, depthTexture={}",
+                    INSTANCE.opaqueDepthCaptured, INSTANCE.depthTexture);
     }
 
     /**
@@ -130,6 +143,11 @@ public final class WorldTransparencyPipeline {
         FramebufferColorTarget stageColor = INSTANCE.shaderPack
                 ? FramebufferColorTarget.capture() : null;
         INSTANCE.previousTranslucentColor = stageColor;
+        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+            LogManager.getLogger().info("[MMD transparency] after-particles color={},"
+                    + " sourceColor={}, opaqueDepthCaptured={}, fallbackDepthCaptured={}",
+                    stageColor, INSTANCE.sourceColor, INSTANCE.opaqueDepthCaptured,
+                    INSTANCE.fallbackDepthCaptured);
         try {
             if (INSTANCE.queueActive && INSTANCE.queued) {
                 boolean compatible = !INSTANCE.shaderPack
@@ -170,11 +188,23 @@ public final class WorldTransparencyPipeline {
         if (!INSTANCE.frame || !INSTANCE.queueActive || !INSTANCE.worldScene) return false;
         // Shader packs may route entities and translucent terrain to unrelated MRTs.
         // Only use the queue with an explicitly verified single primary-color target.
-        if (INSTANCE.shaderPack && (!IrisToonCompat.hasPrimaryColorOutput()
-                || !FramebufferColorTarget.compatible(
-                        FramebufferColorTarget.capture(), INSTANCE.previousTranslucentColor)
-                || !FramebufferColorTarget.compatible(
-                        FramebufferColorTarget.capture(), INSTANCE.previousOpaqueColor))) return false;
+        if (INSTANCE.shaderPack) {
+            FramebufferColorTarget currentColor = FramebufferColorTarget.capture();
+            boolean verifiedProfile = IrisToonCompat.hasPrimaryColorOutput();
+            boolean lateMatch = FramebufferColorTarget.compatible(
+                    currentColor, INSTANCE.previousTranslucentColor);
+            boolean opaqueMatch = FramebufferColorTarget.compatible(
+                    currentColor, INSTANCE.previousOpaqueColor);
+            if (DEBUG_STAGES && !INSTANCE.debugModelLogged && INSTANCE.debugFrame % 120 == 1) {
+                INSTANCE.debugModelLogged = true;
+                LogManager.getLogger().info("[MMD transparency] model color={},"
+                        + " verifiedProfile={}, previousOpaque={}, previousLate={},"
+                        + " opaqueMatch={}, lateMatch={}",
+                        currentColor, verifiedProfile, INSTANCE.previousOpaqueColor,
+                        INSTANCE.previousTranslucentColor, opaqueMatch, lateMatch);
+            }
+            if (!verifiedProfile || !lateMatch || !opaqueMatch) return false;
+        }
         try {
             INSTANCE.program(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
             return INSTANCE.prepareStorage();

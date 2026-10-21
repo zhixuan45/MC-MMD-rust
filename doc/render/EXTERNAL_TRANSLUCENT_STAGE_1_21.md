@@ -147,3 +147,11 @@ matches the original color backing object, composite queued fragments to the
 original MMD color backing using the preserved early depth; the next frame must
 revalidate color compatibility. A failed initial depth copy disables deferral
 for the frame, keeping the normal immediate alpha renderer.
+
+### Diagnostic flag for field tests
+
+Add JVM option `-Dmmdskin.debugTransparencyStages=true` to print a concise
+(once per 120 frames) trace of Iris entity, post-block-entity and post-particle
+color attachments and opaque-depth snapshot status. The trace distinguishes
+incompatible FBO targets from a depth copy that failed. Include these log lines
+and a screenshot if BSL still shows a chest over translucent MMD hair.
