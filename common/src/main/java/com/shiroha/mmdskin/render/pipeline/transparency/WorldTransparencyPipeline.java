@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.render.pipeline.transparency;
 
+import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.render.gl.DepthAttachment;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import org.apache.logging.log4j.LogManager;
@@ -33,7 +34,10 @@ public final class WorldTransparencyPipeline {
             """;
     private final Map<Integer, TransparencyProgram> programs = new HashMap<>();
     private final WorldTransparencyStageGate stageGate = new WorldTransparencyStageGate();
-    private boolean frame, queueActive, worldScene, queued, fabulous;
+    private boolean frame, queueActive, worldScene, queued, fabulous, shaderPack;
+    private boolean warnedTargetMismatch;
+    private FramebufferColorTarget previousTranslucentColor, sourceColor;
+    private int[] sourceDrawBuffers;
     private int modelCaptures;
     private int meta, nodes, capacity, resolveProgram, vao, depthTexture, depthFbo;
     private int metaBinding, nodeBinding, sourceFbo, depthFormat;
@@ -43,8 +47,11 @@ public final class WorldTransparencyPipeline {
     private WorldTransparencyPipeline() {}
 
     /** The public stage must have fired in the preceding frame before we defer any draw. */
-    public static void beginFrame(boolean fabulous, boolean supportedShaderMode) {
+    public static void beginFrame(boolean fabulous, boolean supportedShaderMode, boolean shaderPack) {
         INSTANCE.frame = true;
+        INSTANCE.shaderPack = shaderPack;
+        INSTANCE.sourceColor = null;
+        INSTANCE.sourceDrawBuffers = null;
         INSTANCE.queueActive = INSTANCE.queued = INSTANCE.worldScene = false;
         INSTANCE.modelCaptures = 0;
         boolean stageAvailable = INSTANCE.stageGate.beginFrame();
@@ -64,8 +71,22 @@ public final class WorldTransparencyPipeline {
     /** Compose MMD fragments after terrain water/glass, without redirecting any chunk draw. */
     public static void afterWorldTranslucency() {
         if (!INSTANCE.stageGate.afterTranslucent()) return;
+        // Remember the actual post-particle backing attachment for the next frame.
+        // Iris may wrap the same texture in a different FBO for each render stage.
+        FramebufferColorTarget stageColor = INSTANCE.shaderPack
+                ? FramebufferColorTarget.capture() : null;
+        INSTANCE.previousTranslucentColor = stageColor;
         try {
-            if (INSTANCE.queueActive && INSTANCE.queued) INSTANCE.resolve();
+            if (INSTANCE.queueActive && INSTANCE.queued) {
+                boolean compatible = !INSTANCE.shaderPack
+                        || FramebufferColorTarget.compatible(INSTANCE.sourceColor, stageColor);
+                if (!compatible && !INSTANCE.warnedTargetMismatch) {
+                    INSTANCE.warnedTargetMismatch = true;
+                    LogManager.getLogger().warn("Iris post-particle color attachment changed during the frame; "
+                            + "using the original target for queued MMD translucency and rechecking next frame.");
+                }
+                INSTANCE.resolve(compatible);
+            }
         } finally {
             INSTANCE.frame = INSTANCE.queueActive = false;
         }
@@ -92,6 +113,11 @@ public final class WorldTransparencyPipeline {
     /** Success means the caller may omit model-local peeling, triangle sorting and depth sealing. */
     public static boolean prepareModel() {
         if (!INSTANCE.frame || !INSTANCE.queueActive || !INSTANCE.worldScene) return false;
+        // Shader packs may route entities and translucent terrain to unrelated MRTs.
+        // Only use the queue with an explicitly verified single primary-color target.
+        if (INSTANCE.shaderPack && (!IrisToonCompat.hasPrimaryColorOutput()
+                || !FramebufferColorTarget.compatible(
+                        FramebufferColorTarget.capture(), INSTANCE.previousTranslucentColor))) return false;
         try {
             INSTANCE.program(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
             return INSTANCE.prepareStorage();
@@ -173,6 +199,10 @@ public final class WorldTransparencyPipeline {
                     GL46C.GL_RED_INTEGER, GL46C.GL_UNSIGNED_INT, stack.ints(0));
             GL46C.glMemoryBarrier(GL46C.GL_BUFFER_UPDATE_BARRIER_BIT | GL46C.GL_SHADER_STORAGE_BARRIER_BIT);
             sourceFbo = fbo;
+            if (shaderPack) {
+                sourceColor = FramebufferColorTarget.capture();
+                sourceDrawBuffers = currentDrawBuffers();
+            }
             return true;
         } finally {
             GL46C.glBindBuffer(GL46C.GL_SHADER_STORAGE_BUFFER, oldBuffer);
@@ -291,15 +321,27 @@ public final class WorldTransparencyPipeline {
         }
     }
 
-    private void resolve() {
-        try (ResolveState state = new ResolveState(metaBinding, nodeBinding)) {
-            // Models were captured before later opaque entities. Test against final opaque depth.
-            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, sourceFbo);
+    private void resolve(boolean matchedStage) {
+        try (ResolveState state = new ResolveState(metaBinding, nodeBinding,
+                sourceFbo, sourceDrawBuffers)) {
+            // Read later world depth when it is a compatible attachment. This includes
+            // block entities drawn after player models, such as chests and signs.
+            boolean useStageDepth = shaderPack && matchedStage;
+            if (useStageDepth) {
+                DepthAttachment depth = DepthAttachment.inspect();
+                useStageDepth = depth != null && depth.format() == depthFormat
+                        && depth.samples() == 0 && depth.contains(viewport);
+            }
+            int destination = shaderPack && !matchedStage ? sourceFbo : state.drawFbo;
+            int depthSource = useStageDepth ? state.drawFbo : sourceFbo;
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, depthSource);
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, depthFbo);
             GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
             if (!DepthAttachment.blit(viewport[0], viewport[1], viewport[0] + viewport[2], viewport[1] + viewport[3],
                     0, 0, viewport[2], viewport[3])) throw new IllegalStateException("World transparency depth copy failed");
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, state.drawFbo);
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, destination);
+            // Iris's other colortex material channels must remain untouched.
+            if (shaderPack) GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
             bindBuffers();
             GL46C.glMemoryBarrier(GL46C.GL_SHADER_STORAGE_BARRIER_BIT | GL46C.GL_BUFFER_UPDATE_BARRIER_BIT);
             GL46C.glBindBuffer(GL46C.GL_SHADER_STORAGE_BUFFER, meta);
@@ -326,7 +368,7 @@ public final class WorldTransparencyPipeline {
             GL46C.glDisable(GL46C.GL_CULL_FACE);
             GL46C.glColorMask(true, true, true, true);
             // Fabulous needs a nearest depth for its later layer merge, but main opaque depth stays intact.
-            if (fabulous && state.drawFbo != sourceFbo) {
+            if (fabulous && destination != sourceFbo) {
                 GL46C.glEnable(GL46C.GL_DEPTH_TEST); GL46C.glDepthFunc(GL46C.GL_ALWAYS); GL46C.glDepthMask(true);
             } else {
                 GL46C.glDisable(GL46C.GL_DEPTH_TEST); GL46C.glDepthMask(false);
@@ -348,9 +390,14 @@ public final class WorldTransparencyPipeline {
         final boolean blend = GL46C.glIsEnabled(GL46C.GL_BLEND), depth = GL46C.glIsEnabled(GL46C.GL_DEPTH_TEST);
         final boolean cull = GL46C.glIsEnabled(GL46C.GL_CULL_FACE), scissor = GL46C.glIsEnabled(GL46C.GL_SCISSOR_TEST);
         final boolean[] color = new boolean[4];
+        final int sourceFbo;
+        final int[] sourceDrawBuffers, originalDrawBuffers;
         final int texture, sampler;
         final Capture capture;
-        ResolveState(int first, int second) {
+        ResolveState(int first, int second, int sourceFbo, int[] sourceDrawBuffers) {
+            this.sourceFbo = sourceFbo;
+            this.sourceDrawBuffers = sourceDrawBuffers;
+            originalDrawBuffers = currentDrawBuffers();
             capture = new Capture(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM), first, second);
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 var mask = stack.malloc(4); GL46C.glGetBooleanv(GL46C.GL_COLOR_WRITEMASK, mask);
@@ -362,7 +409,14 @@ public final class WorldTransparencyPipeline {
             GL46C.glActiveTexture(active);
         }
         @Override public void close() {
+            // glDrawBuffer mutates FBO state; do not pollute Iris's MRT mapping
+            // or the original entity FBO if the post-particle stage uses another FBO.
+            if (sourceDrawBuffers != null && sourceFbo != drawFbo) {
+                GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, sourceFbo);
+                GL46C.glDrawBuffers(sourceDrawBuffers);
+            }
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, drawFbo);
+            GL46C.glDrawBuffers(originalDrawBuffers);
             GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, readFbo);
             GL46C.glBindVertexArray(vertexArray);
             GL46C.glActiveTexture(GL46C.GL_TEXTURE0); GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
@@ -376,6 +430,14 @@ public final class WorldTransparencyPipeline {
             capture.close();
         }
         private static void enabled(int cap, boolean value) { if (value) GL46C.glEnable(cap); else GL46C.glDisable(cap); }
+    }
+
+    private static int[] currentDrawBuffers() {
+        int count = GL46C.glGetInteger(GL46C.GL_MAX_DRAW_BUFFERS);
+        int[] slots = new int[count];
+        for (int i = 0; i < count; i++)
+            slots[i] = GL46C.glGetInteger(GL46C.GL_DRAW_BUFFER0 + i);
+        return slots;
     }
 
     private String bindings(String text) {
@@ -401,6 +463,8 @@ public final class WorldTransparencyPipeline {
         endFrame();
         INSTANCE.programs.values().forEach(TransparencyProgram::close); INSTANCE.programs.clear();
         INSTANCE.releaseStorage(); INSTANCE.viewport = null;
+        INSTANCE.previousTranslucentColor = INSTANCE.sourceColor = null;
+        INSTANCE.sourceDrawBuffers = null;
         if (INSTANCE.resolveProgram != 0) GL46C.glDeleteProgram(INSTANCE.resolveProgram);
         if (INSTANCE.vao != 0) GL46C.glDeleteVertexArrays(INSTANCE.vao);
         INSTANCE.resolveProgram = INSTANCE.vao = 0;
