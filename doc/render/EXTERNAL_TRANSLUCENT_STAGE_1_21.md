@@ -198,3 +198,32 @@ untouched auxiliary MRT output, restored state, subsequent color sampling, and
 fallback for unverified targets. It uses synthetic shaders and an Iris verification
 fixture; exact BSL lighting/refraction and the user's model still require in-game
 comparison.
+
+### Per-model rejection must not re-enable world depth sealing
+
+The first stable-target test build still allowed a model rejected by `prepareModel()`
+to enter the three-pass local depth-seal path. `worldFallback()` checked the frame's
+`queueActive` flag, which can be true even when the current model has an incompatible
+FBO, unverified color output, unsupported depth attachment, or insufficient SSBO
+capacity. The rejected model then wrote translucent coverage into world depth and
+could prevent a subsequently submitted chest or water surface from rendering.
+
+`worldFallback()` now protects every world-scene fallback; its caller already
+excludes models accepted by the shared queue. Inventory/GUI depth policy is unchanged.
+The GL regression now actually draws a rejected model with depth testing enabled,
+reads the host depth, and then draws the late chest. Pre-fix host depth is 0.4 at the
+translucent veil; fixed depth remains 1.0 and the chest renders. The earlier test
+only checked `prepareModel()` returning false and did not exercise this draw path.
+
+The extended probe also compiles the production Toon shader with an actual
+32/255-alpha texture, with both accepted and rejected capture. Optional `-BslPack`
+uses the existing Iris probe dependencies to select the real local BSL output
+profile. It verifies depth preservation for this real shader path as well as the
+synthetic FBO/occlusion cases. This still does not identify which eligibility check
+fails in a particular running game or constitute full BSL scene acceptance.
+
+The new build logs the first successful shader-pack capture and each distinct
+per-model rejection reason once per resource lifecycle, without requiring a JVM
+debug option. These lines distinguish the actual in-game path on the next run.
+Rejected immediate draws can still lose the pale layer to later opaque draws;
+this fix specifically prevents those draws from making chests/water disappear.

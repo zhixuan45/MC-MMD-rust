@@ -4,20 +4,35 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
 import com.shiroha.mmdskin.render.scene.RenderScene;
+import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
+import com.shiroha.mmdskin.render.shader.ToonOutputProfile;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL46C;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
+import org.joml.Matrix4f;
 
 /** Real GL regression: a public loader stage need not bind Iris's colortex0 FBO. */
 public final class BlockEntityTransparencyGlProbe {
     private static final int SIZE = 64;
     private static int model, solid, source, stage, vao, white;
+    private static ToonOutputProfile productionProfile;
     private static final float[] CHEST = {.2f, .1f, .05f, 1};
 
     public static void main(String[] args) throws Exception {
+        if (args.length > 0) {
+            var method = Class.forName("BslBatchGlProbe").getDeclaredMethod("profile",
+                    java.util.zip.ZipFile.class, java.util.Map.class, String.class);
+            method.setAccessible(true);
+            try (var zip = new java.util.zip.ZipFile(args[0])) {
+                productionProfile = (ToonOutputProfile) method.invoke(null, zip, java.util.Map.of(), "world0");
+                check(productionProfile.isSupported(), "actual BSL profile supported");
+                System.out.println("Actual BSL profile: " + productionProfile.id());
+            }
+        }
         check(GLFW.glfwInit(), "GLFW initialization");
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -32,6 +47,10 @@ public final class BlockEntityTransparencyGlProbe {
             // Model the result of Iris's public output/flip verification, without loading Minecraft.
             fixture("primaryColorOutput", true);
             fixture("stablePrimaryColorOutput", true);
+            productionToonTextureAlpha(true);
+            fixture("stablePrimaryColorOutput", false);
+            productionToonTextureAlpha(false);
+            fixture("stablePrimaryColorOutput", true);
             for (float alpha : new float[]{.002f, .01f, .12f, .5f}) scenario(alpha, false);
             scenario(.12f, true); // both stage callbacks bind a different wrapper of the same gbuffer
             replacedAttachmentIsNotWritten();
@@ -45,6 +64,78 @@ public final class BlockEntityTransparencyGlProbe {
             WorldTransparencyPipeline.release();
             GLFW.glfwDestroyWindow(window);
             GLFW.glfwTerminate();
+        }
+    }
+
+    private static void productionToonTextureAlpha(boolean captureExpected) {
+        ToonShaderCpu shader = new ToonShaderCpu();
+        check(shader.init(), "production Toon shader initialization");
+        if (productionProfile != null) check(shader.selectOutputProfile(productionProfile), "actual BSL profile selected");
+        int originalModel = model;
+        int originalWhite = white;
+        int vertices = GL46C.glGenBuffers();
+        try {
+            model = shader.getMainProgram();
+            shader.useMain();
+            FloatBuffer matrix = buffer(64).asFloatBuffer();
+            new Matrix4f().get(matrix);
+            shader.setProjectionMatrix(matrix);
+            shader.setModelViewMatrix(matrix);
+            shader.setLightDirection(0, 0, 1);
+            shader.setLightIntensity(1);
+            shader.setAlphaCutoff(.001f);
+            shader.setSampler0(0);
+            shader.setEyeEmission(0);
+            shader.setDisableTransparency(false);
+            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, vertices);
+            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, new float[]{
+                    -1,-1,-.2f, 0,0,1, .5f,.5f,
+                     3,-1,-.2f, 0,0,1, .5f,.5f,
+                    -1, 3,-.2f, 0,0,1, .5f,.5f}, GL46C.GL_STATIC_DRAW);
+            int[] locations = {shader.getPositionLocation(), shader.getNormalLocation(), shader.getUv0Location()};
+            for (int i = 0; i < 3; i++) {
+                GL46C.glEnableVertexAttribArray(locations[i]);
+                GL46C.glVertexAttribPointer(locations[i], i == 2 ? 2 : 3, GL46C.GL_FLOAT, false, 32, i * 12L);
+            }
+            white = texture(GL46C.GL_RGBA8, 1);
+            GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_RGBA,
+                    GL46C.GL_UNSIGNED_BYTE, buffer(4).put(0,(byte)255).put(1,(byte)255).put(2,(byte)255).put(3,(byte)32));
+            bind(stage);
+            WorldTransparencyPipeline.beginFrame(false, true, true);
+            WorldTransparencyPipeline.afterOpaqueWorld();
+            WorldTransparencyPipeline.afterWorldTranslucency();
+            WorldTransparencyPipeline.endFrame();
+            bind(source);
+            GL46C.glDepthMask(true);
+            GL46C.glClearDepth(1);
+            GL46C.glClear(GL46C.GL_DEPTH_BUFFER_BIT);
+            GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, CHEST);
+            WorldTransparencyPipeline.beginFrame(false, true, true);
+            drawModel(1, captureExpected);
+            float[] depth = new float[1];
+            GL46C.glReadPixels(16, 16, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, depth);
+            check(depth[0] == 1, "production texture-alpha veil must not write main depth: " + depth[0]);
+            GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
+            drawSolid(.4f);
+            bind(stage);
+            WorldTransparencyPipeline.afterOpaqueWorld();
+            WorldTransparencyPipeline.afterWorldTranslucency();
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, source);
+            GL46C.glReadBuffer(GL46C.GL_COLOR_ATTACHMENT0);
+            float[] color = new float[4];
+            GL46C.glReadPixels(16, 16, 1, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT, color);
+            System.out.println("Production Toon texture alpha 32/255, capture=" + captureExpected
+                    + ": " + java.util.Arrays.toString(color));
+            check(color[0] < .4f && color[1] < .3f && color[2] < .3f,
+                    "production texture-alpha veil must retain visible chest color");
+            for (int location : locations) GL46C.glDisableVertexAttribArray(location);
+            WorldTransparencyPipeline.endFrame();
+        } finally {
+            model = originalModel;
+            GL46C.glDeleteTextures(white);
+            white = originalWhite;
+            GL46C.glDeleteBuffers(vertices);
+            shader.cleanup();
         }
     }
 
@@ -114,6 +205,7 @@ public final class BlockEntityTransparencyGlProbe {
         WorldTransparencyPipeline.afterWorldTranslucency();
         WorldTransparencyPipeline.endFrame();
         bind(source);
+        GL46C.glDrawBuffers(new int[]{GL46C.GL_COLOR_ATTACHMENT0, GL46C.GL_COLOR_ATTACHMENT1});
         GL46C.glDepthMask(true);
         GL46C.glColorMask(true, true, true, true);
         GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, CHEST);
@@ -181,10 +273,32 @@ public final class BlockEntityTransparencyGlProbe {
         WorldTransparencyPipeline.afterWorldTranslucency();
         WorldTransparencyPipeline.endFrame();
         bind(source);
+        GL46C.glDepthMask(true);
+        GL46C.glClearDepth(1);
+        GL46C.glClear(GL46C.GL_DEPTH_BUFFER_BIT);
         WorldTransparencyPipeline.beginFrame(false, true, true);
         GL46C.glUseProgram(model);
+        GL46C.glEnable(GL46C.GL_DEPTH_TEST);
+        GL46C.glDepthFunc(GL46C.GL_LEQUAL);
         try (var ignored = WorldTransparencyPipeline.modelScene(RenderScene.WORLD)) {
             check(!WorldTransparencyPipeline.prepareModel(), "unverified/flipped storage must retain immediate path");
+            GL46C.glUniform1f(GL46C.glGetUniformLocation(model, "Depth"), -.2f);
+            ModelMaterial material = new ModelMaterial();
+            material.diffuse = new float[]{0, 0, 0, 1};
+            material.ambient = new float[]{1, 1, 1};
+            material.specular = new float[3];
+            material.hasAlpha = material.hasTranslucentPixels = true;
+            ByteBuffer mesh = buffer(20).putInt(0, 0).putInt(4, 0).putInt(8, 3).putFloat(12, .12f)
+                    .put(16, (byte) 1).put(17, (byte) 1);
+            SubMeshDrawHelper.draw(mesh, 1, 4, GL46C.GL_UNSIGNED_INT, id -> white, (id, a) -> a,
+                    new ModelMaterial[]{material}, null, false, id -> {});
+            float[] depth = new float[1];
+            GL46C.glReadPixels(16, 16, 1, 1, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, depth);
+            check(depth[0] == 1, "rejected model must not seal depth while frame queue is active: " + depth[0]);
+            GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
+            drawSolid(.4f);
+            expect(source, GL46C.GL_COLOR_ATTACHMENT0, 16, CHEST,
+                    "late chest must survive per-model queue rejection");
         }
         WorldTransparencyPipeline.endFrame();
     }
@@ -215,6 +329,12 @@ public final class BlockEntityTransparencyGlProbe {
     }
 
     private static void drawModel(float alpha) {
+        drawModel(alpha, true);
+    }
+
+    private static void drawModel(float alpha, boolean captureExpected) {
+        GL46C.glEnable(GL46C.GL_DEPTH_TEST);
+        GL46C.glDepthFunc(GL46C.GL_LEQUAL);
         GL46C.glUseProgram(model);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(model, "Depth"), -.2f);
         ModelMaterial material = new ModelMaterial();
@@ -228,7 +348,8 @@ public final class BlockEntityTransparencyGlProbe {
         try (var ignored = WorldTransparencyPipeline.modelScene(RenderScene.WORLD)) {
             SubMeshDrawHelper.draw(mesh, 1, 4, GL46C.GL_UNSIGNED_INT, id -> white, (id, a) -> a,
                     new ModelMaterial[]{material}, null, false, id -> {});
-            check(WorldTransparencyPipeline.hasWorldQueue(), "verified stable colortex0 must defer despite unrelated stage FBO");
+            check(WorldTransparencyPipeline.hasWorldQueue() == captureExpected,
+                    "model capture state must match target eligibility");
         }
         check(!WorldTransparencyPipeline.classicDepthPrepass(), "no early translucent depth seal");
     }

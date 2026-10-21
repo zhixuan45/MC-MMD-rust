@@ -50,6 +50,8 @@ public final class WorldTransparencyPipeline {
     private int metaBinding, nodeBinding, sourceFbo, depthFormat;
     private int[] viewport;
     private boolean overflowWarned;
+    private final java.util.Set<String> reportedFallbacks = new java.util.HashSet<>();
+    private boolean reportedCapture;
 
     private WorldTransparencyPipeline() {}
 
@@ -229,7 +231,10 @@ public final class WorldTransparencyPipeline {
                         INSTANCE.previousTranslucentColor, opaqueMatch, lateMatch, stableTarget);
             }
             if (!verifiedProfile || currentColor == null
-                    || (!stableTarget && (!lateMatch || !opaqueMatch))) return false;
+                    || (!stableTarget && (!lateMatch || !opaqueMatch)))
+                return INSTANCE.modelFallback("primary-color eligibility", "color=" + currentColor
+                        + ", verified=" + verifiedProfile + ", stable=" + stableTarget
+                        + ", opaqueMatch=" + opaqueMatch + ", lateMatch=" + lateMatch);
         }
         try {
             INSTANCE.program(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
@@ -251,7 +256,11 @@ public final class WorldTransparencyPipeline {
         // Immediate translucent blending without main-depth sealing. This must remain
         // active for world scenes even if the external translucent stage has passed:
         // a late block-entity/custom renderer must never re-enable depth sealing.
-        return INSTANCE.worldScene && !INSTANCE.queueActive;
+        // queueActive describes the frame, not whether this particular model was
+        // accepted. Callers already exclude sharedWorld. A rejected model must
+        // never re-enable the translucent depth seal just because other models
+        // can use the queue in this frame.
+        return INSTANCE.worldScene;
     }
 
     public static Capture capture() {
@@ -289,12 +298,18 @@ public final class WorldTransparencyPipeline {
     private boolean prepareStorage(boolean stableTarget) {
         int[] current = new int[4]; GL46C.glGetIntegerv(GL46C.GL_VIEWPORT, current);
         int fbo = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
-        if (queued) return sourceFbo == fbo && java.util.Arrays.equals(viewport, current);
+        if (queued) {
+            if (sourceFbo != fbo || !java.util.Arrays.equals(viewport, current))
+                return modelFallback("different model target", "fbo=" + fbo + ", sourceFbo=" + sourceFbo);
+            return true;
+        }
         DepthAttachment depth = DepthAttachment.inspect();
-        if (depth == null || depth.format() == 0 || depth.samples() != 0 || !depth.contains(current)) return false;
+        if (depth == null || depth.format() == 0 || depth.samples() != 0 || !depth.contains(current))
+            return modelFallback("unsupported depth target", depth);
         long pixels = (long) current[2] * current[3];
         long maxBlock = GL46C.glGetInteger64(GL46C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE);
-        if (pixels * 28 + 16 > maxBlock) return false;
+        if (pixels * 28 + 16 > maxBlock)
+            return modelFallback("fragment buffer limit", "pixels=" + pixels + ", maxBlock=" + maxBlock);
         int oldBuffer = GL46C.glGetInteger(GL46C.GL_SHADER_STORAGE_BUFFER_BINDING);
         try (MemoryStack stack = MemoryStack.stackPush()) {
             if (!java.util.Arrays.equals(viewport, current) || depthFormat != depth.format() || meta == 0) {
@@ -321,12 +336,24 @@ public final class WorldTransparencyPipeline {
                 // Retain entity-time depth before water, even if Iris changes
                 // framebuffer targets between the public world stages.
                 fallbackDepthCaptured = copyDepthSnapshot(fbo);
-                if (!fallbackDepthCaptured) return false;
+                if (!fallbackDepthCaptured) return modelFallback("pre-water depth copy failed", depth);
+            }
+            if (shaderPack && !reportedCapture) {
+                reportedCapture = true;
+                LogManager.getLogger().info("[MMD transparency] model capture enabled: fbo={}, color={},"
+                        + " stablePrimary={}, depth={}", sourceFbo, sourceColor, stableTarget, depth);
             }
             return true;
         } finally {
             GL46C.glBindBuffer(GL46C.GL_SHADER_STORAGE_BUFFER, oldBuffer);
         }
+    }
+
+    private boolean modelFallback(String reason, Object detail) {
+        if (shaderPack && reportedFallbacks.add(reason))
+            LogManager.getLogger().info("[MMD transparency] immediate model alpha without depth seal: {} ({})",
+                    reason, detail);
+        return false;
     }
 
     private boolean sourceColorUnchanged() {
@@ -596,6 +623,8 @@ public final class WorldTransparencyPipeline {
         INSTANCE.releaseStorage(); INSTANCE.viewport = null;
         INSTANCE.previousTranslucentColor = INSTANCE.previousOpaqueColor = INSTANCE.sourceColor = null;
         INSTANCE.opaqueDepthCaptured = false;
+        INSTANCE.reportedFallbacks.clear();
+        INSTANCE.reportedCapture = false;
         INSTANCE.sourceDrawBuffers = null;
         if (INSTANCE.resolveProgram != 0) GL46C.glDeleteProgram(INSTANCE.resolveProgram);
         if (INSTANCE.vao != 0) GL46C.glDeleteVertexArrays(INSTANCE.vao);
