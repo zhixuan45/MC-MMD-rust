@@ -8,7 +8,7 @@ Commit `327e71f` redirected `VertexBuffer.draw()` from `LevelRenderer.renderSect
 
 1. Keep model opaque rendering in the entity pass and defer eligible model translucent fragments in GPU fragment storage.
 2. Delete all `renderSectionLayer` Mixin injections and draw-call redirects (Fabric and NeoForge).
-3. Compose model fragments **after** vanilla water/glass using `RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS` on NeoForge and `WorldRenderEvents.AFTER_TRANSLUCENT` on Fabric.
+3. Compose model fragments **after** vanilla water/glass, using the later NeoForge particles stage to avoid the documented limitations of drawing translucency directly at AFTER_TRANSLUCENT_BLOCKS: `RenderLevelStageEvent.Stage.AFTER_PARTICLES` on NeoForge and `WorldRenderEvents.AFTER_TRANSLUCENT` on Fabric.
 4. Begin deferring only after the public stage fired in the preceding frame. If it disappears, return to immediate model transparency on the next frame. Duplicate callbacks are ignored.
 5. Retain immediate rendering under active Iris/NeOculus shader packs and Fabulous until distinct framebuffer pipelines can be validated.
 
