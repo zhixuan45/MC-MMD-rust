@@ -112,7 +112,7 @@ final class OpenGlModelRenderer {
         RenderPerformanceProfiler.get().recordTransfer(TransferKind.SUB_MESH, (long) copiedSubMeshes * 20L);
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_SUB_MESH_FETCH, subMeshTimer);
 
-        boolean useToon = initializeToonShaderIfNeeded(!isGuiScene);
+        boolean useToon = initializeToonShaderIfNeeded(!isGuiScene, context != null && context.isWorldScene());
         int diagnosticFlags = ConfigManager.getIssueDiagnosticFlags();
         if (OutlineRenderDiagnostics.shouldSample(diagnosticFlags, modelHandle, context, System.nanoTime())) {
             target.modelViewMatBuff.clear();
@@ -201,7 +201,7 @@ final class OpenGlModelRenderer {
                 String.format(java.util.Locale.ROOT, "%.4f", ratio));
     }
 
-    private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene) {
+    private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene, boolean worldScene) {
         // 阴影通道必须保留 Iris 的深度输出程序，跳过 Toon 与描边。
         if (IrisCompat.isRenderingShadows() || !ConfigManager.isToonRenderingEnabled()) {
             return false;
@@ -221,7 +221,7 @@ final class OpenGlModelRenderer {
         }
 
         return irisEntityScene
-                ? IrisToonCompat.prepare(OpenGlModelInstance.toonShaderCpu)
+                ? IrisToonCompat.prepare(OpenGlModelInstance.toonShaderCpu, worldScene)
                 : OpenGlModelInstance.toonShaderCpu.selectOutputProfile(
                         com.shiroha.mmdskin.render.shader.ToonOutputProfile.vanilla());
     }
@@ -644,10 +644,8 @@ final class OpenGlModelRenderer {
         RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
-        ShaderInstance currentShader = RenderSystem.getShader();
         // Iris 全局开启不代表 GUI 当前 shader 是 Iris 实体程序。
-        ShaderInstance irisShader = irisEntityScene && IrisCompat.isIrisProgram(currentShader)
-                ? currentShader : null;
+        ShaderInstance irisShader = irisEntityScene ? IrisToonCompat.preparedEntityShader() : null;
         try {
             if (irisShader != null) {
                 target.setUniforms(irisShader, deliverStack);

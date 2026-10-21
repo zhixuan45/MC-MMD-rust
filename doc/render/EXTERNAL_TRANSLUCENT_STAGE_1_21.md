@@ -227,3 +227,47 @@ per-model rejection reason once per resource lifecycle, without requiring a JVM
 debug option. These lines distinguish the actual in-game path on the next run.
 Rejected immediate draws can still lose the pale layer to later opaque draws;
 this fix specifically prevents those draws from making chests/water disappear.
+
+### Distinguish stable-target failures and select the actual world entity shader
+
+The r2 game log records `verified=true, stable=false, opaqueMatch=false,
+lateMatch=false`, without a successful capture. That log cannot retrospectively
+distinguish an API exception, a different pipeline class, a colortex0 flip, or the
+additional short circuit where `RenderSystem.getShader()` is not an Iris shader.
+In the latter case the old code selects the vanilla output profile, calls it
+verified, and never even queries the Iris pipeline.
+
+World-scene preparation now resolves the public Iris
+`ShaderMap.ENTITIES_TRANSLUCENT` when the current shader is not an Iris shader.
+Both CPU and GPU Toon rendering apply the same selected source whose profile was
+verified, rather than checking one source and rendering with another. GUI and
+other non-world callers keep their existing source shader. A real colortex0 flip
+still requires matching attachments; it never silently bypasses target validation.
+
+`Iris target verification` diagnostics contain the current and selected shader
+classes/names, selection path, actual profile ID, and these distinct target statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `API_LOOKUP_FAILED` | Class/method discovery failed; exception class and message are included. |
+| `API_READ_FAILED` | Invocation failed; the underlying exception is unwrapped and logged. |
+| `NO_PIPELINE` | The public manager has no current pipeline. |
+| `PIPELINE_TYPE_MISMATCH` | Expected and actual pipeline classes are recorded. |
+| `INVALID_FLIP_STATE` | A flip getter did not return a non-null set. |
+| `COLOR_BUFFER_SWITCHED` | colortex0 membership differs; `before`/`after` show both values. |
+| `STABLE` | colortex0 remains on the same side, including when both sides are flipped. |
+
+`sourceStatus=NON_IRIS_SHADER` separately identifies the source-shader gate.
+The final `outputVerified` and `stablePrimary` values and full verification result
+are also included in rejection logs. Each distinct diagnostic is logged once per
+resource lifecycle. Read errors are retried; pipeline snapshots are cached only
+when successfully read, and lookup/selection state is cleared on renderer release.
+
+The actual installed Iris 1.8.14-beta.1 API lookup passes with the installed
+Sodium 0.8.13 runtime. Sodium's outer jar contains a nested runtime jar; omitting
+that from a standalone probe falsely reports a missing `VertexSerializer` class.
+The `-BslPack` probe now includes it and checks the production reflection bridge
+and ShaderMap symbols before running the GL regression. Six unit cases distinguish
+stable/switched buffers, missing/wrong pipelines, invalid results, invocation
+failure/recovery, and nested exception causes. None of these offline checks can
+recover the branch omitted from the old game log; the new game log identifies it.

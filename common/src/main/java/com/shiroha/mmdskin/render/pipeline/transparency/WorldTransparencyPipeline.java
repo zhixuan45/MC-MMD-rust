@@ -234,7 +234,8 @@ public final class WorldTransparencyPipeline {
                     || (!stableTarget && (!lateMatch || !opaqueMatch)))
                 return INSTANCE.modelFallback("primary-color eligibility", "color=" + currentColor
                         + ", verified=" + verifiedProfile + ", stable=" + stableTarget
-                        + ", opaqueMatch=" + opaqueMatch + ", lateMatch=" + lateMatch);
+                        + ", opaqueMatch=" + opaqueMatch + ", lateMatch=" + lateMatch
+                        + ", verification=" + IrisToonCompat.targetDiagnostic());
         }
         try {
             INSTANCE.program(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
@@ -619,6 +620,7 @@ public final class WorldTransparencyPipeline {
 
     public static void release() {
         endFrame();
+        IrisToonCompat.resetTransparencyVerification();
         INSTANCE.programs.values().forEach(TransparencyProgram::close); INSTANCE.programs.clear();
         INSTANCE.releaseStorage(); INSTANCE.viewport = null;
         INSTANCE.previousTranslucentColor = INSTANCE.previousOpaqueColor = INSTANCE.sourceColor = null;

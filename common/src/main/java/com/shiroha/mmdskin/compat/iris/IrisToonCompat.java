@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.shiroha.mmdskin.render.shader.ToonOutputProfile;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.network.chat.Component;
 import org.apache.logging.log4j.LogManager;
@@ -20,15 +21,34 @@ public final class IrisToonCompat {
     private static final Set<String> NOTIFIED = new HashSet<>();
     private static boolean primaryColorOutput;
     private static boolean stablePrimaryColorOutput;
+    private static ShaderInstance preparedEntityShader;
+    private static String targetDiagnostic = "not prepared";
+    private static final Set<String> TARGET_DIAGNOSTICS = new HashSet<>();
 
     private IrisToonCompat() {}
 
     public static boolean prepare(ToonShaderBase shader) {
-        IrisToonMetadata.Result result = IrisToonMetadata.read(RenderSystem.getShader());
+        return prepare(shader, false);
+    }
+
+    public static boolean prepare(ToonShaderBase shader, boolean worldScene) {
+        ShaderInstance current = RenderSystem.getShader();
+        boolean shaderPack = IrisCompat.isIrisShaderActive() && !IrisCompat.isRenderingShadows();
+        var selection = shaderPack && worldScene ? IrisWorldTransparencyTarget.entityShader(current)
+                : new IrisWorldTransparencyTarget.ShaderResult(current, "current scene shader");
+        ShaderInstance source = selection.shader();
+        preparedEntityShader = IrisCompat.isIrisProgram(source) ? source : null;
+        IrisToonMetadata.Result result = IrisToonMetadata.read(source);
         ToonOutputProfile profile = result.profile();
         primaryColorOutput = false;
         stablePrimaryColorOutput = false;
+        var target = shaderPack ? IrisWorldTransparencyTarget.inspect() : null;
+        targetDiagnostic = "sourceStatus=" + (preparedEntityShader == null ? "NON_IRIS_SHADER" : "IRIS_SHADER")
+                + ", shader=" + shaderDescription(source) + ", selection=" + selection.detail()
+                + ", profile=" + profile.id() + ", target=" + target;
         if (!profile.isSupported()) {
+            targetDiagnostic += ", outputVerified=false, reason=" + profile.reason();
+            reportTarget(shaderPack, current);
             notifyOnce(result, profile.reason());
             return false;
         }
@@ -36,8 +56,9 @@ public final class IrisToonCompat {
         if (!selected) notifyOnce(result, "Toon 兼容程序编译失败");
         primaryColorOutput = selected && profile.colorOutputSlot() == 0;
         stablePrimaryColorOutput = primaryColorOutput
-                && IrisCompat.isIrisProgram(RenderSystem.getShader())
-                && IrisWorldTransparencyTarget.hasStablePrimaryColor();
+                && preparedEntityShader != null && target != null && target.stable();
+        targetDiagnostic += ", outputVerified=" + primaryColorOutput + ", stablePrimary=" + stablePrimaryColorOutput;
+        reportTarget(shaderPack, current);
         return selected;
     }
 
@@ -71,9 +92,31 @@ public final class IrisToonCompat {
     /** The verified entity colortex0 remains the input to the later composite stage. */
     public static boolean hasStablePrimaryColorOutput() { return stablePrimaryColorOutput; }
 
-    static void reset() {
+    public static ShaderInstance preparedEntityShader() { return preparedEntityShader; }
+
+    public static String targetDiagnostic() { return targetDiagnostic; }
+
+    private static String shaderDescription(ShaderInstance shader) {
+        return shader == null ? "null" : shader.getClass().getName() + "/" + shader.getName();
+    }
+
+    private static void reportTarget(boolean shaderPack, ShaderInstance current) {
+        if (shaderPack && TARGET_DIAGNOSTICS.add(targetDiagnostic))
+            LOGGER.info("[MMD transparency] Iris target verification: currentShader={}, {}",
+                    shaderDescription(current), targetDiagnostic);
+    }
+
+    public static void resetTransparencyVerification() {
         primaryColorOutput = false;
         stablePrimaryColorOutput = false;
+        preparedEntityShader = null;
+        targetDiagnostic = "not prepared";
+        TARGET_DIAGNOSTICS.clear();
+        IrisWorldTransparencyTarget.reset();
+    }
+
+    static void reset() {
+        resetTransparencyVerification();
         NOTIFIED.clear();
         IrisToonMetadata.reset();
     }

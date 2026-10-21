@@ -111,7 +111,7 @@ final class GpuSkinningModelRenderer {
         refreshSubMeshData(target, nativeBackend, modelHandle, firstPersonIndexReady);
         target.currentTranslucentOrder = target.translucentOrders.get(isGuiScene, firstPersonIndexReady);
 
-        boolean useToon = initializeToonShaderIfNeeded(!isGuiScene);
+        boolean useToon = initializeToonShaderIfNeeded(!isGuiScene, context != null && context.isWorldScene());
         float toonIntensity = isGuiScene ? 1.0f
                 : (IrisCompat.isIrisShaderActive() ? light.intensity() * 0.8f : light.intensity());
 
@@ -199,7 +199,7 @@ final class GpuSkinningModelRenderer {
                 String.format(java.util.Locale.ROOT, "%.4f", ratio));
     }
 
-    private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene) {
+    private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene, boolean worldScene) {
         // 阴影通道复用 Iris 程序；GPU 蒙皮结果仍作为普通顶点输入。
         if (IrisCompat.isRenderingShadows() || !ConfigManager.isToonRenderingEnabled()) {
             return false;
@@ -217,7 +217,7 @@ final class GpuSkinningModelRenderer {
             }
         }
         return irisEntityScene
-                ? IrisToonCompat.prepare(GpuSkinningModelInstance.toonShaderCpu)
+                ? IrisToonCompat.prepare(GpuSkinningModelInstance.toonShaderCpu, worldScene)
                 : GpuSkinningModelInstance.toonShaderCpu.selectOutputProfile(
                         com.shiroha.mmdskin.render.shader.ToonOutputProfile.vanilla());
     }
@@ -492,9 +492,7 @@ final class GpuSkinningModelRenderer {
         RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
-        ShaderInstance currentShader = RenderSystem.getShader();
-        ShaderInstance irisShader = irisEntityScene && IrisCompat.isIrisProgram(currentShader)
-                ? currentShader : null;
+        ShaderInstance irisShader = irisEntityScene ? IrisToonCompat.preparedEntityShader() : null;
         try {
             // 先设普通混合，再让 Iris 应用每个缓冲的混合规则。
             if (irisShader != null) {
