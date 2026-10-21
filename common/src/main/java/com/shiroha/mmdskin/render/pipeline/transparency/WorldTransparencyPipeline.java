@@ -14,12 +14,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * One fragment list for world MMD materials AND the complete terrain translucent layer.
- * Opaque model pixels stay in the normal entity pass. Transparent fragments never seal main depth.
- * The terrain hook resolves while its output target is still bound (also in Fabulous).
+ * Deferred MMD fragments resolve after terrain translucency via public loader render events.
+ * No terrain draw calls or renderer-private internals are intercepted. Opaque model pixels
+ * remain in the entity pass; transparent fragments never seal main depth.
+ * Water/model intersections are approximate since terrain is not captured in the queue.
  */
 public final class WorldTransparencyPipeline {
-    /** Capture the vanilla translucent layer by default; explicitly set false for diagnosis only. */
+    /** Disable the deferred model pass for diagnostics only. */
     private static final boolean QUEUE_ENABLED = Boolean.parseBoolean(
             System.getProperty("mmdskin.worldTransparencyQueue", "true"));
     private static final WorldTransparencyPipeline INSTANCE = new WorldTransparencyPipeline();
@@ -31,8 +32,9 @@ public final class WorldTransparencyPipeline {
             }
             """;
     private final Map<Integer, TransparencyProgram> programs = new HashMap<>();
-    private boolean frame, queueActive, worldScene, queued, terrain, fabulous;
-    private int modelCaptures, terrainCaptures;
+    private final WorldTransparencyStageGate stageGate = new WorldTransparencyStageGate();
+    private boolean frame, queueActive, worldScene, queued, fabulous;
+    private int modelCaptures;
     private int meta, nodes, capacity, resolveProgram, vao, depthTexture, depthFbo;
     private int metaBinding, nodeBinding, sourceFbo, depthFormat;
     private int[] viewport;
@@ -40,18 +42,17 @@ public final class WorldTransparencyPipeline {
 
     private WorldTransparencyPipeline() {}
 
-    /** Called only after the loader has verified that vanilla terrain submission is in use. */
-    public static void beginFrame(int terrainProgram, boolean fabulous) {
-        INSTANCE.frame = INSTANCE.queueActive = INSTANCE.queued = INSTANCE.terrain = INSTANCE.worldScene = false;
-        INSTANCE.modelCaptures = INSTANCE.terrainCaptures = 0;
-        if (terrainProgram == 0) return;
+    /** The public stage must have fired in the preceding frame before we defer any draw. */
+    public static void beginFrame(boolean fabulous, boolean supportedShaderMode) {
         INSTANCE.frame = true;
-        if (!QUEUE_ENABLED || !GL.getCapabilities().OpenGL43) return;
-        INSTANCE.frame = true;
+        INSTANCE.queueActive = INSTANCE.queued = INSTANCE.worldScene = false;
+        INSTANCE.modelCaptures = 0;
+        boolean stageAvailable = INSTANCE.stageGate.beginFrame();
+        if (!supportedShaderMode || !stageAvailable || fabulous || !QUEUE_ENABLED || !GL.getCapabilities().OpenGL43)
+            return;
         try {
             INSTANCE.metaBinding = GL46C.glGetInteger(GL46C.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) - 2;
             INSTANCE.nodeBinding = INSTANCE.metaBinding + 1;
-            INSTANCE.program(terrainProgram); // preflight BEFORE accepting any deferred model fragments
             INSTANCE.initResolve();
             INSTANCE.fabulous = fabulous;
             INSTANCE.queueActive = true;
@@ -60,11 +61,22 @@ public final class WorldTransparencyPipeline {
         }
     }
 
+    /** Compose MMD fragments after terrain water/glass, without redirecting any chunk draw. */
+    public static void afterWorldTranslucency() {
+        if (!INSTANCE.stageGate.afterTranslucent()) return;
+        try {
+            if (INSTANCE.queueActive && INSTANCE.queued) INSTANCE.resolve();
+        } finally {
+            INSTANCE.frame = INSTANCE.queueActive = false;
+        }
+    }
+
     public static void endFrame() {
-        if (INSTANCE.modelCaptures > 0 && INSTANCE.terrainCaptures == 0)
-            LogManager.getLogger().warn("Captured {} MMD translucent draws before vanilla translucent, but no terrain draw was captured",
-                    INSTANCE.modelCaptures);
-        INSTANCE.frame = INSTANCE.queueActive = INSTANCE.queued = INSTANCE.terrain = INSTANCE.worldScene = false;
+        boolean missedStage = INSTANCE.stageGate.endFrame();
+        if (missedStage && INSTANCE.queueActive && INSTANCE.queued)
+            LogManager.getLogger().warn("Deferred {} MMD translucent draws but no external translucent stage fired; "
+                    + "disabling the queue next frame", INSTANCE.modelCaptures);
+        INSTANCE.frame = INSTANCE.queueActive = INSTANCE.queued = INSTANCE.worldScene = false;
     }
 
     public static SceneScope modelScene(RenderScene scene) {
@@ -79,7 +91,7 @@ public final class WorldTransparencyPipeline {
 
     /** Success means the caller may omit model-local peeling, triangle sorting and depth sealing. */
     public static boolean prepareModel() {
-        if (!INSTANCE.frame || !INSTANCE.queueActive || !INSTANCE.worldScene || INSTANCE.terrain) return false;
+        if (!INSTANCE.frame || !INSTANCE.queueActive || !INSTANCE.worldScene) return false;
         try {
             INSTANCE.program(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
             return INSTANCE.prepareStorage();
@@ -103,25 +115,7 @@ public final class WorldTransparencyPipeline {
     }
 
     public static boolean hasWorldQueue() {
-        return INSTANCE.frame && INSTANCE.worldScene && INSTANCE.queued && !INSTANCE.terrain;
-    }
-
-    public static void beginTerrain(boolean translucent) { INSTANCE.terrain = translucent; }
-
-    /** Redirects only the actual draw, after vanilla uploaded ChunkOffset to its original shader. */
-    public static boolean captureTerrain(Runnable draw) {
-        if (!INSTANCE.frame || !INSTANCE.terrain || !INSTANCE.queued) return false;
-        try (Capture ignored = INSTANCE.captureDraw()) { INSTANCE.terrainCaptures++; draw.run(); }
-        return true;
-    }
-
-    public static void endTerrain() {
-        try {
-            if (INSTANCE.terrain && INSTANCE.queued) INSTANCE.resolve();
-        } finally {
-            if (INSTANCE.terrain) INSTANCE.frame = false; // no late/GUI model may enter a completed queue
-            INSTANCE.terrain = false;
-        }
+        return INSTANCE.frame && INSTANCE.worldScene && INSTANCE.queued;
     }
 
     private TransparencyProgram program(int source) {
@@ -294,7 +288,7 @@ public final class WorldTransparencyPipeline {
 
     private void resolve() {
         try (ResolveState state = new ResolveState(metaBinding, nodeBinding)) {
-            // Models were captured before later opaque entities. Test against FINAL main depth.
+            // Models were captured before later opaque entities. Test against final opaque depth.
             GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, sourceFbo);
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, depthFbo);
             GL46C.glDisable(GL46C.GL_SCISSOR_TEST);

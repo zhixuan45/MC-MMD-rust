@@ -6,6 +6,8 @@ import com.shiroha.mmdskin.neoforge.entity.MobReplacementRenderEventHandler;
 import com.shiroha.mmdskin.neoforge.maid.MaidRenderEventHandler;
 import com.shiroha.mmdskin.neoforge.register.MmdSkinRegisterClient;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.IEventBus;
@@ -20,7 +22,15 @@ public class MmdSkinNeoForgeClient {
 
     public static void init(IEventBus modEventBus) {
         MmdSkinRegisterClient.init(modEventBus);
+        // The public stage is supported by loaders even when chunk submission is replaced.
+        NeoForge.EVENT_BUS.addListener(MmdSkinNeoForgeClient::onRenderLevelStage);
         modEventBus.addListener(MmdSkinNeoForgeClient::clientSetup);
+    }
+
+    private static void onRenderLevelStage(RenderLevelStageEvent event) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            WorldTransparencyPipeline.afterWorldTranslucency();
+        }
     }
 
     public static void clientSetup(FMLClientSetupEvent event) {
