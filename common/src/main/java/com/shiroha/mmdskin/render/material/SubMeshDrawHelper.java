@@ -156,8 +156,8 @@ public final class SubMeshDrawHelper {
                                         if ((pass == 1 || pass == 2) && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasAlpha) continue;
                                         if (!classicDepthPrepass && pass == 2 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasTranslucentPixels) continue;
                                     } else {
-                                        boolean translucent = state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasTranslucentPixels;
-                                        if (translucent != (pass != 0)) continue;
+                                        boolean materialTranslucent = state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasTranslucentPixels;
+                                        if (materialTranslucent != (pass != 0)) continue;
                                     }
                                 }
                                 // 混合结束后为可见半透明像素补深度，阻挡后画的描边与云；
