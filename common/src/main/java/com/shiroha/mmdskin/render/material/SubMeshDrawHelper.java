@@ -76,7 +76,7 @@ public final class SubMeshDrawHelper {
             // The compute renderer has no CPU positions. Without a Toon batch shader,
             // triangle sorting downloads animated vertices every frame and stalls the GPU.
             // Keep the old sorting path available when exact per-triangle ordering matters.
-            boolean allowReadback = Boolean.getBoolean("mmdskin.plainShaderGpuReadbackSort");
+            boolean allowReadback = !Boolean.getBoolean("mmdskin.fastPlainShaderTransparency");
             boolean sorted=!sharedWorld && !forceOpaque && !shadowPass && order!=null && geometry!=null
                     && TransparencyPassPolicy.useSortedSubmission(toon, geometry.positions() != null, allowReadback)
                     && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,
