@@ -155,3 +155,46 @@ Add JVM option `-Dmmdskin.debugTransparencyStages=true` to print a concise
 color attachments and opaque-depth snapshot status. The trace distinguishes
 incompatible FBO targets from a depth copy that failed. Include these log lines
 and a screenshot if BSL still shows a chest over translucent MMD hair.
+
+### Stable Iris colortex0 when public events bind another FBO
+
+The previous-frame attachment check can reject every model when a public loader
+event runs with Minecraft's main FBO bound instead of the entity gbuffer. Immediate
+alpha blending then happens before later chest draws and the pale clothing layer
+is overwritten. This is reproducible with the production draw helper in a GL probe.
+
+The queue now also accepts a verified Toon primary-color profile when Iris's public
+`getFlippedAfterPrepare()` and `getFlippedAfterTranslucent()` agree for colortex0.
+This establishes that entity rendering and the following composite use the same
+side of the color storage, without guessing from the event's current FBO. At the
+opaque stage, inspect the saved entity FBO, verify its color/depth storage identity,
+and snapshot depth including chests. At the post-particle stage, resolve into that
+saved color target when the callback binds a different FBO. Restore both FBOs'
+draw-buffer mappings and the caller's GL state. If the public Iris access is absent
+or colortex0 flips, retain the existing attachment checks and immediate fallback.
+
+Checked against the local BSL v10.1.8 sources: `gbuffers_block` writes colortex0;
+`deferred` writes colortex4 (AO); `composite` samples colortex0 and writes its color
+onward. Resolve remains before that composite, so the corrected color participates
+in BSL post-processing. This is source/bytecode inspection, not an in-game capture.
+
+Alpha review: Toon discards below `max(0.001, configured cutoff)`; node capture
+discards below 0.001; resolve only discards zero accumulated alpha. The local
+reported instance has both configured cutoffs at 0.001. No threshold is changed.
+
+Run the focused regression after generating the normal runtime classpath:
+
+```powershell
+./gradlew.bat --offline -I tools/translucent-performance/validation.gradle `
+  :common:classes :common:writeTranslucentProbeClasspath -x :prepareNativeResources
+./tools/translucent-performance/run-block-entity-probe.ps1
+```
+
+`BlockEntityTransparencyGlProbe` fails on the pre-fix classes because a stable
+entity target cannot enter the queue with an unrelated event FBO. With the fix it
+checks actual RGBA16F pixels for alpha 0.002/0.01/0.12/0.5, late chest occlusion in
+both depth orders, alpha holes, shared-storage FBO wrappers, pre-water depth,
+untouched auxiliary MRT output, restored state, subsequent color sampling, and
+fallback for unverified targets. It uses synthetic shaders and an Iris verification
+fixture; exact BSL lighting/refraction and the user's model still require in-game
+comparison.

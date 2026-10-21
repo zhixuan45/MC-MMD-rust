@@ -19,6 +19,7 @@ public final class IrisToonCompat {
     private static final SystemToast.SystemToastId TOAST_ID = new SystemToast.SystemToastId(12000);
     private static final Set<String> NOTIFIED = new HashSet<>();
     private static boolean primaryColorOutput;
+    private static boolean stablePrimaryColorOutput;
 
     private IrisToonCompat() {}
 
@@ -26,6 +27,7 @@ public final class IrisToonCompat {
         IrisToonMetadata.Result result = IrisToonMetadata.read(RenderSystem.getShader());
         ToonOutputProfile profile = result.profile();
         primaryColorOutput = false;
+        stablePrimaryColorOutput = false;
         if (!profile.isSupported()) {
             notifyOnce(result, profile.reason());
             return false;
@@ -33,6 +35,9 @@ public final class IrisToonCompat {
         boolean selected = selectCurrentPassProfile(profile, shader::selectOutputProfile);
         if (!selected) notifyOnce(result, "Toon 兼容程序编译失败");
         primaryColorOutput = selected && profile.colorOutputSlot() == 0;
+        stablePrimaryColorOutput = primaryColorOutput
+                && IrisCompat.isIrisProgram(RenderSystem.getShader())
+                && IrisWorldTransparencyTarget.hasStablePrimaryColor();
         return selected;
     }
 
@@ -63,8 +68,12 @@ public final class IrisToonCompat {
     /** True only when the verified Iris program writes colortex0 as GLSL output 0. */
     public static boolean hasPrimaryColorOutput() { return primaryColorOutput; }
 
+    /** The verified entity colortex0 remains the input to the later composite stage. */
+    public static boolean hasStablePrimaryColorOutput() { return stablePrimaryColorOutput; }
+
     static void reset() {
         primaryColorOutput = false;
+        stablePrimaryColorOutput = false;
         NOTIFIED.clear();
         IrisToonMetadata.reset();
     }
