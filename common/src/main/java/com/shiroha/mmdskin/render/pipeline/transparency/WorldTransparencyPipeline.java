@@ -37,7 +37,7 @@ public final class WorldTransparencyPipeline {
     private boolean frame, queueActive, worldScene, queued, fabulous, shaderPack;
     private boolean warnedTargetMismatch;
     private FramebufferColorTarget previousTranslucentColor, previousOpaqueColor, sourceColor;
-    private boolean opaqueDepthCaptured;
+    private boolean opaqueDepthCaptured, fallbackDepthCaptured;
     private int sourceDepthObjectType, sourceDepthObjectId;
     private int[] sourceDrawBuffers;
     private int modelCaptures;
@@ -54,7 +54,7 @@ public final class WorldTransparencyPipeline {
         INSTANCE.shaderPack = shaderPack;
         INSTANCE.sourceColor = null;
         INSTANCE.sourceDrawBuffers = null;
-        INSTANCE.opaqueDepthCaptured = false;
+        INSTANCE.opaqueDepthCaptured = INSTANCE.fallbackDepthCaptured = false;
         INSTANCE.queueActive = INSTANCE.queued = INSTANCE.worldScene = false;
         INSTANCE.modelCaptures = 0;
         boolean stageAvailable = INSTANCE.stageGate.beginFrame();
@@ -92,20 +92,32 @@ public final class WorldTransparencyPipeline {
                 || attachment.objectType() != INSTANCE.sourceDepthObjectType
                 || attachment.objectId() != INSTANCE.sourceDepthObjectId
                 || !attachment.contains(INSTANCE.viewport)) return;
-        int read = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
-        int draw = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
-        boolean scissor = GL46C.glIsEnabled(GL46C.GL_SCISSOR_TEST);
+        // Replace the preliminary entity-time snapshot with the deeper opaque
+        // scene including rendered block entities (but still excluding water).
+        INSTANCE.opaqueDepthCaptured = INSTANCE.copyDepthSnapshot(
+                GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
+    }
+
+    /**
+     * Blit opaque depth into the private texture without altering any GL read/draw
+     * attachments or the scissor mode. Reused both for the fallback entity-time
+     * depth and the preferred post-block-entity depth.
+     */
+    private boolean copyDepthSnapshot(int readFbo) {
+        int oldRead = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
+        int oldDraw = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
+        boolean oldScissor = GL46C.glIsEnabled(GL46C.GL_SCISSOR_TEST);
         try {
             GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
-            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, draw);
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, INSTANCE.depthFbo);
-            int[] v = INSTANCE.viewport;
-            if (DepthAttachment.blit(v[0], v[1], v[0] + v[2], v[1] + v[3],
-                    0, 0, v[2], v[3])) INSTANCE.opaqueDepthCaptured = true;
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, readFbo);
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, depthFbo);
+            int[] v = viewport;
+            return DepthAttachment.blit(v[0], v[1], v[0] + v[2], v[1] + v[3],
+                    0, 0, v[2], v[3]);
         } finally {
-            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, read);
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, draw);
-            if (scissor) GL46C.glEnable(GL46C.GL_SCISSOR_TEST);
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, oldRead);
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, oldDraw);
+            if (oldScissor) GL46C.glEnable(GL46C.GL_SCISSOR_TEST);
             else GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
         }
     }
@@ -249,6 +261,10 @@ public final class WorldTransparencyPipeline {
                 sourceDepthObjectType = depth.objectType();
                 sourceDepthObjectId = depth.objectId();
                 sourceDrawBuffers = currentDrawBuffers();
+                // Retain entity-time depth before water, even if Iris changes
+                // framebuffer targets between the public world stages.
+                fallbackDepthCaptured = copyDepthSnapshot(fbo);
+                if (!fallbackDepthCaptured) return false;
             }
             return true;
         } finally {
@@ -375,13 +391,13 @@ public final class WorldTransparencyPipeline {
             // still represents opaque block entities. The earlier snapshot must
             // survive unchanged until the post-particle composite.
             int destination = shaderPack && !matchedStage ? sourceFbo : state.drawFbo;
-            if (!shaderPack || !opaqueDepthCaptured) {
-                GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, sourceFbo);
-                GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, depthFbo);
-                GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
-                if (!DepthAttachment.blit(viewport[0], viewport[1], viewport[0] + viewport[2], viewport[1] + viewport[3],
-                        0, 0, viewport[2], viewport[3]))
+            if (!shaderPack) {
+                if (!copyDepthSnapshot(sourceFbo))
                     throw new IllegalStateException("World transparency depth copy failed");
+            } else if (!fallbackDepthCaptured) {
+                // Later depthtex0 may already contain water. Never resample it
+                // as an opaque cutoff after a shader-pack target change.
+                throw new IllegalStateException("Missing shader-pack pre-water depth snapshot");
             }
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, destination);
             // Iris's other colortex material channels must remain untouched.

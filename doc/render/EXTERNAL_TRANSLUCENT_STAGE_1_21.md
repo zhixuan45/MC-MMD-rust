@@ -135,3 +135,15 @@ be needed for fully correct refractive effects and every shader configuration.
 Regression: verify BSL/NeOculus with transparent hair in front of and behind a
 chest, water, and glass, while orbiting the camera. Compare translucent
 silhouettes at the water boundary to a no-shader baseline.
+
+### Shader-pack stage-mismatch fallback
+
+When the entity/post-block-entity/post-particle framebuffer targets diverge mid-frame,
+never copy opaque depth from the late source FBO: it might already contain water
+(`depthtex0` semantics). Capture a conservative pre-water snapshot when the first
+MMD model enters the queue. The `AFTER_BLOCK_ENTITIES` stage replaces that snapshot
+with more complete opaque + chest depth when validated. If the late stage no longer
+matches the original color backing object, composite queued fragments to the
+original MMD color backing using the preserved early depth; the next frame must
+revalidate color compatibility. A failed initial depth copy disables deferral
+for the frame, keeping the normal immediate alpha renderer.
