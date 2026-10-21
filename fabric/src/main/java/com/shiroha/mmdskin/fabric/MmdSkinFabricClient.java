@@ -5,6 +5,8 @@ import com.shiroha.mmdskin.fabric.config.MmdSkinConfig;
 import com.shiroha.mmdskin.fabric.maid.MaidCompatMixinPlugin;
 import com.shiroha.mmdskin.fabric.register.MmdSkinRegisterClient;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 
 import net.fabricmc.api.ClientModInitializer;
 
@@ -17,6 +19,8 @@ public class MmdSkinFabricClient implements ClientModInitializer {
         MmdSkinConfig.init();
         MmdSkinClient.initClient();
         MmdSkinRegisterClient.Register();
+        // Avoid renderer-private renderSectionLayer internals.
+        WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> WorldTransparencyPipeline.afterWorldTranslucency());
         ClientRenderRuntime.get().renderBackendSettings().setShaderEnabled(com.shiroha.mmdskin.config.ConfigManager.isMMDShaderEnabled());
     }
 }
