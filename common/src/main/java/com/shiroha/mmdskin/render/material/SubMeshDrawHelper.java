@@ -59,31 +59,34 @@ public final class SubMeshDrawHelper {
         try (EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
              MaterialShaderBinding binding = new MaterialShaderBinding();
              SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
-            boolean sharedWorld = !shadowPass && !binding.disablesTransparency()
-                    && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
-                    && WorldTransparencyPipeline.prepareModel();
-            boolean classicDepthPrepass = !sharedWorld && !shadowPass && !binding.disablesTransparency()
-                    && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
+            // Compute this once instead of scanning every submesh for each render-policy branch.
+            boolean translucent = !shadowPass && !binding.disablesTransparency()
+                    && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache);
+            boolean toon = binding.isToon();
+            // The program-cloning OIT queue and its per-draw uniform/readback barriers
+            // must not run when the game's vanilla/Iris material shader is active.
+            boolean sharedWorld = translucent && toon && WorldTransparencyPipeline.prepareModel();
+            boolean classicDepthPrepass = translucent && toon && !sharedWorld
                     && WorldTransparencyPipeline.classicDepthPrepass();
-            boolean worldFallback = !sharedWorld && !classicDepthPrepass && !shadowPass && !binding.disablesTransparency()
-                    && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
+            boolean worldFallback = translucent && !sharedWorld && !classicDepthPrepass
                     && WorldTransparencyPipeline.worldFallback();
-            try (ToonTransparencyLayers layers = !sharedWorld && !shadowPass && !binding.disablesTransparency()
-                     && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache)
+            try (ToonTransparencyLayers layers = translucent && toon && !sharedWorld
                      ? ToonTransparencyLayers.begin() : null) {
             boolean forceOpaque = !shadowPass && binding.disablesTransparency();
+            // The compute renderer has no CPU positions. Without a Toon batch shader,
+            // triangle sorting downloads animated vertices every frame and stalls the GPU.
+            // Keep the old sorting path available when exact per-triangle ordering matters.
+            boolean allowReadback = Boolean.getBoolean("mmdskin.plainShaderGpuReadbackSort");
             boolean sorted=!sharedWorld && !forceOpaque && !shadowPass && order!=null && geometry!=null
+                    && TransparencyPassPolicy.useSortedSubmission(toon, geometry.positions() != null, allowReadback)
                     && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,
                     alphaResolver,textureResolver,materialCache);
             long submitTimer = TranslucentDiagnostics.startTimer();
             try {
             // 不透明部分先写深度；半透明三角形跨材质由远到近混合。
                 // Toon 对同一贴图的实心与半透明像素也分开，避免黑睫毛的实心部分丢失遮挡。
-                int passCount = shadowPass || forceOpaque ? 1
-                        : sharedWorld ? 2
-                        : classicDepthPrepass ? 3
-                        : worldFallback ? 2
-                        : binding.isToon() && ToonTransparencySettings.disableDepthSeal() ? 2 : 3;
+                int passCount = TransparencyPassPolicy.passCount(shadowPass, forceOpaque, sharedWorld,
+                        classicDepthPrepass, worldFallback, toon, ToonTransparencySettings.disableDepthSeal());
                 boolean previousColorMask = GL46C.glGetBoolean(GL46C.GL_COLOR_WRITEMASK);
                 for (int pass = 0; pass < passCount; pass++) {
                     if (pass == 2 && !hasTranslucentDraws) break;

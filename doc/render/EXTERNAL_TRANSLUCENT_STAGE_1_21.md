@@ -22,3 +22,17 @@ The MMD fragment queue does **not** contain water/glass fragments. Drawing the m
 - Boot NeoForge 1.21.1 with Embeddium 1.0.15 and NeOculus 1.8.7, shader pack disabled. Confirm `captureTranslucentTerrain` Mixin exception is gone.
 - Verify first frame and second frame in-world, models with translucent hair, water/glass intersections, a world with no water nearby, and resource reload.
 - Recheck Fabric + Sodium, Fabulous, and Iris/NeOculus shader packs; compare opaque depth, outline, and hair alpha behaviour.
+
+## Performance with Sodium/Embeddium and Toon rendering disabled
+
+The original `TranslucentDrawOrder.prepare()` path downloads **animated GPU positions** by `glGetBufferSubData` when it cannot use the Toon batch-shader/GPU sorting path. This can stall the rendering thread each frame. Non-Toon world materials also inherited the depth-only prepass, plus Toon layer capability checks, despite not supporting those shader uniforms.
+
+Fast plain-shader policy:
+
+- Never enter shared fragment-list OIT or Toon depth-peeling with a non-Toon material program.
+- Render opaque, then translucent material in two passes without the depth-only prepass or depth seal.
+- When model vertices are GPU-only, skip CPU per-triangle sorting by default; retain original per-material order. This can increase hair/glass overlap artifacts but prevents costly GPU-to-CPU synchronization.
+- When CPU positions already exist, retain the quality-sorted path without GPU readback.
+- To **opt in** to the original GPU-to-CPU sorting and more accurate transparency on non-Toon programs, launch with `-Dmmdskin.plainShaderGpuReadbackSort=true`.
+
+Measure using the in-mod GPU diagnostic counters `READBACK_CALLS`, `READBACK_BYTES`, and submission timings. The fast path should reduce these specifically for non-Toon GPU-animated models. A severe slowdown still occurring with the feature disabled would require a CPU/GPU profile; no numeric FPS improvement is claimed.
