@@ -33,7 +33,7 @@ Fast plain-shader policy:
 - Render opaque, then translucent material in two passes without the depth-only prepass or depth seal.
 - When model vertices are GPU-only, skip CPU per-triangle sorting by default; retain original per-material order. This can increase hair/glass overlap artifacts but prevents costly GPU-to-CPU synchronization.
 - When CPU positions already exist, retain the quality-sorted path without GPU readback.
-- To **opt in** to the original GPU-to-CPU sorting and more accurate transparency on non-Toon programs, launch with `-Dmmdskin.plainShaderGpuReadbackSort=true`.
+- Accurate CPU/GPU triangle ordering is restored as the default when Toon is disabled, because skipping it broke overlapping translucent hair and clothing. Explicit opt-out for speed: `-Dmmdskin.fastPlainShaderTransparency=true`.
 
 Measure using the in-mod GPU diagnostic counters `READBACK_CALLS`, `READBACK_BYTES`, and submission timings. The fast path should reduce these specifically for non-Toon GPU-animated models. A severe slowdown still occurring with the feature disabled would require a CPU/GPU profile; no numeric FPS improvement is claimed.
 
@@ -72,3 +72,34 @@ Validation:
 - Verify visual blending of complex alpha hair with BSL v10.1.8, including
   4-layer depth peeling, chests and water.
 - A proper cross-texture GPU multi-window sort would require further design.
+
+## Shadow-pack block-entity layering / conditional Iris composition
+
+When a shader pack is active the old path always disabled the post-world queue, even
+when Toon model-local transparency was correctly depth peeled. The transparent MMD
+surface could therefore be drawn in the entity pass and later covered by water,
+chests, or other block entities.
+
+The Iris-compatible path is deliberately conservative:
+
+- Only world Toon material programs whose active Iris output profile is verified
+  to put colortex0 at GLSL output location zero can use this queue. Arbitrary MRT
+  source programs are not cloned by this patch.
+- To avoid confusing an Iris FBO wrapper with a color target, compare the actual
+  COLOR_ATTACHMENT0 backing object of the entity FBO with the **previous frame's**
+  public post-particle-stage color attachment and verify the viewport dimensions.
+- Capture MMD translucent fragments without writing depth. At the current world
+  stage, prefer the stage's (compatible) later depth for block-entity occlusion.
+- Composite after world transparents. Touch only COLOR_ATTACHMENT0; restore the
+  full GL draw-buffer mapping afterwards.
+- If the current stage unexpectedly switches target, preserve the already queued
+  fragments by resolving back into their original source FBO. Future frames
+  automatically use the immediate fallback until compatible attachments appear.
+- If a shader pack composites entities and transparent world in different
+  attachments, *do not* pretend they are interchangeable. That case still needs
+  an explicit Iris-supported composite API.
+
+For verification, compare vanilla, NeoForge/Embeddium, BSL v10.1.8 and Complementary.
+Observe a chest both in front of and behind translucent MMD hair, water crossings,
+and changing shader settings. A successful Java CI does not verify GL framebuffer
+correctness: test the resulting in-game pixels and capture FBO attachments.
