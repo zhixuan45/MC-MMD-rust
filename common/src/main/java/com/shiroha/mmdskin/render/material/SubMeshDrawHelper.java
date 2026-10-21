@@ -69,7 +69,7 @@ public final class SubMeshDrawHelper {
             boolean classicDepthPrepass = translucent && toon && !sharedWorld
                     && WorldTransparencyPipeline.classicDepthPrepass();
             boolean worldFallback = translucent && !sharedWorld && !classicDepthPrepass
-                    && WorldTransparencyPipeline.worldFallback();
+                    && WorldTransparencyPipeline.worldFallback(sharedWorld);
             try (ToonTransparencyLayers layers = translucent && toon && !sharedWorld
                      ? ToonTransparencyLayers.begin() : null) {
             boolean forceOpaque = !shadowPass && binding.disablesTransparency();

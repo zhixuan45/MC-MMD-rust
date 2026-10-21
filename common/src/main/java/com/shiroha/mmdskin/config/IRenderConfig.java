@@ -39,6 +39,8 @@ public interface IRenderConfig {
 
     default boolean isDebugGpuLogEnabled() { return false; }
 
+    default boolean isDebugTransparencyStagesEnabled() { return false; }
+
     default int getIssueDiagnosticFlags() { return 0; }
 
     default int getTextureCacheBudgetMB() { return 256; }

@@ -224,6 +224,15 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_world_transparency_queue"),
+                data.toonWorldTransparencyQueue)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_world_transparency_queue.tooltip"))
+            .setSaveConsumer(value -> data.toonWorldTransparencyQueue = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_transparency_layers"),
                 data.toonTransparencyLayerCount, 0, 16)
@@ -667,6 +676,14 @@ public class ModConfigScreen {
             .setDefaultValue(false)
             .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_gpu_log.tooltip"))
             .setSaveConsumer(value -> data.debugGpuLog = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_stages"),
+                data.debugTransparencyStages)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_stages.tooltip"))
+            .setSaveConsumer(value -> data.debugTransparencyStages = value)
             .build());
 
         debugCategory.addEntry(entryBuilder

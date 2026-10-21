@@ -46,6 +46,10 @@ public class ConfigManager {
         return provider != null ? provider.isDebugGpuLogEnabled() : false;
     }
 
+    public static boolean isDebugTransparencyStagesEnabled() {
+        return provider != null && provider.isDebugTransparencyStagesEnabled();
+    }
+
     public static int getPerformanceLogIntervalSeconds() {
         return provider != null ? provider.getPerformanceLogIntervalSeconds() : 5;
     }
@@ -80,6 +84,10 @@ public class ConfigManager {
 
     public static boolean isToonDisableDepthSeal() {
         return provider != null && provider.isToonDisableDepthSeal();
+    }
+
+    public static boolean isToonWorldTransparencyQueueEnabled() {
+        return provider == null || provider.isToonWorldTransparencyQueueEnabled();
     }
 
     public static int getToonTransparencyLayerCount() {

@@ -12,6 +12,8 @@ public interface IToonConfig {
 
     default boolean isToonDisableDepthSeal() { return false; }
 
+    default boolean isToonWorldTransparencyQueueEnabled() { return true; }
+
     default int getToonTransparencyLayerCount() { return 4; }
 
     default float getToonAlphaCutoff() { return 0.001f; }

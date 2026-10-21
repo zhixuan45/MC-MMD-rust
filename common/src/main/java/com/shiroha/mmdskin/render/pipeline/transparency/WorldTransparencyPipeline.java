@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.pipeline.transparency;
 
 import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
+import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.render.gl.DepthAttachment;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import org.apache.logging.log4j.LogManager;
@@ -21,12 +22,22 @@ import java.util.Map;
  * Water/model intersections are approximate since terrain is not captured in the queue.
  */
 public final class WorldTransparencyPipeline {
-    /** Disable the deferred model pass for diagnostics only. */
-    private static final boolean QUEUE_ENABLED = Boolean.parseBoolean(
-            System.getProperty("mmdskin.worldTransparencyQueue", "true"));
     private static final WorldTransparencyPipeline INSTANCE = new WorldTransparencyPipeline();
-    /** Opt-in runtime FBO verification: -Dmmdskin.debugTransparencyStages=true. */
-    private static final boolean DEBUG_STAGES = Boolean.getBoolean("mmdskin.debugTransparencyStages");
+
+    /** JVM options override the live GUI configuration, when explicitly provided. */
+    static boolean configuredOrOverride(String override, boolean configured) {
+        return override == null ? configured : Boolean.parseBoolean(override);
+    }
+
+    private static boolean queueEnabled() {
+        return configuredOrOverride(System.getProperty("mmdskin.worldTransparencyQueue"),
+                ConfigManager.isToonWorldTransparencyQueueEnabled());
+    }
+
+    private static boolean debugStages() {
+        return configuredOrOverride(System.getProperty("mmdskin.debugTransparencyStages"),
+                ConfigManager.isDebugTransparencyStagesEnabled());
+    }
     private static final String FULLSCREEN = """
             #version 430 core
             void main() {
@@ -64,7 +75,7 @@ public final class WorldTransparencyPipeline {
         INSTANCE.queueActive = INSTANCE.queued = INSTANCE.worldScene = false;
         INSTANCE.modelCaptures = 0;
         boolean stageAvailable = INSTANCE.stageGate.beginFrame();
-        if (!supportedShaderMode || !stageAvailable || fabulous || !QUEUE_ENABLED || !GL.getCapabilities().OpenGL43)
+        if (!supportedShaderMode || !stageAvailable || fabulous || !queueEnabled() || !GL.getCapabilities().OpenGL43)
             return;
         try {
             INSTANCE.metaBinding = GL46C.glGetInteger(GL46C.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) - 2;
@@ -89,7 +100,7 @@ public final class WorldTransparencyPipeline {
         FramebufferColorTarget opaqueColor = INSTANCE.shaderPack
                 ? FramebufferColorTarget.capture() : null;
         INSTANCE.previousOpaqueColor = opaqueColor;
-        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+        if (debugStages() && INSTANCE.debugFrame % 120 == 1)
             LogManager.getLogger().info("[MMD transparency] after-block-entities color={},"
                     + " sourceColor={}, queued={}, queueActive={}", opaqueColor,
                     INSTANCE.sourceColor, INSTANCE.queued, INSTANCE.queueActive);
@@ -106,7 +117,7 @@ public final class WorldTransparencyPipeline {
         // scene including rendered block entities (but still excluding water).
         INSTANCE.opaqueDepthCaptured = INSTANCE.copyDepthSnapshot(
                 GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
-        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+        if (debugStages() && INSTANCE.debugFrame % 120 == 1)
             LogManager.getLogger().info("[MMD transparency] opaque-depth captured={}, depthTexture={}",
                     INSTANCE.opaqueDepthCaptured, INSTANCE.depthTexture);
     }
@@ -143,7 +154,7 @@ public final class WorldTransparencyPipeline {
         FramebufferColorTarget stageColor = INSTANCE.shaderPack
                 ? FramebufferColorTarget.capture() : null;
         INSTANCE.previousTranslucentColor = stageColor;
-        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+        if (debugStages() && INSTANCE.debugFrame % 120 == 1)
             LogManager.getLogger().info("[MMD transparency] after-particles color={},"
                     + " sourceColor={}, opaqueDepthCaptured={}, fallbackDepthCaptured={}",
                     stageColor, INSTANCE.sourceColor, INSTANCE.opaqueDepthCaptured,
@@ -195,7 +206,7 @@ public final class WorldTransparencyPipeline {
                     currentColor, INSTANCE.previousTranslucentColor);
             boolean opaqueMatch = FramebufferColorTarget.compatible(
                     currentColor, INSTANCE.previousOpaqueColor);
-            if (DEBUG_STAGES && !INSTANCE.debugModelLogged && INSTANCE.debugFrame % 120 == 1) {
+            if (debugStages() && !INSTANCE.debugModelLogged && INSTANCE.debugFrame % 120 == 1) {
                 INSTANCE.debugModelLogged = true;
                 LogManager.getLogger().info("[MMD transparency] model color={},"
                         + " verifiedProfile={}, previousOpaque={}, previousLate={},"
@@ -221,11 +232,15 @@ public final class WorldTransparencyPipeline {
         return false;
     }
 
-    public static boolean worldFallback() {
-        // Immediate translucent blending without main-depth sealing. This must remain
-        // active for world scenes even if the external translucent stage has passed:
-        // a late block-entity/custom renderer must never re-enable depth sealing.
-        return INSTANCE.worldScene && !INSTANCE.queueActive;
+    public static boolean worldFallback(boolean modelJoinedQueue) {
+        // A globally active queue does not prove this model passed Iris compatibility
+        // checks. A failed admission must never re-enable translucent depth sealing.
+        return shouldUseImmediateFallback(INSTANCE.worldScene, INSTANCE.queueActive, modelJoinedQueue);
+    }
+
+    static boolean shouldUseImmediateFallback(boolean worldScene, boolean queueActive,
+                                               boolean modelJoinedQueue) {
+        return worldScene && (!queueActive || !modelJoinedQueue);
     }
 
     public static Capture capture() {

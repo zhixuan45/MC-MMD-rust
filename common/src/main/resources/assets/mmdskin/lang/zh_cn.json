@@ -454,5 +454,9 @@
   "gui.mmdskin.about.restriction": "该模组禁止使用在R18G等相关场景。",
   "gui.mmdskin.about.sponsors": "赞助者",
   "gui.mmdskin.about.sponsors.empty": "感谢所有支持本项目的赞助者。",
-  "gui.mmdskin.about.click_link": "点击打开链接"
+  "gui.mmdskin.about.click_link": "点击打开链接",
+  "gui.mmdskin.mod_settings.toon_world_transparency_queue": "启用世界半透明延迟合成",
+  "gui.mmdskin.mod_settings.toon_world_transparency_queue.tooltip": "在三渲二中尝试把模型半透明像素延迟到世界透明阶段合成，改善与箱子等世界对象的遮挡。默认开启；光影的 G-buffer 不兼容时会安全回退。关闭可用于对照测试；保存后下一帧生效。",
+  "gui.mmdskin.mod_settings.debug_transparency_stages": "半透明阶段诊断日志",
+  "gui.mmdskin.mod_settings.debug_transparency_stages.tooltip": "约每 120 帧向 latest.log 记录 Iris/BSL 的帧缓冲颜色目标、阶段匹配及深度快照状态，用于排查实体和半透明遮挡。默认关闭；保存后生效。"
 }
