@@ -36,7 +36,9 @@ public final class WorldTransparencyPipeline {
     private final WorldTransparencyStageGate stageGate = new WorldTransparencyStageGate();
     private boolean frame, queueActive, worldScene, queued, fabulous, shaderPack;
     private boolean warnedTargetMismatch;
-    private FramebufferColorTarget previousTranslucentColor, sourceColor;
+    private FramebufferColorTarget previousTranslucentColor, previousOpaqueColor, sourceColor;
+    private boolean opaqueDepthCaptured;
+    private int sourceDepthObjectType, sourceDepthObjectId;
     private int[] sourceDrawBuffers;
     private int modelCaptures;
     private int meta, nodes, capacity, resolveProgram, vao, depthTexture, depthFbo;
@@ -52,6 +54,7 @@ public final class WorldTransparencyPipeline {
         INSTANCE.shaderPack = shaderPack;
         INSTANCE.sourceColor = null;
         INSTANCE.sourceDrawBuffers = null;
+        INSTANCE.opaqueDepthCaptured = false;
         INSTANCE.queueActive = INSTANCE.queued = INSTANCE.worldScene = false;
         INSTANCE.modelCaptures = 0;
         boolean stageAvailable = INSTANCE.stageGate.beginFrame();
@@ -68,6 +71,45 @@ public final class WorldTransparencyPipeline {
         }
     }
 
+    /**
+     * Record the opaque depth AFTER block entities (chests, signs) but BEFORE
+     * translucent water. This is the depthtex1-equivalent point under BSL:
+     * copying at AFTER_PARTICLES mistakenly treats water as solid geometry.
+     *
+     * Public loader stages only; no renderer-private draw call interception.
+     */
+    public static void afterOpaqueWorld() {
+        if (!INSTANCE.frame) return;
+        FramebufferColorTarget opaqueColor = INSTANCE.shaderPack
+                ? FramebufferColorTarget.capture() : null;
+        INSTANCE.previousOpaqueColor = opaqueColor;
+        if (!INSTANCE.shaderPack || !INSTANCE.queueActive || !INSTANCE.queued
+                || !FramebufferColorTarget.compatible(INSTANCE.sourceColor, opaqueColor))
+            return;
+        DepthAttachment attachment = DepthAttachment.inspect();
+        if (attachment == null || attachment.samples() != 0
+                || attachment.format() != INSTANCE.depthFormat
+                || attachment.objectType() != INSTANCE.sourceDepthObjectType
+                || attachment.objectId() != INSTANCE.sourceDepthObjectId
+                || !attachment.contains(INSTANCE.viewport)) return;
+        int read = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
+        int draw = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
+        boolean scissor = GL46C.glIsEnabled(GL46C.GL_SCISSOR_TEST);
+        try {
+            GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, draw);
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, INSTANCE.depthFbo);
+            int[] v = INSTANCE.viewport;
+            if (DepthAttachment.blit(v[0], v[1], v[0] + v[2], v[1] + v[3],
+                    0, 0, v[2], v[3])) INSTANCE.opaqueDepthCaptured = true;
+        } finally {
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, read);
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, draw);
+            if (scissor) GL46C.glEnable(GL46C.GL_SCISSOR_TEST);
+            else GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
+        }
+    }
+
     /** Compose MMD fragments after terrain water/glass, without redirecting any chunk draw. */
     public static void afterWorldTranslucency() {
         if (!INSTANCE.stageGate.afterTranslucent()) return;
@@ -79,7 +121,8 @@ public final class WorldTransparencyPipeline {
         try {
             if (INSTANCE.queueActive && INSTANCE.queued) {
                 boolean compatible = !INSTANCE.shaderPack
-                        || FramebufferColorTarget.compatible(INSTANCE.sourceColor, stageColor);
+                        || (INSTANCE.opaqueDepthCaptured
+                            && FramebufferColorTarget.compatible(INSTANCE.sourceColor, stageColor));
                 if (!compatible && !INSTANCE.warnedTargetMismatch) {
                     INSTANCE.warnedTargetMismatch = true;
                     LogManager.getLogger().warn("Iris post-particle color attachment changed during the frame; "
@@ -117,7 +160,9 @@ public final class WorldTransparencyPipeline {
         // Only use the queue with an explicitly verified single primary-color target.
         if (INSTANCE.shaderPack && (!IrisToonCompat.hasPrimaryColorOutput()
                 || !FramebufferColorTarget.compatible(
-                        FramebufferColorTarget.capture(), INSTANCE.previousTranslucentColor))) return false;
+                        FramebufferColorTarget.capture(), INSTANCE.previousTranslucentColor)
+                || !FramebufferColorTarget.compatible(
+                        FramebufferColorTarget.capture(), INSTANCE.previousOpaqueColor))) return false;
         try {
             INSTANCE.program(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
             return INSTANCE.prepareStorage();
@@ -201,6 +246,8 @@ public final class WorldTransparencyPipeline {
             sourceFbo = fbo;
             if (shaderPack) {
                 sourceColor = FramebufferColorTarget.capture();
+                sourceDepthObjectType = depth.objectType();
+                sourceDepthObjectId = depth.objectId();
                 sourceDrawBuffers = currentDrawBuffers();
             }
             return true;
@@ -324,21 +371,18 @@ public final class WorldTransparencyPipeline {
     private void resolve(boolean matchedStage) {
         try (ResolveState state = new ResolveState(metaBinding, nodeBinding,
                 sourceFbo, sourceDrawBuffers)) {
-            // Read later world depth when it is a compatible attachment. This includes
-            // block entities drawn after player models, such as chests and signs.
-            boolean useStageDepth = shaderPack && matchedStage;
-            if (useStageDepth) {
-                DepthAttachment depth = DepthAttachment.inspect();
-                useStageDepth = depth != null && depth.format() == depthFormat
-                        && depth.samples() == 0 && depth.contains(viewport);
-            }
+            // A shader pack's current depthtex0 can include water, while depthtex1
+            // still represents opaque block entities. The earlier snapshot must
+            // survive unchanged until the post-particle composite.
             int destination = shaderPack && !matchedStage ? sourceFbo : state.drawFbo;
-            int depthSource = useStageDepth ? state.drawFbo : sourceFbo;
-            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, depthSource);
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, depthFbo);
-            GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
-            if (!DepthAttachment.blit(viewport[0], viewport[1], viewport[0] + viewport[2], viewport[1] + viewport[3],
-                    0, 0, viewport[2], viewport[3])) throw new IllegalStateException("World transparency depth copy failed");
+            if (!shaderPack || !opaqueDepthCaptured) {
+                GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, sourceFbo);
+                GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, depthFbo);
+                GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
+                if (!DepthAttachment.blit(viewport[0], viewport[1], viewport[0] + viewport[2], viewport[1] + viewport[3],
+                        0, 0, viewport[2], viewport[3]))
+                    throw new IllegalStateException("World transparency depth copy failed");
+            }
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, destination);
             // Iris's other colortex material channels must remain untouched.
             if (shaderPack) GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
@@ -463,7 +507,8 @@ public final class WorldTransparencyPipeline {
         endFrame();
         INSTANCE.programs.values().forEach(TransparencyProgram::close); INSTANCE.programs.clear();
         INSTANCE.releaseStorage(); INSTANCE.viewport = null;
-        INSTANCE.previousTranslucentColor = INSTANCE.sourceColor = null;
+        INSTANCE.previousTranslucentColor = INSTANCE.previousOpaqueColor = INSTANCE.sourceColor = null;
+        INSTANCE.opaqueDepthCaptured = false;
         INSTANCE.sourceDrawBuffers = null;
         if (INSTANCE.resolveProgram != 0) GL46C.glDeleteProgram(INSTANCE.resolveProgram);
         if (INSTANCE.vao != 0) GL46C.glDeleteVertexArrays(INSTANCE.vao);

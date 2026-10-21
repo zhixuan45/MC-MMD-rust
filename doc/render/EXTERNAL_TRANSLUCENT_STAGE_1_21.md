@@ -103,3 +103,35 @@ For verification, compare vanilla, NeoForge/Embeddium, BSL v10.1.8 and Complemen
 Observe a chest both in front of and behind translucent MMD hair, water crossings,
 and changing shader settings. A successful Java CI does not verify GL framebuffer
 correctness: test the resulting in-game pixels and capture FBO attachments.
+
+## BSL v10.1.8: distinguish opaque depth from water depth
+
+Validated against the user's exact BSL_v10.1.8.zip. Its
+`gbuffers_entities_translucent` and `gbuffers_water` programs use DRAWBUFFERS:01,
+and the composite program samples **both** `depthtex0` and `depthtex1`.
+A late copy of the currently-bound world depth is not necessarily opaque:
+water/glass may have changed it, so using it as a hard cutoff can make the
+chest/water layer appear in front of every MMD transparent fragment.
+
+New stage split:
+
+- The entity draw captures MMD transparent fragments but does not seal main depth.
+- At NeoForge `AFTER_BLOCK_ENTITIES` (Fabric `BEFORE_DEBUG_RENDER`),
+  and before translucent terrain, snapshot the opaque+block-entity depth into
+  MMD's private depth texture. Only do this when the same primary color and
+  depth attachment are verified as the original entity target.
+- At `AFTER_PARTICLES` (Fabric `AFTER_TRANSLUCENT`), resolve against the
+  saved depth; do **not** overwrite it from the water-stage depth. If the later
+  primary color target differs, the existing safety fallback applies.
+- The previous-frame verification must see both the post-block-entity target
+  and the final translucent target. Otherwise shader-pack deferred capture
+  remains disabled.
+
+Limitations: transparent water and MMD fragments are not interleaved into a
+shared exact OIT structure, and color-only composition does not populate BSL's
+auxiliary colortex1 material channel. Further pack-specific integration would
+be needed for fully correct refractive effects and every shader configuration.
+
+Regression: verify BSL/NeOculus with transparent hair in front of and behind a
+chest, water, and glass, while orbiting the camera. Compare translucent
+silhouettes at the water boundary to a no-shader baseline.
