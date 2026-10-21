@@ -36,3 +36,11 @@ Fast plain-shader policy:
 - To **opt in** to the original GPU-to-CPU sorting and more accurate transparency on non-Toon programs, launch with `-Dmmdskin.plainShaderGpuReadbackSort=true`.
 
 Measure using the in-mod GPU diagnostic counters `READBACK_CALLS`, `READBACK_BYTES`, and submission timings. The fast path should reduce these specifically for non-Toon GPU-animated models. A severe slowdown still occurring with the feature disabled would require a CPU/GPU profile; no numeric FPS improvement is claimed.
+
+## Shader-pack + chest/block entity occlusion regression
+
+The prior `classicDepthPrepass()` returned true for every world model when the shared queue was unavailable. This occurred with active shader packs, and triggered a **depth-only translucent pass** during entity submission. Later block entities such as chests could then fail their depth test behind nominally transparent MMD hair/clothing. This was **not** a block-entity API problem; it was premature model depth occlusion.
+
+Disable the early depth-only prepass for world scenes entirely. World fallback always uses opaque + translucent color passes with depth writes disabled for translucent fragments, and no subsequent depth seal, even if the public callback has fired. The private Toon depth-peeling mechanism can still select layers without committing transparent pixels to world depth. This fixes the early-depth hazard; exact blending order of independent later block entities remains a separate cross-pass limitation requiring staged deferred compositing.
+
+Regression scenarios: place a chest / sign / banner immediately behind translucent MMD hair, while facing away and moving the camera, both with Toon peeling enabled and disabled and with BSL/NeOculus. Check water/glass and outline masks too. In particular, verify the actual depth mask and depth buffer via a GPU capture, not only the resulting screenshot.

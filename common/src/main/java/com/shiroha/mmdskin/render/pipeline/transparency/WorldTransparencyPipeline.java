@@ -102,12 +102,17 @@ public final class WorldTransparencyPipeline {
     }
 
     public static boolean classicDepthPrepass() {
-        // A depth-only pre-pass would occlude water/glass rendered later by LevelRenderer.
-        return INSTANCE.worldScene && !INSTANCE.queueActive;
+        // Never write translucent MMD depth into the main world buffer during entity
+        // submission. Block entities (chests, signs), water, and shader-pack targets
+        // can be submitted later, so an early depth-only pass would occlude them.
+        return false;
     }
 
     public static boolean worldFallback() {
-        return INSTANCE.frame && INSTANCE.worldScene && !INSTANCE.queueActive;
+        // Immediate translucent blending without main-depth sealing. This must remain
+        // active for world scenes even if the external translucent stage has passed:
+        // a late block-entity/custom renderer must never re-enable depth sealing.
+        return INSTANCE.worldScene && !INSTANCE.queueActive;
     }
 
     public static Capture capture() {
