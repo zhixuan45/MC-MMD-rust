@@ -28,7 +28,9 @@ public class MmdSkinNeoForgeClient {
     }
 
     private static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) {
+            WorldTransparencyPipeline.afterOpaqueWorld();
+        } else if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_PARTICLES) {
             WorldTransparencyPipeline.afterWorldTranslucency();
         }
     }

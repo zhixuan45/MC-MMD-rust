@@ -391,8 +391,14 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 }
                 positions = gpuPositions;
             }
+            // GPU single-window submission may fail after building a conservative candidate
+            // list (e.g. a PMX with more than eight simultaneously used textures).
+            // Reuse that superset on the CPU: transparent fragments still get rejected by
+            // the pixel alpha test, and we avoid a second costly UV GPU->CPU readback.
+            boolean cachedCandidateSuperset = candidateCacheMatches(inputs, source, count, bytes,
+                    indexSize, coverageSafe, batches, includeOpaque, materials);
             ByteBuffer uvs = inputs.uvs();
-            if (uvs == null && inputs.uvBuffer() > 0) {
+            if (!cachedCandidateSuperset && uvs == null && inputs.uvBuffer() > 0) {
                 int required = inputs.vertexCount() * 8;
                 if (gpuUvs == null || gpuUvs.capacity() != required) {
                     if (gpuUvs != null) MemoryUtil.memFree(gpuUvs);
@@ -618,7 +624,10 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 || candidateVertexLimit != inputs.vertexCount() || candidateSubmeshCount != count
                 || candidateUvBuffer != inputs.uvBuffer() || candidateUvObject != inputs.uvs()
                 || candidateUvRevision != inputs.uvRevision()
-                || candidateCoverageSafe != coverageSafe) return false;
+                // A non-pruned candidate set is a safe superset of an alpha-pruned set.
+                // The opposite is unsafe: pruned candidates cannot serve an unpruned pass.
+                || !TransparencyPassPolicy.candidateCoverageReusable(candidateCoverageSafe, coverageSafe))
+            return false;
         for (int s = 0; s < count; s++) {
             int base = s * 20;
             int id = source.getInt(base);

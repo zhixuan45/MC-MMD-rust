@@ -10,11 +10,12 @@ public final class WorldTransparencyHooks {
     private WorldTransparencyHooks() {}
 
     public static void beginFrame(boolean fabulous) {
-        boolean supported = !IrisCompat.isRenderingShadows() && !IrisCompat.isIrisShaderActive();
-        if (!supported && !warned && !IrisCompat.isRenderingShadows()) {
+        boolean shaderPack = IrisCompat.isIrisShaderActive();
+        boolean supported = !IrisCompat.isRenderingShadows();
+        if (shaderPack && !warned) {
             warned = true;
-            LogManager.getLogger().info("Shared MMD transparency retains the immediate renderer when an Iris/NeOculus shader pack is active.");
+            LogManager.getLogger().info("Iris/NeOculus transparent queue requires matching entity and post-particle primary color attachments.");
         }
-        WorldTransparencyPipeline.beginFrame(fabulous, supported);
+        WorldTransparencyPipeline.beginFrame(fabulous, supported, shaderPack);
     }
 }

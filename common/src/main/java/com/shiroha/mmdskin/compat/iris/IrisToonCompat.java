@@ -18,18 +18,21 @@ public final class IrisToonCompat {
     private static final Logger LOGGER = LogManager.getLogger();
     private static final SystemToast.SystemToastId TOAST_ID = new SystemToast.SystemToastId(12000);
     private static final Set<String> NOTIFIED = new HashSet<>();
+    private static boolean primaryColorOutput;
 
     private IrisToonCompat() {}
 
     public static boolean prepare(ToonShaderBase shader) {
         IrisToonMetadata.Result result = IrisToonMetadata.read(RenderSystem.getShader());
         ToonOutputProfile profile = result.profile();
+        primaryColorOutput = false;
         if (!profile.isSupported()) {
             notifyOnce(result, profile.reason());
             return false;
         }
         boolean selected = selectCurrentPassProfile(profile, shader::selectOutputProfile);
         if (!selected) notifyOnce(result, "Toon 兼容程序编译失败");
+        primaryColorOutput = selected && profile.colorOutputSlot() == 0;
         return selected;
     }
 
@@ -57,7 +60,11 @@ public final class IrisToonCompat {
         }
     }
 
+    /** True only when the verified Iris program writes colortex0 as GLSL output 0. */
+    public static boolean hasPrimaryColorOutput() { return primaryColorOutput; }
+
     static void reset() {
+        primaryColorOutput = false;
         NOTIFIED.clear();
         IrisToonMetadata.reset();
     }
