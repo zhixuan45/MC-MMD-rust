@@ -90,9 +90,10 @@ def stage(args: argparse.Namespace) -> None:
     if destination == artifact_root or destination in artifact_root.parents:
         raise ValueError("Staging destination cannot contain or replace the artifact input directory")
 
-    # 先验证全套输入，避免失败时留下部分 staging。
+    # 先验证所选平台的全部输入，避免失败时留下部分 staging。
     sources: dict[str, Path] = {}
-    for arch, (artifact_name, filename, kind, expected) in ARTIFACTS.items():
+    artifacts = ARTIFACTS if args.arch is None else {args.arch: ARTIFACTS[args.arch]}
+    for arch, (artifact_name, filename, kind, expected) in artifacts.items():
         source_dir = artifact_root / artifact_name
         source = source_dir / filename
         check_binary(source, kind, expected)
@@ -111,7 +112,7 @@ def stage(args: argparse.Namespace) -> None:
         shutil.copy2(source, target)
         if digest(source.read_bytes()) != digest(target.read_bytes()):
             raise ValueError(f"Staged native does not match artifact source: {relative}")
-    print(f"Staged and verified all {len(ARTIFACTS)} native architectures at {destination}")
+    print(f"Staged and verified {len(artifacts)} native architectures at {destination}")
 
 
 def jar_candidates(directory: Path, prefix: str) -> list[Path]:
@@ -119,13 +120,15 @@ def jar_candidates(directory: Path, prefix: str) -> list[Path]:
         path
         for path in directory.glob(f"{prefix}*.jar")
         if not any(token in path.name for token in ("-dev", "-sources", "-universal"))
+        and not any(path.stem.endswith(f"-{arch}") for arch in ARTIFACTS)
     ]
     if len(candidates) != 1:
         raise ValueError(f"Expected one release JAR in {directory}, found {len(candidates)}")
     return candidates
 
 
-def verify_jar(path: Path, platform: str, staged: Path) -> None:
+def verify_jar(path: Path, platform: str, staged: Path, arch: str | None = None) -> None:
+    artifacts = ARTIFACTS if arch is None else {arch: ARTIFACTS[arch]}
     with zipfile.ZipFile(path) as jar:
         members = set(jar.namelist())
         required = {
@@ -176,7 +179,23 @@ def verify_jar(path: Path, platform: str, staged: Path) -> None:
         if not relocated or bare:
             raise ValueError(f"{path} jlayer relocation invalid: relocated={len(relocated)}, bare={len(bare)}")
 
-        for arch, (_, filename, kind, expected) in ARTIFACTS.items():
+        expected_natives = {
+            f"natives/{arch}/{filename}"
+            for arch, (_, filename, _, _) in artifacts.items()
+        }
+        expected_natives.update(
+            f"natives/{arch}/libc++_shared.so"
+            for arch in artifacts if arch.startswith("android-")
+        )
+        actual_natives = {name for name in members if name.startswith("natives/") and not name.endswith("/")}
+        if actual_natives != expected_natives:
+            raise ValueError(
+                f"{path} native entries differ from selected architectures: "
+                f"missing={sorted(expected_natives - actual_natives)}, "
+                f"unexpected={sorted(actual_natives - expected_natives)}"
+            )
+
+        for arch, (_, filename, kind, expected) in artifacts.items():
             member = f"natives/{arch}/{filename}"
             if member not in members:
                 raise ValueError(f"{path} is missing {member}")
@@ -206,7 +225,8 @@ def verify_jar(path: Path, platform: str, staged: Path) -> None:
 
 def package(args: argparse.Namespace) -> None:
     staged = Path(args.staged).resolve()
-    for arch, (_, filename, kind, expected) in ARTIFACTS.items():
+    artifacts = ARTIFACTS if args.arch is None else {args.arch: ARTIFACTS[args.arch]}
+    for arch, (_, filename, kind, expected) in artifacts.items():
         check_binary(staged / "natives" / arch / filename, kind, expected)
 
     outputs = []
@@ -216,11 +236,12 @@ def package(args: argparse.Namespace) -> None:
     ):
         jar = jar_candidates(directory, prefix)[0]
         platform = "fabric" if prefix == "mmdskin-fabric-" else "neoforge"
-        verify_jar(jar, platform, staged)
-        universal = jar.with_name(f"{jar.stem}-universal{jar.suffix}")
-        shutil.copy2(jar, universal)
-        verify_jar(universal, platform, staged)
-        outputs.extend((jar, universal))
+        verify_jar(jar, platform, staged, args.arch)
+        classifier = args.arch or "universal"
+        packaged = jar.with_name(f"{jar.stem}-{classifier}{jar.suffix}")
+        shutil.copy2(jar, packaged)
+        verify_jar(packaged, platform, staged, args.arch)
+        outputs.append(packaged)
     print("Verified native resources in these mod artifacts:")
     for path in outputs:
         print(f"  {path}")
@@ -238,11 +259,13 @@ def main() -> None:
     stage_parser = commands.add_parser("stage")
     stage_parser.add_argument("--artifact-root", default="native-libs")
     stage_parser.add_argument("--destination", default="build/ci-native-resources")
+    stage_parser.add_argument("--arch", choices=ARTIFACTS, help="Stage only this platform (default: all)")
     stage_parser.set_defaults(func=stage)
     package_parser = commands.add_parser("package")
     package_parser.add_argument("--staged", default="build/ci-native-resources")
     package_parser.add_argument("--fabric-dir", default="fabric/build/libs")
     package_parser.add_argument("--neoforge-dir", default="neoforge/build/libs")
+    package_parser.add_argument("--arch", choices=ARTIFACTS, help="Package only this platform (default: universal)")
     package_parser.set_defaults(func=package)
     args = parser.parse_args()
     args.func(args)

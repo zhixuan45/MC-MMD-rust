@@ -278,8 +278,8 @@ cargo build --release --lib --manifest-path rust_engine/Cargo.toml
 
 ### GitHub Actions
 
-- `Build & Release` 在推送到 `feat/1.21.1-neoforge`、提交 PR 或手动运行时执行 Rust 单元测试、Java 测试，以及完整的十平台 Fabric / NeoForge 打包。推送 `v*` 标签时还会发布完整产物。
-- 每个模组 JAR（包括 `-universal.jar`）都包含本次工作流构建的全部原生库：Windows x64 / ARM64、Linux x64 / ARM64 / LoongArch64 / RISC-V 64、macOS x64 / ARM64、Android ARM64 / x64。Android 包含所需的 `libc++_shared.so`。原生库的架构、完整性及 JAR 内文件一致性都会校验，缺少任何平台即构建失败；Java 测试报告也会上传。
+- `Build & Release` 在推送到 `feat/1.21.1-neoforge`、提交 PR 或手动运行时执行 Rust 单元测试、Java 测试，并为十个平台分别构建 Fabric / NeoForge 包。每个平台只等待自己的原生库；一个平台失败不会阻塞其他平台打包。推送 `v*` 标签时发布已成功的产物。
+- 每个模组 JAR 仅包含文件名标注平台的原生库，例如 `mmdskin-fabric-<版本>-windows-x64.jar`、`mmdskin-neoforge-<版本>-android-arm64.jar`。支持 Windows x64 / ARM64、Linux x64 / ARM64 / LoongArch64 / RISC-V 64、macOS x64 / ARM64、Android ARM64 / x64（文件名使用 `android-amd64`）。Android 包含所需的 `libc++_shared.so`。CI 不再输出通用包；下载时选择与操作系统、CPU 架构和模组加载器匹配的包。原生库的架构、完整性及 JAR 内文件一致性仍会校验；Java 测试报告按平台上传。
 
 ## 许可证
 

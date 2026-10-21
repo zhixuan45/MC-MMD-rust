@@ -1,0 +1,86 @@
+name: Package platform mod
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        description: Native platform to include in both mod JARs
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package ${{ inputs.arch }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Extract mod version
+        id: version
+        run: |
+          MOD_VERSION=$(grep '^mod_version=' gradle.properties | head -1 | cut -d= -f2-)
+          test -n "$MOD_VERSION"
+          echo "mod_version=$MOD_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download this platform's native libraries
+        uses: actions/download-artifact@v4
+        with:
+          name: native-${{ inputs.arch }}
+          path: native-libs/native-${{ inputs.arch }}
+
+      - name: Stage and verify this platform's native libraries
+        env:
+          NATIVE_ARCH: ${{ inputs.arch }}
+        run: python tools/ci/native_ci.py stage --arch "$NATIVE_ARCH" --artifact-root native-libs --destination build/ci-native-resources
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Fabric and NeoForge and run Java tests
+        run: ./gradlew build --no-daemon --stacktrace -PnativeResourcesPath=build/ci-native-resources
+
+      - name: Verify and name platform JARs
+        env:
+          NATIVE_ARCH: ${{ inputs.arch }}
+        run: python tools/ci/native_ci.py package --arch "$NATIVE_ARCH" --staged build/ci-native-resources
+
+      - name: Upload Fabric Mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmdskin-fabric-${{ steps.version.outputs.mod_version }}-${{ inputs.arch }}
+          path: fabric/build/libs/*-${{ inputs.arch }}.jar
+          if-no-files-found: error
+
+      - name: Upload NeoForge Mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: mmdskin-neoforge-${{ steps.version.outputs.mod_version }}-${{ inputs.arch }}
+          path: neoforge/build/libs/*-${{ inputs.arch }}.jar
+          if-no-files-found: error
+
+      - name: Upload Java test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-test-reports-1.21.1-${{ inputs.arch }}
+          path: |
+            common/build/reports/tests/
+            common/build/test-results/
+          if-no-files-found: ignore
