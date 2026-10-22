@@ -53,7 +53,10 @@ final class HeldItemPmxRenderer {
                     config.heldPmxRotX * RAD_PER_DEGREE,
                     config.heldPmxRotY * RAD_PER_DEGREE,
                     config.heldPmxRotZ * RAD_PER_DEGREE));
-            float scale = config.heldItemScale * config.heldPmxScale;
+            // The character stack already has its MMD world scale; the prop
+            // renderer applies MMD scale once more. Like the vanilla item path,
+            // compensate with a 10x hand-space factor before the prop render.
+            float scale = 10.0f * config.heldItemScale * config.heldPmxScale;
             poseStack.scale(scale, scale, scale);
 
             // NULL entity avoids living-entity animation/IK state being applied to the prop.
