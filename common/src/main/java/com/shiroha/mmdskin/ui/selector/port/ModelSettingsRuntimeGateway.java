@@ -4,4 +4,6 @@ import com.shiroha.mmdskin.config.ModelConfigData;
 
 public interface ModelSettingsRuntimeGateway {
     void applyConfigIfSelected(String modelName, ModelConfigData config);
+
+    default void reloadModel(String modelName) { }
 }

@@ -3,7 +3,6 @@ package com.shiroha.mmdskin.player.render;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
-import com.shiroha.mmdskin.model.runtime.ModelSubjectKind;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.scene.client.SceneModelManager;
 import net.minecraft.client.Minecraft;
@@ -27,10 +26,7 @@ public final class PlayerMixinDelegate {
             return selection.terminalAction();
         }
 
-        ModelRequestKey requestKey = new ModelRequestKey(
-                ModelSubjectKind.PLAYER,
-                selection.playerCacheKey(),
-                selection.selectedModel());
+        ModelRequestKey requestKey = ModelRequestKey.player(player, selection.selectedModel());
         ManagedModel modelData = ClientRenderRuntime.get().modelRepository().acquire(requestKey);
 
         if (modelData == null) {

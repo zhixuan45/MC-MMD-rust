@@ -88,6 +88,13 @@ public final class ModelLoadCoordinator {
     public ManagedModel resolveOrQueue(String fullCacheKey,
                                        String modelName,
                                        Function<AsyncLoadResult, ManagedModel> finalizer) {
+        return resolveOrQueue(fullCacheKey, modelName, "", finalizer);
+    }
+
+    public ManagedModel resolveOrQueue(String fullCacheKey,
+                                       String modelName,
+                                       String pmxVariant,
+                                       Function<AsyncLoadResult, ManagedModel> finalizer) {
         PendingLoad pendingLoad = pendingLoads.get(fullCacheKey);
         if (pendingLoad != null) {
             Future<AsyncLoadResult> future = pendingLoad.future();
@@ -104,7 +111,7 @@ public final class ModelLoadCoordinator {
         }
         failedLoads.remove(fullCacheKey);
 
-        ModelCatalogEntry modelInfo = ModelCatalogEntry.findByFolderName(modelName);
+        ModelCatalogEntry modelInfo = ModelCatalogEntry.resolveModelFile(modelName, pmxVariant);
         if (modelInfo == null) {
             if (missingModels.add(modelName)) {
                 logger.warn("模型本地不存在，跳过加载: {}", modelName);

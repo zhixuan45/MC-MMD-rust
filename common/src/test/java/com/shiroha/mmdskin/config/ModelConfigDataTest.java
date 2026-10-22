@@ -84,4 +84,56 @@ class ModelConfigDataTest {
         assertTrue(missingConfig.tailIdleLiftEnabled);
         assertTrue(missingConfig.tailMovementBoostEnabled);
     }
+
+    @Test
+    void pmxSelectionsAreCopiedNormalizedAndPersisted(@TempDir Path tempDir) {
+        ModelConfigData config = new ModelConfigData();
+        config.mainPmxFile = "普通.pmx";
+        config.heldPmxFile = "手持模型.PMX";
+        ModelConfigData copied = config.normalizedCopy();
+        assertEquals("普通.pmx", copied.mainPmxFile);
+        assertEquals("手持模型.PMX", copied.heldPmxFile);
+        config.mainPmxFile = "changed.pmx";
+        assertEquals("普通.pmx", copied.mainPmxFile);
+
+        File saved = tempDir.resolve("model-config.json").toFile();
+        copied.save(saved);
+        ModelConfigData loaded = ModelConfigData.load(saved);
+        assertEquals("普通.pmx", loaded.mainPmxFile);
+        assertEquals("手持模型.PMX", loaded.heldPmxFile);
+        assertEquals(1.0f, loaded.heldPmxScale);
+        assertEquals(0.0f, loaded.heldPmxOffsetX);
+        assertEquals("", new ModelConfigData().heldPmxFile);
+    }
+
+    @Test
+    void propTransformsAreNormalizedAndRoundTrip(@TempDir Path tempDir) {
+        ModelConfigData original = new ModelConfigData();
+        original.heldPmxScale = Float.NaN;
+        original.heldPmxOffsetX = 500.0f;
+        original.heldPmxOffsetY = -3.0f;
+        original.heldPmxRotZ = Float.POSITIVE_INFINITY;
+        ModelConfigData normalized = original.normalizedCopy();
+        assertEquals(1.0f, normalized.heldPmxScale);
+        assertEquals(20.0f, normalized.heldPmxOffsetX);
+        assertEquals(-3.0f, normalized.heldPmxOffsetY);
+        assertEquals(0.0f, normalized.heldPmxRotZ);
+
+        File file = tempDir.resolve("transforms.json").toFile();
+        normalized.save(file);
+        ModelConfigData loaded = ModelConfigData.load(file);
+        assertEquals(20.0f, loaded.heldPmxOffsetX);
+        assertEquals(-3.0f, loaded.heldPmxOffsetY);
+    }
+
+    @Test
+    void pmxSelectionsRejectNonBasenamesAndInvalidExtensions() {
+        assertEquals("", ModelConfigData.normalizePmxFileName("../bad.pmx"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("sub/bad.pmx"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("sub\\\\bad.pmx"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("prop.pmd"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("bad.pmx" + (char) 0));
+        assertEquals("角色.PMX", ModelConfigData.normalizePmxFileName("角色.PMX"));
+    }
+
 }

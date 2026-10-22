@@ -69,27 +69,32 @@ public class ItemRenderHelper {
     public static void renderItems(AbstractClientPlayer player, ManagedModel model,
                                    PoseStack matrixStack, MultiBufferSource vertexConsumers,
                                    int packedLight, float heldItemScale, float tickDelta, float modelScale) {
+        // First-person TaCZ owns its gun draw and aiming transform.
+        boolean taczFirstPerson = player == Minecraft.getInstance().player
+                && FirstPersonManager.shouldRenderFirstPerson()
+                && TaczGunDetector.isGun(player.getMainHandItem());
+
+        // A separate PMX prop is rendered at the main-hand bone; the player
+        // character PMX (and its request key) is never replaced.
+        boolean mainHandReplaced = !taczFirstPerson
+                && HeldItemPmxRenderer.renderMainHand(
+                        player, model, matrixStack, packedLight, tickDelta);
+        if (mainHandReplaced) {
+            renderHandItem(player, model, matrixStack, vertexConsumers,
+                    packedLight, InteractionHand.OFF_HAND, heldItemScale);
+            return;
+        }
+
+        // Missing, loading or failed prop: fall back to the existing item renderer.
         if (externalItemRenderer.renderItems(player, model, matrixStack, vertexConsumers,
                 packedLight, tickDelta, modelScale, heldItemScale)) {
             return;
         }
 
-        renderHandItem(
-                player,
-                model,
-                matrixStack,
-                vertexConsumers,
-                packedLight,
-                InteractionHand.MAIN_HAND,
-                heldItemScale);
-        renderHandItem(
-                player,
-                model,
-                matrixStack,
-                vertexConsumers,
-                packedLight,
-                InteractionHand.OFF_HAND,
-                heldItemScale);
+        renderHandItem(player, model, matrixStack, vertexConsumers,
+                packedLight, InteractionHand.MAIN_HAND, heldItemScale);
+        renderHandItem(player, model, matrixStack, vertexConsumers,
+                packedLight, InteractionHand.OFF_HAND, heldItemScale);
     }
 
     public static boolean applyMmdHandMatrix(ManagedModel model, PoseStack matrixStack, InteractionHand hand) {
@@ -114,7 +119,6 @@ public class ItemRenderHelper {
         if (itemStack.isEmpty()) {
             return;
         }
-
         // 本地第一人称 TaCZ 枪模由 TaCZ 自己定位瞄具；这里跳过主手，避免重复绘制第三人称物品模型。
         if (hand == InteractionHand.MAIN_HAND
                 && player == Minecraft.getInstance().player

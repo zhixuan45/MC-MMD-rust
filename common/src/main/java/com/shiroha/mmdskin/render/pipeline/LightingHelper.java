@@ -17,6 +17,10 @@ public final class LightingHelper {
 
     public static LightData sampleLight(Entity entity, Minecraft mc) {
         if (mc.level == null) return DEFAULT_LIGHT;
+        // Standalone PMX props use a null render entity to avoid character IK and
+        // motion synchronization. Fall back to the local light source if available.
+        if (entity == null) entity = mc.player;
+        if (entity == null) return DEFAULT_LIGHT;
         mc.level.updateSkyBrightness();
         int eyeHeight = (int) (entity.getEyeY() - entity.getBlockY());
         int blockLight = entity.level().getBrightness(LightLayer.BLOCK, entity.blockPosition().above(eyeHeight));

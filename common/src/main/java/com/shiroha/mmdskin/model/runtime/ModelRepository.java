@@ -69,6 +69,7 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
         ManagedModel loadedModel = loadCoordinator.resolveOrQueue(
                 requestKey.cacheKey(),
                 requestKey.modelName(),
+                requestKey.pmxVariant(),
                 result -> finalizeLoadedModel(requestKey, result));
         if (loadedModel != null) {
             modelCache.put(requestKey.cacheKey(), loadedModel);
@@ -87,9 +88,13 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
         if (modelName == null || modelName.isBlank()) {
             return;
         }
-        loadCoordinator.removeMatching(key -> key.endsWith(":" + modelName), this::cleanupLoadedResult);
+        loadCoordinator.removeMatching(key -> matchesModelKey(key, modelName), this::cleanupLoadedResult);
         runtimeAccessPort.clearPreloadedTextures();
-        modelCache.removeMatching(key -> key.endsWith(":" + modelName), this::disposeModel);
+        modelCache.removeMatching(key -> matchesModelKey(key, modelName), this::disposeModel);
+    }
+
+    private static boolean matchesModelKey(String key, String modelName) {
+        return key.endsWith(":" + modelName) || key.contains(":" + modelName + ":pmx:");
     }
 
     @Override
@@ -137,14 +142,16 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
             if (count[0] >= 2 || entry == null || entry.value == null
                     || entry.value.modelInstance() == null
                     || entry.value.modelInstance().getModelHandle() == 0L) return;
-            if (entry.value.requestKey().subjectKind() != ModelSubjectKind.PAPERDOLL) count[0]++;
+            if (entry.value.requestKey().subjectKind() != ModelSubjectKind.PAPERDOLL
+                    && !entry.value.requestKey().isHeldItem()) count[0]++;
         });
         if (count[0] >= 2) return count[0];
         try {
             for (ManagedModel externalModel : extensionPort.additionalLoadedModels()) {
                 if (externalModel == null || externalModel.modelInstance() == null
                         || externalModel.modelInstance().getModelHandle() == 0L
-                        || externalModel.requestKey().subjectKind() == ModelSubjectKind.PAPERDOLL) continue;
+                        || externalModel.requestKey().subjectKind() == ModelSubjectKind.PAPERDOLL
+                        || externalModel.requestKey().isHeldItem()) continue;
                 if (++count[0] >= 2) return count[0];
             }
         } catch (Exception e) {
@@ -192,9 +199,13 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
                 modelInstance,
                 properties,
                 ModelRenderProperties.from(properties));
-        initializePhysicsOptions(modelInstance, config);
-        modelInstance.changeAnim(managedModel.animationLibrary().animation("idle"), 0);
-        applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName(), config);
+        // Prop PMX is independent geometry, not an alternate character skeleton.
+        // Do not apply the character idle VMD or material indices to this model.
+        if (!requestKey.isHeldItem()) {
+            initializePhysicsOptions(modelInstance, config);
+            modelInstance.changeAnim(managedModel.animationLibrary().animation("idle"), 0);
+            applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName(), config);
+        }
         return managedModel;
     }
 

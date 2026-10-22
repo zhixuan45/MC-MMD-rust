@@ -43,6 +43,21 @@ public class ModelConfigData {
     @SerializedName(value = "heldItemScale", alternate = {"firstPersonHeldBlockScale"})
     public float heldItemScale = DEFAULT_HELD_ITEM_SCALE;
 
+    /** Selected PMX in this model folder, or empty for automatic selection. */
+    public String mainPmxFile = "";
+
+    /** Full character PMX with a built-in main-hand accessory; empty disables replacement. */
+    public String heldPmxFile = "";
+
+    /** Extra PMX prop transformation in main-hand local coordinates. */
+    public float heldPmxScale = 1.0f;
+    public float heldPmxOffsetX = 0.0f;
+    public float heldPmxOffsetY = 0.0f;
+    public float heldPmxOffsetZ = 0.0f;
+    public float heldPmxRotX = 0.0f;
+    public float heldPmxRotY = 0.0f;
+    public float heldPmxRotZ = 0.0f;
+
     public Set<Integer> hiddenMaterials = new HashSet<>();
 
     public static ModelConfigData load(File configFile) {
@@ -70,6 +85,15 @@ public class ModelConfigData {
         c.eyeMaxAngle = this.eyeMaxAngle;
         c.modelScale = this.modelScale;
         c.heldItemScale = this.heldItemScale;
+        c.mainPmxFile = this.mainPmxFile;
+        c.heldPmxFile = this.heldPmxFile;
+        c.heldPmxScale = this.heldPmxScale;
+        c.heldPmxOffsetX = this.heldPmxOffsetX;
+        c.heldPmxOffsetY = this.heldPmxOffsetY;
+        c.heldPmxOffsetZ = this.heldPmxOffsetZ;
+        c.heldPmxRotX = this.heldPmxRotX;
+        c.heldPmxRotY = this.heldPmxRotY;
+        c.heldPmxRotZ = this.heldPmxRotZ;
         c.hiddenMaterials = this.hiddenMaterials == null ? new HashSet<>() : new HashSet<>(this.hiddenMaterials);
         return c;
     }
@@ -86,6 +110,15 @@ public class ModelConfigData {
                 MIN_HELD_ITEM_SCALE,
                 MAX_HELD_ITEM_SCALE,
                 DEFAULT_HELD_ITEM_SCALE);
+        mainPmxFile = normalizePmxFileName(mainPmxFile);
+        heldPmxFile = normalizePmxFileName(heldPmxFile);
+        heldPmxScale = clampOrDefault(heldPmxScale, 0.01f, 20.0f, 1.0f);
+        heldPmxOffsetX = clampOrDefault(heldPmxOffsetX, -20.0f, 20.0f, 0.0f);
+        heldPmxOffsetY = clampOrDefault(heldPmxOffsetY, -20.0f, 20.0f, 0.0f);
+        heldPmxOffsetZ = clampOrDefault(heldPmxOffsetZ, -20.0f, 20.0f, 0.0f);
+        heldPmxRotX = clampOrDefault(heldPmxRotX, -360.0f, 360.0f, 0.0f);
+        heldPmxRotY = clampOrDefault(heldPmxRotY, -360.0f, 360.0f, 0.0f);
+        heldPmxRotZ = clampOrDefault(heldPmxRotZ, -360.0f, 360.0f, 0.0f);
         hiddenMaterials = normalizeHiddenMaterials(hiddenMaterials);
         return this;
     }
@@ -99,6 +132,16 @@ public class ModelConfigData {
         } catch (IOException e) {
             logger.error("保存模型配置失败: {}", e.getMessage());
         }
+    }
+
+    /** Reject paths and non-PMX file names before accessing local model files. */
+    public static String normalizePmxFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) return "";
+        if (!fileName.equals(fileName.trim()) || fileName.indexOf('/') >= 0
+                || fileName.indexOf('\\') >= 0 || fileName.equals(".") || fileName.equals("..")
+                || fileName.indexOf(':') >= 0 || fileName.chars().anyMatch(Character::isISOControl)
+                || !fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".pmx")) return "";
+        return fileName;
     }
 
     private static float clampOrDefault(float value, float min, float max, float fallback) {
