@@ -199,10 +199,11 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
                 modelInstance,
                 properties,
                 ModelRenderProperties.from(properties));
-        initializePhysicsOptions(modelInstance, config);
-        modelInstance.changeAnim(managedModel.animationLibrary().animation("idle"), 0);
-        // Hidden material indices belong to the character mesh, not an independent prop.
+        // Prop PMX is independent geometry, not an alternate character skeleton.
+        // Do not apply the character idle VMD or material indices to this model.
         if (!requestKey.isHeldItem()) {
+            initializePhysicsOptions(modelInstance, config);
+            modelInstance.changeAnim(managedModel.animationLibrary().animation("idle"), 0);
             applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName(), config);
         }
         return managedModel;
