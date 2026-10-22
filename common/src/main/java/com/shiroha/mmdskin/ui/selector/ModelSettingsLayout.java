@@ -5,12 +5,16 @@ final class ModelSettingsLayout {
     private static final int EYE_HEIGHT = 48;
     private static final int CARD_HEIGHT = 35;
     private static final int TAIL_HEIGHT = 42;
+    private static final int PMX_HEIGHT = 38;
     private static final int QUICK_HEIGHT = 47;
     private static final int SECTION_GAP = 4;
-    private static final int CONTENT_HEIGHT = EYE_HEIGHT + CARD_HEIGHT * 2 + TAIL_HEIGHT + QUICK_HEIGHT + SECTION_GAP * 4;
+    private static final int CONTENT_HEIGHT = EYE_HEIGHT + CARD_HEIGHT * 2 + PMX_HEIGHT * 2
+            + TAIL_HEIGHT + QUICK_HEIGHT + SECTION_GAP * 6;
     final UiRect panel, header, viewport, scrollTrack, scrollThumb;
     final UiRect eyeCard, eyeToggle, eyeSlider, scaleCard, scaleSlider;
     final UiRect heldBlockCard, heldBlockSlider, tailCard, tailIdleToggle, tailMovementToggle;
+    final UiRect mainPmxCard, mainPmxPrev, mainPmxValue, mainPmxNext;
+    final UiRect heldPmxCard, heldPmxPrev, heldPmxValue, heldPmxNext;
     final UiRect quickCard, saveButton, resetButton, animButton, doneButton;
     final UiRect[] quickSlotButtons;
     final double scrollOffset;
@@ -44,7 +48,19 @@ final class ModelSettingsLayout {
         scaleSlider = new UiRect(scaleCard.x + 4, scaleCard.y + 23, scaleCard.w - 8, 8);
         heldBlockCard = new UiRect(viewport.x, scaleCard.bottom() + SECTION_GAP, cardWidth, CARD_HEIGHT);
         heldBlockSlider = new UiRect(heldBlockCard.x + 4, heldBlockCard.y + 23, heldBlockCard.w - 8, 8);
-        tailCard = new UiRect(viewport.x, heldBlockCard.bottom() + SECTION_GAP, cardWidth, TAIL_HEIGHT);
+        mainPmxCard = new UiRect(viewport.x, heldBlockCard.bottom() + SECTION_GAP, cardWidth, PMX_HEIGHT);
+        mainPmxPrev = new UiRect(mainPmxCard.x + 4, mainPmxCard.y + 18, 15, 16);
+        mainPmxNext = new UiRect(mainPmxCard.right() - 19, mainPmxCard.y + 18, 15, 16);
+        mainPmxValue = new UiRect(mainPmxPrev.right() + 2, mainPmxPrev.y,
+                Math.max(1, mainPmxNext.x - mainPmxPrev.right() - 4), 16);
+
+        heldPmxCard = new UiRect(viewport.x, mainPmxCard.bottom() + SECTION_GAP, cardWidth, PMX_HEIGHT);
+        heldPmxPrev = new UiRect(heldPmxCard.x + 4, heldPmxCard.y + 18, 15, 16);
+        heldPmxNext = new UiRect(heldPmxCard.right() - 19, heldPmxCard.y + 18, 15, 16);
+        heldPmxValue = new UiRect(heldPmxPrev.right() + 2, heldPmxPrev.y,
+                Math.max(1, heldPmxNext.x - heldPmxPrev.right() - 4), 16);
+
+        tailCard = new UiRect(viewport.x, heldPmxCard.bottom() + SECTION_GAP, cardWidth, TAIL_HEIGHT);
         tailIdleToggle = new UiRect(tailCard.right() - 34, tailCard.y + 16, 26, 9);
         tailMovementToggle = new UiRect(tailCard.right() - 34, tailCard.y + 30, 26, 9);
         quickCard = new UiRect(viewport.x, tailCard.bottom() + SECTION_GAP, cardWidth, QUICK_HEIGHT);
