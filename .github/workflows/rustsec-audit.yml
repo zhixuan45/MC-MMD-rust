@@ -1,0 +1,39 @@
+name: RustSec dependency audit
+
+on:
+  push:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '.github/workflows/rustsec-audit.yml'
+  pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '.github/workflows/rustsec-audit.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '37 5 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Cargo advisory database
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust_engine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate audit lockfile if absent
+        run: |
+          if [ ! -f Cargo.lock ]; then
+            cargo generate-lockfile
+          fi
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Fail on RustSec vulnerabilities
+        run: cargo audit
