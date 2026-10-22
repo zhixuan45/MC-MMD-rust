@@ -1,8 +1,6 @@
 package com.shiroha.mmdskin.model.runtime;
 
 import java.util.Objects;
-import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
-import com.shiroha.mmdskin.config.ModelConfigManager;
 import java.util.UUID;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -20,14 +18,19 @@ public record ModelRequestKey(ModelSubjectKind subjectKind, String subjectId, St
         pmxVariant = pmxVariant == null ? "" : pmxVariant;
     }
 
+    /** Player identity always resolves to the character PMX, independent of held items. */
     public static ModelRequestKey player(Player player, String modelName) {
-        String variant = "";
-        if (player != null && !player.getMainHandItem().isEmpty()) {
-            String chosen = ModelConfigManager.getConfig(modelName).heldPmxFile;
-            if (chosen != null && !chosen.isEmpty()
-                    && ModelCatalogEntry.listPmxFiles(modelName).contains(chosen)) variant = chosen;
-        }
-        return new ModelRequestKey(ModelSubjectKind.PLAYER, playerSubjectId(player), modelName, variant);
+        return new ModelRequestKey(ModelSubjectKind.PLAYER, playerSubjectId(player), modelName);
+    }
+
+    /** A separate cache identity for a PMX prop anchored to the character's main hand. */
+    public static ModelRequestKey heldItem(Player player, String modelName, String pmxFile) {
+        return new ModelRequestKey(ModelSubjectKind.OTHER, "held-item/" + playerSubjectId(player),
+                modelName, pmxFile);
+    }
+
+    public boolean isHeldItem() {
+        return subjectKind == ModelSubjectKind.OTHER && subjectId.startsWith("held-item/");
     }
 
     public static ModelRequestKey mob(Entity entity, String modelName) {
