@@ -1,21 +1,33 @@
 package com.shiroha.mmdskin.model.runtime;
 
 import java.util.Objects;
+import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
+import com.shiroha.mmdskin.config.ModelConfigManager;
 import java.util.UUID;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 
 /** 文件职责：为模型仓储提供强类型请求键，替代旧的字符串拼接缓存键。 */
-public record ModelRequestKey(ModelSubjectKind subjectKind, String subjectId, String modelName) {
+public record ModelRequestKey(ModelSubjectKind subjectKind, String subjectId, String modelName, String pmxVariant) {
+    public ModelRequestKey(ModelSubjectKind subjectKind, String subjectId, String modelName) {
+        this(subjectKind, subjectId, modelName, "");
+    }
 
     public ModelRequestKey {
         subjectKind = Objects.requireNonNull(subjectKind, "subjectKind");
         subjectId = normalize(subjectId);
         modelName = normalize(modelName);
+        pmxVariant = pmxVariant == null ? "" : pmxVariant;
     }
 
     public static ModelRequestKey player(Player player, String modelName) {
-        return new ModelRequestKey(ModelSubjectKind.PLAYER, playerSubjectId(player), modelName);
+        String variant = "";
+        if (player != null && !player.getMainHandItem().isEmpty()) {
+            String chosen = ModelConfigManager.getConfig(modelName).heldPmxFile;
+            if (chosen != null && !chosen.isEmpty()
+                    && ModelCatalogEntry.listPmxFiles(modelName).contains(chosen)) variant = chosen;
+        }
+        return new ModelRequestKey(ModelSubjectKind.PLAYER, playerSubjectId(player), modelName, variant);
     }
 
     public static ModelRequestKey mob(Entity entity, String modelName) {
@@ -35,7 +47,8 @@ public record ModelRequestKey(ModelSubjectKind subjectKind, String subjectId, St
     }
 
     public String cacheKey() {
-        return subjectKind.name() + ":" + subjectId + ":" + modelName;
+        String key = subjectKind.name() + ":" + subjectId + ":" + modelName;
+        return pmxVariant.isEmpty() ? key : key + ":pmx:" + pmxVariant;
     }
 
     private static String playerSubjectId(Player player) {
