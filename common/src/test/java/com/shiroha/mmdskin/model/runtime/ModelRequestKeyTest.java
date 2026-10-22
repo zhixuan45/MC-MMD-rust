@@ -20,6 +20,14 @@ class ModelRequestKeyTest {
     }
 
     @Test
+    void normalPlayerRequestNeverUsesHeldPropVariant() {
+        ModelRequestKey player = ModelRequestKey.player(null, "model-folder");
+        assertEquals(ModelSubjectKind.PLAYER, player.subjectKind());
+        assertEquals("", player.pmxVariant());
+        assertFalse(player.isHeldItem());
+    }
+
+    @Test
     void anotherPropFileHasSeparateCacheEntry() {
         ModelRequestKey fan = new ModelRequestKey(ModelSubjectKind.OTHER, "held-item/uuid",
                 "model-folder", "fan.pmx");
