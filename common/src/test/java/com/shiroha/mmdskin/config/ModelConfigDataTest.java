@@ -101,7 +101,29 @@ class ModelConfigDataTest {
         ModelConfigData loaded = ModelConfigData.load(saved);
         assertEquals("普通.pmx", loaded.mainPmxFile);
         assertEquals("手持模型.PMX", loaded.heldPmxFile);
+        assertEquals(1.0f, loaded.heldPmxScale);
+        assertEquals(0.0f, loaded.heldPmxOffsetX);
         assertEquals("", new ModelConfigData().heldPmxFile);
+    }
+
+    @Test
+    void propTransformsAreNormalizedAndRoundTrip(@TempDir Path tempDir) {
+        ModelConfigData original = new ModelConfigData();
+        original.heldPmxScale = Float.NaN;
+        original.heldPmxOffsetX = 500.0f;
+        original.heldPmxOffsetY = -3.0f;
+        original.heldPmxRotZ = Float.POSITIVE_INFINITY;
+        ModelConfigData normalized = original.normalizedCopy();
+        assertEquals(1.0f, normalized.heldPmxScale);
+        assertEquals(20.0f, normalized.heldPmxOffsetX);
+        assertEquals(-3.0f, normalized.heldPmxOffsetY);
+        assertEquals(0.0f, normalized.heldPmxRotZ);
+
+        File file = tempDir.resolve("transforms.json").toFile();
+        normalized.save(file);
+        ModelConfigData loaded = ModelConfigData.load(file);
+        assertEquals(20.0f, loaded.heldPmxOffsetX);
+        assertEquals(-3.0f, loaded.heldPmxOffsetY);
     }
 
     @Test
@@ -110,7 +132,7 @@ class ModelConfigDataTest {
         assertEquals("", ModelConfigData.normalizePmxFileName("sub/bad.pmx"));
         assertEquals("", ModelConfigData.normalizePmxFileName("sub\\\\bad.pmx"));
         assertEquals("", ModelConfigData.normalizePmxFileName("prop.pmd"));
-        assertEquals("", ModelConfigData.normalizePmxFileName("bad.pmx\\u0000"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("bad.pmx" + (char) 0));
         assertEquals("角色.PMX", ModelConfigData.normalizePmxFileName("角色.PMX"));
     }
 
