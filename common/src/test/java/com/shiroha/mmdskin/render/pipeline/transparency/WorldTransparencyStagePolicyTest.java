@@ -45,6 +45,42 @@ class WorldTransparencyStagePolicyTest {
     }
 
     @Test
+    void lateMainAlphaOverlayRequiresTheActualMainColorAndSharedOpaqueDepth() {
+        assertTrue(WorldTransparencyStagePolicy.canComposeOnLateMain(
+                true, color(10), color(20), color(20), 20, true));
+        assertFalse(WorldTransparencyStagePolicy.canComposeOnLateMain(
+                true, color(10), color(20), color(20), 20, false));
+        assertFalse(WorldTransparencyStagePolicy.canComposeOnLateMain(
+                true, color(10), color(20), color(21), 20, true));
+        assertFalse(WorldTransparencyStagePolicy.canComposeOnLateMain(
+                true, color(10), color(20), color(20), 21, true));
+        assertFalse(WorldTransparencyStagePolicy.canComposeOnLateMain(
+                false, color(10), color(20), color(20), 20, true));
+        assertFalse(WorldTransparencyStagePolicy.canComposeOnLateMain(
+                true, color(10), color(10), color(10), 10, true));
+        assertFalse(WorldTransparencyStagePolicy.matchesLateStage(true, color(20), color(21), true));
+        assertFalse(WorldTransparencyStagePolicy.matchesLateStage(true, color(20), color(20), false));
+        assertTrue(WorldTransparencyStagePolicy.matchesLateStage(true, color(20), color(20), true));
+    }
+
+    @Test
+    void lateMainRejectsStaleOrDifferentDepthStorage() {
+        var a = new com.shiroha.mmdskin.render.gl.DepthAttachment(
+                GL_TEXTURE, 19, 0x81A6, 0x81A6, 24, 0, 0x8C17, 1920, 1080, 0);
+        var otherObject = new com.shiroha.mmdskin.render.gl.DepthAttachment(
+                GL_TEXTURE, 20, 0x81A6, 0x81A6, 24, 0, 0x8C17, 1920, 1080, 0);
+        var wrongFormat = new com.shiroha.mmdskin.render.gl.DepthAttachment(
+                GL_TEXTURE, 19, 0x81A7, 0x81A7, 32, 0, 0x8C17, 1920, 1080, 0);
+        var wrongSize = new com.shiroha.mmdskin.render.gl.DepthAttachment(
+                GL_TEXTURE, 19, 0x81A6, 0x81A6, 24, 0, 0x8C17, 1280, 720, 0);
+        assertTrue(WorldTransparencyStagePolicy.sameDepthStorage(a, a));
+        assertFalse(WorldTransparencyStagePolicy.sameDepthStorage(a, otherObject));
+        assertFalse(WorldTransparencyStagePolicy.sameDepthStorage(a, wrongFormat));
+        assertFalse(WorldTransparencyStagePolicy.sameDepthStorage(a, wrongSize));
+        assertFalse(WorldTransparencyStagePolicy.sameDepthStorage(a, null));
+    }
+
+    @Test
     void sameObjectIdWithDifferentBackingTypeIsNotEquivalent() {
         assertFalse(WorldTransparencyStagePolicy.canDeferShaderPack(
                 true, color(1), new FramebufferColorTarget(GL_RENDERBUFFER, 1, 1920, 1080), color(1)));
