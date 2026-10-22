@@ -14,6 +14,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** 文件职责：提供模型设置原生界面。 */
@@ -26,6 +27,7 @@ public class ModelSettingsScreen extends Screen {
 
     private ModelConfigData config;
     private List<ModelSettingsApplicationService.QuickSlotBinding> quickSlotBindings = List.of();
+    private final List<String> pmxFiles;
     private boolean pendingClose;
     private boolean pendingOpenAnimConfig;
     private HoverTarget hoveredTarget = HoverTarget.NONE;
@@ -50,6 +52,10 @@ public class ModelSettingsScreen extends Screen {
         EYE_SLIDER,
         SCALE_SLIDER,
         HELD_BLOCK_SLIDER,
+        MAIN_PMX_PREV,
+        MAIN_PMX_NEXT,
+        HELD_PMX_PREV,
+        HELD_PMX_NEXT,
         SLOT_0,
         SLOT_1,
         SLOT_2,
@@ -65,6 +71,7 @@ public class ModelSettingsScreen extends Screen {
         this.modelName = modelName;
         this.parentScreen = parentScreen;
         this.config = SERVICE.loadEditableConfig(modelName);
+        this.pmxFiles = List.copyOf(SERVICE.listPmxFiles(modelName));
         reloadQuickSlotBindings();
     }
 
@@ -131,6 +138,25 @@ public class ModelSettingsScreen extends Screen {
         if (layout.contentHit(layout.heldBlockSlider, mouseX, mouseY)) {
             activeSlider = ActiveSlider.HELD_BLOCK;
             updateSliderValue(activeSlider, mouseX);
+            return true;
+        }
+
+        if (layout.contentHit(layout.mainPmxPrev, mouseX, mouseY)) {
+            cyclePmx(false, -1);
+            return true;
+        }
+        if (layout.contentHit(layout.mainPmxNext, mouseX, mouseY)
+                || layout.contentHit(layout.mainPmxValue, mouseX, mouseY)) {
+            cyclePmx(false, 1);
+            return true;
+        }
+        if (layout.contentHit(layout.heldPmxPrev, mouseX, mouseY)) {
+            cyclePmx(true, -1);
+            return true;
+        }
+        if (layout.contentHit(layout.heldPmxNext, mouseX, mouseY)
+                || layout.contentHit(layout.heldPmxValue, mouseX, mouseY)) {
+            cyclePmx(true, 1);
             return true;
         }
 
@@ -272,6 +298,24 @@ public class ModelSettingsScreen extends Screen {
             hoveredTarget = HoverTarget.HELD_BLOCK_SLIDER;
             return;
         }
+        if (layout.contentHit(layout.mainPmxPrev, mouseX, mouseY)) {
+            hoveredTarget = HoverTarget.MAIN_PMX_PREV;
+            return;
+        }
+        if (layout.contentHit(layout.mainPmxNext, mouseX, mouseY)
+                || layout.contentHit(layout.mainPmxValue, mouseX, mouseY)) {
+            hoveredTarget = HoverTarget.MAIN_PMX_NEXT;
+            return;
+        }
+        if (layout.contentHit(layout.heldPmxPrev, mouseX, mouseY)) {
+            hoveredTarget = HoverTarget.HELD_PMX_PREV;
+            return;
+        }
+        if (layout.contentHit(layout.heldPmxNext, mouseX, mouseY)
+                || layout.contentHit(layout.heldPmxValue, mouseX, mouseY)) {
+            hoveredTarget = HoverTarget.HELD_PMX_NEXT;
+            return;
+        }
         for (int i = 0; i < layout.quickSlotButtons.length; i++) {
             UiRect slotButton = layout.quickSlotButtons[i];
             if (slotButton != null && layout.contentHit(slotButton, mouseX, mouseY)) {
@@ -298,6 +342,20 @@ public class ModelSettingsScreen extends Screen {
         }
         if (layout.doneButton.contains(mouseX, mouseY)) {
             hoveredTarget = HoverTarget.DONE;
+        }
+    }
+
+    private void cyclePmx(boolean held, int direction) {
+        List<String> options = new ArrayList<>(pmxFiles.size() + 1);
+        options.add("");
+        options.addAll(pmxFiles);
+        String current = held ? config.heldPmxFile : config.mainPmxFile;
+        int index = Math.max(0, options.indexOf(current));
+        String next = options.get(Math.floorMod(index + direction, options.size()));
+        if (held) {
+            config.heldPmxFile = next;
+        } else {
+            config.mainPmxFile = next;
         }
     }
 
@@ -409,6 +467,13 @@ public class ModelSettingsScreen extends Screen {
                 heldBlockScaleNormalized
         );
 
+        drawPmxChooser(guiGraphics, layout.mainPmxCard, layout.mainPmxPrev, layout.mainPmxValue, layout.mainPmxNext,
+                "gui.mmdskin.model_settings.main_pmx", config.mainPmxFile,
+                "gui.mmdskin.model_settings.pmx_auto", HoverTarget.MAIN_PMX_PREV, HoverTarget.MAIN_PMX_NEXT);
+        drawPmxChooser(guiGraphics, layout.heldPmxCard, layout.heldPmxPrev, layout.heldPmxValue, layout.heldPmxNext,
+                "gui.mmdskin.model_settings.held_pmx", config.heldPmxFile,
+                "gui.mmdskin.model_settings.pmx_disabled", HoverTarget.HELD_PMX_PREV, HoverTarget.HELD_PMX_NEXT);
+
         drawFallbackCard(guiGraphics, layout.tailCard, Component.translatable("gui.mmdskin.model_settings.tail_physics").getString());
         guiGraphics.drawString(this.font, Component.translatable("gui.mmdskin.model_settings.tail_idle_lift").getString(),
                 layout.tailCard.x + 4, layout.tailIdleToggle.y, TranslucentTrayChrome.BODY_TEXT, false);
@@ -429,6 +494,18 @@ public class ModelSettingsScreen extends Screen {
             guiGraphics.fill(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h, bg);
             guiGraphics.drawCenteredString(this.font, buildQuickSlotLabel(binding), rect.centerX(), rect.y + 4, TranslucentTrayChrome.TITLE_TEXT);
         }
+    }
+
+    private void drawPmxChooser(GuiGraphics guiGraphics, UiRect card, UiRect prev, UiRect value, UiRect next,
+                                String titleKey, String selected, String emptyKey,
+                                HoverTarget prevTarget, HoverTarget nextTarget) {
+        drawFallbackCard(guiGraphics, card, Component.translatable(titleKey).getString());
+        drawFallbackButton(guiGraphics, prev, "<", hoveredTarget == prevTarget);
+        drawFallbackButton(guiGraphics, next, ">", hoveredTarget == nextTarget);
+        String label = selected == null || selected.isEmpty()
+                ? Component.translatable(emptyKey).getString() : selected;
+        guiGraphics.drawCenteredString(this.font, shorten(label, 19),
+                value.centerX(), value.y + 4, TranslucentTrayChrome.SUBTITLE_TEXT);
     }
 
     private void drawFallbackCard(GuiGraphics guiGraphics, UiRect rect, String title) {
