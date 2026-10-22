@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.pipeline.transparency;
 
 import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
+import net.minecraft.client.Minecraft;
 import com.shiroha.mmdskin.render.gl.DepthAttachment;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import org.apache.logging.log4j.LogManager;
@@ -41,6 +42,9 @@ public final class WorldTransparencyPipeline {
     private int debugFrame;
     private boolean debugModelLogged;
     private FramebufferColorTarget previousTranslucentColor, previousOpaqueColor, sourceColor;
+    private FramebufferColorTarget lateMainColor;
+    private DepthAttachment previousOpaqueDepth;
+    private boolean composeOnLateMain;
     private boolean opaqueDepthCaptured, fallbackDepthCaptured;
     private boolean sourceTargetStable;
     private int sourceDepthObjectType, sourceDepthObjectId;
@@ -62,6 +66,8 @@ public final class WorldTransparencyPipeline {
         INSTANCE.debugModelLogged = false;
         INSTANCE.shaderPack = shaderPack;
         INSTANCE.sourceColor = null;
+        INSTANCE.lateMainColor = null;
+        INSTANCE.composeOnLateMain = false;
         INSTANCE.sourceDrawBuffers = null;
         INSTANCE.opaqueDepthCaptured = INSTANCE.fallbackDepthCaptured = false;
         INSTANCE.sourceTargetStable = false;
@@ -93,36 +99,44 @@ public final class WorldTransparencyPipeline {
         FramebufferColorTarget opaqueColor = INSTANCE.shaderPack
                 ? FramebufferColorTarget.capture() : null;
         INSTANCE.previousOpaqueColor = opaqueColor;
+        INSTANCE.previousOpaqueDepth = INSTANCE.shaderPack ? DepthAttachment.inspect() : null;
         if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
             LogManager.getLogger().info("[MMD transparency] after-block-entities color={},"
                     + " sourceColor={}, queued={}, queueActive={}", opaqueColor,
                     INSTANCE.sourceColor, INSTANCE.queued, INSTANCE.queueActive);
         if (!INSTANCE.shaderPack || !INSTANCE.queueActive || !INSTANCE.queued)
             return;
-        int stageFbo = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
-        try {
-            // Iris may restore Minecraft's main FBO before the public callback.
-            // It is not the gbuffer that contains the chest. A verified non-flipped
-            // colortex0 lets us inspect the saved entity target instead.
-            if (INSTANCE.sourceTargetStable)
-                GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, INSTANCE.sourceFbo);
-            if (!FramebufferColorTarget.compatible(INSTANCE.sourceColor, FramebufferColorTarget.capture()))
-                return;
-            DepthAttachment attachment = DepthAttachment.inspect();
-            if (attachment == null || attachment.samples() != 0
-                    || attachment.format() != INSTANCE.depthFormat
-                    || attachment.objectType() != INSTANCE.sourceDepthObjectType
-                    || attachment.objectId() != INSTANCE.sourceDepthObjectId
-                    || !attachment.contains(INSTANCE.viewport)) return;
-            // Include the chest, but do not turn later water depth into an opaque cutoff.
-            INSTANCE.opaqueDepthCaptured = INSTANCE.copyDepthSnapshot(
-                    GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
+        // Inspect the framebuffer ACTUALLY bound at AFTER_BLOCK_ENTITIES. A stable
+        // Iris colortex0 flip state only verifies color storage: rebinding the old
+        // entity FBO does not prove its depth has received the chest's geometry.
+        // Sampling that earlier depth and calling it "post-block-entity" can erase
+        // chest faces during the later alpha resolve.
+        FramebufferColorTarget stageColor = FramebufferColorTarget.capture();
+        DepthAttachment attachment = DepthAttachment.inspect();
+        boolean colorMatch = FramebufferColorTarget.compatible(INSTANCE.sourceColor, stageColor)
+                || (INSTANCE.composeOnLateMain
+                    && FramebufferColorTarget.compatible(INSTANCE.lateMainColor, stageColor));
+        boolean depthMatch = attachment != null
+                && attachment.objectType() == INSTANCE.sourceDepthObjectType
+                && attachment.objectId() == INSTANCE.sourceDepthObjectId;
+        boolean formatMatch = attachment != null && attachment.samples() == 0
+                && attachment.format() == INSTANCE.depthFormat;
+        boolean withinViewport = attachment != null && attachment.contains(INSTANCE.viewport);
+        if (!WorldTransparencyStagePolicy.canCaptureOpaqueDepth(colorMatch, depthMatch,
+                formatMatch, withinViewport)) {
             if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
-                LogManager.getLogger().info("[MMD transparency] opaque-depth captured={}, depthTexture={}",
-                        INSTANCE.opaqueDepthCaptured, INSTANCE.depthTexture);
-        } finally {
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, stageFbo);
+                LogManager.getLogger().info("[MMD transparency] skipping unverified opaque depth:"
+                        + " stageColor={}, entityColor={}, stageDepth={}, expectedDepthType={},"
+                        + " expectedDepthId={}, expectedFormat={}", stageColor, INSTANCE.sourceColor,
+                        attachment, INSTANCE.sourceDepthObjectType, INSTANCE.sourceDepthObjectId,
+                        INSTANCE.depthFormat);
+            return; // Keep the genuine entity-time snapshot instead of a mislabelled copy.
         }
+        INSTANCE.opaqueDepthCaptured = INSTANCE.copyDepthSnapshot(
+                GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
+        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+            LogManager.getLogger().info("[MMD transparency] opaque-depth captured={}, depthTexture={}",
+                    INSTANCE.opaqueDepthCaptured, INSTANCE.depthTexture);
     }
 
     /**
@@ -165,8 +179,11 @@ public final class WorldTransparencyPipeline {
         try {
             if (INSTANCE.queueActive && INSTANCE.queued) {
                 boolean matchedStage = FramebufferColorTarget.compatible(INSTANCE.sourceColor, stageColor);
+                boolean matchedLateMain = WorldTransparencyStagePolicy.matchesLateStage(
+                        INSTANCE.composeOnLateMain, INSTANCE.lateMainColor, stageColor,
+                        INSTANCE.opaqueDepthCaptured);
                 boolean savedTargetMatches = INSTANCE.sourceTargetStable && INSTANCE.sourceColorUnchanged();
-                if (INSTANCE.sourceTargetStable && !matchedStage && !savedTargetMatches) {
+                if (INSTANCE.sourceTargetStable && !matchedStage && !matchedLateMain && !savedTargetMatches) {
                     INSTANCE.queued = false;
                     if (!INSTANCE.warnedTargetMismatch) {
                         INSTANCE.warnedTargetMismatch = true;
@@ -177,13 +194,17 @@ public final class WorldTransparencyPipeline {
                 }
                 boolean compatible = !INSTANCE.shaderPack
                         || (INSTANCE.opaqueDepthCaptured
-                            && (matchedStage || savedTargetMatches));
+                            && (matchedStage || matchedLateMain || savedTargetMatches));
                 if (!compatible && !INSTANCE.warnedTargetMismatch) {
                     INSTANCE.warnedTargetMismatch = true;
                     LogManager.getLogger().warn("Iris post-particle color attachment changed during the frame; "
                             + "using the original target for queued MMD translucency and rechecking next frame.");
                 }
-                INSTANCE.resolve(!INSTANCE.shaderPack || (matchedStage && INSTANCE.opaqueDepthCaptured));
+                // When Iris stages expose the shared main color, compose onto the
+                // later scene (containing the chest), never back into the entity G-buffer.
+                INSTANCE.resolve(WorldTransparencyStagePolicy.resolveOnBoundTarget(
+                        INSTANCE.shaderPack, INSTANCE.composeOnLateMain, matchedStage,
+                        matchedLateMain, INSTANCE.opaqueDepthCaptured));
             }
         } finally {
             INSTANCE.frame = INSTANCE.queueActive = false;
@@ -230,12 +251,35 @@ public final class WorldTransparencyPipeline {
                         currentColor, verifiedProfile, INSTANCE.previousOpaqueColor,
                         INSTANCE.previousTranslucentColor, opaqueMatch, lateMatch, stableTarget);
             }
-            if (!verifiedProfile || currentColor == null
-                    || (!stableTarget && (!lateMatch || !opaqueMatch)))
-                return INSTANCE.modelFallback("primary-color eligibility", "color=" + currentColor
+            // A stable Iris colortex0 is not a promise that Minecraft's public
+            // block-entity and translucent stages render to the same G-buffer.
+            // Refuse deferred composition until both stages were observed using
+            // the exact same color storage in the previous completed frame.
+            boolean sameSceneTarget = WorldTransparencyStagePolicy.canDeferShaderPack(
+                    verifiedProfile, currentColor, INSTANCE.previousOpaqueColor,
+                    INSTANCE.previousTranslucentColor);
+            DepthAttachment currentDepth = DepthAttachment.inspect();
+            int mainTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureId();
+            boolean lateMain = WorldTransparencyStagePolicy.canComposeOnLateMain(
+                    verifiedProfile, currentColor, INSTANCE.previousOpaqueColor,
+                    INSTANCE.previousTranslucentColor, mainTexture,
+                    WorldTransparencyStagePolicy.sameDepthStorage(
+                            currentDepth, INSTANCE.previousOpaqueDepth));
+            if (!sameSceneTarget && !lateMain)
+                return INSTANCE.modelFallback("unverified Iris stage colors/depth", "color=" + currentColor
                         + ", verified=" + verifiedProfile + ", stable=" + stableTarget
                         + ", opaqueMatch=" + opaqueMatch + ", lateMatch=" + lateMatch
+                        + ", lateMainColor=" + INSTANCE.previousOpaqueColor
+                        + ", opaqueDepthMatches=" + WorldTransparencyStagePolicy.sameDepthStorage(
+                            currentDepth, INSTANCE.previousOpaqueDepth)
                         + ", verification=" + IrisToonCompat.targetDiagnostic());
+            if (INSTANCE.queued && INSTANCE.composeOnLateMain != lateMain)
+                return INSTANCE.modelFallback("mixed world transparency targets",
+                        "queuedLateMain=" + INSTANCE.composeOnLateMain + ", requestedLateMain=" + lateMain);
+            if (!INSTANCE.queued) {
+                INSTANCE.composeOnLateMain = lateMain;
+                INSTANCE.lateMainColor = lateMain ? INSTANCE.previousOpaqueColor : null;
+            }
         }
         try {
             INSTANCE.program(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
@@ -342,7 +386,8 @@ public final class WorldTransparencyPipeline {
             if (shaderPack && !reportedCapture) {
                 reportedCapture = true;
                 LogManager.getLogger().info("[MMD transparency] model capture enabled: fbo={}, color={},"
-                        + " stablePrimary={}, depth={}", sourceFbo, sourceColor, stableTarget, depth);
+                        + " stablePrimary={}, lateMainColor={}, depth={}", sourceFbo, sourceColor,
+                        stableTarget, lateMainColor, depth);
             }
             return true;
         } finally {
@@ -624,6 +669,9 @@ public final class WorldTransparencyPipeline {
         INSTANCE.programs.values().forEach(TransparencyProgram::close); INSTANCE.programs.clear();
         INSTANCE.releaseStorage(); INSTANCE.viewport = null;
         INSTANCE.previousTranslucentColor = INSTANCE.previousOpaqueColor = INSTANCE.sourceColor = null;
+        INSTANCE.previousOpaqueDepth = null;
+        INSTANCE.lateMainColor = null;
+        INSTANCE.composeOnLateMain = false;
         INSTANCE.opaqueDepthCaptured = false;
         INSTANCE.reportedFallbacks.clear();
         INSTANCE.reportedCapture = false;
