@@ -1,18 +1,31 @@
 package com.shiroha.mmdskin.model.runtime;
 
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class ModelRequestKeyTest {
     @Test
-    void variantsDoNotShareNativeModelCacheKeys() {
-        ModelRequestKey normal = new ModelRequestKey(ModelSubjectKind.PLAYER, "uuid", "model-folder");
-        ModelRequestKey held = new ModelRequestKey(ModelSubjectKind.PLAYER, "uuid", "model-folder", "with_prop.pmx");
+    void independentPropDoesNotReplaceCharacterCacheIdentity() {
+        ModelRequestKey character = new ModelRequestKey(ModelSubjectKind.PLAYER, "uuid", "model-folder");
+        ModelRequestKey prop = new ModelRequestKey(ModelSubjectKind.OTHER, "held-item/uuid",
+                "model-folder", "fan.pmx");
 
-        assertEquals("PLAYER:uuid:model-folder", normal.cacheKey());
-        assertEquals("PLAYER:uuid:model-folder:pmx:with_prop.pmx", held.cacheKey());
-        assertNotEquals(normal.cacheKey(), held.cacheKey());
-        assertEquals("model-folder", held.modelName());
+        assertEquals("PLAYER:uuid:model-folder", character.cacheKey());
+        assertEquals("OTHER:held-item/uuid:model-folder:pmx:fan.pmx", prop.cacheKey());
+        assertNotEquals(character.cacheKey(), prop.cacheKey());
+        assertFalse(character.isHeldItem());
+        assertTrue(prop.isHeldItem());
+        assertEquals("model-folder", prop.modelName());
+    }
+
+    @Test
+    void anotherPropFileHasSeparateCacheEntry() {
+        ModelRequestKey fan = new ModelRequestKey(ModelSubjectKind.OTHER, "held-item/uuid",
+                "model-folder", "fan.pmx");
+        ModelRequestKey sword = new ModelRequestKey(ModelSubjectKind.OTHER, "held-item/uuid",
+                "model-folder", "sword.pmx");
+        assertNotEquals(fan.cacheKey(), sword.cacheKey());
     }
 
     @Test
