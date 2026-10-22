@@ -69,6 +69,13 @@ public class ItemRenderHelper {
     public static void renderItems(AbstractClientPlayer player, ManagedModel model,
                                    PoseStack matrixStack, MultiBufferSource vertexConsumers,
                                    int packedLight, float heldItemScale, float tickDelta, float modelScale) {
+        // External renderers may draw the main hand too; bypass them when the
+        // selected PMX already contains the main-hand prop.
+        if (!model.requestKey().pmxVariant().isEmpty()) {
+            renderHandItem(player, model, matrixStack, vertexConsumers, packedLight,
+                    InteractionHand.OFF_HAND, heldItemScale);
+            return;
+        }
         if (externalItemRenderer.renderItems(player, model, matrixStack, vertexConsumers,
                 packedLight, tickDelta, modelScale, heldItemScale)) {
             return;
