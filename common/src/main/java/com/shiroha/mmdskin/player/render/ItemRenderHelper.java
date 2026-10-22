@@ -114,6 +114,11 @@ public class ItemRenderHelper {
         if (itemStack.isEmpty()) {
             return;
         }
+        // The held-item PMX is a full character mesh containing the main-hand prop.
+        // Keep vanilla off-hand rendering unchanged.
+        if (hand == InteractionHand.MAIN_HAND && !model.requestKey().pmxVariant().isEmpty()) {
+            return;
+        }
 
         // 本地第一人称 TaCZ 枪模由 TaCZ 自己定位瞄具；这里跳过主手，避免重复绘制第三人称物品模型。
         if (hand == InteractionHand.MAIN_HAND
