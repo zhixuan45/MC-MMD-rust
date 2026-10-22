@@ -202,8 +202,9 @@ public final class WorldTransparencyPipeline {
                 }
                 // When Iris stages expose the shared main color, compose onto the
                 // later scene (containing the chest), never back into the entity G-buffer.
-                INSTANCE.resolve(!INSTANCE.shaderPack
-                        || ((matchedStage || matchedLateMain) && INSTANCE.opaqueDepthCaptured));
+                INSTANCE.resolve(WorldTransparencyStagePolicy.resolveOnBoundTarget(
+                        INSTANCE.shaderPack, INSTANCE.composeOnLateMain, matchedStage,
+                        matchedLateMain, INSTANCE.opaqueDepthCaptured));
             }
         } finally {
             INSTANCE.frame = INSTANCE.queueActive = false;

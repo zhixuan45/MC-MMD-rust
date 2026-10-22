@@ -45,6 +45,14 @@ final class WorldTransparencyStagePolicy {
                 && a.width() == b.width() && a.height() == b.height();
     }
 
+    /** Never confuse the entity G-buffer with the late main scene destination. */
+    static boolean resolveOnBoundTarget(boolean shaderPack, boolean lateMainMode,
+                                        boolean matchedEntity, boolean matchedLateMain,
+                                        boolean capturedOpaqueDepth) {
+        if (!shaderPack) return true;
+        return capturedOpaqueDepth && (lateMainMode ? matchedLateMain : matchedEntity);
+    }
+
     /** Fail closed if the current post-particle draw target is not the proven late target. */
     static boolean matchesLateStage(boolean queuedForLateMain,
                                     FramebufferColorTarget expected,

@@ -81,6 +81,16 @@ class WorldTransparencyStagePolicyTest {
     }
 
     @Test
+    void lateMainMustNotResolveOntoAnEntityGbufferEvenWhenItReappears() {
+        assertFalse(WorldTransparencyStagePolicy.resolveOnBoundTarget(true, true, true, false, true));
+        assertTrue(WorldTransparencyStagePolicy.resolveOnBoundTarget(true, true, false, true, true));
+        assertFalse(WorldTransparencyStagePolicy.resolveOnBoundTarget(true, true, false, true, false));
+        assertTrue(WorldTransparencyStagePolicy.resolveOnBoundTarget(true, false, true, false, true));
+        assertFalse(WorldTransparencyStagePolicy.resolveOnBoundTarget(true, false, false, true, true));
+        assertTrue(WorldTransparencyStagePolicy.resolveOnBoundTarget(false, false, false, false, false));
+    }
+
+    @Test
     void sameObjectIdWithDifferentBackingTypeIsNotEquivalent() {
         assertFalse(WorldTransparencyStagePolicy.canDeferShaderPack(
                 true, color(1), new FramebufferColorTarget(GL_RENDERBUFFER, 1, 1920, 1080), color(1)));
