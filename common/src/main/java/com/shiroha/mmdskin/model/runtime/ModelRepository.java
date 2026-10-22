@@ -69,6 +69,7 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
         ManagedModel loadedModel = loadCoordinator.resolveOrQueue(
                 requestKey.cacheKey(),
                 requestKey.modelName(),
+                requestKey.pmxVariant(),
                 result -> finalizeLoadedModel(requestKey, result));
         if (loadedModel != null) {
             modelCache.put(requestKey.cacheKey(), loadedModel);
@@ -87,9 +88,13 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
         if (modelName == null || modelName.isBlank()) {
             return;
         }
-        loadCoordinator.removeMatching(key -> key.endsWith(":" + modelName), this::cleanupLoadedResult);
+        loadCoordinator.removeMatching(key -> matchesModelKey(key, modelName), this::cleanupLoadedResult);
         runtimeAccessPort.clearPreloadedTextures();
-        modelCache.removeMatching(key -> key.endsWith(":" + modelName), this::disposeModel);
+        modelCache.removeMatching(key -> matchesModelKey(key, modelName), this::disposeModel);
+    }
+
+    private static boolean matchesModelKey(String key, String modelName) {
+        return key.endsWith(":" + modelName) || key.contains(":" + modelName + ":pmx:");
     }
 
     @Override
