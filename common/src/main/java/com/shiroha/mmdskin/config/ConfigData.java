@@ -42,6 +42,8 @@ public class ConfigData {
     public int toonTransparencyLayerCount = 4;
     /** 诊断：仅跳过透明混合后的深度补写，保留半透明颜色。 */
     public boolean toonDisableDepthSeal = false;
+    /** Deferred world transparency for Toon models (runtime configurable). */
+    public boolean toonWorldTransparencyQueue = true;
     /** 发片单独覆盖全局阈值，默认保留原裁切。 */
     public float toonAlphaCutoff = 0.001f;
     public float toonHairAlphaCutoff = 0.001f;
@@ -103,6 +105,8 @@ public class ConfigData {
 
     public boolean debugHudEnabled = false;
     public boolean debugGpuLog = false;
+    /** Optional Iris/BSL framebuffer diagnostics. */
+    public boolean debugTransparencyStages = false;
     public boolean debugModelDeformationLog = false;
     public boolean debugSidePhysicsLog = false;
     public boolean debugCollisionModeLog = false;

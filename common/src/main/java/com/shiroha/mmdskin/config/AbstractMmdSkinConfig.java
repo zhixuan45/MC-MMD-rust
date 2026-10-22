@@ -28,6 +28,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isToonRenderingEnabled() { return data.toonRenderingEnabled; }
     @Override public boolean isToonDisableTransparency() { return data.toonDisableTransparency; }
     @Override public boolean isToonDisableDepthSeal() { return data.toonDisableDepthSeal; }
+    @Override public boolean isToonWorldTransparencyQueueEnabled() { return data.toonWorldTransparencyQueue; }
     @Override public int getToonTransparencyLayerCount() { return data.toonTransparencyLayerCount; }
     @Override public float getToonAlphaCutoff() { return data.toonAlphaCutoff; }
     @Override public float getToonHairAlphaCutoff() { return data.toonHairAlphaCutoff; }
@@ -87,6 +88,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     }
     @Override public boolean isDebugHudEnabled() { return data.debugHudEnabled; }
     @Override public boolean isDebugGpuLogEnabled() { return data.debugGpuLog; }
+    @Override public boolean isDebugTransparencyStagesEnabled() { return data.debugTransparencyStages; }
     @Override public int getIssueDiagnosticFlags() {
         return IssueDiagnosticOptions.from(data.debugModelDeformationLog, data.debugSidePhysicsLog,
                 data.debugCollisionModeLog, data.debugOutlinePaperDollLog);

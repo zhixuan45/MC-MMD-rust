@@ -12,6 +12,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigDataTest {
     @Test
+    void worldTransparencySettingsPersistAndDefaultForOlderConfigs(@TempDir Path configDir) throws Exception {
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");
+        ConfigData old = ConfigData.load(configDir);
+        assertTrue(old.toonWorldTransparencyQueue);
+        assertFalse(old.debugTransparencyStages);
+
+        old.toonWorldTransparencyQueue = false;
+        old.debugTransparencyStages = true;
+        old.save(configDir);
+        ConfigData loaded = ConfigData.load(configDir);
+        assertFalse(loaded.toonWorldTransparencyQueue);
+        assertTrue(loaded.debugTransparencyStages);
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            assertFalse(ConfigManager.isToonWorldTransparencyQueueEnabled());
+            assertTrue(ConfigManager.isDebugTransparencyStagesEnabled());
+            loaded.toonWorldTransparencyQueue = true;
+            loaded.debugTransparencyStages = false;
+            assertTrue(ConfigManager.isToonWorldTransparencyQueueEnabled());
+            assertFalse(ConfigManager.isDebugTransparencyStagesEnabled());
+        } finally {
+            ConfigManager.init(null);
+        }
+    }
+
+    @Test
     void solverIterationsDefaultPersistAndMatchStartupSnapshot(@TempDir Path configDir) throws Exception {
         Files.writeString(configDir.resolve("config.json"), "{\"physicsFps\":60}");
         ConfigData oldConfig = ConfigData.load(configDir);
