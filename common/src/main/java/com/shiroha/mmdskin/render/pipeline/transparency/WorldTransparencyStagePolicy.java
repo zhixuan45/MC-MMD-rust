@@ -1,0 +1,29 @@
+package com.shiroha.mmdskin.render.pipeline.transparency;
+
+/** Conservative rules for composing MMD alpha in foreign shader-pack framebuffers. */
+final class WorldTransparencyStagePolicy {
+    private WorldTransparencyStagePolicy() {}
+
+    /**
+     * An Iris flip-state check for colortex0 is not sufficient to enable deferral:
+     * the entity, block-entity and final translucency callbacks must have been
+     * observed using the same backing color attachment.
+     */
+    static boolean canDeferShaderPack(boolean verifiedOutput, FramebufferColorTarget entity,
+                                      FramebufferColorTarget blockEntities,
+                                      FramebufferColorTarget postTranslucency) {
+        return verifiedOutput
+                && FramebufferColorTarget.compatible(entity, blockEntities)
+                && FramebufferColorTarget.compatible(entity, postTranslucency);
+    }
+
+    /**
+     * A later depth snapshot must come from the currently active public stage,
+     * and must refer to the same actual depth storage as the model capture.
+     * A matching color texture alone does not meet this contract.
+     */
+    static boolean canCaptureOpaqueDepth(boolean colorMatches, boolean depthStorageMatches,
+                                         boolean depthFormatMatches, boolean viewportInside) {
+        return colorMatches && depthStorageMatches && depthFormatMatches && viewportInside;
+    }
+}

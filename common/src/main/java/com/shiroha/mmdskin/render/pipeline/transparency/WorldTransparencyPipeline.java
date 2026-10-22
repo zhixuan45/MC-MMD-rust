@@ -99,30 +99,35 @@ public final class WorldTransparencyPipeline {
                     INSTANCE.sourceColor, INSTANCE.queued, INSTANCE.queueActive);
         if (!INSTANCE.shaderPack || !INSTANCE.queueActive || !INSTANCE.queued)
             return;
-        int stageFbo = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
-        try {
-            // Iris may restore Minecraft's main FBO before the public callback.
-            // It is not the gbuffer that contains the chest. A verified non-flipped
-            // colortex0 lets us inspect the saved entity target instead.
-            if (INSTANCE.sourceTargetStable)
-                GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, INSTANCE.sourceFbo);
-            if (!FramebufferColorTarget.compatible(INSTANCE.sourceColor, FramebufferColorTarget.capture()))
-                return;
-            DepthAttachment attachment = DepthAttachment.inspect();
-            if (attachment == null || attachment.samples() != 0
-                    || attachment.format() != INSTANCE.depthFormat
-                    || attachment.objectType() != INSTANCE.sourceDepthObjectType
-                    || attachment.objectId() != INSTANCE.sourceDepthObjectId
-                    || !attachment.contains(INSTANCE.viewport)) return;
-            // Include the chest, but do not turn later water depth into an opaque cutoff.
-            INSTANCE.opaqueDepthCaptured = INSTANCE.copyDepthSnapshot(
-                    GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
+        // Inspect the framebuffer ACTUALLY bound at AFTER_BLOCK_ENTITIES. A stable
+        // Iris colortex0 flip state only verifies color storage: rebinding the old
+        // entity FBO does not prove its depth has received the chest's geometry.
+        // Sampling that earlier depth and calling it "post-block-entity" can erase
+        // chest faces during the later alpha resolve.
+        FramebufferColorTarget stageColor = FramebufferColorTarget.capture();
+        DepthAttachment attachment = DepthAttachment.inspect();
+        boolean colorMatch = FramebufferColorTarget.compatible(INSTANCE.sourceColor, stageColor);
+        boolean depthMatch = attachment != null
+                && attachment.objectType() == INSTANCE.sourceDepthObjectType
+                && attachment.objectId() == INSTANCE.sourceDepthObjectId;
+        boolean formatMatch = attachment != null && attachment.samples() == 0
+                && attachment.format() == INSTANCE.depthFormat;
+        boolean withinViewport = attachment != null && attachment.contains(INSTANCE.viewport);
+        if (!WorldTransparencyStagePolicy.canCaptureOpaqueDepth(colorMatch, depthMatch,
+                formatMatch, withinViewport)) {
             if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
-                LogManager.getLogger().info("[MMD transparency] opaque-depth captured={}, depthTexture={}",
-                        INSTANCE.opaqueDepthCaptured, INSTANCE.depthTexture);
-        } finally {
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, stageFbo);
+                LogManager.getLogger().info("[MMD transparency] skipping unverified opaque depth:"
+                        + " stageColor={}, entityColor={}, stageDepth={}, expectedDepthType={},"
+                        + " expectedDepthId={}, expectedFormat={}", stageColor, INSTANCE.sourceColor,
+                        attachment, INSTANCE.sourceDepthObjectType, INSTANCE.sourceDepthObjectId,
+                        INSTANCE.depthFormat);
+            return; // Keep the genuine entity-time snapshot instead of a mislabelled copy.
         }
+        INSTANCE.opaqueDepthCaptured = INSTANCE.copyDepthSnapshot(
+                GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
+        if (DEBUG_STAGES && INSTANCE.debugFrame % 120 == 1)
+            LogManager.getLogger().info("[MMD transparency] opaque-depth captured={}, depthTexture={}",
+                    INSTANCE.opaqueDepthCaptured, INSTANCE.depthTexture);
     }
 
     /**
@@ -230,9 +235,13 @@ public final class WorldTransparencyPipeline {
                         currentColor, verifiedProfile, INSTANCE.previousOpaqueColor,
                         INSTANCE.previousTranslucentColor, opaqueMatch, lateMatch, stableTarget);
             }
-            if (!verifiedProfile || currentColor == null
-                    || (!stableTarget && (!lateMatch || !opaqueMatch)))
-                return INSTANCE.modelFallback("primary-color eligibility", "color=" + currentColor
+            // A stable Iris colortex0 is not a promise that Minecraft's public
+            // block-entity and translucent stages render to the same G-buffer.
+            // Refuse deferred composition until both stages were observed using
+            // the exact same color storage in the previous completed frame.
+            if (!WorldTransparencyStagePolicy.canDeferShaderPack(verifiedProfile, currentColor,
+                    INSTANCE.previousOpaqueColor, INSTANCE.previousTranslucentColor))
+                return INSTANCE.modelFallback("unverified Iris stage colors", "color=" + currentColor
                         + ", verified=" + verifiedProfile + ", stable=" + stableTarget
                         + ", opaqueMatch=" + opaqueMatch + ", lateMatch=" + lateMatch
                         + ", verification=" + IrisToonCompat.targetDiagnostic());
