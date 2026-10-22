@@ -142,14 +142,16 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
             if (count[0] >= 2 || entry == null || entry.value == null
                     || entry.value.modelInstance() == null
                     || entry.value.modelInstance().getModelHandle() == 0L) return;
-            if (entry.value.requestKey().subjectKind() != ModelSubjectKind.PAPERDOLL) count[0]++;
+            if (entry.value.requestKey().subjectKind() != ModelSubjectKind.PAPERDOLL
+                    && !entry.value.requestKey().isHeldItem()) count[0]++;
         });
         if (count[0] >= 2) return count[0];
         try {
             for (ManagedModel externalModel : extensionPort.additionalLoadedModels()) {
                 if (externalModel == null || externalModel.modelInstance() == null
                         || externalModel.modelInstance().getModelHandle() == 0L
-                        || externalModel.requestKey().subjectKind() == ModelSubjectKind.PAPERDOLL) continue;
+                        || externalModel.requestKey().subjectKind() == ModelSubjectKind.PAPERDOLL
+                        || externalModel.requestKey().isHeldItem()) continue;
                 if (++count[0] >= 2) return count[0];
             }
         } catch (Exception e) {
@@ -199,7 +201,10 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
                 ModelRenderProperties.from(properties));
         initializePhysicsOptions(modelInstance, config);
         modelInstance.changeAnim(managedModel.animationLibrary().animation("idle"), 0);
-        applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName(), config);
+        // Hidden material indices belong to the character mesh, not an independent prop.
+        if (!requestKey.isHeldItem()) {
+            applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName(), config);
+        }
         return managedModel;
     }
 
