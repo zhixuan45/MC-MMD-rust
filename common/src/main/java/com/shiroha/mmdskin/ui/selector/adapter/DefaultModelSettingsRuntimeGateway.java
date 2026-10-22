@@ -25,6 +25,11 @@ public class DefaultModelSettingsRuntimeGateway implements ModelSettingsRuntimeG
     }
 
     @Override
+    public void reloadModel(String modelName) {
+        ClientRenderRuntime.get().modelRepository().reloadModel(modelName);
+    }
+
+    @Override
     public void applyConfigIfSelected(String modelName, ModelConfigData config) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) {
