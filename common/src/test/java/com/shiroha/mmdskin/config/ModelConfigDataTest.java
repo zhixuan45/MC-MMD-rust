@@ -84,4 +84,34 @@ class ModelConfigDataTest {
         assertTrue(missingConfig.tailIdleLiftEnabled);
         assertTrue(missingConfig.tailMovementBoostEnabled);
     }
+
+    @Test
+    void pmxSelectionsAreCopiedNormalizedAndPersisted(@TempDir Path tempDir) {
+        ModelConfigData config = new ModelConfigData();
+        config.mainPmxFile = "普通.pmx";
+        config.heldPmxFile = "手持模型.PMX";
+        ModelConfigData copied = config.normalizedCopy();
+        assertEquals("普通.pmx", copied.mainPmxFile);
+        assertEquals("手持模型.PMX", copied.heldPmxFile);
+        config.mainPmxFile = "changed.pmx";
+        assertEquals("普通.pmx", copied.mainPmxFile);
+
+        File saved = tempDir.resolve("model-config.json").toFile();
+        copied.save(saved);
+        ModelConfigData loaded = ModelConfigData.load(saved);
+        assertEquals("普通.pmx", loaded.mainPmxFile);
+        assertEquals("手持模型.PMX", loaded.heldPmxFile);
+        assertEquals("", new ModelConfigData().heldPmxFile);
+    }
+
+    @Test
+    void pmxSelectionsRejectNonBasenamesAndInvalidExtensions() {
+        assertEquals("", ModelConfigData.normalizePmxFileName("../bad.pmx"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("sub/bad.pmx"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("sub\\\\bad.pmx"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("prop.pmd"));
+        assertEquals("", ModelConfigData.normalizePmxFileName("bad.pmx\\u0000"));
+        assertEquals("角色.PMX", ModelConfigData.normalizePmxFileName("角色.PMX"));
+    }
+
 }
