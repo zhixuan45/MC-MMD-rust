@@ -155,3 +155,119 @@ Add JVM option `-Dmmdskin.debugTransparencyStages=true` to print a concise
 color attachments and opaque-depth snapshot status. The trace distinguishes
 incompatible FBO targets from a depth copy that failed. Include these log lines
 and a screenshot if BSL still shows a chest over translucent MMD hair.
+
+### Stable Iris colortex0 when public events bind another FBO
+
+The previous-frame attachment check can reject every model when a public loader
+event runs with Minecraft's main FBO bound instead of the entity gbuffer. Immediate
+alpha blending then happens before later chest draws and the pale clothing layer
+is overwritten. This is reproducible with the production draw helper in a GL probe.
+
+The queue now also accepts a verified Toon primary-color profile when Iris's public
+`getFlippedAfterPrepare()` and `getFlippedAfterTranslucent()` agree for colortex0.
+This establishes that entity rendering and the following composite use the same
+side of the color storage, without guessing from the event's current FBO. At the
+opaque stage, inspect the saved entity FBO, verify its color/depth storage identity,
+and snapshot depth including chests. At the post-particle stage, resolve into that
+saved color target when the callback binds a different FBO. Restore both FBOs'
+draw-buffer mappings and the caller's GL state. If the public Iris access is absent
+or colortex0 flips, retain the existing attachment checks and immediate fallback.
+
+Checked against the local BSL v10.1.8 sources: `gbuffers_block` writes colortex0;
+`deferred` writes colortex4 (AO); `composite` samples colortex0 and writes its color
+onward. Resolve remains before that composite, so the corrected color participates
+in BSL post-processing. This is source/bytecode inspection, not an in-game capture.
+
+Alpha review: Toon discards below `max(0.001, configured cutoff)`; node capture
+discards below 0.001; resolve only discards zero accumulated alpha. The local
+reported instance has both configured cutoffs at 0.001. No threshold is changed.
+
+Run the focused regression after generating the normal runtime classpath:
+
+```powershell
+./gradlew.bat --offline -I tools/translucent-performance/validation.gradle `
+  :common:classes :common:writeTranslucentProbeClasspath -x :prepareNativeResources
+./tools/translucent-performance/run-block-entity-probe.ps1
+```
+
+`BlockEntityTransparencyGlProbe` fails on the pre-fix classes because a stable
+entity target cannot enter the queue with an unrelated event FBO. With the fix it
+checks actual RGBA16F pixels for alpha 0.002/0.01/0.12/0.5, late chest occlusion in
+both depth orders, alpha holes, shared-storage FBO wrappers, pre-water depth,
+untouched auxiliary MRT output, restored state, subsequent color sampling, and
+fallback for unverified targets. It uses synthetic shaders and an Iris verification
+fixture; exact BSL lighting/refraction and the user's model still require in-game
+comparison.
+
+### Per-model rejection must not re-enable world depth sealing
+
+The first stable-target test build still allowed a model rejected by `prepareModel()`
+to enter the three-pass local depth-seal path. `worldFallback()` checked the frame's
+`queueActive` flag, which can be true even when the current model has an incompatible
+FBO, unverified color output, unsupported depth attachment, or insufficient SSBO
+capacity. The rejected model then wrote translucent coverage into world depth and
+could prevent a subsequently submitted chest or water surface from rendering.
+
+`worldFallback()` now protects every world-scene fallback; its caller already
+excludes models accepted by the shared queue. Inventory/GUI depth policy is unchanged.
+The GL regression now actually draws a rejected model with depth testing enabled,
+reads the host depth, and then draws the late chest. Pre-fix host depth is 0.4 at the
+translucent veil; fixed depth remains 1.0 and the chest renders. The earlier test
+only checked `prepareModel()` returning false and did not exercise this draw path.
+
+The extended probe also compiles the production Toon shader with an actual
+32/255-alpha texture, with both accepted and rejected capture. Optional `-BslPack`
+uses the existing Iris probe dependencies to select the real local BSL output
+profile. It verifies depth preservation for this real shader path as well as the
+synthetic FBO/occlusion cases. This still does not identify which eligibility check
+fails in a particular running game or constitute full BSL scene acceptance.
+
+The new build logs the first successful shader-pack capture and each distinct
+per-model rejection reason once per resource lifecycle, without requiring a JVM
+debug option. These lines distinguish the actual in-game path on the next run.
+Rejected immediate draws can still lose the pale layer to later opaque draws;
+this fix specifically prevents those draws from making chests/water disappear.
+
+### Distinguish stable-target failures and select the actual world entity shader
+
+The r2 game log records `verified=true, stable=false, opaqueMatch=false,
+lateMatch=false`, without a successful capture. That log cannot retrospectively
+distinguish an API exception, a different pipeline class, a colortex0 flip, or the
+additional short circuit where `RenderSystem.getShader()` is not an Iris shader.
+In the latter case the old code selects the vanilla output profile, calls it
+verified, and never even queries the Iris pipeline.
+
+World-scene preparation now resolves the public Iris
+`ShaderMap.ENTITIES_TRANSLUCENT` when the current shader is not an Iris shader.
+Both CPU and GPU Toon rendering apply the same selected source whose profile was
+verified, rather than checking one source and rendering with another. GUI and
+other non-world callers keep their existing source shader. A real colortex0 flip
+still requires matching attachments; it never silently bypasses target validation.
+
+`Iris target verification` diagnostics contain the current and selected shader
+classes/names, selection path, actual profile ID, and these distinct target statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `API_LOOKUP_FAILED` | Class/method discovery failed; exception class and message are included. |
+| `API_READ_FAILED` | Invocation failed; the underlying exception is unwrapped and logged. |
+| `NO_PIPELINE` | The public manager has no current pipeline. |
+| `PIPELINE_TYPE_MISMATCH` | Expected and actual pipeline classes are recorded. |
+| `INVALID_FLIP_STATE` | A flip getter did not return a non-null set. |
+| `COLOR_BUFFER_SWITCHED` | colortex0 membership differs; `before`/`after` show both values. |
+| `STABLE` | colortex0 remains on the same side, including when both sides are flipped. |
+
+`sourceStatus=NON_IRIS_SHADER` separately identifies the source-shader gate.
+The final `outputVerified` and `stablePrimary` values and full verification result
+are also included in rejection logs. Each distinct diagnostic is logged once per
+resource lifecycle. Read errors are retried; pipeline snapshots are cached only
+when successfully read, and lookup/selection state is cleared on renderer release.
+
+The actual installed Iris 1.8.14-beta.1 API lookup passes with the installed
+Sodium 0.8.13 runtime. Sodium's outer jar contains a nested runtime jar; omitting
+that from a standalone probe falsely reports a missing `VertexSerializer` class.
+The `-BslPack` probe now includes it and checks the production reflection bridge
+and ShaderMap symbols before running the GL regression. Six unit cases distinguish
+stable/switched buffers, missing/wrong pipelines, invalid results, invocation
+failure/recovery, and nested exception causes. None of these offline checks can
+recover the branch omitted from the old game log; the new game log identifies it.

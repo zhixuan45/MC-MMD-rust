@@ -14,7 +14,7 @@ public final class WorldTransparencyHooks {
         boolean supported = !IrisCompat.isRenderingShadows();
         if (shaderPack && !warned) {
             warned = true;
-            LogManager.getLogger().info("Iris/NeOculus transparent queue requires matching entity and post-particle primary color attachments.");
+            LogManager.getLogger().info("Iris/NeOculus transparent queue verifies primary color attachments or stable colortex0 via Iris buffer-flip state.");
         }
         WorldTransparencyPipeline.beginFrame(fabulous, supported, shaderPack);
     }
