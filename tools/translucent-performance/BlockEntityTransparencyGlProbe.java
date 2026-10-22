@@ -6,6 +6,7 @@ import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipelin
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
 import com.shiroha.mmdskin.render.shader.ToonOutputProfile;
+import com.shiroha.mmdskin.render.outline.OutlineRenderPass;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL46C;
@@ -56,10 +57,15 @@ public final class BlockEntityTransparencyGlProbe {
             replacedAttachmentIsNotWritten();
             fixture("stablePrimaryColorOutput", false);
             unverifiedTargetFallsBack();
+            for (boolean flipped : new boolean[]{false, true}) {
+                irisFinalOverwrite(flipped, false);
+                irisFinalOverwrite(flipped, true);
+            }
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "final GL error");
             System.out.println("PASS BlockEntityTransparencyGlProbe: late chest front/behind, alpha .002/.01/.12/.5, "
                     + "holes, unrelated stage FBO, shared-storage wrapper, pre-water depth, MRT/state restoration, "
-                    + "subsequent color sampling, replaced attachment protection, unverified-target fallback");
+                    + "subsequent color sampling, replaced attachment protection, unverified-target fallback, "
+                    + "Iris final overwrite with stable/flipped colortex0 and production outlines");
         } finally {
             WorldTransparencyPipeline.release();
             GLFW.glfwDestroyWindow(window);
@@ -144,10 +150,18 @@ public final class BlockEntityTransparencyGlProbe {
             var field = IrisToonCompat.class.getDeclaredField(name);
             field.setAccessible(true);
             field.setBoolean(null, value);
+            if (name.equals("stablePrimaryColorOutput"))
+                targetFixture(value ? () -> { bind(source); return true; } : null);
         } catch (NoSuchFieldException e) {
             // Allows running this regression against the pre-fix production classes.
             if (!name.equals("stablePrimaryColorOutput")) throw e;
         }
+    }
+
+    private static void targetFixture(java.util.function.BooleanSupplier target) throws Exception {
+        var field = IrisToonCompat.class.getDeclaredField("preparedWorldColorTarget");
+        field.setAccessible(true);
+        field.set(null, target);
     }
 
     private static void setup() {
@@ -194,6 +208,144 @@ public final class BlockEntityTransparencyGlProbe {
                 GL46C.GL_UNSIGNED_BYTE, buffer(4).putInt(0, -1));
         source = target();
         stage = target();
+        shareDepth(stage, source);
+    }
+
+    private static void shareDepth(int destination, int original) {
+        int depth = attachment(original, GL46C.GL_DEPTH_ATTACHMENT);
+        bind(destination);
+        GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT,
+                GL46C.GL_TEXTURE_2D, depth, 0);
+    }
+
+    /** Simulate the actual late-main callbacks followed by Iris overwriting main from colortex0. */
+    private static void irisFinalOverwrite(boolean flipped, boolean outlines) throws Exception {
+        WorldTransparencyPipeline.release();
+        fixture("primaryColorOutput", true);
+        fixture("stablePrimaryColorOutput", !flipped);
+        int late = flipped ? target() : source;
+        if (flipped) shareDepth(late, source);
+        boolean[] afterDeferred = {false};
+        targetFixture(() -> { bind(afterDeferred[0] ? late : source); return true; });
+        bind(stage);
+        WorldTransparencyPipeline.beginFrame(false, true, true);
+        WorldTransparencyPipeline.afterOpaqueWorld();
+        WorldTransparencyPipeline.afterWorldTranslucency();
+        WorldTransparencyPipeline.endFrame();
+        bind(source);
+        GL46C.glDepthMask(true);
+        GL46C.glClearDepth(1);
+        GL46C.glClear(GL46C.GL_DEPTH_BUFFER_BIT);
+        GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, CHEST);
+        WorldTransparencyPipeline.beginFrame(false, true, true);
+        drawModel(.12f);
+        if (outlines) drawProductionOutline();
+        afterDeferred[0] = true;
+        bind(late);
+        GL46C.glDrawBuffers(new int[]{GL46C.GL_COLOR_ATTACHMENT0, GL46C.GL_COLOR_ATTACHMENT1});
+        GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, CHEST);
+        GL46C.glClearBufferfv(GL46C.GL_COLOR, 1, new float[]{.3f, .4f, .5f, 1});
+        GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
+        GL46C.glEnable(GL46C.GL_SCISSOR_TEST);
+        GL46C.glScissor(0, 0, 32, SIZE);
+        drawSolid(.4f);
+        GL46C.glScissor(32, 0, 32, SIZE);
+        drawSolid(-.6f);
+        GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
+        GL46C.glDrawBuffers(new int[]{GL46C.GL_COLOR_ATTACHMENT0, GL46C.GL_COLOR_ATTACHMENT1});
+        bind(stage);
+        GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, new float[]{1, 0, 1, 1});
+        WorldTransparencyPipeline.afterOpaqueWorld();
+        // Later water depth must not replace the post-chest opaque snapshot.
+        bind(late);
+        GL46C.glColorMask(false, false, false, false);
+        drawSolid(-.9f);
+        GL46C.glColorMask(true, true, true, true);
+        bind(stage);
+        GL46C.glEnablei(GL46C.GL_BLEND, 1);
+        GL46C.glBlendFuncSeparatei(1, GL46C.GL_DST_COLOR, GL46C.GL_ONE, GL46C.GL_ONE, GL46C.GL_ZERO);
+        WorldTransparencyPipeline.afterWorldTranslucency();
+        check(GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING) == stage, "late main FBO restored");
+        check(GL46C.glIsEnabledi(GL46C.GL_BLEND, 1)
+                && GL46C.glGetIntegeri(GL46C.GL_BLEND_SRC_RGB, 1) == GL46C.GL_DST_COLOR,
+                "resolve preserves auxiliary indexed blending");
+        expect(stage, GL46C.GL_COLOR_ATTACHMENT0, 16, new float[]{1,0,1,1}, "temporary main is untouched");
+        bind(late);
+        check(GL46C.glGetInteger(GL46C.GL_DRAW_BUFFER1) == GL46C.GL_COLOR_ATTACHMENT1, "late MRT restored");
+        float[] beforeFinal = pixel(late, 16);
+        check(Math.abs(beforeFinal[0] - CHEST[0]) > .01f, "translucent body/outline contributed before final");
+        expect(late, GL46C.GL_COLOR_ATTACHMENT0, 40, CHEST, "front chest still occludes captured fragments");
+        expect(late, GL46C.GL_COLOR_ATTACHMENT1, 16, new float[]{.3f,.4f,.5f,1}, "late material MRT untouched");
+        // Final is a replacing fullscreen pass, not an alpha overlay on temporary main.
+        int scene = attachment(late, GL46C.GL_COLOR_ATTACHMENT0);
+        bind(stage);
+        GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0);
+        GL46C.glDisable(GL46C.GL_DEPTH_TEST);
+        GL46C.glDisable(GL46C.GL_BLEND);
+        GL46C.glUseProgram(solid);
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, scene);
+        GL46C.glUniform1i(GL46C.glGetUniformLocation(solid, "SampleScene"), 1);
+        GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 3);
+        expect(stage, GL46C.GL_COLOR_ATTACHMENT0, 16, beforeFinal, "body/outline survives replacing Iris final");
+        GL46C.glUniform1i(GL46C.glGetUniformLocation(solid, "SampleScene"), 0);
+        System.out.println("Iris final overwrite: flipped=" + flipped + ", productionOutline=" + outlines
+                + ", finalPixel=" + java.util.Arrays.toString(beforeFinal));
+        WorldTransparencyPipeline.endFrame();
+    }
+
+    private static float[] pixel(int fbo, int x) {
+        GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, fbo);
+        GL46C.glReadBuffer(GL46C.GL_COLOR_ATTACHMENT0);
+        float[] result = new float[4];
+        GL46C.glReadPixels(x, 16, 1, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT, result);
+        return result;
+    }
+
+    private static void drawProductionOutline() {
+        ToonShaderCpu shader = new ToonShaderCpu();
+        if (productionProfile != null) check(shader.selectOutputProfile(productionProfile), "BSL outline profile");
+        int positions = GL46C.glGenBuffers(), normals = GL46C.glGenBuffers(), uv = GL46C.glGenBuffers();
+        int fragmentsBefore = capturedFragments();
+        try {
+            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, positions);
+            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, new float[]{-1,-1,-.2f, -1,3,-.2f, 3,-1,-.2f}, GL46C.GL_STATIC_DRAW);
+            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, normals);
+            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, new float[]{0,0,-1, 0,0,-1, 0,0,-1}, GL46C.GL_STATIC_DRAW);
+            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, uv);
+            GL46C.glBufferData(GL46C.GL_ARRAY_BUFFER, new float[]{.5f,.5f, .5f,.5f, .5f,.5f}, GL46C.GL_STATIC_DRAW);
+            FloatBuffer matrix = buffer(64).asFloatBuffer();
+            new Matrix4f().get(matrix);
+            ByteBuffer mesh = buffer(20).putInt(0,0).putInt(4,0).putInt(8,3).putFloat(12,.25f)
+                    .put(16,(byte)1).put(17,(byte)1).put(18,(byte)1);
+            try (var ignored = WorldTransparencyPipeline.modelScene(RenderScene.WORLD)) {
+                OutlineRenderPass.draw(shader, new OutlineRenderPass.Inputs(positions,normals,uv,mesh,
+                        1,4,GL46C.GL_UNSIGNED_INT,matrix,matrix,1), (id,a) -> a, id -> white);
+            }
+            check(capturedFragments() > fragmentsBefore, "production outline must actually enter the shared queue");
+        } finally {
+            shader.cleanup();
+            GL46C.glDeleteBuffers(positions); GL46C.glDeleteBuffers(normals); GL46C.glDeleteBuffers(uv);
+        }
+    }
+
+    private static int capturedFragments() {
+        int previous = GL46C.glGetInteger(GL46C.GL_SHADER_STORAGE_BUFFER_BINDING);
+        try {
+            var instanceField = WorldTransparencyPipeline.class.getDeclaredField("INSTANCE");
+            instanceField.setAccessible(true);
+            var metaField = WorldTransparencyPipeline.class.getDeclaredField("meta");
+            metaField.setAccessible(true);
+            GL46C.glMemoryBarrier(GL46C.GL_SHADER_STORAGE_BARRIER_BIT | GL46C.GL_BUFFER_UPDATE_BARRIER_BIT);
+            GL46C.glBindBuffer(GL46C.GL_SHADER_STORAGE_BUFFER, metaField.getInt(instanceField.get(null)));
+            int[] count = new int[1];
+            GL46C.glGetBufferSubData(GL46C.GL_SHADER_STORAGE_BUFFER, 0, count);
+            return count[0];
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        } finally {
+            GL46C.glBindBuffer(GL46C.GL_SHADER_STORAGE_BUFFER, previous);
+        }
     }
 
     private static void scenario(float alpha, boolean sharedWrapper) {

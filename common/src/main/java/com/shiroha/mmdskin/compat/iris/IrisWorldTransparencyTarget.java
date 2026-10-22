@@ -5,6 +5,7 @@ import net.minecraft.client.renderer.ShaderInstance;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 
 /** Read-only public Iris access with distinct lookup, pipeline and buffer-switch outcomes. */
 final class IrisWorldTransparencyTarget {
@@ -24,6 +25,7 @@ final class IrisWorldTransparencyTarget {
     private static Object cachedPipeline;
     private static Result cachedResult;
     private static ShaderAccess shaderAccess;
+    private static final Set<String> BIND_FAILURES = new java.util.HashSet<>();
 
     private IrisWorldTransparencyTarget() {}
 
@@ -95,6 +97,27 @@ final class IrisWorldTransparencyTarget {
         return error.getClass().getName() + ": " + error.getMessage();
     }
 
+    /** Capture this pipeline, rather than consulting mutable GUI/shader state at resolve time. */
+    static BooleanSupplier colorTarget() {
+        if (access == null || cachedPipeline == null) return null;
+        Object pipeline = cachedPipeline;
+        Method bind = access.bindDefault;
+        return () -> bindTarget(pipeline, bind);
+    }
+
+    static boolean bindTarget(Object pipeline, Method bind) {
+        try {
+            bind.invoke(pipeline);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            String detail = describe(e);
+            if (BIND_FAILURES.add(detail))
+                org.apache.logging.log4j.LogManager.getLogger().warn(
+                        "[MMD transparency] Iris stage color binding failed: {}", detail);
+            return false;
+        }
+    }
+
     private static Result failure(Status status, Object pipeline, Throwable error) {
         return new Result(status, pipeline == null ? "unknown" : pipeline.getClass().getName(),
                 null, null, describe(error));
@@ -106,6 +129,7 @@ final class IrisWorldTransparencyTarget {
         cachedPipeline = null;
         cachedResult = null;
         shaderAccess = null;
+        BIND_FAILURES.clear();
     }
 
     private static Class<?> irisClass(String name) throws ClassNotFoundException {
@@ -115,7 +139,7 @@ final class IrisWorldTransparencyTarget {
 
     private static final class Access {
         final Class<?> pipelineType;
-        final Method manager, pipeline, before, after;
+        final Method manager, pipeline, before, after, bindDefault;
 
         Access() throws ReflectiveOperationException {
             Class<?> iris = irisClass("Iris");
@@ -125,6 +149,7 @@ final class IrisWorldTransparencyTarget {
             pipeline = managerType.getMethod("getPipelineNullable");
             before = pipelineType.getMethod("getFlippedAfterPrepare");
             after = pipelineType.getMethod("getFlippedAfterTranslucent");
+            bindDefault = pipelineType.getMethod("bindDefault");
         }
     }
 

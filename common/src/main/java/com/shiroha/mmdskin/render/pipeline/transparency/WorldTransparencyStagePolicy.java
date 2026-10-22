@@ -18,48 +18,17 @@ final class WorldTransparencyStagePolicy {
     }
 
     /**
-     * A second, strictly guarded destination: the public post-block-entity and
-     * post-translucency callbacks both use Minecraft's main color texture, not
-     * the entity G-buffer. The opaque callback must share the entity depth
-     * storage so the late resolve can correctly distinguish chest surfaces.
+     * The Iris binder was matched to the verified entity output at admission.
+     * Its late color ID may differ after deferred flips colortex0; depth storage
+     * and viewport must still match. Never infer a destination from loader main color.
      */
-    static boolean canComposeOnLateMain(boolean verifiedOutput,
-                                        FramebufferColorTarget entity,
-                                        FramebufferColorTarget blockEntities,
-                                        FramebufferColorTarget postTranslucency,
-                                        int mainColorTexture,
-                                        boolean sameOpaqueDepth) {
-        return verifiedOutput && sameOpaqueDepth && mainColorTexture > 0
-                && entity != null && blockEntities != null
-                && !FramebufferColorTarget.compatible(entity, blockEntities)
-                && blockEntities.type() == 0x1702 // GL_TEXTURE
-                && blockEntities.objectId() == mainColorTexture
-                && FramebufferColorTarget.compatible(blockEntities, postTranslucency);
-    }
-
-    static boolean sameDepthStorage(com.shiroha.mmdskin.render.gl.DepthAttachment a,
-                                    com.shiroha.mmdskin.render.gl.DepthAttachment b) {
-        return a != null && b != null && a.objectType() == b.objectType()
-                && a.objectId() == b.objectId() && a.format() == b.format()
-                && a.samples() == 0 && b.samples() == 0
-                && a.width() == b.width() && a.height() == b.height();
-    }
-
-    /** Never confuse the entity G-buffer with the late main scene destination. */
-    static boolean resolveOnBoundTarget(boolean shaderPack, boolean lateMainMode,
-                                        boolean matchedEntity, boolean matchedLateMain,
-                                        boolean capturedOpaqueDepth) {
-        if (!shaderPack) return true;
-        return capturedOpaqueDepth && (lateMainMode ? matchedLateMain : matchedEntity);
-    }
-
-    /** Fail closed if the current post-particle draw target is not the proven late target. */
-    static boolean matchesLateStage(boolean queuedForLateMain,
-                                    FramebufferColorTarget expected,
-                                    FramebufferColorTarget current,
-                                    boolean opaqueDepthCaptured) {
-        return queuedForLateMain && opaqueDepthCaptured
-                && FramebufferColorTarget.compatible(expected, current);
+    static boolean canResolveIrisColor(FramebufferColorTarget entity,
+                                       FramebufferColorTarget boundIrisColor,
+                                       boolean sameDepthAndViewport) {
+        return sameDepthAndViewport && entity != null && boundIrisColor != null
+                && entity.type() == boundIrisColor.type()
+                && entity.width() == boundIrisColor.width()
+                && entity.height() == boundIrisColor.height();
     }
 
     /**

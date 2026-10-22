@@ -271,3 +271,60 @@ and ShaderMap symbols before running the GL regression. Six unit cases distingui
 stable/switched buffers, missing/wrong pipelines, invalid results, invocation
 failure/recovery, and nested exception causes. None of these offline checks can
 recover the branch omitted from the old game log; the new game log identifies it.
+
+### Iris final-pass overwrite regression (2026-10-23)
+
+The next game log confirms `COLOR_BUFFER_SWITCHED` (`before=false`, `after=true`)
+and successful model capture. Entity color is texture 149, while both public loader
+callbacks expose main color texture 6. The removed `canComposeOnLateMain` path
+accepted this combination because the callbacks shared the entity depth storage.
+That proves the opaque depth can be copied, but does not prove that main COLOR
+survives: the installed Iris pipeline runs composite and final at the end of
+`renderLevel`. Final replaces main color with its processed scene. Since captured
+model fragments discard their immediate outputs, this erased all deferred alpha.
+
+Use the public `IrisRenderingPipeline.bindDefault()` instead. Admission temporarily
+binds it and verifies that its backing color matches the selected entity program's
+colortex0 output, then restores both read/draw FBOs. Keep a binder for that specific
+pipeline through the frame. At resolve it selects the current post-deferred side,
+including when colortex0 flipped, so the alpha enters the scene BEFORE composite
+and final. A changed depth object, format, viewport, or unexpectedly changed stable
+color is rejected explicitly. An unavailable/unmatched binder falls back to
+immediate alpha without a world depth seal; switched buffers cannot use the old
+attachment-only shortcut. Non-Iris source shaders no longer count as verified
+Iris primary outputs.
+
+The public opaque callback may still supply the shared depth independently of
+its temporary main color. Preserve its post-chest, pre-water snapshot. Resolve
+restores the destination FBO's current MRT mapping, rather than overwriting it
+with the earlier entity mapping, and touches only output 0's indexed blend/mask.
+It also restores viewport and scissor state.
+
+`BlockEntityTransparencyGlProbe` now models shared depth, distinct main color,
+stable/flipped colortex0, and a replacing fullscreen final pass. It checks pixels
+after final, front/behind chest occlusion, pre-water depth, untouched main color
+before final, auxiliary MRT colors/blending, and FBO/MRT restoration. Production
+outlines run through `OutlineRenderPass`; SSBO fragment counts must increase, so
+merely invoking an outline draw that discards everything cannot pass. The optional
+BSL profile covers production texture alpha 32/255 and the outline shader.
+
+Validation: 27 focused unit tests, installed Iris/Sodium API lookup (including
+`bindDefault`), the extended BSL GL probe, CPU/GPU Toon alpha and layer probes,
+Fabric compilation, and NeoForge shadowJar pass. The old all-in-one probe script
+still includes `WorldTransparencyGlProbe`, which calls removed terrain-capture
+APIs. Separately, `DepthSealOutlineGlProbe` fails its first default-framebuffer
+alpha-hole assertion on both the pre-change baseline and this change. These old
+probe failures are not counted as passing coverage for this repair.
+
+For game acceptance, replace the existing mod with the r4 test JAR, keep BSL,
+Toon, outlines and the world transparency queue enabled, and inspect:
+
+- `model capture enabled` with `irisStageTarget=true`;
+- `queued resolve completed` with `irisStageTarget=true`, its destination color
+  and `opaqueDepthCaptured=true`;
+- any `Iris stage color binding failed`, `queued resolve skipped`, or immediate
+  fallback reason. Resolve rejection is logged separately from immediate fallback.
+
+The GL final pass is a controlled reproduction of the overwrite, not a full Iris
+runtime. The user's actual scene, water interaction and final appearance still
+require an in-game retest with the new JAR and a fresh log.

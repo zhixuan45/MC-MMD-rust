@@ -18,8 +18,9 @@ public final class IrisTransparencyApiProbe {
         var keys = Class.forName("net.irisshaders.iris.pipeline.programs.ShaderKey", false, loader);
         var map = Class.forName("net.irisshaders.iris.pipeline.programs.ShaderMap", false, loader);
         pipeline.getMethod("getShaderMap");
+        pipeline.getMethod("bindDefault");
         map.getMethod("getShader", keys);
         keys.getField("ENTITIES_TRANSLUCENT");
-        System.out.println("PASS IrisTransparencyApiProbe: installed Iris manager/pipeline/flip getters and entity ShaderMap API");
+        System.out.println("PASS IrisTransparencyApiProbe: installed Iris manager/pipeline/flip getters, stage color binder and entity ShaderMap API");
     }
 }

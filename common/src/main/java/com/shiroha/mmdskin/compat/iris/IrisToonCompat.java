@@ -22,6 +22,7 @@ public final class IrisToonCompat {
     private static boolean primaryColorOutput;
     private static boolean stablePrimaryColorOutput;
     private static ShaderInstance preparedEntityShader;
+    private static java.util.function.BooleanSupplier preparedWorldColorTarget;
     private static String targetDiagnostic = "not prepared";
     private static final Set<String> TARGET_DIAGNOSTICS = new HashSet<>();
 
@@ -42,6 +43,7 @@ public final class IrisToonCompat {
         ToonOutputProfile profile = result.profile();
         primaryColorOutput = false;
         stablePrimaryColorOutput = false;
+        preparedWorldColorTarget = null;
         var target = shaderPack ? IrisWorldTransparencyTarget.inspect() : null;
         targetDiagnostic = "sourceStatus=" + (preparedEntityShader == null ? "NON_IRIS_SHADER" : "IRIS_SHADER")
                 + ", shader=" + shaderDescription(source) + ", selection=" + selection.detail()
@@ -54,9 +56,13 @@ public final class IrisToonCompat {
         }
         boolean selected = selectCurrentPassProfile(profile, shader::selectOutputProfile);
         if (!selected) notifyOnce(result, "Toon 兼容程序编译失败");
-        primaryColorOutput = selected && profile.colorOutputSlot() == 0;
+        primaryColorOutput = selected && profile.colorOutputSlot() == 0
+                && (!shaderPack || preparedEntityShader != null);
         stablePrimaryColorOutput = primaryColorOutput
                 && preparedEntityShader != null && target != null && target.stable();
+        if (primaryColorOutput && preparedEntityShader != null && worldScene && target != null
+                && (target.stable() || target.status() == IrisWorldTransparencyTarget.Status.COLOR_BUFFER_SWITCHED))
+            preparedWorldColorTarget = IrisWorldTransparencyTarget.colorTarget();
         targetDiagnostic += ", outputVerified=" + primaryColorOutput + ", stablePrimary=" + stablePrimaryColorOutput;
         reportTarget(shaderPack, current);
         return selected;
@@ -94,6 +100,9 @@ public final class IrisToonCompat {
 
     public static ShaderInstance preparedEntityShader() { return preparedEntityShader; }
 
+    /** Binds Iris's stage-dependent scene color before composite/final; caller restores GL FBOs. */
+    public static java.util.function.BooleanSupplier worldColorTarget() { return preparedWorldColorTarget; }
+
     public static String targetDiagnostic() { return targetDiagnostic; }
 
     private static String shaderDescription(ShaderInstance shader) {
@@ -110,6 +119,7 @@ public final class IrisToonCompat {
         primaryColorOutput = false;
         stablePrimaryColorOutput = false;
         preparedEntityShader = null;
+        preparedWorldColorTarget = null;
         targetDiagnostic = "not prepared";
         TARGET_DIAGNOSTICS.clear();
         IrisWorldTransparencyTarget.reset();

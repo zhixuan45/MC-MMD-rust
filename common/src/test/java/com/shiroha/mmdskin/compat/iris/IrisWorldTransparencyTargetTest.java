@@ -12,6 +12,7 @@ class IrisWorldTransparencyTargetTest {
     public static class Pipeline {
         Object before = Set.of(), after = Set.of();
         boolean fail;
+        int binds;
 
         public Object getFlippedAfterPrepare() {
             if (fail) throw new IllegalStateException("pipeline rebuilding");
@@ -19,6 +20,10 @@ class IrisWorldTransparencyTargetTest {
         }
 
         public Object getFlippedAfterTranslucent() { return after; }
+        public void bindDefault() {
+            if (fail) throw new IllegalStateException("target destroyed");
+            binds++;
+        }
     }
 
     private IrisWorldTransparencyTarget.Result inspect(Object pipeline) throws Exception {
@@ -82,5 +87,17 @@ class IrisWorldTransparencyTargetTest {
         assertEquals("java.lang.NoSuchMethodException: getFlippedAfterPrepare",
                 IrisWorldTransparencyTarget.describe(new InvocationTargetException(
                         new InvocationTargetException(new NoSuchMethodException("getFlippedAfterPrepare")))));
+    }
+
+    @Test void colorBindingReportsFailureAndCanRecover() throws Exception {
+        var pipeline = new Pipeline();
+        var bind = Pipeline.class.getMethod("bindDefault");
+        assertTrue(IrisWorldTransparencyTarget.bindTarget(pipeline, bind));
+        assertEquals(1, pipeline.binds);
+        pipeline.fail = true;
+        assertFalse(IrisWorldTransparencyTarget.bindTarget(pipeline, bind));
+        pipeline.fail = false;
+        assertTrue(IrisWorldTransparencyTarget.bindTarget(pipeline, bind));
+        assertEquals(2, pipeline.binds);
     }
 }
