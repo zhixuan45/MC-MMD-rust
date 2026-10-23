@@ -70,8 +70,13 @@ public final class BslBatchGlProbe {
     }
 
     private static ToonOutputProfile profile(ZipFile zip, Map<String, String> options, String dimension) throws Exception {
-        String base = "shaders/" + dimension + "/gbuffers_entities.";
-        if (zip.getEntry(base + "fsh") == null) base = "shaders/gbuffers_entities.";
+        return profile(zip, options, dimension, "gbuffers_entities");
+    }
+
+    private static ToonOutputProfile profile(ZipFile zip, Map<String, String> options, String dimension,
+                                             String program) throws Exception {
+        String base = "shaders/" + dimension + "/" + program + ".";
+        if (zip.getEntry(base + "fsh") == null) base = "shaders/" + program + ".";
         String fragment = JcppProcessor.glslPreprocessSource(Probe.include(zip, base + "fsh", options), defines());
         String vertex = JcppProcessor.glslPreprocessSource(Probe.include(zip, base + "vsh", options), defines());
         Matcher matcher = BUFFERS.matcher(fragment);
@@ -81,7 +86,7 @@ public final class BslBatchGlProbe {
         check(directive != null, dimension + " missing DRAWBUFFERS");
         int[] buffers = targets ? java.util.Arrays.stream(directive.split(",")).map(String::trim).mapToInt(Integer::parseInt).toArray()
                 : directive.chars().map(value -> value - '0').toArray();
-        return ToonOutputProfile.resolve("BSL_v10.1.8", "gbuffers_entities", fragment, vertex, buffers);
+        return ToonOutputProfile.resolve("BSL_v10.1.8", program, fragment, vertex, buffers);
     }
 
     private static List<StringPair> defines() {

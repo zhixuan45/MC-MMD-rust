@@ -22,7 +22,9 @@
     "compat.tacz.TaczGunItemRendererWrapperMixin",
     "compat.tacz.TaczRightHandRenderMixin",
     "compat.tacz.TaczLeftHandRenderMixin",
-    "compat.IrisShadowEvaluationMixin"
+    "compat.IrisShadowEvaluationMixin",
+    "compat.IrisWaterShaderMixin",
+    "compat.IrisWaterStateMixin"
   ],
   "injectors": {
     "defaultRequire": 1
