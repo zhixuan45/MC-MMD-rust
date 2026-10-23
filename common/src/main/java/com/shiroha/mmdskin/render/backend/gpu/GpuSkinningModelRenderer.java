@@ -57,7 +57,7 @@ final class GpuSkinningModelRenderer {
         try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
                 target.nativeModelHandle(), target.getModelName(), "GPU_COMPUTE",
                 samplingEnabled ? sceneKey(context) : "OTHER");
-             var worldTransparency = WorldTransparencyPipeline.modelScene(context)) {
+             var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName())) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, context);
         }
     }

@@ -50,7 +50,7 @@ final class OpenGlModelRenderer {
         try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
                 target.nativeModelHandle(), target.getModelName(), "CPU",
                 samplingEnabled ? sceneKey(context) : "OTHER");
-             var worldTransparency = WorldTransparencyPipeline.modelScene(context)) {
+             var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName())) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, packedLight, context);
         }
     }

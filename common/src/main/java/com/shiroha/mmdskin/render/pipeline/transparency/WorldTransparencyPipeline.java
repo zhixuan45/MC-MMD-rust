@@ -38,6 +38,17 @@ public final class WorldTransparencyPipeline {
         return configuredOrOverride(System.getProperty("mmdskin.debugTransparencyStages"),
                 ConfigManager.isDebugTransparencyStagesEnabled());
     }
+    private static boolean debugModels() {
+        return configuredOrOverride(System.getProperty("mmdskin.debugTransparencyModels"),
+                ConfigManager.isDebugTransparencyModelsEnabled());
+    }
+
+    private void modelDecision(String decision, Object detail) {
+        if (!debugModels() || debugFrame % 120 != 1 || modelLogCount++ >= 32) return;
+        LogManager.getLogger().info("[MMD transparency] model={} decision={} detail={} sourceFbo={}",
+                modelName, decision, detail, sourceFbo);
+    }
+
     private static final String FULLSCREEN = """
             #version 430 core
             void main() {
@@ -65,6 +76,9 @@ public final class WorldTransparencyPipeline {
     private final java.util.Set<String> reportedFallbacks = new java.util.HashSet<>();
     private boolean reportedCapture;
     private boolean reportedResolve;
+    private String modelName = "unknown";
+    private int acceptedModels, rejectedModels, modelLogCount;
+    private boolean entitiesDepthCaptured;
 
     private WorldTransparencyPipeline() {}
 
@@ -73,6 +87,9 @@ public final class WorldTransparencyPipeline {
         INSTANCE.frame = true;
         INSTANCE.debugFrame++;
         INSTANCE.debugModelLogged = false;
+        INSTANCE.acceptedModels = INSTANCE.rejectedModels = INSTANCE.modelLogCount = 0;
+        INSTANCE.entitiesDepthCaptured = false;
+        INSTANCE.modelName = "unknown";
         INSTANCE.shaderPack = shaderPack;
         INSTANCE.sourceColor = null;
         INSTANCE.irisColorTarget = null;
@@ -93,6 +110,36 @@ public final class WorldTransparencyPipeline {
         } catch (RuntimeException e) {
             LogManager.getLogger().warn("World transparency unavailable: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Capture complete entity depth after all PMX and vanilla entities, before water.
+     * Keep the early per-model snapshot only when the event's depth is unverified.
+     */
+    public static void afterEntities() {
+        if (!INSTANCE.frame || !INSTANCE.shaderPack || !INSTANCE.queueActive || !INSTANCE.queued) return;
+        FramebufferColorTarget color = FramebufferColorTarget.capture();
+        DepthAttachment depth = DepthAttachment.inspect();
+        boolean colorMatch = INSTANCE.irisColorTarget != null
+                || FramebufferColorTarget.compatible(INSTANCE.sourceColor, color);
+        boolean depthMatch = depth != null && depth.objectType() == INSTANCE.sourceDepthObjectType
+                && depth.objectId() == INSTANCE.sourceDepthObjectId;
+        boolean formatMatch = depth != null && depth.samples() == 0 && depth.format() == INSTANCE.depthFormat;
+        boolean viewportMatch = depth != null && depth.contains(INSTANCE.viewport);
+        if (!WorldTransparencyStagePolicy.canCaptureOpaqueDepth(
+                colorMatch, depthMatch, formatMatch, viewportMatch)) {
+            if (debugStages() && INSTANCE.debugFrame % 120 == 1)
+                LogManager.getLogger().info("[MMD transparency] after-entities depth mismatch:"
+                        + " color={} depth={} expectedDepthType={} expectedDepthId={}",
+                        color, depth, INSTANCE.sourceDepthObjectType, INSTANCE.sourceDepthObjectId);
+            return;
+        }
+        INSTANCE.entitiesDepthCaptured = INSTANCE.copyDepthSnapshot(
+                GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING));
+        INSTANCE.fallbackDepthCaptured |= INSTANCE.entitiesDepthCaptured;
+        if (debugStages() && INSTANCE.debugFrame % 120 == 1)
+            LogManager.getLogger().info("[MMD transparency] after-entities depth captured={}",
+                    INSTANCE.entitiesDepthCaptured);
     }
 
     /**
@@ -210,6 +257,11 @@ public final class WorldTransparencyPipeline {
                             matchedStage, savedTargetMatches, INSTANCE.opaqueDepthCaptured);
                 }
                 INSTANCE.resolve(!INSTANCE.shaderPack || matchedStage);
+                if (debugModels() && INSTANCE.debugFrame % 120 == 1)
+                    LogManager.getLogger().info("[MMD transparency] frame: accepted={} rejected={} "
+                            + "modelDraws={} entityDepth={} blockDepth={}",
+                            INSTANCE.acceptedModels, INSTANCE.rejectedModels, INSTANCE.modelCaptures,
+                            INSTANCE.entitiesDepthCaptured, INSTANCE.opaqueDepthCaptured);
             }
         } finally {
             INSTANCE.frame = INSTANCE.queueActive = false;
@@ -225,13 +277,22 @@ public final class WorldTransparencyPipeline {
     }
 
     public static SceneScope modelScene(RenderScene scene) {
-        boolean old = INSTANCE.worldScene;
-        INSTANCE.worldScene = scene != null && scene.isWorldScene();
-        return new SceneScope(old);
+        return modelScene(scene, "unknown");
     }
 
-    public record SceneScope(boolean previous) implements AutoCloseable {
-        @Override public void close() { INSTANCE.worldScene = previous; }
+    public static SceneScope modelScene(RenderScene scene, String name) {
+        boolean old = INSTANCE.worldScene;
+        String previousModel = INSTANCE.modelName;
+        INSTANCE.worldScene = scene != null && scene.isWorldScene();
+        INSTANCE.modelName = name;
+        return new SceneScope(old, previousModel);
+    }
+
+    public record SceneScope(boolean previous, String previousModel) implements AutoCloseable {
+        @Override public void close() {
+            INSTANCE.worldScene = previous;
+            INSTANCE.modelName = previousModel;
+        }
     }
 
     /** Success means the caller may omit model-local peeling, triangle sorting and depth sealing. */
@@ -362,8 +423,27 @@ public final class WorldTransparencyPipeline {
         int[] current = new int[4]; GL46C.glGetIntegerv(GL46C.GL_VIEWPORT, current);
         int fbo = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
         if (queued) {
-            if (sourceFbo != fbo || !java.util.Arrays.equals(viewport, current))
+            boolean sameViewport = java.util.Arrays.equals(viewport, current);
+            // Different Iris FBO wrappers may share the actual colortex0 + depth attachments.
+            if (shaderPack) {
+                FramebufferColorTarget nextColor = FramebufferColorTarget.capture();
+                DepthAttachment nextDepth = DepthAttachment.inspect();
+                boolean sharedDepth = nextDepth != null
+                        && nextDepth.objectType() == sourceDepthObjectType
+                        && nextDepth.objectId() == sourceDepthObjectId
+                        && nextDepth.format() == depthFormat && nextDepth.samples() == 0
+                        && nextDepth.contains(current);
+                if (!WorldTransparencyStagePolicy.canShareModelTarget(
+                        sourceColor, nextColor, sharedDepth, sameViewport))
+                    return modelFallback("different model attachments",
+                            "fbo=" + fbo + ", sourceFbo=" + sourceFbo
+                                    + ", color=" + nextColor + ", expected=" + sourceColor
+                                    + ", depth=" + nextDepth + ", sharedDepth=" + sharedDepth);
+            } else if (sourceFbo != fbo || !sameViewport) {
                 return modelFallback("different model target", "fbo=" + fbo + ", sourceFbo=" + sourceFbo);
+            }
+            acceptedModels++;
+            modelDecision("JOIN_SHARED_QUEUE", "fbo=" + fbo + " sourceFbo=" + sourceFbo);
             return true;
         }
         DepthAttachment depth = DepthAttachment.inspect();
@@ -401,6 +481,8 @@ public final class WorldTransparencyPipeline {
                 fallbackDepthCaptured = copyDepthSnapshot(fbo);
                 if (!fallbackDepthCaptured) return modelFallback("pre-water depth copy failed", depth);
             }
+            acceptedModels++;
+            modelDecision("CREATE_SHARED_QUEUE", "fbo=" + fbo + " color=" + sourceColor);
             if (shaderPack && !reportedCapture) {
                 reportedCapture = true;
                 LogManager.getLogger().info("[MMD transparency] model capture enabled: fbo={}, color={},"
@@ -414,6 +496,8 @@ public final class WorldTransparencyPipeline {
     }
 
     private boolean modelFallback(String reason, Object detail) {
+        rejectedModels++;
+        modelDecision("IMMEDIATE_FALLBACK:" + reason, detail);
         if (shaderPack && reportedFallbacks.add(reason))
             LogManager.getLogger().info("[MMD transparency] immediate model alpha without depth seal: {} ({})",
                     reason, detail);

@@ -4,6 +4,12 @@ package com.shiroha.mmdskin.render.pipeline.transparency;
 final class WorldTransparencyStagePolicy {
     private WorldTransparencyStagePolicy() {}
 
+    /** Compare actual Iris attachments, not unrelated FBO wrapper handles. */
+    static boolean canShareModelTarget(FramebufferColorTarget first, FramebufferColorTarget next,
+                                       boolean sharedDepth, boolean sameViewport) {
+        return sameViewport && sharedDepth && FramebufferColorTarget.compatible(first, next);
+    }
+
     /**
      * An Iris flip-state check for colortex0 is not sufficient to enable deferral:
      * the entity, block-entity and final translucency callbacks must have been
