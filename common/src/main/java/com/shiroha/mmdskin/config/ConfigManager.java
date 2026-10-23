@@ -50,6 +50,10 @@ public class ConfigManager {
         return provider != null && provider.isDebugTransparencyStagesEnabled();
     }
 
+    public static boolean isDebugTransparencyModelsEnabled() {
+        return provider != null && provider.isDebugTransparencyModelsEnabled();
+    }
+
     public static int getPerformanceLogIntervalSeconds() {
         return provider != null ? provider.getPerformanceLogIntervalSeconds() : 5;
     }
