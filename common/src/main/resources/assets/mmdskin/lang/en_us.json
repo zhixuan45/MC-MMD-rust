@@ -449,6 +449,8 @@
   "gui.mmdskin.about.click_link": "Click to open link",
   "gui.mmdskin.mod_settings.toon_world_transparency_queue": "Deferred world translucency",
   "gui.mmdskin.mod_settings.toon_world_transparency_queue.tooltip": "Try to composite Toon translucent pixels after world translucency to improve occlusion with chests and other world objects. On by default; incompatible shader G-buffers fall back safely. Disable for comparison testing. Applies the next frame after saving.",
+  "gui.mmdskin.mod_settings.debug_transparency_models": "Per-model transparency diagnostics",
+  "gui.mmdskin.mod_settings.debug_transparency_models.tooltip": "Approximately every 120 frames log PMX queue admission/fallback, FBO and depth attachments, entity depth snapshots and frame totals to latest.log. Off by default; applies on save.",
   "gui.mmdskin.mod_settings.debug_transparency_stages": "Transparency stage diagnostics",
   "gui.mmdskin.mod_settings.debug_transparency_stages.tooltip": "About every 120 frames, log Iris/BSL color attachments, stage matching and opaque depth snapshot status to latest.log. Helps diagnose entity and translucent occlusion. Off by default; applies on save."
 }
