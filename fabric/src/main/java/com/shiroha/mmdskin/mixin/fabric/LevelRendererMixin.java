@@ -43,6 +43,13 @@ public abstract class LevelRendererMixin {
         WorldTransparencyPipeline.endFrame();
     }
 
+    // This accessor runs after Iris's "translucent" profiler hooks flush entity batches.
+    @Inject(method = "renderLevel", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/RenderType;translucent()Lnet/minecraft/client/renderer/RenderType;"))
+    private void mmdskin$capturePreTranslucentDepth(CallbackInfo ci) {
+        WorldTransparencyPipeline.beforeWorldTranslucency();
+    }
+
     @Inject(method = {"allChanged", "close"}, at = @At("HEAD"))
     private void mmdskin$releaseWorldTransparency(CallbackInfo ci) {
         WorldTransparencyPipeline.release();

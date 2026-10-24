@@ -40,6 +40,7 @@ public interface IRenderConfig {
     default boolean isDebugGpuLogEnabled() { return false; }
 
     default boolean isDebugTransparencyStagesEnabled() { return false; }
+    default boolean isDebugTransparencyModelsEnabled() { return false; }
 
     default int getIssueDiagnosticFlags() { return 0; }
 

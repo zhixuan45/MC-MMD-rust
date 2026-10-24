@@ -20,6 +20,7 @@ public class MmdSkinFabricClient implements ClientModInitializer {
         MmdSkinClient.initClient();
         MmdSkinRegisterClient.Register();
         // Avoid renderer-private renderSectionLayer internals.
+        WorldRenderEvents.AFTER_ENTITIES.register(context -> WorldTransparencyPipeline.afterEntities());
         WorldRenderEvents.BEFORE_DEBUG_RENDER.register(context -> WorldTransparencyPipeline.afterOpaqueWorld());
         WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> WorldTransparencyPipeline.afterWorldTranslucency());
         ClientRenderRuntime.get().renderBackendSettings().setShaderEnabled(com.shiroha.mmdskin.config.ConfigManager.isMMDShaderEnabled());

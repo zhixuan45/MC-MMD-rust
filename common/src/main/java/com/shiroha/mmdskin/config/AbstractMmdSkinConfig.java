@@ -89,6 +89,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isDebugHudEnabled() { return data.debugHudEnabled; }
     @Override public boolean isDebugGpuLogEnabled() { return data.debugGpuLog; }
     @Override public boolean isDebugTransparencyStagesEnabled() { return data.debugTransparencyStages; }
+    @Override public boolean isDebugTransparencyModelsEnabled() { return data.debugTransparencyModels; }
     @Override public int getIssueDiagnosticFlags() {
         return IssueDiagnosticOptions.from(data.debugModelDeformationLog, data.debugSidePhysicsLog,
                 data.debugCollisionModeLog, data.debugOutlinePaperDollLog);

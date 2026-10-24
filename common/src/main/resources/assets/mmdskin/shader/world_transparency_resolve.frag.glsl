@@ -7,13 +7,31 @@ layout(std430, binding = MMD_META_BINDING) readonly buffer MmdHeads {
 layout(std430, binding = MMD_NODE_BINDING) readonly buffer MmdNodes { uvec4 mmdNodes[]; };
 uniform ivec4 MmdViewport;
 uniform sampler2D MmdOpaqueDepth;
+uniform bool MmdWaterResolve;
 out vec4 fragColor;
 
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy) - MmdViewport.xy;
     uint pixel = uint(p.y * MmdViewport.z + p.x);
     MmdPixel entry = mmdPixels[pixel];
+    // Water nodes were allocated after the per-batch snapshot. Preserve model-only
+    // pixels for late composition; overflow retains the original full resolve.
+    if (MmdWaterResolve && !(entry.head > mmdReserved0
+            || (mmdOverflow != 0u && mmdAllocated != mmdReserved0))) discard;
+    if (entry.head == 0u && entry.alpha == 0u) discard;
     float opaque = texelFetch(MmdOpaqueDepth, p, 0).r;
+    // Most water pixels contain a single node. Keep dense/overflow pixels on the exact path below.
+    if (entry.head != 0u && entry.alpha == 0u) {
+        uvec4 node = mmdNodes[entry.head - 1u];
+        if (node.w == 0u) {
+            float depth = uintBitsToFloat(node.z);
+            if (depth > opaque) discard;
+            vec4 color = vec4(unpackHalf2x16(node.x), unpackHalf2x16(node.y));
+            fragColor = vec4(color.rgb * color.a, color.a);
+            gl_FragDepth = depth;
+            return;
+        }
+    }
     float tailDepth = 1.0 - uintBitsToFloat(entry.nearest);
     bool tail = entry.alpha != 0u && tailDepth <= opaque;
     vec4 accumulated = vec4(0.0);

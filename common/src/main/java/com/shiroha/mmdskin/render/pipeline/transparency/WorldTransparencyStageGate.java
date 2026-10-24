@@ -14,6 +14,11 @@ final class WorldTransparencyStageGate {
         return ready;
     }
 
+    /** An opaque snapshot must not be refreshed once the post-water callback ran. */
+    boolean beforeTranslucent() {
+        return frameOpen && !reachedStage;
+    }
+
     /** Duplicate, late, and out-of-frame callbacks must not resolve twice. */
     boolean afterTranslucent() {
         if (!frameOpen || reachedStage) return false;

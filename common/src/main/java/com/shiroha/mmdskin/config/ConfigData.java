@@ -107,6 +107,8 @@ public class ConfigData {
     public boolean debugGpuLog = false;
     /** Optional Iris/BSL framebuffer diagnostics. */
     public boolean debugTransparencyStages = false;
+    /** Per-model Iris queue decisions and depth diagnostics, off by default. */
+    public boolean debugTransparencyModels = false;
     public boolean debugModelDeformationLog = false;
     public boolean debugSidePhysicsLog = false;
     public boolean debugCollisionModeLog = false;

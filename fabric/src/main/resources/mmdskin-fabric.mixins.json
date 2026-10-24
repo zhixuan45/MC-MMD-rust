@@ -24,6 +24,8 @@
     "compat.tacz.TaczRightHandRenderMixin",
     "compat.tacz.TaczLeftHandRenderMixin",
     "compat.IrisShadowEvaluationMixin",
+    "compat.IrisWaterShaderMixin",
+    "compat.IrisWaterStateMixin",
     "FabricScreenMixin"
   ],
   "injectors": {

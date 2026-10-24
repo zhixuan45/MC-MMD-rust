@@ -4,6 +4,17 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WorldTransparencyStageGateTest {
+    @Test void neverRefreshesOpaqueDepthAfterWaterOrOutsideTheFrame() {
+        var gate = new WorldTransparencyStageGate();
+        assertFalse(gate.beforeTranslucent());
+        gate.beginFrame();
+        assertTrue(gate.beforeTranslucent());
+        gate.afterTranslucent();
+        assertFalse(gate.beforeTranslucent());
+        gate.endFrame();
+        assertFalse(gate.beforeTranslucent());
+    }
+
     @Test void onlyDefersAfterARealPublicStageEvent() {
         var gate = new WorldTransparencyStageGate();
         assertFalse(gate.beginFrame());

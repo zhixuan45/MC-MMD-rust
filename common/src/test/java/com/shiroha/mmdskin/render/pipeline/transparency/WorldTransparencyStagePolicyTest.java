@@ -34,6 +34,17 @@ class WorldTransparencyStagePolicyTest {
     }
 
     @Test
+    void multiplePmxModelsShareUnderlyingIrisAttachmentsNotFboHandles() {
+        assertTrue(WorldTransparencyStagePolicy.canShareModelTarget(color(4), color(4), true, true));
+        assertFalse(WorldTransparencyStagePolicy.canShareModelTarget(color(4), color(5), true, true));
+        assertFalse(WorldTransparencyStagePolicy.canShareModelTarget(color(4), color(4), false, true));
+        assertFalse(WorldTransparencyStagePolicy.canShareModelTarget(color(4), color(4), true, false));
+        assertFalse(WorldTransparencyStagePolicy.canShareModelTarget(color(4), null, true, true));
+        assertFalse(WorldTransparencyStagePolicy.canShareModelTarget(color(4),
+                new FramebufferColorTarget(GL_RENDERBUFFER, 4, 1920, 1080), true, true));
+    }
+
+    @Test
     void sameColorDoesNotProveThatChestDepthIsPresent() {
         // Rebinding the saved entity FBO gives the same colortex0 but can
         // still read entity-time depth, missing later-rendered chest faces.

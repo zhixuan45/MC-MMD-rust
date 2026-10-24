@@ -687,6 +687,14 @@ public class ModConfigScreen {
             .build());
 
         debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_models"),
+                data.debugTransparencyModels)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_models.tooltip"))
+            .setSaveConsumer(value -> data.debugTransparencyModels = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
             .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_model_deformation_log"),
                 data.debugModelDeformationLog)
             .setDefaultValue(false)
