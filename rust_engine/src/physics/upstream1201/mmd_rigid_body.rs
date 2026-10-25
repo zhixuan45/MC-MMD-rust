@@ -40,6 +40,8 @@ pub struct MmdRigidBodyData {
     pub bullet_shape: Option<BulletShape>,
     /// 质量
     pub mass: f32,
+    /// 尾巴动态刚体标记，用于上游链路中的闲置抬起。
+    pub is_tail_dynamic: bool,
 }
 
 impl MmdRigidBodyData {
@@ -85,6 +87,10 @@ impl MmdRigidBodyData {
             bullet_body: None,
             bullet_shape: None,
             mass: pmx_rb.mass,
+            is_tail_dynamic: crate::physics::mmd_rigid_body::classify_tail_dynamic(
+                pmx_rb.mode != RigidBodyMode::Static,
+                [&pmx_rb.local_name, &pmx_rb.universal_name, ""],
+            ),
         }
     }
 

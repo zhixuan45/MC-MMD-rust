@@ -52,6 +52,7 @@ impl MMDPhysics {
         sync_config();
         let inner = upstream1201::MMDPhysics::new()?;
         log::info!("[PhysicsBackend] upstream1201 commit=5fe18f8 type2_as_type1={} legacy_policies=false solver_iterations=10 advanced_contact_diagnostics=unavailable", !cfg!(feature="upstream-native-mode2"));
+        log::info!("[TailIdle] units=blocks target_up_blocks=1.0 target_rear_blocks=0.5 random_scale=0.9..1.1 interval_seconds=10..20 propagation_seconds=0.6 force_feedback=true blocks_per_model_unit=0.09");
         Some(Self {
             inner,
             authored_bodies: Vec::new(),
@@ -71,8 +72,12 @@ impl MMDPhysics {
         }
     }
 
-    pub fn set_tail_physics_options(&mut self, _idle_lift: bool, _movement_boost: bool) {
-        log::debug!("[PhysicsBackend] tail force enhancements inactive in upstream1201 baseline");
+    pub fn set_tail_physics_options(&mut self, idle_lift: bool, movement_boost: bool) {
+        self.inner.set_tail_physics_options(idle_lift, movement_boost);
+    }
+
+    pub fn set_tail_bone_names(&mut self, bone_names: &[String], bone_parents: &[i32]) {
+        self.inner.set_tail_bone_names(bone_names, bone_parents);
     }
 
     pub fn configure_solver_diagnostic(

@@ -25,6 +25,7 @@ pub mod solver_quality;
 pub(crate) mod skirt_cross_joints;
 mod skirt_cross_topology;
 mod tail_forces;
+mod tail_idle_motion;
 mod tail_wave;
 
 /// Z 轴翻转变换（左手 ↔ 右手坐标系转换，与 saba InvZ 一致）

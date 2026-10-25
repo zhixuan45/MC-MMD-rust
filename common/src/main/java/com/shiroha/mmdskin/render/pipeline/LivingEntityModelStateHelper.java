@@ -90,6 +90,8 @@ public final class LivingEntityModelStateHelper {
         float bodyYaw = entity instanceof Player player
                 ? resolveBodyYaw(player, tickDelta)
                 : Mth.rotLerp(tickDelta, entity.yBodyRotO, entity.yBodyRot) * ((float) Math.PI / 180F);
+        scenePort.setTailPhysicsScale(modelHandle, MODEL_SCALE
+                * com.shiroha.mmdskin.config.ModelConfigManager.getConfig(modelName).modelScale);
         scenePort.setModelPositionAndYaw(modelHandle, posX, posY, posZ, bodyYaw);
     }
 

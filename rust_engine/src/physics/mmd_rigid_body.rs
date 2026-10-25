@@ -333,7 +333,7 @@ pub(super) fn is_tail_dynamic_part(body: &PmxRigidBody) -> bool {
     )
 }
 
-pub(super) fn classify_tail_dynamic(dynamic: bool, names: [&str; 3]) -> bool {
+pub(crate) fn classify_tail_dynamic(dynamic: bool, names: [&str; 3]) -> bool {
     if !dynamic {
         return false;
     }

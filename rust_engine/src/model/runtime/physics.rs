@@ -32,6 +32,11 @@ impl MmdModel {
             &self.joints,
             &self.physics_bone_transforms_buf,
         );
+        let bone_names: Vec<String> = self.bone_manager.links().map(|b| b.name.clone()).collect();
+        let bone_parents: Vec<i32> = self.bone_manager.links().map(|b| b.parent_index).collect();
+        physics.set_tail_physics_scale(self.tail_blocks_per_model_unit);
+        physics.set_tail_bone_names(&bone_names, &bone_parents);
+        physics.set_tail_physics_options(self.tail_idle_lift, self.tail_movement_boost);
         physics.initialize(&self.physics_bone_transforms_buf);
 
         self.physics_position_aligned_bones.clear();
@@ -40,6 +45,12 @@ impl MmdModel {
         self.physics = Some(physics);
         self.physics_enabled = true;
         true
+    }
+
+    /// 读取尾部闲置受力：(骨骼索引、波形延迟秒数、当前加速度(方块/秒²)、目标抬高(方块))。
+    #[cfg(not(feature = "legacy-physics"))]
+    pub fn physics_tail_idle_samples(&self) -> Vec<(i32, f32, f32, f32)> {
+        self.physics.as_ref().map(|p| p.tail_idle_samples()).unwrap_or_default()
     }
 
     /// 重置物理系统

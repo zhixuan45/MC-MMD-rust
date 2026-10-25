@@ -14,6 +14,8 @@ use super::bullet_ffi::{self, BulletWorld};
 use super::config::get_config;
 use super::mmd_joint::MmdJointData;
 use super::mmd_rigid_body::{MmdRigidBodyData, PhysicsMode};
+use crate::physics::tail_forces::TailForceState;
+use crate::physics::tail_idle_motion::TailIdleMotion;
 
 /// MMD 物理世界管理器（Bullet3 引擎）
 ///
@@ -40,6 +42,9 @@ pub struct MMDPhysics {
 
     /// 上一帧模型世界位置（用于计算移动速度实现惯性）
     prev_model_position: Option<Vec3>,
+    tail_forces: TailForceState,
+    tail_blocks_per_model_unit: f32,
+    tail_motion: Vec<TailIdleMotion>,
 }
 
 impl MMDPhysics {
@@ -65,6 +70,9 @@ impl MMDPhysics {
             dynamic_bone_indices: HashSet::new(),
             dynamic_bone_buf: Vec::new(),
             prev_model_position: None,
+            tail_forces: TailForceState::default(),
+            tail_blocks_per_model_unit: 0.09,
+            tail_motion: Vec::new(),
         })
     }
 
@@ -107,6 +115,8 @@ impl MMDPhysics {
             rb_data.bullet_shape = shape;
             self.rigid_bodies.push(rb_data);
         }
+
+        self.tail_motion.resize(self.rigid_bodies.len(), TailIdleMotion::default());
 
         // 第二步：统一将已存储的刚体添加到世界
         // 此时所有权已在 self.rigid_bodies 中，panic 时 Drop 链会正确清理
@@ -249,8 +259,25 @@ impl MMDPhysics {
         // 第一步：同步运动学刚体位置
         self.sync_bodies(bone_transforms);
 
-        // 第二步：给动态刚体施加普通惯性。
-        if config.inertia_strength > 0.0 && model_velocity.length_squared() > 1e-8 {
+        // 第二步：给动态刚体施加普通惯性和尾巴闲置抬起。
+        let movement_active = config.inertia_strength > 0.0
+            && model_velocity.length_squared() > 1e-8;
+        let idle_lift = self.tail_forces.advance_idle_wave(
+            dt,
+            model_velocity,
+            config.gravity_y.abs(),
+            config.inertia_strength,
+        );
+        for (index, rb) in self.rigid_bodies.iter().enumerate().filter(|(_, rb)| rb.is_tail_dynamic) {
+            // 整链在同一轮波形开始前冻结参考姿态，避免延迟段把已被带动的姿态当起点。
+            if idle_lift <= 1e-6 {
+                if let Some(body) = &rb.bullet_body {
+                    let position = rb.compute_bone_matrix(body.get_simulation_transform()).w_axis.truncate();
+                    self.tail_motion[index].observe_rest(position * self.tail_blocks_per_model_unit);
+                }
+            }
+        }
+        if movement_active || idle_lift > 0.0 {
             // 钳制世界速度（20 blocks/s 覆盖疾跑+速度药水，超出视为传送）
             let speed_sq = model_velocity.length_squared();
             let max_speed = 20.0_f32;
@@ -265,11 +292,15 @@ impl MMDPhysics {
             let local_vel = rot_inv * world_vel;
 
             // 模型局部空间惯性（Z-flip 坐标系中 Z 方向需取反）
-            let inertia_accel = Vec3::new(
-                -local_vel.x * config.inertia_strength,
-                -local_vel.y * config.inertia_strength,
-                local_vel.z * config.inertia_strength,
-            );
+            let inertia_accel = if movement_active {
+                Vec3::new(
+                    -local_vel.x * config.inertia_strength,
+                    -local_vel.y * config.inertia_strength,
+                    local_vel.z * config.inertia_strength,
+                )
+            } else {
+                Vec3::ZERO
+            };
 
             // 最大加速度 = max_linear_velocity * physics_fps
             // 确保单个物理子步内速度增量不超过 max_linear_velocity
@@ -278,14 +309,27 @@ impl MMDPhysics {
             // inertia_accel 已经是按模型速度和惯性强度得到的加速度。
             // 这里直接使用 F = m * a；再除以 dt 会在 60 FPS 下额外放大约 60 倍，
             // 使 PMX 的默认惯性值产生明显拖尾。
-            for rb_data in &self.rigid_bodies {
+            for (body_index, rb_data) in self.rigid_bodies.iter().enumerate() {
                 if rb_data.physics_mode == PhysicsMode::FollowBone {
                     continue;
                 }
                 if let Some(ref body) = rb_data.bullet_body {
                     let mass = body.get_mass();
                     if mass > 0.0 {
-                        let mut force = inertia_accel * mass;
+                        let idle_accel = if rb_data.is_tail_dynamic {
+                            let offset = self.tail_forces.idle_displacement_offset_blocks(body_index);
+                            let along_tail = (self.tail_forces.wave_delay(body_index) / 0.6).clamp(0.0, 1.0);
+                            let transform = body.get_simulation_transform();
+                            let position = rb_data.compute_bone_matrix(transform).w_axis.truncate();
+                            let point_velocity = body.get_linear_velocity()
+                                + body.get_angular_velocity().cross(position - transform.w_axis.truncate());
+                            let scale = self.tail_blocks_per_model_unit;
+                            self.tail_motion[body_index].update_in_model_space(position, point_velocity, offset,
+                                0.05 + 0.95 * along_tail, config.gravity_y.abs(), scale)
+                        } else {
+                            Vec3::ZERO
+                        };
+                        let mut force = (inertia_accel + idle_accel) * mass;
                         // 钳制力：限制加速度上限
                         let max_force = max_accel * mass;
                         let force_sq = force.length_squared();
@@ -398,6 +442,8 @@ impl MMDPhysics {
     /// 重置物理系统
     pub fn reset(&mut self) {
         self.prev_model_position = None;
+        self.tail_forces.reset();
+        self.tail_motion.fill(TailIdleMotion::default());
         for rb_data in &self.rigid_bodies {
             if let Some(ref body) = rb_data.bullet_body {
                 body.set_transform(rb_data.initial_transform);
@@ -416,6 +462,8 @@ impl MMDPhysics {
     /// 长帧/传送后保留当前姿态，只清除速度与力，避免下一帧继续拉伸约束链。
     pub fn recover_after_large_delta(&mut self) {
         self.prev_model_position = None;
+        self.tail_forces.reset();
+        self.tail_motion.fill(TailIdleMotion::default());
         for rb_data in &self.rigid_bodies {
             if let Some(ref body) = rb_data.bullet_body {
                 body.set_linear_velocity(0.0, 0.0, 0.0);
@@ -428,6 +476,39 @@ impl MMDPhysics {
     /// 设置重力
     pub fn set_gravity(&self, x: f32, y: f32, z: f32) {
         self.world.set_gravity(x, y, z);
+    }
+
+    pub fn set_tail_physics_scale(&mut self, blocks_per_model_unit: f32) {
+        if blocks_per_model_unit.is_finite() && blocks_per_model_unit > 1e-6
+            && (self.tail_blocks_per_model_unit - blocks_per_model_unit).abs() > 1e-6 {
+            self.tail_blocks_per_model_unit = blocks_per_model_unit;
+            self.tail_motion.fill(TailIdleMotion::default());
+            self.tail_forces.reset();
+            log::info!("[TailIdle] units=blocks blocks_per_model_unit={blocks_per_model_unit}");
+        }
+    }
+
+    pub fn set_tail_physics_options(&mut self, idle_lift: bool, _movement_boost: bool) {
+        self.tail_forces.set_options(idle_lift, false);
+    }
+
+    pub fn set_tail_bone_names(&mut self, _bone_names: &[String], bone_parents: &[i32]) {
+        use crate::physics::tail_wave::{tail_wave_delays_from_bodies, TailWaveBody};
+        let bodies: Vec<_> = self.rigid_bodies.iter().map(|body| TailWaveBody {
+            bone_index: body.bone_index,
+            is_tail_dynamic: body.is_tail_dynamic,
+            physics_mode: body.physics_mode,
+            initial_transform: body.initial_transform,
+        }).collect();
+        self.tail_forces.set_wave_delays(tail_wave_delays_from_bodies(&bodies, bone_parents));
+    }
+
+    /// 只读诊断：(骨骼索引、波形延迟秒数、当前闲置加速度(方块/秒²)、目标抬高(方块))。
+    pub fn tail_idle_samples(&self) -> Vec<(i32, f32, f32, f32)> {
+        self.rigid_bodies.iter().enumerate()
+            .filter(|(_, body)| body.is_tail_dynamic)
+            .map(|(i, body)| (body.bone_index, self.tail_forces.wave_delay(i), self.tail_motion[i].acceleration.y, self.tail_forces.idle_displacement_offset_blocks(i).y))
+            .collect()
     }
 
     pub fn rigid_body_count(&self) -> usize {
