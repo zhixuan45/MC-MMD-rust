@@ -151,7 +151,7 @@
   "gui.mmdskin.mod_settings.first_person_camera_vertical_offset": "First Person Camera Vertical Offset",
   "gui.mmdskin.mod_settings.first_person_camera_vertical_offset.tooltip": "Adjust camera vertical position in first person. Higher values move camera up, lower values move it down.",
   "gui.mmdskin.mod_settings.anti_peek_mode": "Anti-Peek Mode (Streamer)",
-  "gui.mmdskin.mod_settings.anti_peek_mode.tooltip": "Fades out and hides the character at extreme upward camera angles (to prevent peek/clipping issues) or while swimming. Ideal for streaming.",
+  "gui.mmdskin.mod_settings.anti_peek_mode.tooltip": "Fades out the character at extreme upward camera angles. While swimming, keeps the character visible with a translucent flowing water veil around the hips and upper thighs. Ideal for streaming.",
   "gui.mmdskin.mod_settings.anti_peek_threshold_angle": "Anti-Peek Start Angle",
   "gui.mmdskin.mod_settings.anti_peek_threshold_angle.tooltip": "Angle between camera look direction and straight up where character fade-out begins (default 25°).",
   "gui.mmdskin.mod_settings.anti_peek_hide_angle": "Anti-Peek Hide Angle",

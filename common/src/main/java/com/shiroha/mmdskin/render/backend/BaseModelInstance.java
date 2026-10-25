@@ -7,6 +7,7 @@ import com.shiroha.mmdskin.debug.client.ModelIssueDiagnostics;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.render.scene.RenderScene;
+import com.shiroha.mmdskin.render.effect.SwimmingVeilRenderer;
 import com.shiroha.mmdskin.render.pipeline.LivingEntityModelStateHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.policy.WorldRenderPolicy;
@@ -70,6 +71,22 @@ public abstract class BaseModelInstance implements ModelInstance {
     private ByteBuffer nativeProfile;
     /** 全局 Alpha 调制因子（例如直播防走光虚化透明度，默认 1.0） */
     protected float globalAlpha = 1.0f;
+    private SwimmingVeilRenderer swimmingVeilRenderer;
+    private boolean swimmingVeil;
+    private float swimmingVeilSeconds;
+
+    public final void setSwimmingVeil(boolean enabled, float seconds) {
+        swimmingVeil = enabled;
+        swimmingVeilSeconds = seconds;
+    }
+
+    /** 在模型根变换已应用、世界透明作用域仍有效时调用。 */
+    public final void renderSwimmingVeil(PoseStack stack, RenderScene scene) {
+        if (!swimmingVeil || scene == null || !scene.isWorldScene() || scene.isFirstPerson()
+                || IrisCompat.isRenderingShadows()) return;
+        if (swimmingVeilRenderer == null) swimmingVeilRenderer = new SwimmingVeilRenderer(backendPort(), model);
+        swimmingVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack), swimmingVeilSeconds);
+    }
 
     public void setGlobalAlpha(float alpha) {
         this.globalAlpha = Math.max(0.0f, Math.min(1.0f, alpha));
@@ -546,6 +563,10 @@ public abstract class BaseModelInstance implements ModelInstance {
     }
 
     protected void disposeModelHandle() {
+        if (swimmingVeilRenderer != null) {
+            swimmingVeilRenderer.close();
+            swimmingVeilRenderer = null;
+        }
         EyeEmissionBuffer buffer = eyeEmissionBuffer;
         eyeEmissionBuffer = null;
         eyeEmissionInitialized = false;

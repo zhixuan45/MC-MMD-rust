@@ -268,7 +268,7 @@ impl MmdModel {
             .set_layer_fade_times(layer_id, fade_in, fade_out);
     }
 
-    /// 带过渡地切换层动画（矩阵插值过渡）
+    /// 带过渡地切换层动画，物理和蒙皮共用插值后的动画输入。
     ///
     /// 从当前骨骼姿态平滑过渡到新动画的第一帧，避免动作切换时的突兀感。
     ///
@@ -282,11 +282,14 @@ impl MmdModel {
         animation: Option<Arc<VmdAnimation>>,
         transition_time: f32,
     ) {
-        if transition_time > 0.0 {
-            self.transition_matrices = self.bone_manager.get_skinning_matrices().to_vec();
+        if transition_time.is_finite() && transition_time > 0.0 {
+            self.transition_pose.clone_from(&self.animation_input_pose);
             self.transition_duration = transition_time;
             self.transition_progress = 0.0;
-            self.is_transitioning = true;
+            self.is_transitioning = !self.transition_pose.is_empty();
+        } else {
+            self.is_transitioning = false;
+            self.transition_pose.clear();
         }
 
         self.animation_layer_manager
@@ -377,6 +380,7 @@ impl MmdModel {
         // 评估所有层并混合结果
         self.animation_layer_manager
             .evaluate_normalized(&mut self.bone_manager, &mut self.morph_manager);
+        self.apply_transition_blend(elapsed);
 
         // 应用 VPD 骨骼姿势覆盖（在动画评估后）
         self.apply_vpd_bone_overrides();
@@ -421,71 +425,35 @@ impl MmdModel {
 
         self.end_animation();
 
-        // 应用矩阵插值过渡
-        self.apply_transition_blend(elapsed);
-
         self.update();
     }
 
-    /// 应用矩阵插值过渡
+    /// 在物理前混合局部动画输入，不能混入上一帧的动态刚体结果。
     fn apply_transition_blend(&mut self, elapsed: f32) {
-        if !self.is_transitioning {
-            return;
+        if self.is_transitioning {
+            self.transition_progress =
+                (self.transition_progress + elapsed.max(0.0) / self.transition_duration).min(1.0);
+            let t = self.transition_progress;
+            let smooth_t = t * t * (3.0 - 2.0 * t);
+            for (i, start) in self.transition_pose.iter().enumerate() {
+                if let Some(bone) = self.bone_manager.get_bone_mut(i) {
+                    bone.animation_translate = start.translation.lerp(bone.animation_translate, smooth_t);
+                    bone.animation_rotate = start.rotation.slerp(bone.animation_rotate, smooth_t);
+                }
+            }
+            if t >= 1.0 {
+                self.is_transitioning = false;
+                self.transition_pose.clear();
+            }
         }
 
-        // 检查过渡矩阵是否有效
-        if self.transition_matrices.is_empty() {
-            self.is_transitioning = false;
-            return;
+        self.animation_input_pose.resize(self.bone_manager.bone_count(), BonePose::default());
+        for (i, pose) in self.animation_input_pose.iter_mut().enumerate() {
+            if let Some(bone) = self.bone_manager.get_bone(i) {
+                pose.translation = bone.animation_translate;
+                pose.rotation = bone.animation_rotate;
+            }
         }
-
-        // 除零保护：duration <= 0 时直接结束过渡
-        if self.transition_duration <= 0.0 {
-            self.is_transitioning = false;
-            self.transition_matrices.clear();
-            return;
-        }
-
-        // 更新过渡进度
-        self.transition_progress += elapsed / self.transition_duration;
-
-        if self.transition_progress >= 1.0 {
-            // 过渡完成，不再修改矩阵
-            self.transition_progress = 1.0;
-            self.is_transitioning = false;
-            self.transition_matrices.clear();
-            return;
-        }
-
-        // 平滑过渡曲线 (smoothstep)
-        let t = self.transition_progress;
-        let smooth_t = t * t * (3.0 - 2.0 * t);
-
-        // 先复制当前蒙皮矩阵（避免借用冲突）
-        let new_matrices: Vec<Mat4> = self.bone_manager.get_skinning_matrices().to_vec();
-        let bone_count = self.transition_matrices.len().min(new_matrices.len());
-
-        for i in 0..bone_count {
-            let old_mat = self.transition_matrices[i];
-            let new_mat = new_matrices[i];
-
-            // 简单的矩阵线性插值（LERP），避免分解失败导致的拉扯
-            // 对于蒙皮矩阵，直接插值通常比分解更稳定
-            let blended_mat = Self::lerp_matrix(old_mat, new_mat, smooth_t);
-            self.bone_manager.set_skinning_matrix(i, blended_mat);
-        }
-    }
-
-    /// 矩阵线性插值
-    fn lerp_matrix(a: Mat4, b: Mat4, t: f32) -> Mat4 {
-        // 分量线性插值
-        let cols_a = a.to_cols_array();
-        let cols_b = b.to_cols_array();
-        let mut result = [0.0f32; 16];
-        for i in 0..16 {
-            result[i] = cols_a[i] * (1.0 - t) + cols_b[i] * t;
-        }
-        Mat4::from_cols_array(&result)
     }
 
     /// 设置头部角度
@@ -539,6 +507,7 @@ impl MmdModel {
 
         self.animation_layer_manager
             .evaluate_normalized(&mut self.bone_manager, &mut self.morph_manager);
+        self.apply_transition_blend(elapsed);
 
         // 应用 VPD 骨骼姿势覆盖（在动画评估后）
         self.apply_vpd_bone_overrides();
@@ -586,9 +555,6 @@ impl MmdModel {
         self.update_node_animation(true);
         self.end_physics_update();
         self.end_animation();
-
-        // 应用矩阵插值过渡（GPU蒙皮模式也需要）
-        self.apply_transition_blend(elapsed);
 
         // 调试日志（仅首次）
         if !self.debug_logged && physics_enabled {
@@ -645,6 +611,7 @@ impl MmdModel {
         self.animation_layer_manager
             .evaluate_normalized(&mut self.bone_manager, &mut self.morph_manager);
 
+        self.apply_transition_blend(elapsed);
         self.apply_vpd_bone_overrides();
         self.apply_external_ik_overrides();
         self.update_auto_blink(elapsed);
@@ -723,8 +690,6 @@ impl MmdModel {
         self.with_vrm_runtime_state(|model, runtime_state| {
             runtime_state.refresh_output(model);
         });
-
-        self.apply_transition_blend(elapsed);
 
         crate::evaluation_profile::stage(finishing_timer, 0);
         if cpu_skinning {

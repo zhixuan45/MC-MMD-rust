@@ -23,8 +23,8 @@ public final class Probe {
             String vertex = Files.readString(shaders.resolve("toon_outline_body.vert.glsl"));
             String surfaceLighting = Files.readString(shaders.resolve("toon_surface_lighting.glsl"));
             String fragment = Files.readString(shaders.resolve("toon_outline_body.frag.glsl"))
-                    .replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location=0) out vec4 color;")
-                    .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { color=vec4(c,alpha); }")
+                    .replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location=0) out vec4 outlineColor;")
+                    .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { outlineColor=vec4(c,alpha); }")
                     .replace("/* TOON_SURFACE_LIGHTING */", surfaceLighting)
                     .replace("/* TOON_LIGHTING */", "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }");
             int program = GL46C.glCreateProgram();

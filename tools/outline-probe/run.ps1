@@ -55,8 +55,31 @@ public class ToonShaderBase {
     public void setOutlineProjectionMatrix(FloatBuffer value) {}
     public void setOutlineModelViewMatrix(FloatBuffer value) {}
     public void setOutlineWidth(float value) {}
+    public void setOutlineOcclusion(boolean value) {}
     public void setOutlineColor(float r, float g, float b) {}
     public void setOutlineAlpha(float value) {}
+}
+'@
+    'com/shiroha/mmdskin/render/material/ToonTransparencySettings.java' = @'
+package com.shiroha.mmdskin.render.material;
+public final class ToonTransparencySettings {
+    public static boolean disableDepthSeal() { return false; }
+}
+'@
+    'com/shiroha/mmdskin/render/pipeline/transparency/WorldTransparencyPipeline.java' = @'
+package com.shiroha.mmdskin.render.pipeline.transparency;
+public final class WorldTransparencyPipeline {
+    public static boolean hasWorldQueue() { return false; }
+    public static boolean prepareModel() { return false; }
+    public static AutoCloseable capture() { return () -> {}; }
+}
+'@
+    'com/shiroha/mmdskin/render/gl/DepthAttachment.java' = @'
+package com.shiroha.mmdskin.render.gl;
+public record DepthAttachment(int format) {
+    public static DepthAttachment inspect() { return null; }
+    public boolean contains(int[] viewport) { return false; }
+    public static boolean blit(int x0, int y0, int x1, int y1, int dx0, int dy0, int dx1, int dy1) { return false; }
 }
 '@
 }

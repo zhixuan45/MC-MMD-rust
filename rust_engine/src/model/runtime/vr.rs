@@ -297,7 +297,8 @@ impl MmdModel {
 
         // 物理缓冲区
         total += (self.physics_bone_transforms_buf.capacity() * size_of::<Mat4>()) as u64;
-        total += (self.transition_matrices.capacity() * size_of::<Mat4>()) as u64;
+        total += ((self.animation_input_pose.capacity() + self.transition_pose.capacity())
+            * size_of::<BonePose>()) as u64;
 
         // 材质可见性
         total += (self.material_visible.capacity() * size_of::<bool>()) as u64;

@@ -96,7 +96,7 @@ public class ConfigData {
     public float firstPersonCameraForwardOffset = 0.0f;
     public float firstPersonCameraVerticalOffset = 0.0f;
 
-    /** 直播防走光模式：在第三人称低机位仰角可能走光时，虚化并隐藏角色 */
+    /** 直播防走光模式：低机位仰视时虚化隐藏，游泳时用髋部水纹局部遮挡 */
     public boolean antiPeekModeEnabled = false;
     /** 防走光起始虚化角度阈值（度）：当相机视线与竖直向上夹角小于等于该值时开始虚化 */
     public float antiPeekThresholdAngle = 25.0f;

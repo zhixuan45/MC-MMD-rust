@@ -96,6 +96,7 @@ final class PlayerModelRenderCoordinator {
 
         if (model instanceof BaseModelInstance baseModel) {
             baseModel.setGlobalAlpha(antiPeek.alpha());
+            baseModel.setSwimmingVeil(antiPeek.swimmingVeil(), (player.tickCount + tickDelta) / 20.0f);
         }
 
         matrixStack.pushPose();

@@ -52,6 +52,7 @@ final class OpenGlModelRenderer {
                 samplingEnabled ? sceneKey(context) : "OTHER");
              var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName())) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, packedLight, context);
+            target.renderSwimmingVeil(deliverStack, context);
         }
     }
 

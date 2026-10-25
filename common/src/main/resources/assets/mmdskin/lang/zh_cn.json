@@ -155,7 +155,7 @@
   "gui.mmdskin.mod_settings.first_person_camera_vertical_offset": "第一人称相机上下偏移",
   "gui.mmdskin.mod_settings.first_person_camera_vertical_offset.tooltip": "调整相机在第一人称下的上下位置。值越大相机越靠上，值越小相机越靠下。",
   "gui.mmdskin.mod_settings.anti_peek_mode": "直播防走光模式",
-  "gui.mmdskin.mod_settings.anti_peek_mode.tooltip": "在第三人称低机位极端仰视可能导致走光，或游泳等特殊状态下，自动虚化直至完全隐藏角色，适合直播时启用",
+  "gui.mmdskin.mod_settings.anti_peek_mode.tooltip": "第三人称低机位仰视时自动虚化隐藏角色；游泳时保留角色，并用半透明流动水纹包裹髋部和大腿根部，适合直播时启用",
   "gui.mmdskin.mod_settings.anti_peek_threshold_angle": "防走光起始虚化角度",
   "gui.mmdskin.mod_settings.anti_peek_threshold_angle.tooltip": "当镜头视线与向上竖直方向夹角小于等于该角度时，角色开始半透明虚化（默认 25°）",
   "gui.mmdskin.mod_settings.anti_peek_hide_angle": "防走光完全隐藏角度",

@@ -38,6 +38,7 @@ public final class PassStateProbe {
                 }
             }
             checkMaterialTextures(positions, normals);
+            checkSubmeshesWithoutEdgeFlag(positions, normals);
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "OpenGL 状态错误");
             System.out.println("PASS outline pass state and width: orthographic zoom/model-scale mapping; perspective unchanged; finally cleanup");
 
@@ -163,6 +164,27 @@ public final class PassStateProbe {
         GL46C.glDeleteProgram(program);
         GL46C.glDeleteBuffers(elements);
         System.out.println("PASS per-material outline texture: two bindings, untextured mask disabled, exception restoration");
+    }
+
+    /** 历史全模型描边不依赖 PMX 的 per-material hasEdge 位；旧资产中该位常为 0。 */
+    private static void checkSubmeshesWithoutEdgeFlag(int positions, int normals) {
+        ByteBuffer meshes = ByteBuffer.allocate(40).order(java.nio.ByteOrder.nativeOrder());
+        for (int i = 0; i < 2; i++) {
+            meshes.putInt(i * 20, i);
+            meshes.putFloat(i * 20 + 12, 1);
+            meshes.put(i * 20 + 16, (byte) 1);
+            meshes.put(i * 20 + 18, (byte) (i == 0 ? 0 : 1));
+        }
+        var inputs = new OutlineRenderPass.Inputs(positions, normals, positions, meshes, 2, 4,
+                GL46C.GL_UNSIGNED_INT, matrix(ORTHOGRAPHIC), modelView(1, 0, 0, false), 1);
+        int[] visited = {0};
+        OutlineRenderPass.draw(new RecordingShader(), inputs, (material, alpha) -> {
+            visited[0]++;
+            return 0;
+        }, material -> 0);
+        check(visited[0] == 2,
+                "model-wide outline must include visible submeshes with hasEdge=0; visited=" + visited[0]);
+        System.out.println("PASS legacy outline compatibility: visible hasEdge=0 and hasEdge=1 submeshes both included");
     }
 
     private static int testProgram() {

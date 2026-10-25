@@ -8,7 +8,7 @@ import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * 直播防走光与特殊状态（如游泳）角色隐藏/虚化评估器。
+ * 直播防走光与特殊状态下的可见性、局部水纹遮挡评估器。
  */
 public final class AntiPeekEvaluator {
 
@@ -19,10 +19,12 @@ public final class AntiPeekEvaluator {
      *
      * @param fullyHidden 是否完全隐藏（不进行任何渲染）
      * @param alpha       当前透明度调制因子（0.0 ~ 1.0）
+     * @param swimmingVeil 是否用髋部水纹遮挡替代游泳时的整身隐藏
      */
-    public record Result(boolean fullyHidden, float alpha) {
-        public static final Result NORMAL = new Result(false, 1.0f);
-        public static final Result HIDDEN = new Result(true, 0.0f);
+    public record Result(boolean fullyHidden, float alpha, boolean swimmingVeil) {
+        public static final Result NORMAL = new Result(false, 1.0f, false);
+        public static final Result HIDDEN = new Result(true, 0.0f, false);
+        public static final Result SWIMMING_VEIL = new Result(false, 1.0f, true);
     }
 
     /**
@@ -47,17 +49,9 @@ public final class AntiPeekEvaluator {
         boolean swimming = player.isSwimming() || player.isVisuallySwimming();
         boolean passenger = player.isPassenger();
 
-        // 规则 1：只要处于第一人称且在游泳或乘坐载具状态，必定隐藏第一人称角色模型
-        if (firstPersonView && (swimming || passenger)) {
-            return Result.HIDDEN;
-        }
-
         RuntimeConfigPort config = RuntimeConfigPortHolder.get();
-
-        // 规则 2：开启防走光模式时，若处于游泳状态，直接隐藏以防止水下异常穿模与走光
-        if (config.isAntiPeekModeEnabled() && swimming) {
-            return Result.HIDDEN;
-        }
+        Result special = specialState(firstPersonView, swimming, passenger, config.isAntiPeekModeEnabled());
+        if (special != Result.NORMAL) return special;
 
         // 规则 3：防走光模式下的第三人称低机位仰角判定
         if (!config.isAntiPeekModeEnabled() || firstPersonView) {
@@ -122,6 +116,12 @@ public final class AntiPeekEvaluator {
             return Result.HIDDEN;
         }
 
-        return new Result(false, smoothAlpha);
+        return new Result(false, smoothAlpha, false);
+    }
+
+    static Result specialState(boolean firstPerson, boolean swimming, boolean passenger, boolean enabled) {
+        if (firstPerson && (swimming || passenger)) return Result.HIDDEN;
+        // 游泳时保留整身可见性，用跟随髋部的水纹代替低机位整身淡出。
+        return enabled && swimming ? Result.SWIMMING_VEIL : Result.NORMAL;
     }
 }

@@ -1,6 +1,6 @@
 //! MMD 运行时模型
 
-use crate::animation::{AnimationLayerManager, VmdAnimation};
+use crate::animation::{AnimationLayerManager, BonePose, VmdAnimation};
 use crate::model::hand_attachment::find_hand_attachment;
 use crate::model::tacz_arm_targets::{
     apply_tacz_arm_targets, TaczArmApplyOutcome, TaczArmSolverCache, TaczArmTargets,
@@ -42,6 +42,8 @@ mod render_data;
 mod tail_options;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod animation_transition_tests;
 mod vr;
 
 thread_local! {
@@ -253,9 +255,11 @@ pub struct MmdModel {
     tacz_arm_solver_cache: TaczArmSolverCache,
     /// TaCZ 第三人称仅首次解析左右上臂骨索引。
 
-    // ======== 矩阵插值过渡 ========
-    /// 缓存的蒙皮矩阵（过渡开始时的状态）
-    transition_matrices: Vec<Mat4>,
+    // ======== 动画输入姿态过渡 ========
+    /// 上一帧混合后的动画输入，不包含物理、头部追踪或 IK 回写。
+    animation_input_pose: Vec<BonePose>,
+    /// 过渡起点，支持在现有过渡中再次切换动作。
+    transition_pose: Vec<BonePose>,
     /// 过渡进度（0.0 - 1.0）
     transition_progress: f32,
     /// 过渡时长（秒）
@@ -346,7 +350,8 @@ impl MmdModel {
             vr_ik_solver: VrIkSolver::new(),
             vr_debug_state: VrDebugState::default(),
             tacz_arm_solver_cache: TaczArmSolverCache::default(),
-            transition_matrices: Vec::new(),
+            animation_input_pose: Vec::new(),
+            transition_pose: Vec::new(),
             transition_progress: 0.0,
             transition_duration: 0.0,
             is_transitioning: false,

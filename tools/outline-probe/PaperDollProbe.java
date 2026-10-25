@@ -326,8 +326,8 @@ public final class PaperDollProbe {
         String surfaceLighting = Files.readString(root.resolve("toon_surface_lighting.glsl"));
         String fragment = Files.readString(root.resolve("toon_outline_body.frag.glsl"))
                 .replace("\r\n", "\n")
-                .replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location=0) out vec4 color;")
-                .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { color=vec4(c,alpha); }")
+                .replace("/* TOON_OUTPUT_DECLARATIONS */", "layout(location=0) out vec4 outlineColor;")
+                .replace("/* TOON_OUTPUT_WRITER */", "void writeToonOutputs(vec3 c, vec3 a, vec3 n, float alpha) { outlineColor=vec4(c,alpha); }")
                 .replace("/* TOON_SURFACE_LIGHTING */", surfaceLighting)
                 .replace("/* TOON_LIGHTING */", "vec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) { return raw; }");
         if (sourceSnapshot) {

@@ -117,6 +117,8 @@ common/src/main/resources/assets/mmdskin/shader/*
 !common/src/main/resources/assets/mmdskin/shader/translucent_prepare.comp.glsl
 !common/src/main/resources/assets/mmdskin/shader/world_transparency_capture.glsl
 !common/src/main/resources/assets/mmdskin/shader/world_transparency_resolve.frag.glsl
+!common/src/main/resources/assets/mmdskin/shader/swimming_veil.vert.glsl
+!common/src/main/resources/assets/mmdskin/shader/swimming_veil.frag.glsl
 !common/src/main/java/com/shiroha/mmdskin/render/shader/
 !common/src/test/java/com/shiroha/mmdskin/render/shader/
 !common/src/main/java/com/shiroha/mmdskin/compat/iris/
