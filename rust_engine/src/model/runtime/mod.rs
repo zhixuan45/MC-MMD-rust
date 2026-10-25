@@ -153,7 +153,7 @@ pub struct MmdModel {
     tail_idle_lift: bool,
     tail_blocks_per_model_unit: f32,
     tail_movement_boost: bool,
-    /// LOD 暂停恢复后需先按当前骨骼姿态重同步，避免约束追赶旧刚体。
+    /// 重置请求或 LOD 暂停恢复后按下一次有效动画姿态重同步。
     physics_resync_pending: bool,
     /// 全局物理构建配置变化后在下一次模型更新时安全重建。
     physics_rebuild_pending: bool,

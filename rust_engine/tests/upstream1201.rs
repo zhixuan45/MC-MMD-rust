@@ -81,7 +81,7 @@ fn imported_world_owns_simulation_and_preserves_upstream_motion_state_writeback(
 }
 
 #[test]
-fn model_keeps_authored_topology_and_uses_immediate_upstream_reset() {
+fn model_keeps_authored_topology_and_resyncs_after_animation_pose_is_ready() {
     let mut model = MmdModel::new();
     for name in ["頭", "后长发_0_1", "M-后长发_0_1"] {
         let mut bone = BoneLink::new(name.into());
@@ -100,13 +100,41 @@ fn model_keeps_authored_topology_and_uses_immediate_upstream_reset() {
     }
     let before = model.physics_body_snapshots_matching("");
     assert_eq!(before.len(), 3);
+    assert!(before[1].simulation_transform.w_axis.y < before[1].initial_transform.w_axis.y);
     model.reset_physics();
-    for state in model.physics_body_snapshots_matching("") {
-        assert!(state
-            .simulation_transform
-            .abs_diff_eq(state.initial_transform, 1e-5));
-        assert!(state.linear_velocity.length() < 1e-5);
-    }
+    model.reset_physics();
+    let requested = model.physics_body_snapshots_matching("");
+    assert!(requested[1]
+        .simulation_transform
+        .abs_diff_eq(before[1].simulation_transform, 1e-5));
+    assert!(requested[1]
+        .linear_velocity
+        .abs_diff_eq(before[1].linear_velocity, 1e-5));
+
+    // 第一人称的零步长求值不能消耗请求，也不能把动态刚体摆回 PMX 原位。
+    model.update_physics(0.0);
+    let zero_step = model.physics_body_snapshots_matching("");
+    assert!(zero_step[1]
+        .simulation_transform
+        .abs_diff_eq(before[1].simulation_transform, 1e-5));
+
+    // 动画后才提交的新姿态是唯一一次重同步的目标。
+    let animated = Mat4::from_translation(Vec3::new(2.0, 3.0, 0.0));
+    model.bone_manager.set_global_transform(1, animated);
+    model.update_physics(1.0 / 60.0);
+    let applied = model.physics_body_snapshots_matching("");
+    let dynamic = &applied[1];
+    assert!(!dynamic
+        .simulation_transform
+        .abs_diff_eq(dynamic.initial_transform, 1e-3));
+    assert!(dynamic.linear_velocity.length() < 1e-5);
+    assert!((model.bone_manager.get_global_transform(1).w_axis.x - 2.0).abs() < 1e-4);
+    assert!(
+        dynamic.simulation_transform.w_axis.x > before[1].simulation_transform.w_axis.x + 1.0
+    );
+    model.update_physics(1.0 / 60.0);
+    let next = model.physics_body_snapshots_matching("");
+    assert!(next[1].simulation_transform.w_axis.y < dynamic.simulation_transform.w_axis.y);
     let info: serde_json::Value = serde_json::from_str(&model.get_physics_debug_info()).unwrap();
     assert_eq!(info["stats"]["total_rb"], 3);
     assert_eq!(info["stats"]["joints"], 0);

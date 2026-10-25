@@ -55,13 +55,17 @@ impl MmdModel {
 
     /// 重置物理系统
     pub fn reset_physics(&mut self) {
-        if let Some(ref mut physics) = self.physics {
-            physics.reset();
+        if self.physics.is_some() {
+            // 动画切换可能先于新姿态求值；合并请求，等物理更新读取当帧骨骼。
+            self.physics_resync_pending = true;
         }
     }
 
     /// 启用/禁用物理
     pub fn set_physics_enabled(&mut self, enabled: bool) {
+        if enabled && !self.physics_enabled {
+            self.physics_resync_pending = true;
+        }
         self.physics_enabled = enabled;
     }
 
@@ -159,6 +163,15 @@ impl MmdModel {
             self.physics = Some(physics);
             return;
         }
+        if self.physics_resync_pending {
+            // 清除旧运动状态，再用动画后姿态摆放刚体；不经过 PMX 初始位置。
+            physics.recover_after_large_delta();
+            physics.initialize(&self.physics_bone_transforms_buf);
+            self.physics_resync_pending = false;
+            self.writeback_physics_bones(&mut physics);
+            self.physics = Some(physics);
+            return;
+        }
         if delta_time > max_step_delta * 5.0 {
             // 卡顿/传送后的大步长会让约束跨越过远距离，丢弃该步以免拉坏动态链。
             physics.recover_after_large_delta();
@@ -177,6 +190,14 @@ impl MmdModel {
         physics.step_simulation(delta_time);
 
         // 3. 同步物理结果回骨骼（复用内部缓冲区）
+        self.writeback_physics_bones(&mut physics);
+
+        // 归还所有权
+        self.physics = Some(physics);
+    }
+
+    /// 将当前 Bullet 姿态写回骨骼，并更新非物理子骨骼。
+    fn writeback_physics_bones(&mut self, physics: &mut MMDPhysics) {
         let dynamic_bone_transforms =
             physics.get_dynamic_bone_transforms(&self.physics_bone_transforms_buf);
 
@@ -190,21 +211,6 @@ impl MmdModel {
             .set_physics_bone_indices(physics_bone_indices);
         self.bone_manager
             .update_non_physics_children(physics_bone_indices);
-
-        // 归还所有权
-        self.physics = Some(physics);
-    }
-
-    /// 每条启用物理的路径都将当前 Bullet 姿态写回骨骼，避免跳帧时回退到动画姿态。
-    fn writeback_physics_bones(&mut self, physics: &mut MMDPhysics) {
-        let dynamic_bone_transforms =
-            physics.get_dynamic_bone_transforms(&self.physics_bone_transforms_buf);
-
-        // 模式 2 必须沿父骨骼的本帧物理姿态传播位置。
-        self.bone_manager.apply_physics_transforms(
-            dynamic_bone_transforms,
-            &self.physics_position_aligned_bones,
-        );
     }
 
     /// 收集当前骨骼全局矩阵，供初始化、重置和每帧物理同步复用。
