@@ -203,7 +203,7 @@ impl TailForceState {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::TailForceState;
     use glam::Vec3;

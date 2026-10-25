@@ -166,7 +166,7 @@ pub(super) fn tail_wave_delays(bodies: &[MmdRigidBodyData], bone_parents: &[i32]
     delays
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::tail_wave_delays;
     use crate::physics::mmd_rigid_body::MmdRigidBodyData;

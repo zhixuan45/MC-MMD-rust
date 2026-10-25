@@ -268,6 +268,6 @@ fn smaller_than_original(
         && geometry.fitted_capsule_volume + volume_tolerance < original_volume
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "hair_collision_proxies/tests.rs"]
 mod tests;

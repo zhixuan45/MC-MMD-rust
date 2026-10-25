@@ -509,6 +509,15 @@ public class ModConfigScreen {
             .build());
 
         physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.stage_physics_reset"),
+                data.stagePhysicsResetOnFirstFrame)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.stage_physics_reset.tooltip"))
+            .setSaveConsumer(value -> data.stagePhysicsResetOnFirstFrame = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.physics_gravity"),
                 (int) (data.physicsGravityY * -1), 10, 200)

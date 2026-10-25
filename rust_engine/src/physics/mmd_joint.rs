@@ -378,7 +378,7 @@ pub(crate) fn joint_anchor_position_error(
     (anchor_a.distance(anchor_b), anchor_a, anchor_b)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::{
         apply_wide_skirt_chain_fallback, apply_wide_skirt_root_fallback,
@@ -455,10 +455,10 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "skirt_joint_tests.rs"]
 mod skirt_joint_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "hair_joint_tests.rs"]
 mod hair_joint_tests;

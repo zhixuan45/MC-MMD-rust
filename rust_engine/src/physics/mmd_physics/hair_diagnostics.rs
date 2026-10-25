@@ -298,7 +298,7 @@ impl MMDPhysics {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::*;
     use crate::physics::PhysicsContactPointSnapshot;

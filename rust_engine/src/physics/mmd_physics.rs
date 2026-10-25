@@ -859,7 +859,7 @@ fn effective_collision_mask(collision_enabled: bool, pmx_mask: u16) -> i32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "mmd_physics_tests.rs"]
 mod tests;
 

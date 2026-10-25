@@ -227,7 +227,7 @@ fn escape(value: &str) -> String {
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::*;
     use crate::physics::collision_topology::CollisionStabilityMode;

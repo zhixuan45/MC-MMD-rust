@@ -32,6 +32,10 @@ mod animation;
 mod head_eye;
 mod issue_diagnostics;
 mod material_visibility;
+#[cfg(not(feature = "legacy-physics"))]
+mod physics;
+#[cfg(feature = "legacy-physics")]
+#[path = "physics_legacy.rs"]
 mod physics;
 mod physics_snapshots;
 mod render_data;

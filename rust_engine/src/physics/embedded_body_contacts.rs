@@ -248,7 +248,7 @@ const LIMB_WORDS: &[&str] = &[
     "neck", "腕", "肩", "肘", "手", "腿", "足", "膝", "頭", "首", "ひざ",
 ];
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::{
         center_is_inside, select_embedded_body_pairs, BodyFacts, PhysicsMode,

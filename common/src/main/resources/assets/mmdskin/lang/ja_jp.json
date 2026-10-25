@@ -93,6 +93,8 @@
   "gui.mmdskin.mod_settings.physics_substeps.tooltip": "フレームあたりの最大サブステップ数、ラグ時の物理爆発を防止",
   "gui.mmdskin.mod_settings.physics_inertia": "慣性強度",
   "gui.mmdskin.mod_settings.physics_inertia.tooltip": "キャラクター移動時に髪がどれだけ引きずられるか（0=なし、100=通常）",
+  "gui.mmdskin.mod_settings.stage_physics_reset": "ステージ動作の初フレームで物理をリセット",
+  "gui.mmdskin.mod_settings.stage_physics_reset.tooltip": "ステージ動作開始時に物理状態を初期姿勢へ戻します",
   "gui.mmdskin.mod_settings.physics_max_linear_velocity": "最大線速度",
   "gui.mmdskin.mod_settings.physics_max_linear_velocity.tooltip": "線速度の上限、ラグや極端な力による物理爆発を防止",
   "gui.mmdskin.mod_settings.physics_max_angular_velocity": "最大角速度",

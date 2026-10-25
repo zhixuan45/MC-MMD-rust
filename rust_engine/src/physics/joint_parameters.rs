@@ -150,7 +150,7 @@ fn finite_or_zero(value: f32) -> f32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::JointParameters;
 

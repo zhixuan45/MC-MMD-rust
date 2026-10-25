@@ -71,6 +71,8 @@ fn main() {
     cpp_files.push(format!("{}/bw_parallel_runtime.cpp", wrapper_dir));
     cpp_files.push(format!("{}/bw_parallel_world.cpp", wrapper_dir));
 
+    cpp_files.push(format!("{}/upstream1201/u120_bw_api.cpp", wrapper_dir));
+
     // 编译 Bullet3 + C Wrapper
     let mut build = cc::Build::new();
     build

@@ -450,7 +450,13 @@ impl From<RigidBodyMode> for PhysicsMode {
         match mode {
             RigidBodyMode::Static => PhysicsMode::FollowBone,
             RigidBodyMode::Dynamic => PhysicsMode::Physics,
-            RigidBodyMode::DynamicWithBonePosition => PhysicsMode::PhysicsWithBone,
+            RigidBodyMode::DynamicWithBonePosition => {
+                if cfg!(feature = "legacy-physics") || cfg!(feature = "upstream-native-mode2") {
+                    PhysicsMode::PhysicsWithBone
+                } else {
+                    PhysicsMode::Physics
+                }
+            },
         }
     }
 }
@@ -679,7 +685,7 @@ fn normalize_rigid_body_rotation(rotation: [f32; 3]) -> [f32; 3] {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::{
         body_collider_scale_flags, collision_half_extents, effective_collision_shape_size,

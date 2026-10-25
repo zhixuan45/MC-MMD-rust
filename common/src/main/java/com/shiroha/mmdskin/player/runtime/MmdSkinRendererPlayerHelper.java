@@ -57,7 +57,9 @@ public final class MmdSkinRendererPlayerHelper {
 
         ModelInstance model = modelData.modelInstance();
         clearOverlayLayers(model);
-        model.resetPhysics();
+        if (com.shiroha.mmdskin.config.ConfigManager.isStagePhysicsResetOnFirstFrame()) {
+            model.resetPhysics();
+        }
         modelData.entityState().invalidateStateLayers();
         model.transitionAnim(animHandle, 0, STAGE_TRANSITION_TIME);
         // 舞台帧由 StageAnimSyncHelper 外部 seek，禁止 native elapsed 再推进一次。

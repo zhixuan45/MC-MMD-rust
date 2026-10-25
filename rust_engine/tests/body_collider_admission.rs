@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy-physics")]
 //! Isolated process for admission regressions that change the global physics scale.
 use glam::Vec3;
 use mmd::pmx::rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape};

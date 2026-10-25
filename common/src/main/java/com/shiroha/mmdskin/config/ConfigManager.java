@@ -174,6 +174,10 @@ public class ConfigManager {
         return provider != null ? provider.isPhysicsEnabled() : true;
     }
 
+    public static boolean isStagePhysicsResetOnFirstFrame() {
+        return provider != null && provider.isStagePhysicsResetOnFirstFrame();
+    }
+
     public static float getPhysicsGravityY() {
         return provider != null ? provider.getPhysicsGravityY() : -98.0f;
     }

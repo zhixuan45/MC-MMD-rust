@@ -175,7 +175,7 @@ impl Fnv1a64 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::{ContactWindow, Fnv1a64};
     use crate::physics::bullet_ffi::ContactManifold;

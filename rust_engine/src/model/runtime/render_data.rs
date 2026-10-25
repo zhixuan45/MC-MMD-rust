@@ -7,16 +7,16 @@ impl MmdModel {
     }
 
     /// 设置模型位置和朝向（用于惯性计算）
-    /// x, y, z: Minecraft 世界坐标（方块/米），自动按 1 方块 = 10 MMD 局部单位换算速度与惯性
+    /// x, y, z: Minecraft 世界坐标（方块）。惯性以方块/秒计算，不转换成 PMX 长度单位，
+    /// 避免把配置的惯性效果额外放大 10 倍。
     pub fn set_model_position_and_yaw(&mut self, x: f32, y: f32, z: f32, yaw: f32) {
         let cos_y = yaw.cos();
         let sin_y = yaw.sin();
-        let mmd_scale = 10.0_f32;
         self.model_transform = Mat4::from_cols(
             Vec4::new(cos_y, 0.0, sin_y, 0.0),
             Vec4::new(0.0, 1.0, 0.0, 0.0),
             Vec4::new(-sin_y, 0.0, cos_y, 0.0),
-            Vec4::new(x * mmd_scale, y * mmd_scale, z * mmd_scale, 1.0),
+            Vec4::new(x, y, z, 1.0),
         );
     }
 
@@ -654,5 +654,21 @@ impl MmdModel {
             ]);
         }
         &self.material_morph_results_flat_cache
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_world_position_for_inertia_stays_in_minecraft_blocks() {
+        let mut model = MmdModel::new();
+        model.set_model_position_and_yaw(3.0, 4.0, 5.0, 0.0);
+
+        assert_eq!(
+            model.model_transform().w_axis.truncate(),
+            Vec3::new(3.0, 4.0, 5.0)
+        );
     }
 }

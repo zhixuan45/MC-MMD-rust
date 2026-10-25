@@ -66,6 +66,6 @@ impl MMDPhysics {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "body_contacts_tests.rs"]
 mod tests;

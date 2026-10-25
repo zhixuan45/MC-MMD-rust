@@ -331,7 +331,7 @@ pub fn apply_hair_chain_fallback(
     true
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::*;
     use mmd::pmx::rigid_body::RigidBodyShape;

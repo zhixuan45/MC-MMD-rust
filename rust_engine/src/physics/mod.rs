@@ -15,6 +15,10 @@ mod joint_parameters;
 mod kinematic_target_filter;
 mod mmd_joint;
 mod mmd_physics;
+#[cfg(not(feature = "legacy-physics"))]
+mod upstream1201;
+#[cfg(not(feature = "legacy-physics"))]
+pub(crate) mod upstream_adapter;
 mod mmd_rigid_body;
 mod physics_diagnostics;
 pub mod solver_quality;
@@ -33,7 +37,7 @@ pub(crate) fn inv_z(m: Mat4) -> Mat4 {
     z * m * z
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod coordinate_tests {
     use super::inv_z;
     use glam::{Mat4, Quat, Vec3};
@@ -48,12 +52,25 @@ mod coordinate_tests {
     }
 }
 
-pub use bullet_ffi::{get_alloc_stats, BulletAllocStats};
+pub use bullet_ffi::BulletAllocStats;
+pub fn get_alloc_stats() -> BulletAllocStats {
+    let mut total = bullet_ffi::get_alloc_stats();
+    #[cfg(not(feature = "legacy-physics"))]
+    {
+        let upstream = upstream1201::bullet_ffi::get_alloc_stats();
+        total.worlds += upstream.worlds;
+        total.shapes += upstream.shapes;
+        total.rigid_bodies += upstream.rigid_bodies;
+        total.constraints += upstream.constraints;
+        total.motion_states += upstream.motion_states;
+    }
+    total
+}
 pub use collision_topology::CollisionStabilityMode;
 pub use config::{get_config, reset_config, set_config, PhysicsConfig};
 pub use mmd_joint::MmdJointData;
 pub use mmd_physics::{
-    GarmentContactSnapshot, GarmentPhysicsSnapshot, MMDPhysics, PhysicsBodySnapshot,
+    GarmentContactSnapshot, GarmentPhysicsSnapshot, PhysicsBodySnapshot,
     PhysicsContactPointSnapshot, PhysicsContactPointSnapshotBatch, PhysicsJointSnapshot,
 };
 pub use mmd_rigid_body::{
@@ -61,3 +78,8 @@ pub use mmd_rigid_body::{
     effective_collision_shape_size_with_static_scale, MmdRigidBodyData, PhysicsMode,
     STATIC_COLLISION_SHAPE_SCALE,
 };
+
+#[cfg(feature = "legacy-physics")]
+pub use mmd_physics::MMDPhysics;
+#[cfg(not(feature = "legacy-physics"))]
+pub use upstream_adapter::MMDPhysics;
