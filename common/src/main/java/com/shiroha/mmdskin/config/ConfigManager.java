@@ -86,6 +86,10 @@ public class ConfigManager {
         return provider != null ? provider.isToonDisableTransparency() : false;
     }
 
+    public static boolean isShadowOpaque() {
+        return provider != null && provider.isShadowOpaque();
+    }
+
     public static boolean isToonDisableDepthSeal() {
         return provider != null && provider.isToonDisableDepthSeal();
     }
@@ -124,6 +128,14 @@ public class ConfigManager {
 
     public static float getToonTransitionSoftness() {
         return provider != null ? provider.getToonTransitionSoftness() : 1.2f;
+    }
+
+    public static float getToonShaderFlatness() {
+        return provider != null ? provider.getToonShaderFlatness() : 0.0f;
+    }
+
+    public static float getToonShaderSphereSuppression() {
+        return provider != null ? provider.getToonShaderSphereSuppression() : 0.0f;
     }
 
     public static float getToonRimPower() {

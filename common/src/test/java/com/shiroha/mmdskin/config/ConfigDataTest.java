@@ -12,6 +12,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigDataTest {
     @Test
+    void shaderStylePreservesOldConfigsAndPersistsLiveOptions(@TempDir Path configDir) throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");
+        ConfigData data = ConfigData.load(configDir);
+        assertEquals(0.0f, data.toonShaderFlatness);
+        assertEquals(0.0f, data.toonShaderSphereSuppression);
+        assertFalse(data.shadowOpaque);
+        data.toonShaderFlatness = .6f;
+        data.shadowOpaque = true;
+        data.toonShaderSphereSuppression = .75f;
+        data.save(configDir);
+        ConfigData loaded = ConfigData.load(configDir);
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            assertEquals(.6f, ConfigManager.getToonShaderFlatness());
+            assertTrue(ConfigManager.isShadowOpaque());
+            loaded.shadowOpaque = false;
+            assertFalse(ConfigManager.isShadowOpaque());
+            assertEquals(.75f, ConfigManager.getToonShaderSphereSuppression());
+            loaded.toonShaderFlatness = 1.0f;
+            assertEquals(1.0f, ConfigManager.getToonShaderFlatness());
+        } finally {
+            ConfigManager.init(null);
+        }
+        Files.writeString(configDir.resolve("config.json"),
+                "{\"toonShaderFlatness\":2,\"toonShaderSphereSuppression\":-1}");
+        loaded = ConfigData.load(configDir);
+        assertEquals(1.0f, loaded.toonShaderFlatness);
+        assertEquals(0.0f, loaded.toonShaderSphereSuppression);
+    }
+
+    @Test
     void worldTransparencySettingsPersistAndDefaultForOlderConfigs(@TempDir Path configDir) throws Exception {
         Files.createDirectories(configDir);
         Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");

@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.material;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
 import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
 import org.lwjgl.opengl.GL46C;
@@ -56,7 +57,9 @@ public final class SubMeshDrawHelper {
         boolean hasTranslucentDraws = false;
         int originalIndices=GL46C.glGetInteger(GL46C.GL_ELEMENT_ARRAY_BUFFER_BINDING);
         DrawMaterialCache materialCache = new DrawMaterialCache(materials, materialMorphs, alphaResolver, textureResolver);
-        try (EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
+        boolean opaqueShadow = shadowPass && ConfigManager.isShadowOpaque();
+        try (ShadowTextureAlpha shadowAlpha = opaqueShadow ? new ShadowTextureAlpha() : null;
+             EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
              MaterialShaderBinding binding = new MaterialShaderBinding();
              SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
             // Compute this once instead of scanning every submesh for each render-policy branch.
@@ -147,9 +150,7 @@ public final class SubMeshDrawHelper {
                                 ModelMaterial material = materials[materialId];
                                 MaterialRenderState state = materialCache.resolve(materialId, alpha);
                                 if (state.alpha < 0.001f) continue;
-                                // 半透明边缘不能进入阴影图，否则发片抗锯齿会按整三角形投影成阴影块。
-                                if (shadowPass && (state.alpha < MaterialRenderState.OPAQUE_ALPHA
-                                        || material.hasTranslucentPixels)) continue;
+                                // 阴影由宿主 shader 按纹理 alpha 裁切，混合贴图不能整材质排除。
                                 if (!shadowPass && !forceOpaque) {
                                     if (binding.splitsTextureAlpha()) {
                                         if (pass == 0 && state.alpha < MaterialRenderState.OPAQUE_ALPHA) continue;
@@ -165,7 +166,7 @@ public final class SubMeshDrawHelper {
                                 int alphaPass = shadowPass ? 0
                                         : pass == 0 ? 1
                                         : pass == 2 && !classicDepthPrepass && !sharedWorld && !worldFallback ? 0 : 2;
-                                binding.apply(state, alphaPass);
+                                binding.apply(state, alphaPass, opaqueShadow ? 1.0f : state.alpha);
                                 sphere.apply(material, state);
 
                                 if (bothFace) {
@@ -181,6 +182,7 @@ public final class SubMeshDrawHelper {
                                     RenderSystem.bindTexture(textureId);
                                     lastBoundTexture = textureId;
                                 }
+                                if (shadowAlpha != null) shadowAlpha.apply(textureId);
 
                                 beforeDraw.accept(materialId);
                                 if (pass == 1 || (pass == 2 && classicDepthPrepass)) hasTranslucentDraws = true;

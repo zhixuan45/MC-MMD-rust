@@ -2,6 +2,7 @@ param(
     [string]$Instance = 'D:\minecraft\.minecraft\versions\1.21.1-NeoForge_21.1.252',
     [string]$Jdk = 'C:\Program Files\Zulu\zulu-21',
     [string]$EyeAssetData = '',
+    [string]$MinecraftJar = '',
     [switch]$BslBatchOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -27,9 +28,13 @@ foreach ($taskRelative in @('common/build/classes/java/main','common/build/resou
 }
 $taskNeoForgeVersion = (Select-String -LiteralPath (Join-Path $taskRoot 'gradle.properties') -Pattern '^neoforge_version=').Line.Split('=')[1]
 $taskMinecraftMaven = Join-Path $env:USERPROFILE '.gradle/caches/fabric-loom/minecraftMaven/net/minecraft'
-$taskMinecraftJar = Get-ChildItem -LiteralPath (Join-Path $taskMinecraftMaven "neoforge-$taskNeoForgeVersion-minecraft-merged-mojang") -Recurse -Filter '*.jar' |
-    Where-Object { $_.Name.Contains('merged-mojang-') -and $_.Name.EndsWith('.jar') -and $_.Name -notmatch 'sources|backup' } |
-    Select-Object -First 1
+if ($MinecraftJar) {
+    $taskMinecraftJar = Get-Item -LiteralPath $MinecraftJar
+} else {
+    $taskMinecraftJar = Get-ChildItem -LiteralPath (Join-Path $taskMinecraftMaven "neoforge-$taskNeoForgeVersion-minecraft-merged-mojang") -Recurse -Filter '*.jar' |
+        Where-Object { $_.Name.Contains('merged-mojang-') -and $_.Name.EndsWith('.jar') -and $_.Name -notmatch 'sources|backup' } |
+        Select-Object -First 1
+}
 if (!$taskMinecraftJar) { throw "缺少映射后的 Minecraft/NeoForge Jar: $taskNeoForgeVersion" }
 $taskClasspath.Add($taskMinecraftJar.FullName)
 $taskClasspath.Add($taskIris.FullName)

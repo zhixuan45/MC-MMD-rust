@@ -69,9 +69,12 @@ public final class ToonTransparencySettings {
     'com/shiroha/mmdskin/render/pipeline/transparency/WorldTransparencyPipeline.java' = @'
 package com.shiroha.mmdskin.render.pipeline.transparency;
 public final class WorldTransparencyPipeline {
+    public static final class Capture implements AutoCloseable {
+        @Override public void close() {}
+    }
     public static boolean hasWorldQueue() { return false; }
     public static boolean prepareModel() { return false; }
-    public static AutoCloseable capture() { return () -> {}; }
+    public static Capture capture() { return new Capture(); }
 }
 '@
     'com/shiroha/mmdskin/render/gl/DepthAttachment.java' = @'

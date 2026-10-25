@@ -2,6 +2,7 @@
 uniform float LightIntensity;
 uniform int ToonLevels;
 uniform float ToonTransitionSoftness;
+uniform float ToonShaderFlatness;
 uniform float RimPower;
 uniform float RimIntensity;
 uniform vec3 ShadowColor;
@@ -24,11 +25,16 @@ float saturate(float value) {
     return clamp(value, 0.0, 1.0);
 }
 
+float toonShaderFlatnessAmount() {
+    return (UsePackLighting || ToonGenericEnvironment) ? saturate(ToonShaderFlatness) : 0.0;
+}
+
 // 100% 内保留色块平坦区，更高柔和度继续扩宽交界。
 float toonDiffuseRamp(float ndl) {
     float steps = float(clamp(ToonLevels, 2, 5) - 1);
     float antialiasWidth = clamp(fwidth(ndl), 0.002, 0.015);
-    float width = max(antialiasWidth, clamp(ToonTransitionSoftness, 0.0, 2.0) * 0.45 / steps);
+    float softness = clamp(ToonTransitionSoftness, 0.0, 2.0) * (1.0 - toonShaderFlatnessAmount());
+    float width = max(antialiasWidth, softness * 0.45 / steps);
     float ramp = 0.0;
     for (int i = 0; i < 4; ++i) {
         if (float(i) >= steps) break;
@@ -57,19 +63,20 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
     float specWidth = clamp(fwidth(spec), 0.005, 0.05);
     float highlight = smoothstep(0.5 - specWidth, 0.5 + specWidth, spec);
     float litMask = smoothstep(0.0, 0.1, ramp);
+    float detailStrength = 1.0 - toonShaderFlatnessAmount();
 #ifdef TOON_MATERIAL_LIGHTING
-    surface = max(vec3(0.0), surface + MaterialSpecular * highlight * SpecularIntensity * litMask);
+    surface = max(vec3(0.0), surface + MaterialSpecular * highlight * SpecularIntensity * litMask * detailStrength);
 #else
-    surface = mix(surface, vec3(1.0), saturate(highlight * SpecularIntensity * litMask));
+    surface = mix(surface, vec3(1.0), saturate(highlight * SpecularIntensity * litMask * detailStrength));
 #endif
 
     float rim = pow(1.0 - saturate(dot(view, n)), max(RimPower, 0.1));
     float rimWidth = clamp(fwidth(rim), 0.005, 0.05);
     float rimBand = smoothstep(0.5 - rimWidth, 0.5 + rimWidth, rim);
 #ifdef TOON_MATERIAL_LIGHTING
-    surface = mix(surface, MaterialColor.rgb, saturate(rimBand * RimIntensity));
+    surface = mix(surface, MaterialColor.rgb, saturate(rimBand * RimIntensity * detailStrength));
 #else
-    surface = mix(surface, vec3(1.0), saturate(rimBand * RimIntensity));
+    surface = mix(surface, vec3(1.0), saturate(rimBand * RimIntensity * detailStrength));
 #endif
     // 光照只乘一次；高光与边缘光在暗处同样衰减。
     vec3 surfaceIllumination = max(illumination, vec3(0.0));

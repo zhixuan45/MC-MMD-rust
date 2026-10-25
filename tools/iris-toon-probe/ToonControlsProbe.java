@@ -8,6 +8,14 @@ import java.util.List;
 /** 回读生产主体程序，验证色阶平坦区及各项风格参数。 */
 public final class ToonControlsProbe {
     public static void run(ToonShaderCpu shader, int source, Object identity, float[] light) {
+        run(shader, source, identity, light, false);
+    }
+
+    public static void runShaderStyle(ToonShaderCpu shader, int source, Object identity, float[] light) {
+        run(shader, source, identity, light, true);
+    }
+
+    private static void run(ToonShaderCpu shader, int source, Object identity, float[] light, boolean styleOnly) {
         int vao = GL46C.glGenVertexArrays();
         GL46C.glBindVertexArray(vao);
         int positions = buffer(0, 3, new float[]{-1,-1,-.5f, 3,-1,-.5f, -1,3,-.5f});
@@ -49,6 +57,10 @@ public final class ToonControlsProbe {
             GL46C.glDisable(GL46C.GL_BLEND);
             GL46C.glDisable(GL46C.GL_DEPTH_TEST);
             GL46C.glDisable(GL46C.GL_CULL_FACE);
+            if (styleOnly) {
+                checkShaderStyle(shader, normals, light, source > 0);
+                return;
+            }
             // 离开阈值的相邻法线必须得到同一色块；档数必须等于设置值。
             for (int levels = 2; levels <= 5; levels++) {
                 shader.setToonLevels(levels);
@@ -65,6 +77,7 @@ public final class ToonControlsProbe {
             }
 
             checkTransitions(shader, normals, light);
+            checkShaderStyle(shader, normals, light, source > 0);
             shader.setToonLevels(3);
             float[] darkNormal = withDot(light, .1f);
             float[] baseline = sample(normals, darkNormal);
@@ -193,7 +206,62 @@ public final class ToonControlsProbe {
             shader.useMain();
             shader.setEyeMaterialMask(0);
             shader.setTransitionSoftness(0);
+            shader.setShaderStyle(0, 0);
         }
+    }
+
+    private static void checkShaderStyle(ToonShaderCpu shader, int normals, float[] light, boolean shaderLighting) {
+        shader.setToonLevels(3);
+        shader.setTransitionSoftness(1.2f);
+        shader.setShaderStyle(0, 0);
+        float[] low = withDot(light, .08f), high = withDot(light, .16f);
+        float smoothDifference = distance(sample(normals, low), sample(normals, high));
+        shader.setShaderStyle(1, 0);
+        float flatDifference = distance(sample(normals, low), sample(normals, high));
+        if (shaderLighting) check(flatDifference < smoothDifference * .1f, "二维化须恢复平坦色块");
+        else check(Math.abs(flatDifference - smoothDifference) < .00001f, "无光影时二维化不得改变像素");
+
+        shader.setShaderStyle(0, 0);
+        shader.setSpecular(8, 1);
+        float[] view = normalize(new float[]{-.0625f,-.0625f,.5f});
+        float[] half = normalize(new float[]{light[0]+view[0], light[1]+view[1], light[2]+view[2]});
+        float[] glossy = sample(normals, half);
+        shader.setShaderStyle(1, 0);
+        float[] flattened = sample(normals, half);
+        shader.setSpecular(8, 0);
+        float[] matte = sample(normals, half);
+        if (shaderLighting) {
+            check(distance(flattened, matte) < .00001f, "二维化100%须去除材质高光");
+            changed(glossy, flattened, "光影二维化强度");
+        } else check(distance(glossy, flattened) < .00001f, "无光影时高光保持原样");
+
+        int sphere = texture(2, 1, new float[]{.4f,.5f,.6f,1});
+        int program = shader.getMainProgram();
+        try {
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "SphereTexture"), 2);
+            GL46C.glUniform4f(GL46C.glGetUniformLocation(program, "SphereMul"), 1,1,1,1);
+            GL46C.glUniform4f(GL46C.glGetUniformLocation(program, "SphereAdd"), 0,0,0,0);
+            for (int mode : new int[]{1,2}) {
+                GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "SphereMode"), 0);
+                shader.setShaderStyle(0, 0);
+                float[] noSphere = sample(normals, half);
+                GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "SphereMode"), mode);
+                float[] original = sample(normals, half);
+                changed(noSphere, original, "球面纹理基线");
+                shader.setShaderStyle(0, 1);
+                float[] suppressed = sample(normals, half);
+                check(distance(suppressed, shaderLighting ? noSphere : original) < .00001f,
+                        "SPA/SPH抑制须只在光影下生效: " + mode);
+                check(Math.abs(suppressed[3] - original[3]) < .00001f, "风格选项不得改变透明度");
+            }
+        } finally {
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "SphereMode"), 0);
+            GL46C.glDeleteTextures(sphere);
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
+            shader.setShaderStyle(0, 0);
+            shader.setTransitionSoftness(0);
+        }
+        System.out.println("PASS shader style: flat bands, material highlights, SPA/SPH suppression, alpha, vanilla isolation; pack=" + shaderLighting);
     }
 
     private static void checkTransitions(ToonShaderCpu shader, int normals, float[] light) {

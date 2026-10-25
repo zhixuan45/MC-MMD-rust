@@ -162,6 +162,17 @@ public class OpenGlModelInstance extends BaseModelInstance {
     }
 
     @Override
+    protected boolean supportsPaperDollPoseReuse(boolean firstPerson) {
+        // The ordinary EBO always contains the full body; first person needs its dedicated clipped EBO.
+        return !firstPerson || firstPersonIndexBufferObject > 0;
+    }
+
+    @Override
+    protected boolean supportsParallelEvaluation() {
+        return true;
+    }
+
+    @Override
     protected void doRenderModel(Entity entityIn,
                                  float entityYaw,
                                  float entityPitch,

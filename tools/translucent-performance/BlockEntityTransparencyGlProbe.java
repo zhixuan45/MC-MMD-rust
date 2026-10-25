@@ -342,7 +342,8 @@ public final class BlockEntityTransparencyGlProbe {
 
     private static void drawProductionOutline() {
         ToonShaderCpu shader = new ToonShaderCpu();
-        if (productionProfile != null) check(shader.selectOutputProfile(productionProfile), "BSL outline profile");
+        check(productionProfile == null ? shader.init() : shader.selectOutputProfile(productionProfile),
+                "production outline shader");
         int positions = GL46C.glGenBuffers(), normals = GL46C.glGenBuffers(), uv = GL46C.glGenBuffers();
         int fragmentsBefore = capturedFragments();
         try {

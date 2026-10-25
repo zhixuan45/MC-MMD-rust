@@ -166,8 +166,11 @@ public final class PaperDollRenderer {
         }
 
         int fps = ConfigManager.getPaperDollRefreshMode().framesPerSecond;
+        // GUI Toon owns its shader and depth; the cache still checks the actual host target.
+        boolean cacheWithShaders = ConfigManager.isToonRenderingEnabled()
+                && !"false".equalsIgnoreCase(System.getProperty("mmdskin.paperDollIrisCache"));
         if (fps > 0 && player.getMainHandItem().isEmpty() && player.getOffhandItem().isEmpty()
-                && !com.shiroha.mmdskin.compat.iris.IrisCompat.isIrisShaderActive()) {
+                && (!com.shiroha.mmdskin.compat.iris.IrisCompat.isIrisShaderActive() || cacheWithShaders)) {
             // Finish previously queued HUD work before changing the framebuffer.
             guiGraphics.flush();
             Minecraft mc = Minecraft.getInstance();

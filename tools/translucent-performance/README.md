@@ -58,6 +58,8 @@ phase / 预热时长 / 采样时长 / 重复轮次：
 
 ## 探针
 
+阴影像素 alpha：运行 `./tools/translucent-performance/run-shadow-alpha-probe.ps1`，默认读取本机实例的 Iris 和 BSL v10.1.8；可通过 `-Instance`、`-BslPack` 指定路径。需先编译 common 并生成上述 classpath。每次使用独立输出目录，编译失败不运行旧 class。96 组对照包含逐像素 alpha / 实心投影、CPU / 生产 GPU compute 位置及 UV morph、颜色属性绑定、真实 BSL 阴影片段和 Iris alpha-test 表达式，并检查异常恢复及普通渲染透明度隔离。完整场景边界见 `plans/toon-style-and-paperdoll/shadow-alpha-r4.md`。
+
 2026-10-16 增加多模型优化验证：Windows 下先用 JDK 21 运行下列任务，再执行 `./tools/translucent-performance/run-batch-probe.ps1`。脚本使用本地已有的 Windows LWJGL natives，不下载依赖。GL 上下文不可用会明确失败，不跳过验证。
 
 ```powershell
@@ -90,9 +92,21 @@ cargo test --offline --manifest-path rust_engine/Cargo.toml --lib evaluation_pro
 
 `NativeProfileProbe` 在 `build/translucent-performance/evaluation-probe.pmx` 生成单骨骼／单动态刚体 PMX，通过项目解析器和真实 JNI 加载，不读取或修改用户模型。验证 64 字节统计协议、非法 buffer 不执行求值、未对齐 direct buffer 边界、CPU／GPU 求值字段及实际 Bullet 计数；四个独立模型各执行 48 次并行采样求值，与常规串行基准的最终骨骼矩阵逐字节比较。极短阶段可低于平台计时分辨率，不能要求每次 IK 都大于零。Rust 定向测试另验证 0 步、子步截断、可变步进以及采样和并行不改变独立世界结果。
 
+`CpuParallelPmxProbe` 读取一个现有真实 PMX，配置相同的固定物理参数并加载独立句柄，比较顺序 CPU 求值、多个 Java worker 同时求值、单模型 Rayon 预算求值的骨骼矩阵、CPU 顶点和法线。它使用固定 `1/60` 秒步长，不读取旧岛屿计数。运行前生成探针 classpath 并构建 release DLL，然后传入 PMX 路径：
+
+```powershell
+./gradlew.bat --offline -I tools/translucent-performance/validation.gradle `
+  :common:classes :common:writeTranslucentProbeClasspath -x :prepareNativeResources
+cargo build --offline --release --lib --manifest-path rust_engine/Cargo.toml
+./tools/translucent-performance/run-cpu-parallel-pmx-probe.ps1 `
+  -Pmx 'path/to/real-model.pmx'
+```
+
+探针禁用 blink 与 tail idle 附加力，避免非必要的动画随机输入；所有模型仍使用 PMX 自带物理、相同重力、频率、子步上限与 solver 迭代配置。它验证独立模型调用之间的结果一致性，不替代 Minecraft 中的渲染线程上传、帧预算或真实帧率 A/B。
+
 脚本默认使用 `rust_engine/target/release/mmd_engine.dll`，可用 `-Dll PATH` 指定；若有另存的旧 DLL，可用 `-LegacyDll PATH` 在独立 JVM 验证缺失采样入口时返回 false、不会求值、随后常规更新仍然有效。打包任务会覆盖生成资源目录的 DLL，应在覆盖前另存旧版本，不能把新 DLL 当作旧版本探针输入。完整库测试可运行 `cargo test --offline --manifest-path rust_engine/Cargo.toml --lib -- --test-threads=1`；2026-10-16 发现默认并行测试的两项物理断言独立／串行可通过，详见完成报告中的测试隔离限制。
 
-生产并行预处理仅覆盖至少两个合格、已加载的远端玩家 GPU 模型；输入准备和完成回调在渲染线程，后台只执行 JNI，全部汇合后才继续绘制。`-Dmmdskin.parallelEvaluation=false` 关闭并行，关闭 `mmdskin.reuseEvaluation` 也禁用预处理。单个远端、CPU 蒙皮、本地玩家、VR、TaCZ、舞台、外部姿态或光影包保留常规路径。`native.parallelBatches`／`native.parallelModels` 确认批处理命中，`native.batchExecuteJoin` 反映执行与汇合的调用线程时间；各实例累计 native 阶段时间代表工作量，不等于主线程阻塞。实际 Bullet 调用／执行子步／请求子步与旧 `physicsEnabledEvaluations` 字段含义不同。
+生产并行预处理覆盖当前 pass 中合格、已加载且句柄独立的远端玩家、生物和女仆 CPU/GPU 模型；输入准备和完成回调在渲染线程，后台只执行 JNI，全部汇合后才继续上传和绘制。世界与 Iris 阴影预处理沿用同一批处理边界。`-Dmmdskin.parallelEvaluation=false` 关闭并行，关闭 `mmdskin.reuseEvaluation` 也禁用预处理。本地玩家、VR、TaCZ、舞台与外部姿态保留常规路径。多任务时每个任务的内部预算为 1，避免与单模型 Rayon 嵌套过度竞争。`native.parallelBatches`／`native.parallelModels` 确认批处理命中，`native.batchExecuteJoin` 反映执行与汇合的调用线程时间；各实例累计 native 阶段时间代表工作量，不等于主线程阻塞。实际 Bullet 调用／执行子步／请求子步与旧 `physicsEnabledEvaluations` 字段含义不同。
 
 纸娃娃默认每帧刷新；设置中可选 60／30 Hz 离屏缓存。此模式降低刷新频率，需要和默认模式分别采样。手持任意物品或启用光影包时回退每帧；特殊 GL 目标／状态、超过 128 MiB 预算等情况也保守回退。`scene.PAPERDOLL.reuses` 代表姿态复用，应结合离屏刷新／命中计数判断收益，不能混为同一缓存。隐藏、切换模型、改变布局／模式、重载和退出都需要游戏验证。
 

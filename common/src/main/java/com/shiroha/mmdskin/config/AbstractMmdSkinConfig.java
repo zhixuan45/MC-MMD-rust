@@ -27,6 +27,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
 
     @Override public boolean isToonRenderingEnabled() { return data.toonRenderingEnabled; }
     @Override public boolean isToonDisableTransparency() { return data.toonDisableTransparency; }
+    @Override public boolean isShadowOpaque() { return data.shadowOpaque; }
     @Override public boolean isToonDisableDepthSeal() { return data.toonDisableDepthSeal; }
     @Override public boolean isToonWorldTransparencyQueueEnabled() { return data.toonWorldTransparencyQueue; }
     @Override public int getToonTransparencyLayerCount() { return data.toonTransparencyLayerCount; }
@@ -34,6 +35,8 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonHairAlphaCutoff() { return data.toonHairAlphaCutoff; }
     @Override public int getToonLevels() { return data.toonLevels; }
     @Override public float getToonTransitionSoftness() { return data.toonTransitionSoftness; }
+    @Override public float getToonShaderFlatness() { return data.toonShaderFlatness; }
+    @Override public float getToonShaderSphereSuppression() { return data.toonShaderSphereSuppression; }
     @Override public float getToonRimPower() { return data.toonRimPower; }
     @Override public float getToonRimIntensity() { return data.toonRimIntensity; }
     @Override public float getToonEyeEmission() { return data.toonEyeEmission; }

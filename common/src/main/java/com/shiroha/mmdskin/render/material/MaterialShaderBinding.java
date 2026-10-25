@@ -57,15 +57,19 @@ final class MaterialShaderBinding implements AutoCloseable {
     boolean isToon() { return toon; }
 
     void apply(MaterialRenderState state, int pass) {
+        apply(state, pass, state.alpha);
+    }
+
+    void apply(MaterialRenderState state, int pass, float alpha) {
         int hair = state.hair ? 1 : 0;
         if (hairMaterial >= 0 && lastHair != hair) {
             GL46C.glUniform1i(hairMaterial, hair);
             lastHair = hair;
         }
         boolean colorChanged = !colorValid || lastColor[0] != state.color[0]
-                || lastColor[1] != state.color[1] || lastColor[2] != state.color[2] || lastColor[3] != state.alpha;
+                || lastColor[1] != state.color[1] || lastColor[2] != state.color[2] || lastColor[3] != alpha;
         if (materialColor >= 0) {
-            if (colorChanged) GL46C.glUniform4f(materialColor, state.color[0], state.color[1], state.color[2], state.alpha);
+            if (colorChanged) GL46C.glUniform4f(materialColor, state.color[0], state.color[1], state.color[2], alpha);
             if (materialSpecular >= 0 && (!specularValid || lastSpecular[0] != state.specular[0]
                     || lastSpecular[1] != state.specular[1] || lastSpecular[2] != state.specular[2])) {
                 GL46C.glUniform3f(materialSpecular,
@@ -83,7 +87,7 @@ final class MaterialShaderBinding implements AutoCloseable {
             for (int location : attributes) {
                 if (location < 0) continue;
                 hasColorAttribute = true;
-                if (colorChanged) GL46C.glVertexAttrib4f(location, state.color[0], state.color[1], state.color[2], state.alpha);
+                if (colorChanged) GL46C.glVertexAttrib4f(location, state.color[0], state.color[1], state.color[2], alpha);
             }
             // 全局 alpha 已在 state.alpha 中，不能再被 ColorModulator 重复相乘。
             if (colorModulator >= 0 && (!modulatorValid || (!hasColorAttribute && colorChanged))) {
@@ -91,13 +95,13 @@ final class MaterialShaderBinding implements AutoCloseable {
                     previousModulator[0] * (hasColorAttribute ? 1.0f : state.color[0]),
                     previousModulator[1] * (hasColorAttribute ? 1.0f : state.color[1]),
                     previousModulator[2] * (hasColorAttribute ? 1.0f : state.color[2]),
-                    hasColorAttribute ? 1.0f : state.alpha);
+                    hasColorAttribute ? 1.0f : alpha);
                 modulatorValid = true;
             }
         }
         if (colorChanged) {
             System.arraycopy(state.color, 0, lastColor, 0, 3);
-            lastColor[3] = state.alpha;
+            lastColor[3] = alpha;
             colorValid = true;
         }
         if (alphaPass >= 0 && lastPass != pass) {

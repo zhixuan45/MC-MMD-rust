@@ -11,6 +11,7 @@ uniform sampler2D SphereTexture;
 uniform int SphereMode;
 uniform vec4 SphereMul;
 uniform vec4 SphereAdd;
+uniform float ToonShaderSphereSuppression;
 uniform float AlphaCutoff;
 uniform float HairAlphaCutoff;
 uniform bool HairMaterial;
@@ -89,7 +90,9 @@ void main() {
         finalColor = shadeToonSurface(albedo, normal, lightDir, viewPos,
                 vec3(max(LightIntensity, 0.0)), ramp);
     }
-    if (SphereMode == 1 || SphereMode == 2) {
+    float sphereStrength = (UsePackLighting || ToonGenericEnvironment)
+            ? 1.0 - saturate(ToonShaderSphereSuppression) : 1.0;
+    if ((SphereMode == 1 || SphereMode == 2) && sphereStrength > 0.0) {
         // 纹理解码已经翻转 Y；视空间法线映射让球面效果随视角变化。
 #ifdef MMD_BATCH_MATERIALS
         vec2 halfTexel = 0.5 / vec2(mmdSphereSize());
@@ -105,8 +108,9 @@ void main() {
         sphereColor = mix(vec3(1.0), sphereColor * SphereMul.rgb, SphereMul.a);
         sphereColor = clamp(sphereColor + (sphereColor - vec3(1.0)) * SphereAdd.a, 0.0, 1.0) + SphereAdd.rgb;
         // SPA 保留黑底加色，但随环境照明衰减；表面 alpha 不变。
-        finalColor = SphereMode == 1 ? finalColor * sphereColor
+        vec3 sphereResult = SphereMode == 1 ? finalColor * sphereColor
                 : finalColor + sphereColor * toonSurfaceIllumination;
+        finalColor = mix(finalColor, sphereResult, sphereStrength);
     }
     // 合并眼瞳遮罩与线性空间发光。
     float emissionMask = EyeMaterialMask < 0.0 ? 0.0 : max(saturate(eyeMask), saturate(EyeMaterialMask));

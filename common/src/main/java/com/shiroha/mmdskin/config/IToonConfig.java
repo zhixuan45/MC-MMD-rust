@@ -10,6 +10,8 @@ public interface IToonConfig {
 
     default boolean isToonDisableTransparency() { return false; }
 
+    default boolean isShadowOpaque() { return false; }
+
     default boolean isToonDisableDepthSeal() { return false; }
 
     default boolean isToonWorldTransparencyQueueEnabled() { return true; }
@@ -23,6 +25,10 @@ public interface IToonConfig {
     default int getToonLevels() { return 4; }
 
     default float getToonTransitionSoftness() { return 1.2f; }
+
+    default float getToonShaderFlatness() { return 0.0f; }
+
+    default float getToonShaderSphereSuppression() { return 0.0f; }
 
     default boolean isToonOutlineEnabled() { return true; }
 

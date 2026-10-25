@@ -216,6 +216,15 @@ public class ModConfigScreen {
 
         toonCategory.addEntry(entryBuilder
             .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.shadow_opaque"),
+                data.shadowOpaque)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.shadow_opaque.tooltip"))
+            .setSaveConsumer(value -> data.shadowOpaque = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
                 Component.translatable("gui.mmdskin.mod_settings.toon_disable_depth_seal"),
                 data.toonDisableDepthSeal)
             .setDefaultValue(false)
@@ -277,6 +286,24 @@ public class ModConfigScreen {
             .setDefaultValue(120)
             .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_transition_softness.tooltip"))
             .setSaveConsumer(value -> data.toonTransitionSoftness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shader_flatness"),
+                (int) Math.round(data.toonShaderFlatness * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_shader_flatness.tooltip"))
+            .setSaveConsumer(value -> data.toonShaderFlatness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shader_sphere_suppression"),
+                (int) Math.round(data.toonShaderSphereSuppression * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_shader_sphere_suppression.tooltip"))
+            .setSaveConsumer(value -> data.toonShaderSphereSuppression = value / 100.0f)
             .build());
 
         toonCategory.addEntry(entryBuilder

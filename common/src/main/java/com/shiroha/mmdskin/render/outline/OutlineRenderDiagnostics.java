@@ -72,7 +72,7 @@ public final class OutlineRenderDiagnostics {
         int total = 0;
         for (int i = 0; i < count; i++) {
             int base = i * 20;
-            if (data.get(base + 16) == 0 || data.get(base + 18) == 0) continue;
+            if (data.get(base + 16) == 0) continue;
             total++;
             if (emitted < 8) {
                 float alpha = resolver.resolve(data.getInt(base), data.getFloat(base + 12));

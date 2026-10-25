@@ -123,6 +123,7 @@ public final class OutlineRenderPass {
             int base = i * SUB_MESH_STRIDE;
             // 私有遮挡缓冲也只能收集当前可见的子网格；offset 16 是 Rust 侧 isVisible。
             if (data.get(base + 16) == 0) continue;
+            // Toon 是模型级外壳描边；部分模型的所有材质都没有 PMX edge 标志。
             if (occlusion) {
                 if (data.get(base + 17) != 0) GL46C.glDisable(GL46C.GL_CULL_FACE);
                 else { GL46C.glEnable(GL46C.GL_CULL_FACE); GL46C.glCullFace(GL46C.GL_BACK); }

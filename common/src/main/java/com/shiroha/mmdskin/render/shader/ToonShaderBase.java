@@ -57,6 +57,8 @@ public abstract class ToonShaderBase {
     protected int lightIntensityLocation = -1;
     protected int toonLevelsLocation = -1;
     protected int toonTransitionSoftnessLocation = -1;
+    private int shaderFlatnessLocation = -1;
+    private int shaderSphereSuppressionLocation = -1;
     protected int rimPowerLocation = -1;
     protected int rimIntensityLocation = -1;
     protected int shadowColorLocation = -1;
@@ -227,6 +229,8 @@ public abstract class ToonShaderBase {
         lightIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "LightIntensity");
         toonLevelsLocation = GL46C.glGetUniformLocation(mainProgram, "ToonLevels");
         toonTransitionSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonTransitionSoftness");
+        shaderFlatnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderFlatness");
+        shaderSphereSuppressionLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderSphereSuppression");
         rimPowerLocation = GL46C.glGetUniformLocation(mainProgram, "RimPower");
         rimIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "RimIntensity");
         shadowColorLocation = GL46C.glGetUniformLocation(mainProgram, "ShadowColor");
@@ -390,6 +394,16 @@ public abstract class ToonShaderBase {
             float value = Float.isFinite(softness) ? Math.max(0, Math.min(2, softness)) : 1.2f;
             GL46C.glUniform1f(toonTransitionSoftnessLocation, value);
         }
+    }
+
+    public void setShaderStyle(float flatness, float sphereSuppression) {
+        outlineLighting.flatness = finiteUnit(flatness);
+        GL46C.glUniform1f(shaderFlatnessLocation, outlineLighting.flatness);
+        GL46C.glUniform1f(shaderSphereSuppressionLocation, finiteUnit(sphereSuppression));
+    }
+
+    private static float finiteUnit(float value) {
+        return Float.isFinite(value) ? Math.max(0.0f, Math.min(1.0f, value)) : 0.0f;
     }
 
     public void setRimLight(float power, float intensity) {

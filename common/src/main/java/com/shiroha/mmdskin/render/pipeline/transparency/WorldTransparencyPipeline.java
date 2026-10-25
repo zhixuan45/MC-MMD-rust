@@ -78,6 +78,7 @@ public final class WorldTransparencyPipeline {
     private int[] viewport;
     private boolean overflowWarned;
     private final AsyncOverflowReadback overflowReadback = new AsyncOverflowReadback();
+    private final MetadataClearStage metadataClear = new MetadataClearStage();
     private final WaterResolveStage waterResolve = new WaterResolveStage();
     private final java.util.Set<String> reportedFallbacks = new java.util.HashSet<>();
     private boolean reportedCapture;
@@ -588,8 +589,10 @@ public final class WorldTransparencyPipeline {
             }
             GL46C.glBindBuffer(GL46C.GL_SHADER_STORAGE_BUFFER, meta);
             try (var timing = WorldTransparencyProfiler.measure(Stage.STORAGE_CLEAR, true)) {
-                GL46C.glClearBufferData(GL46C.GL_SHADER_STORAGE_BUFFER, GL46C.GL_R32UI,
-                        GL46C.GL_RED_INTEGER, GL46C.GL_UNSIGNED_INT, stack.ints(0));
+                if (!metadataClear.clear(meta, metaBinding, pixels * 28 + 16)) {
+                    GL46C.glClearBufferData(GL46C.GL_SHADER_STORAGE_BUFFER, GL46C.GL_R32UI,
+                            GL46C.GL_RED_INTEGER, GL46C.GL_UNSIGNED_INT, stack.ints(0));
+                }
             }
             GL46C.glMemoryBarrier(GL46C.GL_BUFFER_UPDATE_BARRIER_BIT | GL46C.GL_SHADER_STORAGE_BARRIER_BIT);
             sourceFbo = fbo;
@@ -969,6 +972,7 @@ public final class WorldTransparencyPipeline {
         endFrame();
         WorldWaterCapture.release();
         INSTANCE.overflowReadback.close();
+        INSTANCE.metadataClear.close();
         INSTANCE.waterResolve.close();
         WorldTransparencyProfiler.release();
         IrisToonCompat.resetTransparencyVerification();

@@ -38,6 +38,7 @@ public class ConfigData {
     public boolean toonRenderingEnabled = false;
     /** Toon 下将半透明像素按不透明绘制。 */
     public boolean toonDisableTransparency = false;
+    public boolean shadowOpaque = false;
     /** 0 关闭分层；正值为请求上限，实际数量受共享显存预算限制。 */
     public int toonTransparencyLayerCount = 4;
     /** 诊断：仅跳过透明混合后的深度补写，保留半透明颜色。 */
@@ -49,6 +50,8 @@ public class ConfigData {
     public float toonHairAlphaCutoff = 0.001f;
     public int toonLevels = 4;
     public float toonTransitionSoftness = 1.2f;
+    public float toonShaderFlatness = 0.0f;
+    public float toonShaderSphereSuppression = 0.0f;
     public float toonRimPower = 5.6f;
     public float toonRimIntensity = 0.02f;
     public float toonEyeEmission = 0.0f;
@@ -197,6 +200,10 @@ public class ConfigData {
         toonHairAlphaCutoff = Float.isFinite(toonHairAlphaCutoff) ? clamp(toonHairAlphaCutoff, 0.001f, 1.0f) : 0.001f;
         toonTransitionSoftness = Float.isFinite(toonTransitionSoftness)
                 ? clamp(toonTransitionSoftness, 0.0f, 2.0f) : 1.2f;
+        toonShaderFlatness = Float.isFinite(toonShaderFlatness)
+                ? clamp(toonShaderFlatness, 0.0f, 1.0f) : 0.0f;
+        toonShaderSphereSuppression = Float.isFinite(toonShaderSphereSuppression)
+                ? clamp(toonShaderSphereSuppression, 0.0f, 1.0f) : 0.0f;
         toonRimPower = clamp(toonRimPower, 0.1f, 10.0f);
         toonRimIntensity = clamp(toonRimIntensity, 0.0f, 1.0f);
         toonEyeEmission = Float.isFinite(toonEyeEmission) ? clamp(toonEyeEmission, 0.0f, 3.0f) : 0.0f;

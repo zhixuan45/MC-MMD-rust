@@ -5,12 +5,14 @@ import org.lwjgl.opengl.GL46C;
 /** 描边沿用主体照明输入，独立缓存位置，不回读主体颜色。 */
 final class ToonOutlineLighting {
     float intensity = 1, softness = 1.2f;
+    float flatness;
     int levels = 4;
     float shadowR = .78f, shadowG = .84f, shadowB = .94f;
     float lightX = .35f, lightY = .85f, lightZ = -.4f;
     private int program;
     private int enabled, lightIntensity, toonLevels, transition, shadow, direction, usePack, lightmap;
     private int specPower, specIntensity, rimPower, rimIntensity;
+    private int shaderFlatness;
     private final GenericToonLighting generic = new GenericToonLighting();
     private ToonUniformBridge bridge;
 
@@ -20,6 +22,7 @@ final class ToonOutlineLighting {
         lightIntensity = location("LightIntensity");
         toonLevels = location("ToonLevels");
         transition = location("ToonTransitionSoftness");
+        shaderFlatness = location("ToonShaderFlatness");
         shadow = location("ShadowColor");
         direction = location("LightDir");
         usePack = location("UsePackLighting");
@@ -50,6 +53,7 @@ final class ToonOutlineLighting {
         GL46C.glUniform1f(lightIntensity, intensity);
         GL46C.glUniform1i(toonLevels, levels);
         GL46C.glUniform1f(transition, softness);
+        GL46C.glUniform1f(shaderFlatness, flatness);
         GL46C.glUniform3f(shadow, shadowR, shadowG, shadowB);
         GL46C.glUniform3f(direction, lightX, lightY, lightZ);
         // 描边只受照明与色阶调制，不增加白色高光或边缘光。
