@@ -319,7 +319,7 @@ fn collision_allowed(a: CollisionBody, b: CollisionBody) -> bool {
     a.collision_mask & b_group != 0 && b.collision_mask & a_group != 0
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::{build_filter_plan, CollisionAabb, CollisionBody, CollisionStabilityMode};
     use glam::{Mat4, Vec3};

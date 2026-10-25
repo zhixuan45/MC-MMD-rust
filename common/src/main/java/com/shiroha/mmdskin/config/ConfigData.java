@@ -66,6 +66,8 @@ public class ConfigData {
     public float toonOutlineB = 0.12f;
 
     public boolean physicsEnabled = true;
+    /** 舞台动作开始时，在首帧前重置一次物理状态。 */
+    public boolean stagePhysicsResetOnFirstFrame = true;
     public float physicsGravityY = -98.0f;
     public float physicsFps = 60.0f;
     public int physicsSolverIterations = 10;

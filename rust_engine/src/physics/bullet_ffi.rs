@@ -958,6 +958,6 @@ impl From<ffi::BW_ConstraintDiagnostic> for ConstraintDiagnostic {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "bullet_ffi/tests.rs"]
 mod tests;

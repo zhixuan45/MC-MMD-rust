@@ -639,8 +639,7 @@ impl BoneSet {
 
     /// 批量更新物理骨骼后，更新非物理骨骼
     pub fn update_non_physics_children(&mut self, physics_bone_indices: &HashSet<usize>) {
-        for order in 0..self.sorted_indices.len() {
-            let idx = self.sorted_indices[order];
+        for &idx in &self.sorted_indices.clone() {
             if physics_bone_indices.contains(&idx) {
                 continue;
             }

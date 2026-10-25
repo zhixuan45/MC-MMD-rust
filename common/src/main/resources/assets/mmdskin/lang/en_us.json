@@ -117,6 +117,8 @@
   "gui.mmdskin.mod_settings.physics_substeps.tooltip": "Maximum substeps per frame, prevents physics explosion during lag",
   "gui.mmdskin.mod_settings.physics_inertia": "Inertia Strength",
   "gui.mmdskin.mod_settings.physics_inertia.tooltip": "How much hair is dragged when character moves (0=none, 100=normal)",
+  "gui.mmdskin.mod_settings.stage_physics_reset": "Reset physics on first stage frame",
+  "gui.mmdskin.mod_settings.stage_physics_reset.tooltip": "Reset physics to its initial pose when a stage animation starts",
   "gui.mmdskin.mod_settings.physics_max_linear_velocity": "Max Linear Velocity",
   "gui.mmdskin.mod_settings.physics_max_linear_velocity.tooltip": "Linear velocity limit, prevents physics explosion from lag or extreme forces",
   "gui.mmdskin.mod_settings.physics_max_angular_velocity": "Max Angular Velocity",

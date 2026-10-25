@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy-physics")]
 //! One integration-test process owns its global config; library tests run separately.
 use glam::Vec3;
 use mmd::pmx::rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape};

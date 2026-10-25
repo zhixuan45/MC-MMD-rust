@@ -50,6 +50,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonOutlineB() { return data.toonOutlineB; }
 
     @Override public float getPhysicsGravityY() { return data.physicsGravityY; }
+    @Override public boolean isStagePhysicsResetOnFirstFrame() { return data.stagePhysicsResetOnFirstFrame; }
     @Override public float getPhysicsFps() { return data.physicsFps; }
     @Override public int getPhysicsSolverIterations() { return data.physicsSolverIterations; }
     @Override public int getPhysicsMaxSubstepCount() { return data.physicsMaxSubstepCount; }

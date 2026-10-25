@@ -8,6 +8,8 @@ public interface IPhysicsConfig {
 
     default boolean isPhysicsEnabled() { return true; }
 
+    default boolean isStagePhysicsResetOnFirstFrame() { return true; }
+
     default float getPhysicsGravityY() { return -98.0f; }
 
     default float getPhysicsFps() { return 60.0f; }

@@ -121,6 +121,8 @@
   "gui.mmdskin.mod_settings.physics_substeps.tooltip": "每帧最大子步数，防止卡顿时物理爆炸",
   "gui.mmdskin.mod_settings.physics_inertia": "惯性强度",
   "gui.mmdskin.mod_settings.physics_inertia.tooltip": "人物移动时头发被拖拽的程度（0=无惯性，100=正常）",
+  "gui.mmdskin.mod_settings.stage_physics_reset": "舞台动作首帧重置物理",
+  "gui.mmdskin.mod_settings.stage_physics_reset.tooltip": "开始舞台动作时先将物理状态重置到初始姿态",
   "gui.mmdskin.mod_settings.physics_max_linear_velocity": "最大线速度",
   "gui.mmdskin.mod_settings.physics_max_linear_velocity.tooltip": "线速度上限，防止卡顿或极端力导致物理爆炸",
   "gui.mmdskin.mod_settings.physics_max_angular_velocity": "最大角速度",

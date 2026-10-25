@@ -574,7 +574,7 @@ mod tests {
         assert!(model.init_physics());
         let output = model.issue_debug_diagnostic(2);
         assert!(output.contains("mode=Physics"));
-        assert!(output.contains("mode=PhysicsWithBone"));
+        assert_eq!(output.contains("mode=PhysicsWithBone"), cfg!(feature = "legacy-physics") || cfg!(feature = "upstream-native-mode2"));
         assert!(output.contains("simulation_rotation="));
         assert!(output.contains("angular_velocity="));
         assert!(output.contains("final_bone_rotation="));

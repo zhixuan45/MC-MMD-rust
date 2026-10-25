@@ -5,6 +5,23 @@ use std::collections::HashMap;
 
 /// 按尾巴骨骼链距离计算每段抬力延迟。
 pub(super) fn tail_wave_delays(bodies: &[MmdRigidBodyData], bone_parents: &[i32]) -> Vec<f32> {
+    let bodies: Vec<_> = bodies.iter().map(|body| TailWaveBody {
+        bone_index: body.bone_index,
+        is_tail_dynamic: body.is_tail_dynamic,
+        physics_mode: body.physics_mode,
+        initial_transform: body.initial_transform,
+    }).collect();
+    tail_wave_delays_from_bodies(&bodies, bone_parents)
+}
+
+pub(crate) struct TailWaveBody {
+    pub bone_index: i32,
+    pub is_tail_dynamic: bool,
+    pub physics_mode: PhysicsMode,
+    pub initial_transform: glam::Mat4,
+}
+
+pub(crate) fn tail_wave_delays_from_bodies(bodies: &[TailWaveBody], bone_parents: &[i32]) -> Vec<f32> {
     let mut delays = vec![0.0; bodies.len()];
     let mut positions = HashMap::<usize, glam::Vec3>::new();
     for body in bodies

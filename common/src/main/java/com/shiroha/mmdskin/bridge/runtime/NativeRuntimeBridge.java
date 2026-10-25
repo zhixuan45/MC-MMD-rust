@@ -637,6 +637,11 @@ public final class NativeRuntimeBridge implements
     }
 
     @Override
+    public void setTailPhysicsScale(long modelHandle, float blocksPerModelUnit) {
+        nativeFunc().SetTailPhysicsScale(modelHandle, blocksPerModelUnit);
+    }
+
+    @Override
     public void setAutoBlinkEnabled(long modelHandle, boolean enabled) {
         NativePoseInputs.assign(modelHandle, "blink", enabled ? 1 : 0);
         nativeFunc().SetAutoBlinkEnabled(modelHandle, enabled);

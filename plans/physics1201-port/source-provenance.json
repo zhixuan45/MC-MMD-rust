@@ -1,0 +1,17 @@
+{
+  "non_native_entry_count_old": 823,
+  "non_native_entry_count_new": 823,
+  "changed": [],
+  "added": [],
+  "removed": [],
+  "upstream_source_blobs": {
+    "rust_engine/src/physics/mod.rs": "cc2664bbd3b0ff5721de95f5bb5593cf6e4aff21",
+    "rust_engine/src/physics/bullet_ffi.rs": "ffca1c14636a5c469f4c672da2dbce5233acc41c",
+    "rust_engine/src/physics/config.rs": "eb1a72940435b81e80efd1f7ace9f6ad5fdaa693",
+    "rust_engine/src/physics/mmd_joint.rs": "1b8b22ad70883819a62984ea38cebc8cb9fc173d",
+    "rust_engine/src/physics/mmd_physics.rs": "73c81a7304309ff76edc1c9f54a754747cbcf16c",
+    "rust_engine/src/physics/mmd_rigid_body.rs": "2f92c5dac60d0e1c5e2fc9bf795a3c93ecf39284",
+    "rust_engine/bullet_wrapper/bw_api.cpp": "4f9d3aa9625c84c99f9973dfa0d92c1502cddfd5",
+    "rust_engine/bullet_wrapper/bw_api.h": "6a8df129582aea08df09b8b379bcb44927e22544"
+  }
+}

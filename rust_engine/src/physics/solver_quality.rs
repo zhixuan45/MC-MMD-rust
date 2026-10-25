@@ -18,7 +18,7 @@ fn valid_iterations(iterations: i32) -> bool {
     (1..=80).contains(&iterations)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::valid_iterations;
 

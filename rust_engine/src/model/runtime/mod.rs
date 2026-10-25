@@ -32,6 +32,10 @@ mod animation;
 mod head_eye;
 mod issue_diagnostics;
 mod material_visibility;
+#[cfg(not(feature = "legacy-physics"))]
+mod physics;
+#[cfg(feature = "legacy-physics")]
+#[path = "physics_legacy.rs"]
 mod physics;
 mod physics_snapshots;
 mod render_data;
@@ -145,6 +149,7 @@ pub struct MmdModel {
     physics_enabled: bool,
     /// 尾巴物理选项（每模型独立）。
     tail_idle_lift: bool,
+    tail_blocks_per_model_unit: f32,
     tail_movement_boost: bool,
     /// LOD 暂停恢复后需先按当前骨骼姿态重同步，避免约束追赶旧刚体。
     physics_resync_pending: bool,
@@ -305,6 +310,7 @@ impl MmdModel {
             physics: None,
             physics_enabled: false,
             tail_idle_lift: true,
+            tail_blocks_per_model_unit: 0.09,
             tail_movement_boost: true,
             physics_resync_pending: false,
             physics_rebuild_pending: false,

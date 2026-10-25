@@ -12,6 +12,11 @@ pub extern "system" fn Java_com_shiroha_mmdskin_bridge_runtime_PhysicsSolverNati
     _class: JClass,
     iterations: jint,
 ) -> jboolean {
+    #[cfg(not(feature = "legacy-physics"))]
+    if iterations != 10 {
+        log::warn!("upstream1201 backend uses original solver iterations=10; requested={} unsupported", iterations);
+        return 0;
+    }
     if !crate::physics::solver_quality::set_default_iterations(iterations) {
         return 0;
     }

@@ -12,10 +12,10 @@
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use mmd::pmx::joint::{Joint as PmxJoint, JointType};
 use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 use mmd::pmx::rigid_body::RigidBodyMode;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 use super::mmd_rigid_body::is_skirt_or_lower_garment;
 
 /// 裙摆横向连接允许的相对位移容差（单位：MMD 局部单位）。
@@ -33,7 +33,7 @@ pub const SKIRT_CROSS_LINEAR_STIFFNESS: [f32; 3] = [35.0, 35.0, 35.0];
 pub const SKIRT_CROSS_ANGULAR_STIFFNESS: [f32; 3] = [18.0, 18.0, 18.0];
 
 /// 为缺少横向环形约束的裙摆自动合成水平保形 6DOF 弹簧关节。
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 pub fn synthesize_missing_skirt_cross_joints(
     rigid_bodies: &[PmxRigidBody],
     existing_joints: &[PmxJoint],
@@ -185,18 +185,18 @@ fn synthesize_group(
     synthesized
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "skirt_cross_joints_tests.rs"]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "skirt_cross_joints_topology_tests.rs"]
 mod topology_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "skirt_cross_joints_bones_tests.rs"]
 mod bones_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "skirt_cross_joint_anchor_tests.rs"]
 mod anchor_tests;

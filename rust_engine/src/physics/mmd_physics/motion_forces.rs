@@ -5,7 +5,7 @@ use super::is_skirt_body_name;
 use super::{MMDPhysics, PhysicsMode};
 use glam::{Mat3, Mat4, Vec3};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests;
 
 impl MMDPhysics {

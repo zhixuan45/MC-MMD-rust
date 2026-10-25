@@ -234,7 +234,7 @@ fn format_quat(value: Quat) -> String {
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::max_matrix_error;
     use glam::{Mat4, Quat, Vec3};

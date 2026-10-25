@@ -79,7 +79,7 @@ fn rotation_delta(previous: Mat4, current: Mat4) -> f32 {
     .min(std::f32::consts::PI)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::*;
     use glam::{Quat, Vec3};

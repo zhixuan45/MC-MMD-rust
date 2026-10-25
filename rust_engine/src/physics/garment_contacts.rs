@@ -109,6 +109,6 @@ fn masks_allow_pair(a: &PmxRigidBody, a_mask: u16, b: &PmxRigidBody, b_mask: u16
     (a_mask & (1u16 << b.group.min(15))) != 0 && (b_mask & (1u16 << a.group.min(15))) != 0
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "garment_contacts_tests.rs"]
 mod tests;

@@ -71,6 +71,6 @@ fn valid_proxy(raw: &RigidBody, proxy: &HairCollisionProxy) -> bool {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "body_factory_tests.rs"]
 mod tests;

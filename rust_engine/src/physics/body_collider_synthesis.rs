@@ -156,12 +156,12 @@ fn has_region(bodies: &[PmxRigidBody], names: &[impl AsRef<str>], region: BodyRe
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 fn has_upper_body_collider(bodies: &[PmxRigidBody]) -> bool {
     has_region(bodies, &[] as &[String], BodyRegion::Upper)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 fn has_lower_body_collider(bodies: &[PmxRigidBody]) -> bool {
     has_region(bodies, &[] as &[String], BodyRegion::Lower)
 }
@@ -481,6 +481,6 @@ pub fn push_out_dynamic_bone_position(
     world_pos
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "body_collider_synthesis_tests.rs"]
 mod tests;

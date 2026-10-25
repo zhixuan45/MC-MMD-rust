@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(not(feature = "legacy-physics"))]
+use crate::physics::upstream_adapter::sync_config;
 
 impl MmdModel {
     pub fn init_physics(&mut self) -> bool {
@@ -7,6 +9,8 @@ impl MmdModel {
             return false;
         }
 
+        #[cfg(not(feature = "legacy-physics"))]
+        sync_config();
         let mut physics = match MMDPhysics::new() {
             Some(p) => p,
             None => {
@@ -15,7 +19,7 @@ impl MmdModel {
             }
         };
 
-        // 当前姿态只用于把新 Bullet 世界同步到动画帧，不能参与永久 offset 的构建。
+        // 收集骨骼变换（复用缓冲区）
         let bone_count = self.bone_manager.bone_count();
         self.physics_bone_transforms_buf
             .resize(bone_count, Mat4::IDENTITY);
@@ -23,134 +27,51 @@ impl MmdModel {
             self.physics_bone_transforms_buf[i] = self.bone_manager.get_global_transform(i);
         }
 
-        // 参考 CySpring 的初始化时序：静态参数始终来自绑定姿态，运行姿态单独提交。
-        // PMX 绑定骨骼没有初始旋转，initial_position 已是右手模型空间的全局位置。
-        let bind_bone_transforms: Vec<Mat4> = self
-            .bone_manager
-            .links()
-            .map(|bone| Mat4::from_translation(bone.initial_position))
-            .collect();
-
-        // 检测仅生成上、下半身候选计划；应用阶段按各自开关做初始交叠检查。
-        let bone_names: Vec<String> = self.bone_manager.links().map(|b| b.name.clone()).collect();
-        let bone_parents: Vec<_> = self.bone_manager.links().map(|b| b.parent_index).collect();
-        let bone_positions: Vec<[f32; 3]> = self
-            .bone_manager
-            .links()
-            .map(|b| b.initial_position.to_array())
-            .collect();
-        let config = crate::physics::config::get_config();
-        let fill_plan = crate::physics::body_collider_synthesis::detect_missing_body_colliders(
+        physics.build_physics(
             &self.rigid_bodies,
-            &bone_names,
-            &bone_positions,
+            &self.joints,
+            &self.physics_bone_transforms_buf,
         );
-        let synthesized_colliders =
-            crate::physics::body_collider_synthesis::apply_body_collider_fill(
-                fill_plan,
-                &self.rigid_bodies,
-                config.auto_upper_body_colliders,
-                config.auto_lower_body_colliders,
-            );
-        let all_rigid_bodies: Vec<mmd::pmx::rigid_body::RigidBody> =
-            if synthesized_colliders.is_empty() {
-                self.rigid_bodies.clone()
-            } else {
-                self.rigid_bodies
-                    .iter()
-                    .cloned()
-                    .chain(synthesized_colliders)
-                    .collect()
-            };
-
-        // 自动合成裙摆缺失的横向环形保形弹簧关节（方案 B）
-        let synthesized_cross_joints =
-            crate::physics::skirt_cross_joints::synthesize_missing_skirt_cross_joints_with_bones(
-                &all_rigid_bodies,
-                &self.joints,
-                &bone_names,
-                &bone_parents,
-            );
-        let all_joints: Vec<mmd::pmx::joint::Joint> = if synthesized_cross_joints.is_empty() {
-            self.joints.clone()
-        } else {
-            self.joints
-                .iter()
-                .cloned()
-                .chain(synthesized_cross_joints)
-                .collect()
-        };
-
-        // 游戏验收前仅显式实验入口启用；没有网格上下文的旧入口保持原行为。
-        let hair_plan = if std::env::var("MMD_HAIR_COLLIDER_COMPAT").is_ok_and(|v| v == "geometry")
-        {
-            Some(crate::physics::hair_collision_proxies::build_hair_collision_proxies(self))
-        } else {
-            None
-        };
-        physics.build_physics_with_proxies(
-            &all_rigid_bodies,
-            &all_joints,
-            &bind_bone_transforms,
-            &bone_names,
-            hair_plan
-                .as_ref()
-                .map_or(&[], |plan| plan.proxies.as_slice()),
-        );
-        physics.configure_embedded_body_contacts(&bone_names, &bone_parents);
+        let bone_names: Vec<String> = self.bone_manager.links().map(|b| b.name.clone()).collect();
+        let bone_parents: Vec<i32> = self.bone_manager.links().map(|b| b.parent_index).collect();
+        physics.set_tail_physics_scale(self.tail_blocks_per_model_unit);
         physics.set_tail_bone_names(&bone_names, &bone_parents);
         physics.set_tail_physics_options(self.tail_idle_lift, self.tail_movement_boost);
-        self.physics_position_aligned_bones = physics
-            .rigid_bodies
-            .iter()
-            .filter(|body| {
-                body.physics_mode == crate::physics::PhysicsMode::PhysicsWithBone
-                    && body.bullet_body.is_some()
-            })
-            .filter_map(|body| usize::try_from(body.bone_index).ok())
-            .filter(|&index| index < bone_count)
-            .collect();
-        if crate::physics::config::get_config().debug_log {
-            log::info!(
-                "[Bullet3][诊断][参数基准] offset_source=pmx_bind_pose runtime_pose_separate=true bones={} rigid_bodies={} joints={}",
-                bone_count,
-                all_rigid_bodies.len(),
-                all_joints.len(),
-            );
-        }
         physics.initialize(&self.physics_bone_transforms_buf);
 
-        self.physics = Some(physics);
-        self.physics_enabled = true;
+        self.physics_position_aligned_bones.clear();
         self.physics_resync_pending = false;
         self.physics_rebuild_pending = false;
+        self.physics = Some(physics);
+        self.physics_enabled = true;
         true
+    }
+
+    /// 读取尾部闲置受力：(骨骼索引、波形延迟秒数、当前加速度(方块/秒²)、目标抬高(方块))。
+    #[cfg(not(feature = "legacy-physics"))]
+    pub fn physics_tail_idle_samples(&self) -> Vec<(i32, f32, f32, f32)> {
+        self.physics.as_ref().map(|p| p.tail_idle_samples()).unwrap_or_default()
     }
 
     /// 重置物理系统
     pub fn reset_physics(&mut self) {
-        if self.physics.is_some() {
-            // 动画切换接口通常在新动画求值前调用；延迟到下一次物理更新，
-            // 避免把上一帧物理回写姿态当成新链条的初始化姿态。
-            self.physics_resync_pending = true;
-            if crate::physics::config::get_config().debug_log {
-                log::info!("[Bullet3][PHYSICS_RESYNC_REQUEST] deferred_until_post_animation=true");
-            }
+        if let Some(ref mut physics) = self.physics {
+            physics.reset();
         }
     }
 
     /// 启用/禁用物理
     pub fn set_physics_enabled(&mut self, enabled: bool) {
-        if enabled && !self.physics_enabled {
-            self.physics_resync_pending = true;
-        }
         self.physics_enabled = enabled;
     }
 
     /// 请求在下一次更新时按最新全局配置重建物理世界。
     pub fn request_physics_rebuild(&mut self) {
         if self.physics.is_some() {
-            self.physics_rebuild_pending = true;
+            let enabled = self.physics_enabled;
+            self.physics = None;
+            self.init_physics();
+            self.physics_enabled = enabled;
         }
     }
 
@@ -218,16 +139,13 @@ impl MmdModel {
             return;
         }
 
-        if self.physics_rebuild_pending {
-            self.physics = None;
-            if !self.init_physics() {
-                return;
-            }
+        // 收集骨骼变换（复用缓冲区，resize + 索引赋值避免 push 分支开销）
+        let bone_count = self.bone_manager.bone_count();
+        self.physics_bone_transforms_buf
+            .resize(bone_count, Mat4::IDENTITY);
+        for i in 0..bone_count {
+            self.physics_bone_transforms_buf[i] = self.bone_manager.get_global_transform(i);
         }
-
-        let timer = crate::evaluation_profile::timer();
-        self.collect_physics_bone_transforms();
-        crate::evaluation_profile::detail_stage(timer, 0);
 
         let model_transform = self.model_transform;
 
@@ -235,79 +153,43 @@ impl MmdModel {
         let mut physics = self.physics.take().unwrap();
 
         let max_step_delta = physics.max_step_delta_time();
-        if !delta_time.is_finite() {
-            // 时间参数异常时不重摆动态链，避免破坏已建立的关节锚点。
-            physics.recover_after_large_delta(&self.physics_bone_transforms_buf);
-            self.writeback_physics_bones(&mut physics);
-            self.physics = Some(physics);
-            return;
-        }
-
-        if delta_time <= 0.0 {
-            // 第一人称会执行零步长求值；只同步运动学刚体，不清空动态物理链。
+        if !delta_time.is_finite() || delta_time <= 0.0 {
+            // 零步长常用于第一人称预求值；只同步骨骼，不向 Bullet 累积时间或惯性。
             physics.sync_bodies(&self.physics_bone_transforms_buf);
-            self.writeback_physics_bones(&mut physics);
             self.physics = Some(physics);
             return;
         }
-
-        if self.physics_resync_pending {
-            // 动画切换是显式重置：按新动画姿态重新建立动态链的初始状态。
-            if crate::physics::config::get_config().debug_log {
-                log::info!(
-                    "[Bullet3][PHYSICS_RESYNC_APPLY] reason=requested post_animation_pose=true delta_time={:.6}",
-                    delta_time,
-                );
-            }
-            physics.initialize(&self.physics_bone_transforms_buf);
-            self.physics_resync_pending = false;
-            self.writeback_physics_bones(&mut physics);
-            self.physics = Some(physics);
-            return;
-        }
-
-        if delta_time > max_step_delta {
-            // 卡顿帧只清除旧速度；重新按骨骼摆放动态体会制造关节锚点失配。
-            physics.recover_after_large_delta(&self.physics_bone_transforms_buf);
-            self.writeback_physics_bones(&mut physics);
-            if crate::physics::config::get_config().debug_log {
-                log::info!(
-                    "[Bullet3][PHYSICS_GAP_RECOVER] reason=large_delta preserve_dynamic_constraints=true physical_bones_written=true delta_time={:.6}",
-                    delta_time,
-                );
-            }
+        if delta_time > max_step_delta * 5.0 {
+            // 卡顿/传送后的大步长会让约束跨越过远距离，丢弃该步以免拉坏动态链。
+            physics.recover_after_large_delta();
             self.physics = Some(physics);
             return;
         }
 
         // 1. 同步运动学刚体
-        let timer = crate::evaluation_profile::timer();
         physics.sync_bodies_with_model_velocity(
             &self.physics_bone_transforms_buf,
             delta_time,
             model_transform,
         );
-        crate::evaluation_profile::detail_stage(timer, 1);
 
         // 2. Bullet3 步进
-        if !physics.step_simulation(delta_time) {
-            self.physics = Some(physics);
-            return;
-        }
+        physics.step_simulation(delta_time);
 
         // 3. 同步物理结果回骨骼（复用内部缓冲区）
-        let timer = crate::evaluation_profile::timer();
-        self.writeback_physics_bones(&mut physics);
-        crate::evaluation_profile::detail_stage(timer, 4);
+        let dynamic_bone_transforms =
+            physics.get_dynamic_bone_transforms(&self.physics_bone_transforms_buf);
 
-        if crate::evaluation_profile::enabled() {
-            crate::evaluation_profile::physics_counts(
-                physics.rigid_bodies.len(),
-                physics.profile_constraint_count(),
-                physics.profile_manifold_count(),
-                physics.profile_contact_count(),
-            );
+        for &(bone_idx, transform) in dynamic_bone_transforms {
+            self.bone_manager
+                .set_global_transform_physics(bone_idx, transform);
         }
+
+        let physics_bone_indices = physics.get_dynamic_bone_indices();
+        self.bone_manager
+            .set_physics_bone_indices(physics_bone_indices);
+        self.bone_manager
+            .update_non_physics_children(physics_bone_indices);
 
         // 归还所有权
         self.physics = Some(physics);
@@ -408,6 +290,6 @@ impl MmdModel {
     // ======== VR 联动 ========
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-physics"))]
 #[path = "physics_tests.rs"]
 mod physics_tests;
