@@ -160,6 +160,8 @@ impl MmdModel {
         if !delta_time.is_finite() || delta_time <= 0.0 {
             // 零步长常用于第一人称预求值；只同步骨骼，不向 Bullet 累积时间或惯性。
             physics.sync_bodies(&self.physics_bone_transforms_buf);
+            // 动画求值已覆盖全局矩阵；不步进也必须发布现有物理姿态供蒙皮使用。
+            self.writeback_physics_bones(&mut physics);
             self.physics = Some(physics);
             return;
         }
@@ -175,6 +177,8 @@ impl MmdModel {
         if delta_time > max_step_delta * 5.0 {
             // 卡顿/传送后的大步长会让约束跨越过远距离，丢弃该步以免拉坏动态链。
             physics.recover_after_large_delta();
+            // 保留刚体还不够：本帧显示骨骼也必须继续使用它们，不能闪回纯动画。
+            self.writeback_physics_bones(&mut physics);
             self.physics = Some(physics);
             return;
         }
