@@ -168,8 +168,8 @@ fn idle_toggle_controls_the_entire_lift_force_independently_of_movement_boost() 
                 &[],
             );
             physics.set_tail_physics_options(enabled, boost);
-            // 固定模型、不播放动作；排除重力与运动输入，只观察闲置力。
-            for _ in 0..120 {
+            // 闲置脉冲间隔为 10–20 秒，覆盖首次触发及传播；固定模型排除运动输入。
+            for _ in 0..1800 {
                 physics.sync_bodies_with_model_velocity(&[], DT, Mat4::IDENTITY);
                 physics.step_simulation(DT);
             }
@@ -241,7 +241,8 @@ fn idle_wave_drives_bullet_segments_in_bone_order_and_stops_on_disable() {
     physics.set_tail_bone_names(&vec!["Tail".into(); 3], &[-1, 0, 1]);
     physics.set_tail_physics_options(true, false);
     let mut onset: [Option<usize>; 3] = [None; 3];
-    for frame in 0..140 {
+    // 首次脉冲最多等待 20 秒，再留出尾链传播时间。
+    for frame in 0..1800 {
         physics.sync_bodies_with_model_velocity(&[], DT, Mat4::IDENTITY);
         physics.step_simulation(DT);
         for (index, body) in physics.rigid_bodies.iter().enumerate() {

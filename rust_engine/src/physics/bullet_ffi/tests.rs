@@ -51,10 +51,6 @@ fn kinematic_body(shape: &BulletShape, transform: Mat4) -> BulletRigidBody {
     .expect("应能创建 Bullet 运动学测试刚体")
 }
 
-extern "C" {
-    fn bw_test_only_clear_motion_state(body: *mut std::ffi::c_void);
-}
-
 fn assert_vec3_close(actual: Vec3, expected: Vec3) {
     assert!(
         actual.abs_diff_eq(expected, 1e-4),

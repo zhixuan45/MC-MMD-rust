@@ -1,9 +1,15 @@
 //! 尾巴链波浪延迟
 
-use super::mmd_rigid_body::{MmdRigidBodyData, PhysicsMode};
+#[cfg(any(test, feature = "legacy-physics"))]
+use super::mmd_rigid_body::MmdRigidBodyData;
+use super::mmd_rigid_body::PhysicsMode;
 use std::collections::HashMap;
 
 /// 按尾巴骨骼链距离计算每段抬力延迟。
+///
+/// 这是 legacy 后端的入口（默认后端直接用 `tail_wave_delays_from_bodies`）；
+/// 测试在两种特性下都会覆盖它。
+#[cfg(any(test, feature = "legacy-physics"))]
 pub(super) fn tail_wave_delays(bodies: &[MmdRigidBodyData], bone_parents: &[i32]) -> Vec<f32> {
     let bodies: Vec<_> = bodies.iter().map(|body| TailWaveBody {
         bone_index: body.bone_index,

@@ -6,8 +6,6 @@ use std::sync::RwLock;
 /// 物理配置
 #[derive(Debug, Clone)]
 pub struct PhysicsConfig {
-    /// 是否启用物理模拟
-    pub enabled: bool,
     /// 重力 Y 分量（负数向下），默认 -98.0（MMD 标准）
     pub gravity_y: f32,
     /// 物理 FPS（Bullet3 固定时间步），默认 60.0
@@ -31,7 +29,6 @@ pub struct PhysicsConfig {
 impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             gravity_y: -98.0,
             physics_fps: 60.0,
             max_substep_count: 5,
@@ -57,8 +54,4 @@ pub fn get_config() -> PhysicsConfig {
 
 pub fn set_config(config: PhysicsConfig) {
     *PHYSICS_CONFIG.write().unwrap_or_else(|e| e.into_inner()) = config;
-}
-
-pub fn reset_config() {
-    *PHYSICS_CONFIG.write().unwrap_or_else(|e| e.into_inner()) = PhysicsConfig::default();
 }

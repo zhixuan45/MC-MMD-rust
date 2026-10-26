@@ -1,6 +1,10 @@
+// 快照类型两个后端共用；下面的判定函数与 `impl MMDPhysics` 只服务 legacy 后端。
+#[cfg(feature = "legacy-physics")]
 use super::super::mmd_rigid_body::has_non_skirt_local_semantics;
+#[cfg(feature = "legacy-physics")]
 use super::{MMDPhysics, PhysicsMode};
 
+#[cfg(feature = "legacy-physics")]
 use crate::physics::mmd_rigid_body::MmdRigidBodyData;
 
 #[derive(Debug, Clone)]
@@ -17,6 +21,7 @@ pub struct GarmentPhysicsSnapshot {
     pub max_simulation_motion_state_delta: f32,
 }
 
+#[cfg(feature = "legacy-physics")]
 fn is_leg(name: &str) -> bool {
     let name = name.to_lowercase();
     [
@@ -38,6 +43,7 @@ fn is_leg(name: &str) -> bool {
     .any(|part| name.contains(part))
 }
 
+#[cfg(feature = "legacy-physics")]
 fn is_body_collider(body: &MmdRigidBodyData) -> bool {
     let local = body.name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
@@ -46,6 +52,7 @@ fn is_body_collider(body: &MmdRigidBodyData) -> bool {
         && !has_non_skirt_local_semantics(&universal)
 }
 
+#[cfg(feature = "legacy-physics")]
 fn is_garment(body: &MmdRigidBodyData) -> bool {
     let local = body.name.to_lowercase();
     let universal = body.universal_name.to_lowercase();
@@ -69,6 +76,7 @@ fn is_garment(body: &MmdRigidBodyData) -> bool {
     .any(|part| local.contains(part) || universal.contains(part))
 }
 
+#[cfg(feature = "legacy-physics")]
 impl MMDPhysics {
     /// 读取腿部与裙摆刚体接触及模拟姿态差值，不修改物理状态。
     pub fn garment_snapshot(&self) -> GarmentPhysicsSnapshot {

@@ -7,6 +7,7 @@ const LIFT_GRAVITY_MIN: f32 = 0.08;
 const LIFT_GRAVITY_MAX: f32 = 0.14;
 // 保留旧参考后端的加速度倍率；默认后端按方块位移目标计算附加力。
 const IDLE_LIFT_MULTIPLIER: f32 = 8.0;
+#[cfg(feature = "legacy-physics")]
 const MOVEMENT_FORCE_MULTIPLIER: f32 = 1.5;
 const RESTORE_SECONDS: f32 = 0.55;
 const IDLE_CYCLE_MIN_SECONDS: f32 = 10.0;
@@ -175,15 +176,21 @@ impl TailForceState {
             .fold(root, f32::max)
     }
 
+    /// 仅 upstream1201 后端读取波形延迟（legacy 后端用 `idle_lift_for_body`）。
+    #[cfg(any(test, not(feature = "legacy-physics")))]
     pub fn wave_delay(&self, body_index: usize) -> f32 {
         self.wave_delays.get(body_index).copied().unwrap_or(0.0)
     }
 
+    /// 仅 legacy 后端（及测试）使用的抬力入口。
+    #[cfg(any(test, feature = "legacy-physics"))]
     pub fn idle_lift_for_body(&self, body_index: usize, inertia_strength: f32) -> f32 {
         let delay = self.wave_delays.get(body_index).copied().unwrap_or(0.0);
         self.delayed_lift(delay) * inertia_strength.max(0.0) * IDLE_LIFT_MULTIPLIER
     }
 
+    /// 仅 upstream1201 后端读取闲置位移偏移。
+    #[cfg(any(test, not(feature = "legacy-physics")))]
     pub fn idle_displacement_offset_blocks(&self, body_index: usize) -> Vec3 {
         let envelope = if self.lift_accel > 0.0 {
             self.delayed_lift(self.wave_delay(body_index)) / self.lift_accel
@@ -193,6 +200,8 @@ impl TailForceState {
         Vec3::new(0.0, 1.0, 0.5) * envelope * self.displacement_scale
     }
 
+    /// 仅 legacy 后端使用的运动加速补偿。
+    #[cfg(feature = "legacy-physics")]
     pub fn boost_movement_acceleration(&self, acceleration: Vec3) -> Vec3 {
         if self.movement_boost {
             acceleration * MOVEMENT_FORCE_MULTIPLIER

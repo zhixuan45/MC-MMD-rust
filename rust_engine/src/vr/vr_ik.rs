@@ -1299,7 +1299,7 @@ fn derive_palm_anchor(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::skeleton::{AppendConfig, BoneFlags, BoneLink, BoneManager};
+    use crate::skeleton::{BoneLink, BoneManager};
 
     #[test]
     fn derive_hand_bind_pose_should_use_finger_axes_for_rotation() {
@@ -1469,77 +1469,6 @@ mod tests {
         (bones, 1)
     }
 
-    fn make_test_wrist_children_pose(side: HandSide) -> (BoneManager, usize, Vec3, Vec3) {
-        let mut bones = BoneManager::new();
-
-        let mut root = BoneLink::new("root".to_string());
-        root.initial_position = Vec3::ZERO;
-        root.parent_index = -1;
-        bones.add_bone(root);
-
-        let wrist_name = match side {
-            HandSide::Left => "左手首",
-            HandSide::Right => "右手首",
-        };
-        let mut wrist = BoneLink::new(wrist_name.to_string());
-        wrist.initial_position = Vec3::ZERO;
-        wrist.parent_index = 0;
-        bones.add_bone(wrist);
-
-        let palm_a = Vec3::new(0.2, 0.9, 0.15);
-        let palm_b = Vec3::new(-0.2, 0.85, 0.2);
-        for (index, position) in [palm_a, palm_b].into_iter().enumerate() {
-            let mut child = BoneLink::new(format!("palm_child_{index}"));
-            child.initial_position = position;
-            child.parent_index = 1;
-            bones.add_bone(child);
-        }
-
-        bones.build_hierarchy();
-        (bones, 1, palm_a, palm_b)
-    }
-
-    fn make_test_wrist_children_pose_with_helper(
-        side: HandSide,
-    ) -> (BoneManager, usize, Vec3, Vec3) {
-        let mut bones = BoneManager::new();
-
-        let mut root = BoneLink::new("root".to_string());
-        root.initial_position = Vec3::ZERO;
-        root.parent_index = -1;
-        bones.add_bone(root);
-
-        let wrist_name = match side {
-            HandSide::Left => "左手首",
-            HandSide::Right => "右手首",
-        };
-        let mut wrist = BoneLink::new(wrist_name.to_string());
-        wrist.initial_position = Vec3::ZERO;
-        wrist.parent_index = 0;
-        bones.add_bone(wrist);
-
-        let helper = Vec3::new(0.0, 0.1, -0.7);
-        let palm_a = Vec3::new(0.2, 0.9, 0.15);
-        let palm_b = Vec3::new(-0.2, 0.85, 0.2);
-        let helper_name = match side {
-            HandSide::Left => "左手捩",
-            HandSide::Right => "右手捩",
-        };
-        for (name, position) in [
-            (helper_name.to_string(), helper),
-            ("palm_child_0".to_string(), palm_a),
-            ("rightIndexProximal".to_string(), palm_b),
-        ] {
-            let mut child = BoneLink::new(name);
-            child.initial_position = position;
-            child.parent_index = 1;
-            bones.add_bone(child);
-        }
-
-        bones.build_hierarchy();
-        (bones, 1, palm_a, palm_b)
-    }
-
     fn make_tracking_test_skeleton() -> (BoneManager, BodyTrackingCalibration) {
         let mut bones = BoneManager::new();
 
@@ -1585,28 +1514,6 @@ mod tests {
                 shoulder_follow_gain: 0.45,
             },
         )
-    }
-
-    fn make_tracking_test_skeleton_with_append_twist(
-    ) -> (BoneManager, BodyTrackingCalibration, usize, usize) {
-        let (mut bones, calibration) = make_tracking_test_skeleton();
-        let elbow_idx = bones.find_bone_by_name("右ひじ").expect("right elbow");
-
-        let mut append_bone = BoneLink::new("右手捩".to_string());
-        append_bone.initial_position = Vec3::new(4.35, 11.85, 1.25);
-        append_bone.parent_index = elbow_idx as i32;
-        append_bone.flags = BoneFlags::ROTATABLE | BoneFlags::APPEND_ROTATE;
-        append_bone.append_config = Some(AppendConfig {
-            parent: elbow_idx as i32,
-            rate: 0.5,
-        });
-        bones.add_bone(append_bone);
-        bones.build_hierarchy();
-
-        let append_idx = bones
-            .find_bone_by_name("右手捩")
-            .expect("append twist bone");
-        (bones, calibration, elbow_idx, append_idx)
     }
 
     fn make_tracking_test_skeleton_with_lower_arm_helper() -> (
@@ -1852,14 +1759,6 @@ mod tests {
             },
             body_calibration: calibration,
         }
-    }
-
-    fn assert_quat_eq(actual: Quat, expected: Quat) {
-        let similarity = actual.dot(expected).abs();
-        assert!(
-            (1.0 - similarity) < 1e-5,
-            "quat mismatch: actual={actual:?} expected={expected:?}",
-        );
     }
 
     fn assert_vec3_eq(actual: Vec3, expected: Vec3) {

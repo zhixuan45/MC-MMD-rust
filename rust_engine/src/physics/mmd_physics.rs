@@ -3,39 +3,65 @@
 //! 移植自 babylon-mmd，使用 Bullet3 引擎。
 //! 实现 commitBodyStates / syncBodies / stepSimulation / syncBones 全套流程。
 
+#[cfg(feature = "legacy-physics")]
 use std::collections::{HashMap, HashSet};
 
-use glam::{Mat4, Vec3};
+#[cfg(feature = "legacy-physics")]
+use glam::Mat4;
+use glam::Vec3;
 
+#[cfg(feature = "legacy-physics")]
 use mmd::pmx::joint::Joint as PmxJoint;
+#[cfg(feature = "legacy-physics")]
 use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
 
+use super::bullet_ffi;
+#[cfg(feature = "legacy-physics")]
+use super::bullet_ffi::BulletWorld;
+#[cfg(feature = "legacy-physics")]
 use self::diagnostics::{ActivePhysicsDebugConfig, PhysicsDebugTelemetry};
-use super::bullet_ffi::{self, BulletWorld};
+#[cfg(feature = "legacy-physics")]
 use super::collision_topology::{
     build_filter_plan, CollisionAabb, CollisionBody, CollisionFilterPlan, CollisionStabilityMode,
 };
+#[cfg(feature = "legacy-physics")]
 use super::config::{get_config, PhysicsConfig};
+#[cfg(feature = "legacy-physics")]
 use super::garment_contacts::build_garment_contact_plan;
+#[cfg(feature = "legacy-physics")]
 use super::kinematic_target_filter::KinematicTargetFilter;
+#[cfg(feature = "legacy-physics")]
 use super::mmd_joint::MmdJointData;
+#[cfg(feature = "legacy-physics")]
 use super::mmd_rigid_body::{
     body_collider_scale_flags, classify_tail_dynamic,
     effective_collision_shape_size_with_static_scale, garment_contact_body_flags,
     is_skirt_or_lower_garment, is_tail_dynamic_part, MmdRigidBodyData, PhysicsMode,
 };
+#[cfg(feature = "legacy-physics")]
 use super::physics_diagnostics::model_topology_signature;
+#[cfg(feature = "legacy-physics")]
 use super::tail_forces::TailForceState;
 
+// 下面 8 个模块只实现 legacy 后端（`MMDPhysics`）的关联方法，随 legacy 实现一起门控。
+#[cfg(feature = "legacy-physics")]
 mod body_contacts;
+#[cfg(feature = "legacy-physics")]
 mod body_factory;
+#[cfg(feature = "legacy-physics")]
 mod diagnostics;
+#[cfg(feature = "legacy-physics")]
 mod evaluation;
+// garment_diagnostics / snapshots 里的快照类型两个后端共用，模块本身保持编译。
 mod garment_diagnostics;
+#[cfg(feature = "legacy-physics")]
 mod hair_diagnostics;
+#[cfg(feature = "legacy-physics")]
 mod issue_diagnostics;
+#[cfg(feature = "legacy-physics")]
 mod motion_forces;
 mod snapshots;
+#[cfg(feature = "legacy-physics")]
 mod solver_controls;
 
 pub use garment_diagnostics::{GarmentContactSnapshot, GarmentPhysicsSnapshot};
@@ -48,6 +74,7 @@ pub use snapshots::{
 /// 移植自 babylon-mmd，管理 Bullet3 世界、刚体、关节。
 /// 物理在模型局部空间运行（Minecraft 仅绕 Y 轴旋转，重力方向不变）。
 /// 流程：build_physics → 每帧 [sync_bodies → stepSimulation → sync_bones]
+#[cfg(feature = "legacy-physics")]
 pub struct MMDPhysics {
     /// MMD 关节数据列表（Drop 顺序：约束先于刚体先于世界）
     joints: Vec<MmdJointData>,
@@ -121,6 +148,7 @@ pub struct PhysicsJointSnapshot {
     pub diagnostic: bullet_ffi::ConstraintDiagnostic,
 }
 
+#[cfg(feature = "legacy-physics")]
 impl MMDPhysics {
     pub(crate) fn profile_constraint_count(&self) -> usize {
         self.joints.len()
@@ -830,6 +858,7 @@ impl MMDPhysics {
     }
 }
 
+#[cfg(feature = "legacy-physics")]
 fn is_skirt_body_name(name: &str) -> bool {
     const SKIRT_PARTS: &[&str] = &[
         "裙",
@@ -851,6 +880,7 @@ fn is_skirt_body_name(name: &str) -> bool {
 }
 
 /// 根据实验性总开关选择 Bullet 的允许碰撞掩码。
+#[cfg(feature = "legacy-physics")]
 fn effective_collision_mask(collision_enabled: bool, pmx_mask: u16) -> i32 {
     if collision_enabled {
         pmx_mask as i32
@@ -863,6 +893,7 @@ fn effective_collision_mask(collision_enabled: bool, pmx_mask: u16) -> i32 {
 #[path = "mmd_physics_tests.rs"]
 mod tests;
 
+#[cfg(feature = "legacy-physics")]
 impl Drop for MMDPhysics {
     fn drop(&mut self) {
         let debug_log = get_config().debug_log;
@@ -897,6 +928,7 @@ impl Drop for MMDPhysics {
     }
 }
 
+#[cfg(feature = "legacy-physics")]
 fn log_lifecycle_stats(phase: &str, world_id: usize, stats: bullet_ffi::BulletAllocStats) {
     log::info!(
         "[Bullet3][LIFECYCLE] phase={} world_id={} counts=process_global other_worlds_possible=true worlds={} shapes={} bodies={} constraints={} motionStates={}",

@@ -1,6 +1,10 @@
 //! 探针与碰撞线框共用真实刚体状态，统一标明时间相位。
-use super::{MMDPhysics, PhysicsMode};
-use crate::physics::bullet_ffi::{ContactSamplePhase, MAX_CONTACT_QUERY_TARGETS};
+use crate::physics::PhysicsMode;
+use crate::physics::bullet_ffi::ContactSamplePhase;
+#[cfg(feature = "legacy-physics")]
+use super::MMDPhysics;
+#[cfg(feature = "legacy-physics")]
+use crate::physics::bullet_ffi::MAX_CONTACT_QUERY_TARGETS;
 use glam::{Mat4, Vec3};
 
 #[derive(Debug, Clone)]
@@ -62,6 +66,7 @@ pub struct PhysicsBodySnapshot {
     pub angular_velocity: Vec3,
 }
 
+#[cfg(feature = "legacy-physics")]
 impl MMDPhysics {
     pub fn contact_points_matching(
         &self,

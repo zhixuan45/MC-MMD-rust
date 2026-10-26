@@ -52,6 +52,7 @@ pub(crate) fn detail_stage(start: Option<Instant>, index: usize) {
     }
 }
 
+#[cfg(feature = "legacy-physics")]
 pub(crate) fn physics_counts(bodies: usize, constraints: usize, manifolds: usize, contacts: usize) {
     CURRENT.with(|v| {
         if let Some(mut sample) = v.get() {
@@ -64,6 +65,7 @@ pub(crate) fn physics_counts(bodies: usize, constraints: usize, manifolds: usize
     });
 }
 
+#[cfg(feature = "legacy-physics")]
 pub(crate) fn physics_parallel_stats(
     width: usize,
     peak: usize,
@@ -88,6 +90,7 @@ pub(crate) fn physics_parallel_stats(
 thread_local! { static CURRENT: Cell<Option<Sample>> = const { Cell::new(None) }; }
 thread_local! { static FAILED: Cell<bool> = const { Cell::new(false) }; }
 
+#[cfg(any(test, feature = "legacy-physics"))]
 pub(crate) fn mark_failed() {
     FAILED.with(|value| value.set(true));
 }

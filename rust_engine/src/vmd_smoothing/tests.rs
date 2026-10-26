@@ -1,11 +1,5 @@
 use super::{smooth_bytes, BoneSelection, SmoothingOptions, VmdDocument};
-use crate::animation::VmdFile;
 use glam::Vec3;
-
-const SPRINT: &[u8] =
-    include_bytes!("../../../common/src/main/resources/assets/mmdskin/default_anim/sprint.vmd");
-const WALK: &[u8] =
-    include_bytes!("../../../common/src/main/resources/assets/mmdskin/default_anim/walk.vmd");
 
 fn options(selection: BoneSelection) -> SmoothingOptions {
     SmoothingOptions {
@@ -75,13 +69,6 @@ fn records_for(bytes: &[u8], name: &str) -> Vec<Vec<u8>> {
 
 fn raw_position(record: &[u8]) -> Vec3 {
     Vec3::new(f32_at(record, 19), f32_at(record, 23), -f32_at(record, 27))
-}
-
-fn second_difference_energy(positions: &[Vec3]) -> f32 {
-    positions
-        .windows(3)
-        .map(|triple| (triple[2] - triple[1] * 2.0 + triple[0]).length())
-        .sum()
 }
 
 fn assert_extrema_and_range_preserved(original: &[Vec3], output: &[Vec3]) {

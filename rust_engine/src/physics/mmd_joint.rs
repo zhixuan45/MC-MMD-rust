@@ -175,6 +175,7 @@ impl MmdJointData {
     ///
     /// 约束先于运行姿态初始化创建，因此刚体重置后必须重新取样 equilibrium；
     /// 否则弹簧会把无碰撞、锚点重合的初态主动拉回旧绑定姿态。
+    #[cfg(feature = "legacy-physics")]
     pub(crate) fn rebase_equilibrium(&self) {
         if let Some(constraint) = self.constraint.as_ref() {
             constraint.set_equilibrium_point();
@@ -380,35 +381,8 @@ pub(crate) fn joint_anchor_position_error(
 
 #[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
-    use super::{
-        apply_wide_skirt_chain_fallback, apply_wide_skirt_root_fallback,
-        joint_anchor_position_error, joint_rotation, MmdJointData, JOINT_STOP_ERP,
-    };
-    use crate::physics::bullet_ffi::{BulletRigidBody, BulletShape, RigidBodyInfo};
-    use glam::{Mat4, Quat, Vec3};
-    use mmd::pmx::{
-        joint::{Joint, JointType},
-        rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape},
-    };
-
-    fn test_body(shape: &BulletShape) -> BulletRigidBody {
-        BulletRigidBody::new(
-            &RigidBodyInfo {
-                mass: 1.0,
-                linear_damping: 0.0,
-                angular_damping: 0.0,
-                friction: 0.5,
-                restitution: 0.0,
-                additional_damping: false,
-                is_kinematic: false,
-                disable_deactivation: true,
-                no_contact_response: false,
-                initial_transform: Mat4::IDENTITY,
-            },
-            shape,
-        )
-        .expect("应能创建关节测试刚体")
-    }
+    use super::apply_wide_skirt_root_fallback;
+    use mmd::pmx::rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape};
 
     fn test_pmx_body(name: &str, mode: RigidBodyMode) -> RigidBody {
         RigidBody {

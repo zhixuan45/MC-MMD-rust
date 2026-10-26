@@ -1059,9 +1059,3 @@ pub fn apply_arm_retarget_correction_with_reference(
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-}

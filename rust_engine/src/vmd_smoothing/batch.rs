@@ -352,16 +352,6 @@ mod tests {
         }
     }
 
-    fn valid_empty_vmd2() -> Vec<u8> {
-        let mut bytes = vec![0; 50];
-        bytes[..25].copy_from_slice(b"Vocaloid Motion Data 0002");
-        bytes.extend_from_slice(&0_u32.to_le_bytes()); // 骨骼
-        for _ in 0..5 {
-            bytes.extend_from_slice(&0_u32.to_le_bytes());
-        }
-        bytes
-    }
-
     #[test]
     fn write_copy_does_not_overwrite_existing_file() {
         let root = temp_dir();

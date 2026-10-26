@@ -1,11 +1,6 @@
 use super::{
-    batch::process_directory_grouped, parse_group_config, serialize_group_config, smooth_bytes,
+    parse_group_config, serialize_group_config, smooth_bytes,
     smooth_grouped_bytes, BoneSelection, SmoothingGroup, SmoothingOptions, VmdDocument,
-};
-use std::{
-    fs,
-    path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 fn record(name: &str, frame: u32, x: f32) -> Vec<u8> {
@@ -58,16 +53,6 @@ fn track_records(bytes: &[u8], name: &str) -> Vec<Vec<u8>> {
             decoded.trim_end_matches('\0') == name
         })
         .collect()
-}
-
-fn temp_dir() -> PathBuf {
-    let id = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let path = std::env::temp_dir().join(format!("mmd-group-{}-{id}", std::process::id()));
-    fs::create_dir_all(&path).unwrap();
-    path
 }
 
 #[test]

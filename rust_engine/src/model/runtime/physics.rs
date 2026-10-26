@@ -217,16 +217,6 @@ impl MmdModel {
             .update_non_physics_children(physics_bone_indices);
     }
 
-    /// 收集当前骨骼全局矩阵，供初始化、重置和每帧物理同步复用。
-    fn collect_physics_bone_transforms(&mut self) {
-        let bone_count = self.bone_manager.bone_count();
-        self.physics_bone_transforms_buf
-            .resize(bone_count, Mat4::IDENTITY);
-        for i in 0..bone_count {
-            self.physics_bone_transforms_buf[i] = self.bone_manager.get_global_transform(i);
-        }
-    }
-
     /// 结束物理更新，清除物理骨骼保护
     /// 在 tick_animation 结束时调用
     pub(super) fn end_physics_update(&mut self) {

@@ -11,12 +11,6 @@ use super::bullet_ffi::{BulletConstraint, BulletRigidBody, BT_CONSTRAINT_STOP_ER
 
 /// MMD 关节数据
 pub struct MmdJointData {
-    /// 关节名称
-    pub name: String,
-    /// 刚体 A 索引
-    pub rigid_body_a_index: i32,
-    /// 刚体 B 索引
-    pub rigid_body_b_index: i32,
     /// Bullet3 约束
     pub constraint: Option<BulletConstraint>,
 }
@@ -101,11 +95,6 @@ impl MmdJointData {
             }
         }
 
-        Self {
-            name: pmx_joint.local_name.clone(),
-            rigid_body_a_index: pmx_joint.rigid_body_a_index,
-            rigid_body_b_index: pmx_joint.rigid_body_b_index,
-            constraint,
-        }
+        Self { constraint }
     }
 }

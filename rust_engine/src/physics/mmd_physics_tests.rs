@@ -1,4 +1,4 @@
-use super::{effective_collision_mask, ActivePhysicsDebugConfig, PhysicsDebugTelemetry};
+use super::effective_collision_mask;
 use crate::physics::config::PhysicsConfig;
 use glam::{Mat4, Vec3};
 

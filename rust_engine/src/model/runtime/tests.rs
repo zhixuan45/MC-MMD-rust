@@ -1,7 +1,5 @@
 use super::*;
 use crate::skeleton::BoneLink;
-use crate::vr::{VrTrackedPose, XR_TO_MODEL_SCALE};
-use crate::vrm_runtime::{ArmIkHandCalibration, BodyTrackingCalibration};
 
 #[test]
 fn hand_matrix_should_prefer_explicit_attachment_over_dummy_and_wrist() {

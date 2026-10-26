@@ -87,6 +87,7 @@ pub fn body_collider_scale_flags(rigid_bodies: &[PmxRigidBody], joints: &[PmxJoi
 /// 也不能因此把身体碰撞体从 Stable/Relaxed 的兼容计划中删除。
 /// 蝶律 #25 下半身这类髋部体积常同时是裙摆根关节父刚体，必须保留接触资格；
 /// 仅排除专门用来挂关节的小球锚点。
+#[cfg(feature = "legacy-physics")]
 pub(super) fn garment_contact_body_flags(
     rigid_bodies: &[PmxRigidBody],
     joints: &[PmxJoint],
@@ -110,6 +111,7 @@ pub(super) fn garment_contact_body_flags(
 }
 
 /// 刚体名可能误称下半身；已知上身骨不能触发额外裙摆碰撞。
+#[cfg(feature = "legacy-physics")]
 fn garment_body_bone_is_compatible(body: &PmxRigidBody, bone_names: &[String]) -> bool {
     if bone_names.is_empty() {
         return true; // 无骨骼元数据的低级调用保留原分类。
@@ -394,6 +396,7 @@ fn collision_pair_is_enabled(a: &PmxRigidBody, b: &PmxRigidBody) -> bool {
     (a_mask & (1u16 << b.group.min(15))) != 0 && (b_mask & (1u16 << a.group.min(15))) != 0
 }
 
+#[cfg(feature = "legacy-physics")]
 fn is_dedicated_kinematic_stub(
     body_index: usize,
     rigid_bodies: &[PmxRigidBody],
@@ -404,6 +407,7 @@ fn is_dedicated_kinematic_stub(
     })
 }
 
+#[cfg(feature = "legacy-physics")]
 fn is_kinematic_joint_stub(body: &PmxRigidBody) -> bool {
     // 关节锚点球通常半径小于身体壳；髋部胶囊和 Oguri pelvis 球不能当 stub。
     matches!(body.shape, RigidBodyShape::Sphere) && body.size[0] < 0.45
@@ -688,12 +692,10 @@ fn normalize_rigid_body_rotation(rotation: [f32; 3]) -> [f32; 3] {
 #[cfg(all(test, feature = "legacy-physics"))]
 mod tests {
     use super::{
-        body_collider_scale_flags, collision_half_extents, effective_collision_shape_size,
-        effective_collision_shape_size_with_static_scale, garment_contact_body_flags,
-        is_dynamic_chain_anchor, normalize_rigid_body_rotation, pmx_collision_mask,
-        rigid_body_rotation,
+        effective_collision_shape_size, garment_contact_body_flags, is_dynamic_chain_anchor,
+        pmx_collision_mask, rigid_body_rotation,
     };
-    use glam::{Mat4, Quat, Vec3};
+    use glam::Quat;
     use mmd::pmx::joint::{Joint, JointType};
     use mmd::pmx::rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape};
 

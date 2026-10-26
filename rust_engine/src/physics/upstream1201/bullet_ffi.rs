@@ -184,15 +184,12 @@ mod ffi {
             index: c_int,
             stiffness: c_float,
         );
-        pub fn u120_bw_6dof_spring_set_damping(c: *mut U120_BW_Constraint, index: c_int, damping: c_float);
-        pub fn u120_bw_6dof_spring_set_equilibrium_point(c: *mut U120_BW_Constraint);
         pub fn u120_bw_6dof_spring_set_param(
             c: *mut U120_BW_Constraint,
             param: c_int,
             value: c_float,
             axis: c_int,
         );
-        pub fn u120_bw_6dof_spring_use_frame_offset(c: *mut U120_BW_Constraint, on: bool);
     }
 }
 
@@ -493,21 +490,10 @@ impl BulletConstraint {
         unsafe { ffi::u120_bw_6dof_spring_set_stiffness(self.ptr, index, stiffness) }
     }
 
-    pub fn set_damping(&self, index: i32, damping: f32) {
-        unsafe { ffi::u120_bw_6dof_spring_set_damping(self.ptr, index, damping) }
-    }
-
-    pub fn set_equilibrium_point(&self) {
-        unsafe { ffi::u120_bw_6dof_spring_set_equilibrium_point(self.ptr) }
-    }
-
     pub fn set_param(&self, param: i32, value: f32, axis: i32) {
         unsafe { ffi::u120_bw_6dof_spring_set_param(self.ptr, param, value, axis) }
     }
 
-    pub fn use_frame_offset(&self, on: bool) {
-        unsafe { ffi::u120_bw_6dof_spring_use_frame_offset(self.ptr, on) }
-    }
 }
 
 impl Drop for BulletConstraint {

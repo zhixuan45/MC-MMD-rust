@@ -18,8 +18,6 @@ pub(crate) fn inv_z(m: Mat4) -> Mat4 {
     z * m * z
 }
 
-pub use bullet_ffi::{get_alloc_stats, BulletAllocStats};
-pub use config::{get_config, reset_config, set_config, PhysicsConfig};
-pub use mmd_joint::MmdJointData;
+// 本模块只对外暴露真正被使用的上游实现入口；其余 `*::` 子模块由调用方按全路径引用，
+// 这里不再重复 re-export（否则私有模块下的 re-export 全是未使用导入）。
 pub use mmd_physics::MMDPhysics;
-pub use mmd_rigid_body::{MmdRigidBodyData, PhysicsMode};

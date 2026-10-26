@@ -390,11 +390,4 @@ mod tests {
         );
     }
 
-    fn assert_quat_eq(actual: Quat, expected: Quat) {
-        let similarity = actual.dot(expected).abs();
-        assert!(
-            similarity > 1.0 - 1e-5,
-            "quat mismatch: actual={actual:?} expected={expected:?}",
-        );
-    }
 }

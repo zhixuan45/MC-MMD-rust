@@ -508,6 +508,7 @@ impl BulletWorld {
     }
 
     /// 返回仅供生命周期日志关联的 opaque 地址值。
+    #[cfg(feature = "legacy-physics")]
     pub(super) fn opaque_id(&self) -> usize {
         self.ptr as usize
     }

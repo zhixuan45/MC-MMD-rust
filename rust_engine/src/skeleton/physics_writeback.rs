@@ -71,18 +71,6 @@ mod tests {
     use crate::skeleton::BoneLink;
     use glam::{Quat, Vec3};
 
-    fn chain() -> BoneSet {
-        let mut bones = BoneSet::new();
-        for i in 0..3 {
-            let mut bone = BoneLink::new(format!("bone{i}"));
-            bone.parent_index = i - 1;
-            bone.initial_position = Vec3::Y * i as f32;
-            bones.add_bone(bone);
-        }
-        bones.build_hierarchy();
-        bones
-    }
-
 
 
 

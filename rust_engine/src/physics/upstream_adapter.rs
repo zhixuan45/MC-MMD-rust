@@ -13,7 +13,6 @@ use std::ops::{Deref, DerefMut};
 pub(crate) fn sync_config() {
     let c = super::config::get_config();
     upstream1201::config::set_config(upstream1201::config::PhysicsConfig {
-        enabled: c.enabled,
         gravity_y: c.gravity_y,
         physics_fps: c.physics_fps,
         max_substep_count: c.max_substep_count,
