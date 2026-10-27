@@ -1,6 +1,8 @@
 package com.shiroha.mmdskin.player.animation;
 
 import com.shiroha.mmdskin.compat.tacz.TaczGunDetector;
+import com.shiroha.mmdskin.config.ModelAnimConfig;
+import com.shiroha.mmdskin.config.ModelConfigManager;
 import com.shiroha.mmdskin.player.runtime.EntityAnimState;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.player.sync.PlayerActionSyncService;
@@ -94,15 +96,42 @@ public class AnimationStateManager {
         model.modelInstance().setLayerWeight(1, 1.0f);
 
         if ((!player.isUsingItem() && !player.swinging && player.hurtTime <= 0) || player.isSleeping()) {
+            if (!player.isSleeping() && player.getHealth() > 0.0f && !player.getMainHandItem().isEmpty()
+                    && applyHeldPmxHandPose(model)) {
+                return;
+            }
             if (model.entityState().stateLayers[1] != EntityAnimState.State.Idle) {
                 model.entityState().stateLayers[1] = EntityAnimState.State.Idle;
                 model.entityState().layerAnimationKeys[1] = null;
                 model.modelInstance().setLayerLoop(1, true);
                 model.modelInstance().transitionAnim(0, 1, TRANSITION_TIME);
             }
-        } else if (player.hurtTime <= 0) {
-            updateHandAnimation(player, model);
+        } else {
+            // Release the grip before a use/swing animation or damage reaction takes over.
+            if (model.entityState().stateLayers[1] == EntityAnimState.State.HeldPmxHandPose) {
+                clearLayer1Animation(model);
+            }
+            if (player.hurtTime <= 0) {
+                updateHandAnimation(player, model);
+            }
         }
+    }
+
+    private static boolean applyHeldPmxHandPose(ManagedModel model) {
+        if (ModelConfigManager.getConfig(model.requestKey().modelName()).heldPmxFile.isEmpty()) {
+            return false;
+        }
+        String key = EntityAnimState.State.HeldPmxHandPose.propertyName;
+        // This pose is opt-in and model-specific; no missing-animation lookup every frame.
+        if (ModelAnimConfig.getMappedFile(model.modelInstance().modelDir(), key) == null) {
+            return false;
+        }
+        long animation = model.animationLibrary().animation(key);
+        if (animation == 0L) {
+            return false;
+        }
+        applyLayerAnimation(model, EntityAnimState.State.HeldPmxHandPose, key, animation, 1, true);
+        return true;
     }
 
     /**

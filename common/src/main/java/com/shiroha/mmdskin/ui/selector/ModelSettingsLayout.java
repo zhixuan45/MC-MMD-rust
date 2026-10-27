@@ -7,14 +7,18 @@ final class ModelSettingsLayout {
     private static final int TAIL_HEIGHT = 42;
     private static final int PMX_HEIGHT = 38;
     private static final int QUICK_HEIGHT = 47;
+    private static final int TRANSFORM_ROW_HEIGHT = 28;
+    private static final int TRANSFORM_HEIGHT = 38 + HeldPmxTransformControl.values().length * TRANSFORM_ROW_HEIGHT;
     private static final int SECTION_GAP = 4;
     private static final int CONTENT_HEIGHT = EYE_HEIGHT + CARD_HEIGHT * 2 + PMX_HEIGHT * 2
-            + TAIL_HEIGHT + QUICK_HEIGHT + SECTION_GAP * 6;
+            + TAIL_HEIGHT + QUICK_HEIGHT + TRANSFORM_HEIGHT + SECTION_GAP * 7;
     final UiRect panel, header, viewport, scrollTrack, scrollThumb;
     final UiRect eyeCard, eyeToggle, eyeSlider, scaleCard, scaleSlider;
     final UiRect heldBlockCard, heldBlockSlider, tailCard, tailIdleToggle, tailMovementToggle;
     final UiRect mainPmxCard, mainPmxPrev, mainPmxValue, mainPmxNext;
     final UiRect heldPmxCard, heldPmxPrev, heldPmxValue, heldPmxNext;
+    final UiRect heldPmxTransformCard, heldPmxTransformReset;
+    final UiRect[] heldPmxTransformSliders, heldPmxTransformMinus, heldPmxTransformPlus;
     final UiRect quickCard, saveButton, resetButton, animButton, doneButton;
     final UiRect[] quickSlotButtons;
     final double scrollOffset;
@@ -60,7 +64,20 @@ final class ModelSettingsLayout {
         heldPmxValue = new UiRect(heldPmxPrev.right() + 2, heldPmxPrev.y,
                 Math.max(1, heldPmxNext.x - heldPmxPrev.right() - 4), 16);
 
-        tailCard = new UiRect(viewport.x, heldPmxCard.bottom() + SECTION_GAP, cardWidth, TAIL_HEIGHT);
+        heldPmxTransformCard = new UiRect(viewport.x, heldPmxCard.bottom() + SECTION_GAP, cardWidth, TRANSFORM_HEIGHT);
+        int transformCount = HeldPmxTransformControl.values().length;
+        heldPmxTransformSliders = new UiRect[transformCount];
+        heldPmxTransformMinus = new UiRect[transformCount];
+        heldPmxTransformPlus = new UiRect[transformCount];
+        for (int i = 0; i < transformCount; i++) {
+            int y = heldPmxTransformCard.y + 23 + i * TRANSFORM_ROW_HEIGHT;
+            heldPmxTransformMinus[i] = new UiRect(viewport.x + 4, y - 2, 14, 12);
+            heldPmxTransformPlus[i] = new UiRect(heldPmxTransformCard.right() - 18, y - 2, 14, 12);
+            heldPmxTransformSliders[i] = new UiRect(viewport.x + 22, y, cardWidth - 44, 8);
+        }
+        heldPmxTransformReset = new UiRect(viewport.x + 4, heldPmxTransformCard.bottom() - 20, cardWidth - 8, 16);
+
+        tailCard = new UiRect(viewport.x, heldPmxTransformCard.bottom() + SECTION_GAP, cardWidth, TAIL_HEIGHT);
         tailIdleToggle = new UiRect(tailCard.right() - 34, tailCard.y + 16, 26, 9);
         tailMovementToggle = new UiRect(tailCard.right() - 34, tailCard.y + 30, 26, 9);
         quickCard = new UiRect(viewport.x, tailCard.bottom() + SECTION_GAP, cardWidth, QUICK_HEIGHT);

@@ -33,6 +33,8 @@ public class ModelSettingsScreen extends Screen {
     private HoverTarget hoveredTarget = HoverTarget.NONE;
     private ModelSettingsLayout layout = ModelSettingsLayout.create(320, 240, 0);
     private ActiveSlider activeSlider = ActiveSlider.NONE;
+    private HeldPmxTransformControl activeTransform;
+    private double hoverMouseX, hoverMouseY;
     private double scrollOffset;
     private boolean draggingScrollbar;
     private double scrollbarGrabOffset;
@@ -79,6 +81,7 @@ public class ModelSettingsScreen extends Screen {
     protected void init() {
         super.init();
         activeSlider = ActiveSlider.NONE;
+        activeTransform = null;
         draggingScrollbar = false;
         updateLayout();
     }
@@ -160,6 +163,27 @@ public class ModelSettingsScreen extends Screen {
             return true;
         }
 
+        for (HeldPmxTransformControl control : HeldPmxTransformControl.values()) {
+            int i = control.ordinal();
+            if (layout.contentHit(layout.heldPmxTransformMinus[i], mouseX, mouseY)) {
+                control.set(config, control.get(config) - control.step);
+                return true;
+            }
+            if (layout.contentHit(layout.heldPmxTransformPlus[i], mouseX, mouseY)) {
+                control.set(config, control.get(config) + control.step);
+                return true;
+            }
+            if (layout.contentHit(layout.heldPmxTransformSliders[i], mouseX, mouseY)) {
+                activeTransform = control;
+                updateTransformValue(mouseX);
+                return true;
+            }
+        }
+        if (layout.contentHit(layout.heldPmxTransformReset, mouseX, mouseY)) {
+            HeldPmxTransformControl.reset(config);
+            return true;
+        }
+
         for (int i = 0; i < layout.quickSlotButtons.length; i++) {
             UiRect slotButton = layout.quickSlotButtons[i];
             if (slotButton != null && layout.contentHit(slotButton, mouseX, mouseY)) {
@@ -192,6 +216,7 @@ public class ModelSettingsScreen extends Screen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0) {
             activeSlider = ActiveSlider.NONE;
+            activeTransform = null;
             draggingScrollbar = false;
             return true;
         }
@@ -202,6 +227,12 @@ public class ModelSettingsScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (button == 0 && draggingScrollbar) {
             setScrollOffset(layout.scrollToThumb(mouseY - scrollbarGrabOffset));
+            return true;
+        }
+        if (button == 0 && activeTransform != null) {
+            if (mouseY >= layout.viewport.y && mouseY < layout.viewport.bottom()) {
+                updateTransformValue(mouseX);
+            }
             return true;
         }
         if (button == 0 && activeSlider != ActiveSlider.NONE) {
@@ -268,11 +299,14 @@ public class ModelSettingsScreen extends Screen {
     private void setScrollOffset(double value) {
         scrollOffset = value;
         activeSlider = ActiveSlider.NONE;
+        activeTransform = null;
         updateLayout();
         hoveredTarget = HoverTarget.NONE;
     }
 
     private void updateHoverState(int mouseX, int mouseY) {
+        hoverMouseX = mouseX;
+        hoverMouseY = mouseY;
         hoveredTarget = HoverTarget.NONE;
         if (layout.contentHit(layout.eyeToggle, mouseX, mouseY)) {
             hoveredTarget = HoverTarget.EYE_TOGGLE;
@@ -390,6 +424,11 @@ public class ModelSettingsScreen extends Screen {
         return Mth.clamp(min + (max - min) * Mth.clamp(t, 0.0f, 1.0f), min, max);
     }
 
+    private void updateTransformValue(double mouseX) {
+        activeTransform.set(config, valueFromSlider(layout.heldPmxTransformSliders[activeTransform.ordinal()],
+                mouseX, activeTransform.min, activeTransform.max));
+    }
+
     private float normalized(float value, float min, float max) {
         return Mth.clamp((value - min) / (max - min), 0.0f, 1.0f);
     }
@@ -473,6 +512,23 @@ public class ModelSettingsScreen extends Screen {
         drawPmxChooser(guiGraphics, layout.heldPmxCard, layout.heldPmxPrev, layout.heldPmxValue, layout.heldPmxNext,
                 "gui.mmdskin.model_settings.held_pmx", config.heldPmxFile,
                 "gui.mmdskin.model_settings.pmx_disabled", HoverTarget.HELD_PMX_PREV, HoverTarget.HELD_PMX_NEXT);
+
+        drawFallbackCard(guiGraphics, layout.heldPmxTransformCard,
+                Component.translatable("gui.mmdskin.model_settings.held_pmx_transform").getString());
+        for (HeldPmxTransformControl control : HeldPmxTransformControl.values()) {
+            int i = control.ordinal();
+            String value = String.format(java.util.Locale.ROOT, "%.2f", control.get(config));
+            drawFallbackSlider(guiGraphics, layout.heldPmxTransformSliders[i],
+                    Component.translatable(control.labelKey, value).getString(),
+                    normalized(control.get(config), control.min, control.max));
+            UiRect minus = layout.heldPmxTransformMinus[i];
+            UiRect plus = layout.heldPmxTransformPlus[i];
+            drawFallbackButton(guiGraphics, minus, "-", layout.contentHit(minus, hoverMouseX, hoverMouseY));
+            drawFallbackButton(guiGraphics, plus, "+", layout.contentHit(plus, hoverMouseX, hoverMouseY));
+        }
+        drawFallbackButton(guiGraphics, layout.heldPmxTransformReset,
+                Component.translatable("gui.mmdskin.model_settings.held_pmx_transform_reset").getString(),
+                layout.contentHit(layout.heldPmxTransformReset, hoverMouseX, hoverMouseY));
 
         drawFallbackCard(guiGraphics, layout.tailCard, Component.translatable("gui.mmdskin.model_settings.tail_physics").getString());
         guiGraphics.drawString(this.font, Component.translatable("gui.mmdskin.model_settings.tail_idle_lift").getString(),

@@ -46,7 +46,7 @@ public class ModelConfigData {
     /** Selected PMX in this model folder, or empty for automatic selection. */
     public String mainPmxFile = "";
 
-    /** Full character PMX with a built-in main-hand accessory; empty disables replacement. */
+    /** Independent main-hand prop PMX; empty disables replacement. */
     public String heldPmxFile = "";
 
     /** Extra PMX prop transformation in main-hand local coordinates. */

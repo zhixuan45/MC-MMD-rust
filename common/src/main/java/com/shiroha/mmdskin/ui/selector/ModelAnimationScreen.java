@@ -175,6 +175,7 @@ public class ModelAnimationScreen extends Screen {
                         .acquire(ModelRequestKey.player(mc.player, selectedModel));
                 if (model != null) {
                     model.animationLibrary().invalidate();
+                    model.entityState().invalidateStateLayers();
                     model.modelInstance().changeAnim(model.animationLibrary().animation("idle"), 0);
                 }
             }

@@ -32,7 +32,8 @@ public class EntityAnimState {
         Swim("swim"), Ride("ride"), Ridden("ridden"), Driven("driven"),
         Sleep("sleep"), ElytraFly("elytraFly"), Die("die"),
         SwingRight("swingRight"), SwingLeft("swingLeft"), ItemRight("itemRight"), ItemLeft("itemLeft"),
-        Sneak("sneak"), OnHorse("onHorse"), Crawl("crawl"), LieDown("lieDown");
+        Sneak("sneak"), OnHorse("onHorse"), Crawl("crawl"), LieDown("lieDown"),
+        HeldPmxHandPose("heldPmxHandPose");
 
         public final String propertyName;
 
