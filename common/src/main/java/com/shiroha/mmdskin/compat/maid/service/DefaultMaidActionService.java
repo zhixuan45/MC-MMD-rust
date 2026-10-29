@@ -31,6 +31,7 @@ public class DefaultMaidActionService implements MaidActionService {
     @Override
     public List<ActionOption> loadActions() {
         return actionEntriesSupplier.get().stream()
+                .filter(entry -> entry.animId == null || !entry.animId.startsWith(com.shiroha.mmdskin.asset.catalog.AnimationInfo.VPD_ACTION_PREFIX))
                 .map(entry -> new ActionOption(entry.name, entry.animId))
                 .toList();
     }

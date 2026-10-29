@@ -113,8 +113,27 @@ public class ItemRenderHelper {
     }
 
     public static void applyPropAttachment(ManagedModel model, PoseStack stack, String boneName) {
-        stack.last().pose().mul(resolvePropAttachment(matrixPort,model.modelInstance().getModelHandle(),
-                model.entityState().rightHandMat,model.entityState().matBuffer,boneName));
+        stack.last().pose().mul(getPropAttachment(model, boneName));
+    }
+
+    public static Matrix4f getPropAttachment(ManagedModel model, String boneName) {
+        return resolvePropAttachment(matrixPort,model.modelInstance().getModelHandle(),
+                model.entityState().rightHandMat,model.entityState().matBuffer,boneName);
+    }
+
+    static Matrix4f propPhysicsTransform(Matrix4f attachment, ModelConfigData config, float ownerScale, float propScale) {
+        return new Matrix4f().scaling(ownerScale).mul(attachment)
+                .translate(config.heldPmxOffsetX, config.heldPmxOffsetY, config.heldPmxOffsetZ)
+                .rotateXYZ(config.heldPmxRotX * DEG_TO_RAD, config.heldPmxRotY * DEG_TO_RAD, config.heldPmxRotZ * DEG_TO_RAD)
+                .scale(10.0f * config.heldItemScale * config.heldPmxScale * propScale);
+    }
+
+    static void syncPropPhysics(ManagedModel owner, ManagedModel prop, Matrix4f local) {
+        ByteBuffer buffer = owner.entityState().matBuffer;
+        buffer.clear();
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
+        local.get(0, buffer);
+        matrixPort.setPropPhysicsAttachment(prop.modelInstance().getModelHandle(), owner.modelInstance().getModelHandle(), buffer);
     }
 
     static Matrix4f resolvePropAttachment(NativeMatrixPort port,long modelHandle,long matrix,ByteBuffer buffer,String boneName) {

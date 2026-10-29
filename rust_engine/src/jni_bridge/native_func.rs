@@ -1183,6 +1183,34 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetModelTransform(
     }
 }
 
+/// Owner root is in world blocks; buffer contains attachment and render scales, never a camera matrix.
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPropPhysicsAttachment(
+    env: JNIEnv,
+    _class: JClass,
+    prop: jlong,
+    owner: jlong,
+    buffer: JByteBuffer,
+) -> jboolean {
+    if prop == owner { return 0; }
+    let Ok(address) = env.get_direct_buffer_address(&buffer) else { return 0; };
+    if env.get_direct_buffer_capacity(&buffer).unwrap_or(0) < 64 { return 0; }
+    let bytes = unsafe { std::slice::from_raw_parts(address, 64) };
+    let values: [f32; 16] = std::array::from_fn(|i| {
+        f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap())
+    });
+    let owner_world = {
+        let models = MODELS.read().unwrap();
+        let Some(model) = models.get(&owner) else { return 0; };
+        let model = model.lock().unwrap();
+        model.model_transform()
+    };
+    let models = MODELS.read().unwrap();
+    let Some(model) = models.get(&prop) else { return 0; };
+    let mut model = model.lock().unwrap();
+    model.set_prop_attachment_transform(owner_world * glam::Mat4::from_cols_array(&values)) as jboolean
+}
+
 /// 设置模型位置和朝向（简化版，用于惯性计算）
 /// pos_x, pos_y, pos_z: 模型位置（已缩放）
 /// yaw: 人物朝向角度（弧度）

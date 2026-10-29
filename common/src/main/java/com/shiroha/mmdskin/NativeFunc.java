@@ -205,6 +205,8 @@ public class NativeFunc {
 
     public native void SetModelPositionAndYaw(long model, float posX, float posY, float posZ, float yaw);
 
+    public native boolean SetPropPhysicsAttachment(long prop, long owner, ByteBuffer transform);
+
     public native void SetEyeAngle(long model, float eyeX, float eyeY);
 
     public native void SetEyeMaxAngle(long model, float maxAngle);

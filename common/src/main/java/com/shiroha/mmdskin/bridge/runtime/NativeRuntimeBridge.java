@@ -207,6 +207,11 @@ public final class NativeRuntimeBridge implements
     }
 
     @Override
+    public boolean setPropPhysicsAttachment(long propHandle, long ownerHandle, ByteBuffer transform) {
+        return nativeFunc().SetPropPhysicsAttachment(propHandle, ownerHandle, transform);
+    }
+
+    @Override
     public boolean setTaczArmTargets(long modelHandle, float[] columnMajorMatrices, int validMask) {
         NativePoseInputs.externalPose(modelHandle);
         if (!isValidTaczArmTargetPacket(columnMajorMatrices, validMask)) {

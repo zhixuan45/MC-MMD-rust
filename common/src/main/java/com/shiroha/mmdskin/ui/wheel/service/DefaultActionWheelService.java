@@ -30,9 +30,14 @@ public class DefaultActionWheelService implements ActionWheelService {
 
     @Override
     public List<ActionOption> loadActions() {
-        return actionEntriesSupplier.get().stream()
-                .map(entry -> new ActionOption(entry.name, entry.animId))
-                .toList();
+        var actions = new java.util.ArrayList<ActionOption>();
+        for (var entry : actionEntriesSupplier.get()) actions.add(new ActionOption(entry.name, entry.animId));
+        if (actions.stream().anyMatch(action -> action.animId() != null
+                && action.animId().startsWith(com.shiroha.mmdskin.asset.catalog.AnimationInfo.VPD_ACTION_PREFIX))) {
+            actions.add(new ActionOption(net.minecraft.network.chat.Component.translatable("gui.mmdskin.reset_pose").getString(),
+                    com.shiroha.mmdskin.asset.catalog.AnimationInfo.RESET_POSE_ACTION));
+        }
+        return List.copyOf(actions);
     }
 
     @Override
@@ -56,8 +61,7 @@ public class DefaultActionWheelService implements ActionWheelService {
             if (mc.player == null) {
                 return false;
             }
-            MmdSkinRendererPlayerHelper.CustomAnim(mc.player, animId);
-            return true;
+            return MmdSkinRendererPlayerHelper.tryCustomAnim(mc.player, animId);
         }
     }
 }

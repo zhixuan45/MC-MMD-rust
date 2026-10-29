@@ -169,8 +169,8 @@ public class ActionWheelConfig {
 
         public static ActionEntry from(AnimationInfo anim) {
             return new ActionEntry(
-                anim.getDisplayName(),
-                anim.getAnimName(),
+                anim.getDisplayName() + (anim.isPose() ? " [VPD]" : ""),
+                anim.getActionId(),
                 anim.getSource().name(),
                 anim.getModelName(),
                 anim.getFormattedSize(),

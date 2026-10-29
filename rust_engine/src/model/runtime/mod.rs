@@ -38,6 +38,7 @@ mod physics;
 #[path = "physics_legacy.rs"]
 mod physics;
 mod physics_snapshots;
+mod prop_physics;
 mod render_data;
 mod tail_options;
 #[cfg(test)]
@@ -145,6 +146,7 @@ pub struct MmdModel {
 
     // 模型全局变换
     model_transform: Mat4,
+    prop_physics_frame: Option<prop_physics::PropPhysicsFrame>,
 
     // 物理系统
     physics: Option<MMDPhysics>,
@@ -313,6 +315,7 @@ impl MmdModel {
             is_vrm: false,
             vrm_runtime_state: None,
             model_transform: Mat4::IDENTITY,
+            prop_physics_frame: None,
             physics: None,
             physics_enabled: false,
             tail_idle_lift: true,

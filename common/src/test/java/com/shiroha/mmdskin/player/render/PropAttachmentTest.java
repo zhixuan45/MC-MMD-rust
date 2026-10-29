@@ -24,6 +24,26 @@ class PropAttachmentTest {
         assertTrue(automatic.equals(missing,0));
         assertEquals(2,port.handReads);
     }
+    @Test void physicsAttachmentMatchesTheDrawTransformWithoutCameraCoordinates() {
+        var config = new com.shiroha.mmdskin.config.ModelConfigData();
+        config.heldPmxOffsetX = 0.4f;
+        config.heldPmxOffsetY = -0.2f;
+        config.heldPmxRotZ = 75;
+        config.heldItemScale = 0.8f;
+        config.heldPmxScale = 1.5f;
+        var bone = new Matrix4f().translation(3, 8, -4).rotateY(0.6f);
+        var original = new Matrix4f(bone);
+        var draw = new com.mojang.blaze3d.vertex.PoseStack();
+        draw.scale(0.09f, 0.09f, 0.09f);
+        draw.last().pose().mul(bone);
+        draw.translate(config.heldPmxOffsetX, config.heldPmxOffsetY, config.heldPmxOffsetZ);
+        draw.mulPose(new org.joml.Quaternionf().rotationXYZ(0, 0, (float) Math.toRadians(75)));
+        float total = 10 * config.heldItemScale * config.heldPmxScale * 0.12f;
+        draw.scale(total, total, total);
+        assertTrue(draw.last().pose().equals(ItemRenderHelper.propPhysicsTransform(bone, config, 0.09f, 0.12f), 1e-5f));
+        assertTrue(original.equals(bone, 0));
+    }
+
     private static ByteBuffer buffer() { return ByteBuffer.allocateDirect(64).order(ByteOrder.LITTLE_ENDIAN); }
     private static final class Port implements NativeMatrixPort {
         Matrix4f value=new Matrix4f();

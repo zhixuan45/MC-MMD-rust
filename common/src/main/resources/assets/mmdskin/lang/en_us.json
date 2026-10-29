@@ -337,7 +337,6 @@
   "gui.mmdskin.mod_settings.mob_replacement.choose": "Choose",
   "gui.mmdskin.mod_settings.mob_replacement.reset": "Reset",
   "gui.mmdskin.mod_settings.mob_replacement.vanilla": "Vanilla Render",
-
   "gui.mmdskin.mod_settings.category.player_replacement": "Player Replacement",
   "gui.mmdskin.mod_settings.player_replacement.description": "Specify dedicated MMD models for different players. Supports binding by UUID or Player Name, for online or offline players.",
   "gui.mmdskin.mod_settings.player_replacement.online": "Online",
@@ -497,5 +496,6 @@
   "gui.mmdskin.model_settings.prop_motion_title": "Independent prop stage VMD",
   "gui.mmdskin.model_settings.prop_motion_hint": "VMD files in the model folder and anims",
   "gui.mmdskin.model_settings.prop_motion_disabled": "Off (no VMD)",
-  "gui.mmdskin.model_settings.prop_motion": "Prop VMD: %s"
+  "gui.mmdskin.model_settings.prop_motion": "Prop VMD: %s",
+  "gui.mmdskin.action_pose_hint": "Place .vpd files in 3d-skin/CustomAnim, refresh the list and enable them in the action wheel"
 }

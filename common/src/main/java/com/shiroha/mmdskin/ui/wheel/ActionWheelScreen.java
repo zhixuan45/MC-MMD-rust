@@ -25,10 +25,10 @@ public class ActionWheelScreen extends AbstractWheelScreen {
         super(Component.translatable("gui.mmdskin.action_wheel"), STYLE);
         this.actionWheelService = actionWheelService;
         this.actionSlots = new ArrayList<>();
-        initActionSlots();
     }
 
     private void initActionSlots() {
+        actionSlots.clear();
         List<ActionOption> actions = actionWheelService.loadActions();
         for (int i = 0; i < actions.size(); i++) {
             ActionOption action = actions.get(i);
@@ -44,11 +44,14 @@ public class ActionWheelScreen extends AbstractWheelScreen {
     @Override
     protected void init() {
         super.init();
+        initActionSlots();
         initWheelLayout();
-
-        this.addRenderableWidget(createWheelIconButton(Component.literal("⚙"), btn -> {
-            this.minecraft.setScreen(new ActionWheelConfigScreen(this));
-        }));
+        int buttonWidth = Math.min(160, Math.max(0, width - 8));
+        this.addRenderableWidget(net.minecraft.client.gui.components.Button.builder(
+                Component.translatable("gui.mmdskin.action_config"), btn -> minecraft.setScreen(new ActionWheelConfigScreen(this)))
+                .bounds(width - buttonWidth - 4, Math.max(4, height - 28), buttonWidth, 24)
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("gui.mmdskin.action_pose_hint")))
+                .build());
     }
 
     @Override

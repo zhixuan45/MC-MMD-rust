@@ -53,7 +53,8 @@ final class HeldItemPmxRenderer {
         // All geometry transforms and draw state are local to this prop.
         poseStack.pushPose();
         try {
-            ItemRenderHelper.applyPropAttachment(character, poseStack, config.heldPmxBone);
+            var attachment = ItemRenderHelper.getPropAttachment(character, config.heldPmxBone);
+            poseStack.last().pose().mul(attachment);
             poseStack.translate(config.heldPmxOffsetX, config.heldPmxOffsetY, config.heldPmxOffsetZ);
             poseStack.mulPose(new Quaternionf().rotationXYZ(
                     config.heldPmxRotX * RAD_PER_DEGREE,
@@ -64,6 +65,13 @@ final class HeldItemPmxRenderer {
             // compensate with a 10x hand-space factor before the prop render.
             float scale = 10.0f * config.heldItemScale * config.heldPmxScale;
             poseStack.scale(scale, scale, scale);
+
+            float ownerScale = character.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
+                    ? base.getModelScale() : 0.09f * config.modelScale;
+            float propScale = prop.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
+                    ? base.getModelScale() : 0.09f * config.modelScale;
+            ItemRenderHelper.syncPropPhysics(character, prop,
+                    ItemRenderHelper.propPhysicsTransform(attachment, config, ownerScale, propScale));
 
             // NULL entity avoids living-entity animation/IK state being applied to the prop.
             // ITEM scene avoids a second full character world render or player pose mutation.

@@ -15,4 +15,7 @@ public interface NativeMatrixPort {
     default boolean populateBoneMatrix(long modelHandle, long matrixHandle, String boneName) { return false; }
 
     boolean copyMatrixToBuffer(long matrixHandle, ByteBuffer targetBuffer);
+
+    /** Prop-to-owner matrix, including both render scales; not a camera matrix. */
+    default boolean setPropPhysicsAttachment(long propHandle, long ownerHandle, ByteBuffer transform) { return false; }
 }

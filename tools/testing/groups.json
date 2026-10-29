@@ -1,22 +1,66 @@
 {
   "java": {
-    "stage": ["com/shiroha/mmdskin/stage/**"],
-    "model": ["com/shiroha/mmdskin/api/**", "com/shiroha/mmdskin/asset/**", "com/shiroha/mmdskin/bridge/**", "com/shiroha/mmdskin/model/**", "com/shiroha/mmdskin/player/**"],
-    "render": ["com/shiroha/mmdskin/render/**", "com/shiroha/mmdskin/texture/**", "com/shiroha/mmdskin/ui/paperdoll/**"],
-    "compat": ["com/shiroha/mmdskin/compat/**"],
-    "config": ["com/shiroha/mmdskin/config/**", "com/shiroha/mmdskin/debug/**", "com/shiroha/mmdskin/ui/about/**", "com/shiroha/mmdskin/ui/config/**", "com/shiroha/mmdskin/ui/selector/**"]
+    "stage": [
+      "com/shiroha/mmdskin/stage/**"
+    ],
+    "model": [
+      "com/shiroha/mmdskin/api/**",
+      "com/shiroha/mmdskin/asset/**",
+      "com/shiroha/mmdskin/bridge/**",
+      "com/shiroha/mmdskin/model/**",
+      "com/shiroha/mmdskin/player/**"
+    ],
+    "render": [
+      "com/shiroha/mmdskin/render/**",
+      "com/shiroha/mmdskin/texture/**",
+      "com/shiroha/mmdskin/ui/paperdoll/**"
+    ],
+    "compat": [
+      "com/shiroha/mmdskin/compat/**"
+    ],
+    "config": [
+      "com/shiroha/mmdskin/config/**",
+      "com/shiroha/mmdskin/debug/**",
+      "com/shiroha/mmdskin/ui/about/**",
+      "com/shiroha/mmdskin/ui/config/**",
+      "com/shiroha/mmdskin/ui/selector/**",
+      "com/shiroha/mmdskin/ui/wheel/**"
+    ]
   },
   "quick": [
-    "**/StagePcmDecoderTest.class", "**/StagePacketCodecTest.class",
-    "**/ModelRequestKeyTest.class", "**/FrameEvaluationCacheTest.class",
+    "**/StagePcmDecoderTest.class",
+    "**/StagePacketCodecTest.class",
+    "**/ModelRequestKeyTest.class",
+    "**/FrameEvaluationCacheTest.class",
     "**/ModelConfigDataTest.class"
   ],
   "rust": {
-    "animation": ["animation::", "vmd_smoothing::", "skeleton::", "morph::", "skinning::"],
-    "model": ["model::", "jni_bridge::", "evaluation_profile::", "evaluation_parallelism::"],
-    "physics": ["physics::"],
-    "vr": ["vr::", "vrm_runtime::"],
-    "core": ["texture::", "jni_log::"]
+    "animation": [
+      "animation::",
+      "vmd_smoothing::",
+      "skeleton::",
+      "morph::",
+      "skinning::"
+    ],
+    "model": [
+      "model::",
+      "jni_bridge::",
+      "evaluation_profile::",
+      "evaluation_parallelism::"
+    ],
+    "physics": [
+      "physics::"
+    ],
+    "vr": [
+      "vr::",
+      "vrm_runtime::"
+    ],
+    "core": [
+      "texture::",
+      "jni_log::"
+    ]
   },
-  "rust_serial": ["jni_bridge::resource_lifecycle_tests::twenty_native_model_handle_cycles_return_bullet_objects_to_baseline"]
+  "rust_serial": [
+    "jni_bridge::resource_lifecycle_tests::twenty_native_model_handle_cycles_return_bullet_objects_to_baseline"
+  ]
 }

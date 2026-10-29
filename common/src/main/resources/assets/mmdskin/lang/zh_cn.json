@@ -7,7 +7,6 @@
   "key.categories.mmdskin": "MMD皮肤",
   "key.mmdskin.config_wheel": "配置轮盘",
   "key.mmdskin.maid_config_wheel": "女仆配置轮盘",
-  
   "gui.mmdskin.config_wheel": "配置轮盘",
   "gui.mmdskin.maid_config_wheel": "女仆配置",
   "gui.mmdskin.config.model_switch": "模型切换",
@@ -21,7 +20,6 @@
   "gui.mmdskin.maid.action_select": "动作选择",
   "gui.mmdskin.maid.material_control": "材质控制",
   "gui.mmdskin.maid_action_wheel": "女仆动作轮盘",
-  
   "gui.mmdskin.mod_settings.title": "MMD皮肤 - 设置",
   "gui.mmdskin.mod_settings.category.paper_doll": "纸娃娃设置",
   "gui.mmdskin.mod_settings.paper_doll.enabled": "启用纸娃娃",
@@ -65,7 +63,6 @@
   "gui.mmdskin.mod_settings.max_bones.tooltip": "GPU 蒙皮支持的最大骨骼数量（512-4096），超大模型需要更高值（需重启生效）",
   "gui.mmdskin.mod_settings.max_visible_models": "最大 MMD 显示数量",
   "gui.mmdskin.mod_settings.max_visible_models.tooltip": "每帧允许使用 MMD 渲染的最大模型数。超出后将按距离优先保留最近的目标，其余玩家/原版生物回退原版渲染",
-  
   "gui.mmdskin.mod_settings.category.toon": "3渲2设置",
   "gui.mmdskin.mod_settings.toon_enabled": "启用 3渲2",
   "gui.mmdskin.mod_settings.toon_enabled.tooltip": "启用卡通渲染效果（色阶化光照、描边、边缘光）",
@@ -113,7 +110,6 @@
   "gui.mmdskin.mod_settings.toon_outline_g": "描边色 G",
   "gui.mmdskin.mod_settings.toon_outline_b": "描边色 B",
   "gui.mmdskin.mod_settings.toon_outline_color.tooltip": "描边颜色",
-  
   "gui.mmdskin.mod_settings.category.physics": "物理引擎设置（Bullet3）",
   "gui.mmdskin.mod_settings.physics_enabled": "启用物理模拟",
   "gui.mmdskin.mod_settings.physics_enabled.tooltip": "关闭后头发、裙子等将不再受物理影响",
@@ -166,14 +162,12 @@
   "gui.mmdskin.mod_settings.anti_peek_threshold_angle.tooltip": "当镜头视线与向上竖直方向夹角小于等于该角度时，角色开始半透明虚化（默认 25°）",
   "gui.mmdskin.mod_settings.anti_peek_hide_angle": "防走光完全隐藏角度",
   "gui.mmdskin.mod_settings.anti_peek_hide_angle.tooltip": "当镜头仰视夹角小于等于该角度时，角色完全隐藏不绘制（默认 10°）",
-  
   "gui.mmdskin.action_wheel": "动作选择轮盘",
   "gui.mmdskin.select_action": "选择动作",
   "gui.mmdskin.model_selector": "模型选择",
   "gui.mmdskin.maid_model_selector": "女仆 MMD 模型选择",
   "gui.mmdskin.action_config": "动作轮盘配置",
   "gui.mmdskin.rescan": "重新扫描",
-  
   "key.mmdskin.quick_model_1": "快捷模型 1",
   "key.mmdskin.quick_model_2": "快捷模型 2",
   "key.mmdskin.quick_model_3": "快捷模型 3",
@@ -216,7 +210,6 @@
   "gui.mmdskin.morph_wheel": "表情选择轮盘",
   "gui.mmdskin.morph_config": "表情轮盘配置",
   "gui.mmdskin.reset_morph": "重置表情",
-  
   "gui.mmdskin.stage.cinematic": "影院模式",
   "gui.mmdskin.stage.start": "开始",
   "gui.mmdskin.stage.waiting_host": "等待房主开始...",
@@ -338,14 +331,12 @@
   "gui.mmdskin.stage.workbench.ready_to_launch": "已满足开始条件，可以启动舞台工作台播放。",
   "gui.mmdskin.follow.join_hint": "加入 %s 的舞蹈",
   "gui.mmdskin.follow.exit_hint": "按 ESC 退出跟随",
-  
   "gui.mmdskin.mod_settings.texture_cache_budget": "纹理缓存预算",
   "gui.mmdskin.mod_settings.texture_cache_budget.tooltip": "纹理缓存 VRAM 软预算（MB）。仅约束已无模型引用的待释放纹理，不影响活跃纹理。降低可减少显存占用，升高可加快模型切换速度",
   "gui.mmdskin.mod_settings.mob_replacement.description": "为原版生物选择要替换成的 MMD 模型。每一行都会显示当前映射，点击“选择”打开模型选择器，点击“重置”即可恢复到原版渲染。",
   "gui.mmdskin.mod_settings.mob_replacement.choose": "选择",
   "gui.mmdskin.mod_settings.mob_replacement.reset": "重置",
   "gui.mmdskin.mod_settings.mob_replacement.vanilla": "原版渲染",
-
   "gui.mmdskin.mod_settings.category.player_replacement": "玩家替换",
   "gui.mmdskin.mod_settings.player_replacement.description": "为不同玩家单独指定要替换渲染的 MMD 模型。支持按 UUID 或玩家名绑定，可选择当前在线玩家或设定离线玩家专属模型。",
   "gui.mmdskin.mod_settings.player_replacement.online": "在线",
@@ -358,7 +349,6 @@
   "gui.mmdskin.mod_settings.player_replacement.add_dialog.input": "输入玩家名或 UUID...",
   "gui.mmdskin.mod_settings.player_replacement.add_dialog.confirm": "添加",
   "gui.mmdskin.mod_settings.player_replacement.delete": "删除",
-  
   "gui.mmdskin.mod_settings.category.debug": "调试设置",
   "gui.mmdskin.mod_settings.debug_hud": "性能调试 HUD",
   "gui.mmdskin.mod_settings.debug_hud.tooltip": "在屏幕左上角显示模型的内存/显存占用信息",
@@ -372,13 +362,11 @@
   "gui.mmdskin.mod_settings.debug_collision_mode_log.tooltip": "每 2 秒记录碰撞模式与状态，便于对比稳定/宽松模式的抖动。",
   "gui.mmdskin.mod_settings.debug_outline_paper_doll_log": "描边与纸娃娃日志",
   "gui.mmdskin.mod_settings.debug_outline_paper_doll_log.tooltip": "每 2 秒记录描边和纸娃娃渲染状态，便于排查黑块问题。",
-
   "gui.mmdskin.mod_settings.category.vr": "VR 联动设置",
   "gui.mmdskin.mod_settings.vr_enabled": "启用 VR 联动",
   "gui.mmdskin.mod_settings.vr_enabled.tooltip": "启用后 VR 玩家的头部和手部追踪将驱动 MMD 模型骨骼（需要安装 Vivecraft）",
   "gui.mmdskin.mod_settings.vr_arm_ik_strength": "手臂 IK 强度",
   "gui.mmdskin.mod_settings.vr_arm_ik_strength.tooltip": "VR 手部追踪驱动手臂骨骼的强度（0%=不驱动，100%=完全驱动）",
-
   "gui.mmdskin.scene_selector": "场景选择",
   "gui.mmdskin.scene_selector.loading": "加载中...",
   "gui.mmdskin.scene_selector.active": "当前: %s",
@@ -396,7 +384,7 @@
   "gui.mmdskin.material_visibility.hide_all": "全隐",
   "gui.mmdskin.material_visibility.on": "显示",
   "gui.mmdskin.material_visibility.off": "隐藏",
-  "gui.mmdskin.material_visibility.invert": "\u53cd\u9009",
+  "gui.mmdskin.material_visibility.invert": "反选",
   "gui.mmdskin.material_visibility.unnamed": "(未命名)",
   "gui.mmdskin.maid.default_name": "女仆",
   "gui.mmdskin.morph_wheel.select": "表情选择",
@@ -430,7 +418,6 @@
   "message.mmdskin.maid.model_not_found": "§c未找到女仆模型，请先为女仆选择一个MMD模型",
   "message.mmdskin.player.model_not_found": "§c未找到玩家模型，请先选择一个MMD模型",
   "message.mmdskin.mod_settings.not_initialized": "§c模组设置界面未初始化",
-
   "gui.mmdskin.model_settings.anim_config": "动画",
   "gui.mmdskin.model_anim.title": "动画映射",
   "gui.mmdskin.model_anim.save": "保存",
@@ -509,5 +496,6 @@
   "gui.mmdskin.model_settings.prop_motion_title": "道具独立舞台 VMD",
   "gui.mmdskin.model_settings.prop_motion_hint": "读取角色目录和 anims 内的 VMD",
   "gui.mmdskin.model_settings.prop_motion_disabled": "关闭（不加载 VMD）",
-  "gui.mmdskin.model_settings.prop_motion": "道具 VMD：%s"
+  "gui.mmdskin.model_settings.prop_motion": "道具 VMD：%s",
+  "gui.mmdskin.action_pose_hint": "将 .vpd 放入 3d-skin/CustomAnim，刷新列表后加入动作轮盘"
 }

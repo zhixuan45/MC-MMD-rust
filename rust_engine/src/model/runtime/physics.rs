@@ -165,6 +165,8 @@ impl MmdModel {
             self.physics = Some(physics);
             return;
         }
+        let attached_prop = self.prepare_prop_physics(&mut physics);
+
         if self.physics_resync_pending {
             // 清除旧运动状态，再用动画后姿态摆放刚体；不经过 PMX 初始位置。
             physics.recover_after_large_delta();
@@ -184,11 +186,15 @@ impl MmdModel {
         }
 
         // 1. 同步运动学刚体
-        physics.sync_bodies_with_model_velocity(
-            &self.physics_bone_transforms_buf,
-            delta_time,
-            model_transform,
-        );
+        if attached_prop {
+            physics.sync_bodies(&self.physics_bone_transforms_buf);
+        } else {
+            physics.sync_bodies_with_model_velocity(
+                &self.physics_bone_transforms_buf,
+                delta_time,
+                model_transform,
+            );
+        }
 
         // 2. Bullet3 步进
         physics.step_simulation(delta_time);

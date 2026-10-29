@@ -251,6 +251,8 @@ impl MmdModel {
             return;
         }
 
+        let attached_prop = self.prepare_prop_physics(&mut physics);
+
         if self.physics_resync_pending {
             // 动画切换是显式重置：按新动画姿态重新建立动态链的初始状态。
             if crate::physics::config::get_config().debug_log {
@@ -282,11 +284,15 @@ impl MmdModel {
 
         // 1. 同步运动学刚体
         let timer = crate::evaluation_profile::timer();
-        physics.sync_bodies_with_model_velocity(
-            &self.physics_bone_transforms_buf,
-            delta_time,
-            model_transform,
-        );
+        if attached_prop {
+            physics.sync_bodies(&self.physics_bone_transforms_buf);
+        } else {
+            physics.sync_bodies_with_model_velocity(
+                &self.physics_bone_transforms_buf,
+                delta_time,
+                model_transform,
+            );
+        }
         crate::evaluation_profile::detail_stage(timer, 1);
 
         // 2. Bullet3 步进

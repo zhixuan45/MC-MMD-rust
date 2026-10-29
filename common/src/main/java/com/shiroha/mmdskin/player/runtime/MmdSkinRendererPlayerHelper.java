@@ -38,11 +38,27 @@ public final class MmdSkinRendererPlayerHelper {
     }
 
     public static void CustomAnim(Player player, String id) {
+        tryCustomAnim(player, id);
+    }
+
+    public static boolean tryCustomAnim(Player player, String id) {
+        if (player == null || id == null || id.isEmpty()) return false;
         PlayerModelResolver.Result resolved = PlayerModelResolver.resolve(player);
-        if (resolved == null) return;
+        if (resolved == null) return false;
 
         ManagedModel managedModel = resolved.model();
         ModelInstance model = managedModel.modelInstance();
+        if (id.equals(com.shiroha.mmdskin.asset.catalog.AnimationInfo.RESET_POSE_ACTION)) {
+            return com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
+                    com.shiroha.mmdskin.expression.ExpressionSelection.resetPose(), resolved.playerName());
+        }
+        if (id.startsWith(com.shiroha.mmdskin.asset.catalog.AnimationInfo.VPD_ACTION_PREFIX)) {
+            var pose = com.shiroha.mmdskin.asset.catalog.AnimationInfo.findPoseAction(id, managedModel.requestKey().modelName());
+            return pose != null && com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
+                    com.shiroha.mmdskin.expression.ExpressionSelection.file(pose.getFilePath()), resolved.playerName());
+        }
+        com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
+                com.shiroha.mmdskin.expression.ExpressionSelection.resetPose(), resolved.playerName());
         managedModel.entityState().playCustomAnim = true;
 
         managedModel.entityState().invalidateStateLayers();
@@ -50,6 +66,7 @@ public final class MmdSkinRendererPlayerHelper {
         model.setLayerLoop(1, true);
         model.changeAnim(0, 1);
         model.changeAnim(0, 2);
+        return true;
     }
 
     public static void startStageAnimation(ManagedModel modelData, long animHandle) {
