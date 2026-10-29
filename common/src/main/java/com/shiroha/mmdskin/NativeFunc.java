@@ -296,6 +296,9 @@ public class NativeFunc {
     public native boolean IsGpuMorphInitialized(long model);
 
     public native int ApplyVpdMorph(long model, String filename);
+    public native void ClearVpdPose(long model);
+    public native float GetCameraEndFrame(long animation);
+    public native float GetMotionEndFrame(long animation);
 
     public native boolean SetBoneOverride(long model, int boneIndex,
         float tx, float ty, float tz,

@@ -68,4 +68,16 @@ class StagePacketCodecTest {
         String encoded = StagePacketCodec.encode(packet);
         assertTrue(StagePacketCodec.isStagePacket(encoded));
     }
+    @Test
+    void hostEndFrameSurvivesCopyAndTheNetworkPacket() {
+        StagePacket packet=new StagePacket(StagePacketType.PLAYBACK_START);
+        packet.descriptor=new StageDescriptor("pack",List.of("dance.vmd"),"camera.vmd","audio.wav");
+        packet.descriptor.setEndFrame(900f);
+        assertEquals(900f,packet.descriptor.copy().getEndFrame());
+        StagePacket restored=StagePacketCodec.decode(StagePacketCodec.encode(packet));
+        assertNotNull(restored);
+        assertEquals(900f,restored.descriptor.getEndFrame());
+        restored.descriptor.setEndFrame(Float.POSITIVE_INFINITY);
+        org.junit.jupiter.api.Assertions.assertFalse(restored.descriptor.isValid());
+    }
 }

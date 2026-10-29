@@ -73,6 +73,16 @@ class StageCameraPlaybackSessionTest {
         assertTrue(session.shouldBroadcastFrameSync(2));
     }
 
+    @Test
+    void lastPoseIsPresentedForOneFrameBeforePlaybackCompletes() {
+        StageCameraPlaybackSession session=new StageCameraPlaybackSession();
+        session.configureStagePlayback(10,20,30,"miku",0,new FakeAnimationPort(true,true,100,150));
+        StagePlaybackAdvance last=session.advance(10,30,1.15f,.85f,2);
+        assertEquals(150,last.frame());
+        assertFalse(last.completed());
+        assertTrue(session.advance(0,30,1.15f,.85f,2).completed());
+    }
+
     private static final class FakeAnimationPort implements NativeAnimationPort {
         private final boolean motionHasCamera;
         private final boolean cameraHasCamera;

@@ -57,8 +57,8 @@ public class MorphWheelScreen extends AbstractWheelScreen {
         initWheelLayout();
         initMorphSlots();
 
-        this.addRenderableWidget(createWheelIconButton(Component.literal("⚙"), btn -> {
-            this.minecraft.setScreen(new MorphWheelConfigScreen(this));
+        this.addRenderableWidget(createWheelIconButton(Component.literal("VPD"), btn -> {
+            this.minecraft.setScreen(new com.shiroha.mmdskin.ui.wheel.VpdPoseSelectScreen(this, morphWheelService));
         }));
     }
 

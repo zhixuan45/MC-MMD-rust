@@ -1029,6 +1029,20 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetAnimMaxFrame(
     }
 }
 
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetCameraEndFrame(
+    _env: JNIEnv, _class: JClass, anim: jlong,
+) -> jfloat {
+    ANIMATIONS.read().unwrap().get(&anim).and_then(|a| a.camera_end_frame()).map_or(-1.0, |f| f as f32)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetMotionEndFrame(
+    _env: JNIEnv, _class: JClass, anim: jlong,
+) -> jfloat {
+    ANIMATIONS.read().unwrap().get(&anim).and_then(|a| a.motion_end_frame()).map_or(-1.0, |f| f as f32)
+}
+
 /// 获取相机变换数据，写入 ByteBuffer
 /// 布局: pos_x, pos_y, pos_z (3×f32) + rot_x, rot_y, rot_z (3×f32) + fov (f32) + is_perspective (i32) = 32 字节
 #[no_mangle]
@@ -2717,10 +2731,12 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ApplyVpdMorph(
                 let mut morph_count = 0i32;
                 let mut bone_count = 0i32;
 
+                model.clear_vpd_morphs();
                 // 1. 应用 Morph 表情
                 for morph_data in &vpd.morphs {
                     if let Some(idx) = model.morph_manager.find_morph_by_name(&morph_data.name) {
                         model.morph_manager.set_morph_weight(idx, morph_data.weight);
+                        model.track_vpd_morph(idx);
                         morph_count += 1;
                     }
                 }
@@ -2737,6 +2753,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ApplyVpdMorph(
                 // 同步到 GPU 缓冲区（用于 GPU 蒙皮模式）
                 model.sync_gpu_morph_weights();
 
+                model.reset_physics();
                 // 返回编码值: 高16位骨骼数，低16位 Morph 数
                 return ((bone_count & 0xFFFF) << 16) | (morph_count & 0xFFFF);
             }
@@ -2746,6 +2763,18 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ApplyVpdMorph(
         }
     }
     -2
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ClearVpdPose(
+    _env: JNIEnv, _class: JClass, model: jlong,
+) {
+    let models = MODELS.read().unwrap();
+    if let Some(model) = models.get(&model) {
+        let mut model = model.lock().unwrap();
+        model.clear_vpd_bone_overrides();
+        model.reset_physics();
+    }
 }
 
 /// 设置单个外部骨骼姿态覆盖。
@@ -2781,7 +2810,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetBoneOverride(
         return 0;
     }
 
-    model.set_vpd_bone_override(bone_index, glam::Vec3::new(tx, ty, tz), rotation);
+    model.set_external_bone_override(bone_index, glam::Vec3::new(tx, ty, tz), rotation);
     1
 }
 
@@ -2819,7 +2848,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetBoneOverrideByName
         return 0;
     };
 
-    model.set_vpd_bone_override(bone_index, glam::Vec3::new(tx, ty, tz), rotation);
+    model.set_external_bone_override(bone_index, glam::Vec3::new(tx, ty, tz), rotation);
     1
 }
 
@@ -2833,7 +2862,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ClearBoneOverrides(
     let models = MODELS.read().unwrap();
     if let Some(model_arc) = models.get(&model) {
         let mut model = model_arc.lock().unwrap();
-        model.clear_vpd_bone_overrides();
+        model.clear_external_bone_overrides();
     }
 }
 
@@ -2904,7 +2933,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetBoneOverrideBatch(
             continue;
         };
 
-        model.set_vpd_bone_override(
+        model.set_external_bone_override(
             bone_index,
             glam::Vec3::new(
                 transform_values[off],
@@ -2966,7 +2995,9 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ResetAllMorphs(
     if let Some(model_arc) = models.get(&model) {
         let mut model = model_arc.lock().unwrap();
         model.morph_manager.reset_all_weights();
+        model.clear_vpd_morphs();
         model.clear_vpd_bone_overrides();
+        model.reset_physics();
         model.sync_gpu_morph_weights();
     }
 }

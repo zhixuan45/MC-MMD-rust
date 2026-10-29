@@ -12,6 +12,7 @@ import com.shiroha.mmdskin.stage.client.playback.port.PlayerStageAnimationPort;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
+import com.shiroha.mmdskin.ui.stage.StageAudioLoadingScreen;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -154,20 +155,36 @@ public final class MMDCameraController {
         }
 
         audioPlayer.setVolume(StageConfig.getInstance().audioVolume);
+        audioPlayer.cleanup();
         if (audioPath != null && !audioPath.isEmpty()) {
-            if (audioPlayer.load(audioPath)) {
-                audioPlayer.play();
-            } else {
-                LOGGER.warn("[舞台模式] 音频加载失败: {}", audioPath);
+            audioPlayer.loadAsync(audioPath);
+            if (audioPlayer.loadingTask().isDone()) {
+                if (audioPlayer.finishLoading()) audioPlayer.play();
+                else showAudioFailure(Minecraft.getInstance());
             }
         }
 
         stateMachine.enterPlaying();
+        resolveEndFrame();
         lastTickTimeNs = System.nanoTime();
         escWasPressed = false;
         lastEscTimeNs = 0L;
         environmentController.resetStageInputState();
         return true;
+    }
+
+    private void resolveEndFrame() {
+        float camera = playbackSession.cameraAnimHandle() != 0 ? animationPort.getCameraEndFrame(playbackSession.cameraAnimHandle()) : -1;
+        float motion = playbackSession.motionAnimHandle() != 0 ? animationPort.getMotionEndFrame(playbackSession.motionAnimHandle()) : -1;
+        float audio = audioPlayer.isLoaded() ? audioPlayer.getDuration() * VMD_FPS : -1;
+        StageEndFrameResolver.Result result = StageEndFrameResolver.resolve(StageConfig.getInstance().endPolicy,
+                playbackSession.maxFrame(),camera,motion,audio);
+        playbackSession.setMaxFrame(result.frame());
+        if (result.fallback()) LOGGER.warn("[舞台模式] 所选结束依据不可用，沿用当前规则");
+    }
+
+    public void setHostEndFrame(Float frame) {
+        if (frame != null) playbackSession.setMaxFrame(frame);
     }
 
     public synchronized void exitStageMode() {
@@ -208,6 +225,7 @@ public final class MMDCameraController {
 
     public synchronized void updateCamera() {
         Minecraft minecraft = Minecraft.getInstance();
+        updateAudioLoading(minecraft);
         if (minecraft.player != null && stateMachine.shouldPinPlayer()) {
             minecraft.player.setPos(anchorX, anchorY, anchorZ);
             minecraft.player.setDeltaMovement(0, 0, 0);
@@ -425,21 +443,31 @@ public final class MMDCameraController {
             return;
         }
         audioPlayer.setVolume(StageConfig.getInstance().audioVolume);
-        if (audioPlayer.load(audioPath)) {
-            audioPlayer.play();
-        } else {
-            LOGGER.warn("[WATCHING] 音频加载失败: {}", audioPath);
+        audioPlayer.loadAsync(audioPath);
+    }
+
+    private void updateAudioLoading(Minecraft minecraft) {
+        StageAudioLoadTask task = audioPlayer.loadingTask();
+        if (task == null) return;
+        if (!task.isDone()) {
+            if (minecraft.screen == null) minecraft.setScreen(new StageAudioLoadingScreen(task, this::exitStageMode));
+            return;
         }
+        if (audioPlayer.finishLoading()) audioPlayer.playFrom(playbackSession.currentFrame() / VMD_FPS);
+        else showAudioFailure(minecraft);
+        if (minecraft.screen instanceof StageAudioLoadingScreen screen && screen.isFor(task)) minecraft.setScreen(null);
+    }
+
+    private void showAudioFailure(Minecraft minecraft) {
+        if (minecraft.player != null) minecraft.player.displayClientMessage(Component.translatable("message.mmdskin.stage.audio_load_failed",
+                Component.translatable("message.mmdskin.stage.audio_check_log")), false);
     }
 
     public synchronized void syncAudioPosition(float seconds) {
         if (!audioPlayer.isLoaded()) {
             return;
         }
-        float current = audioPlayer.getPlaybackPosition();
-        if (Math.abs(current - seconds) > 0.15f) {
-            audioPlayer.setPlaybackPosition(seconds);
-        }
+        audioPlayer.synchronize(seconds);
     }
 
     public synchronized void exitWatchMode() {

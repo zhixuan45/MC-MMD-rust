@@ -2,6 +2,7 @@
 package com.shiroha.mmdskin.ui.stage;
 
 import com.shiroha.mmdskin.config.StagePack;
+import com.shiroha.mmdskin.stage.client.camera.StageAudioLoadTask;
 import com.shiroha.mmdskin.ui.chrome.TranslucentTrayChrome;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -47,6 +48,7 @@ public class StageSelectScreen extends Screen {
 
     private StageAssignPanel assignPanel;
     private boolean stageStarted;
+    private StageAudioLoadTask audioLoad;
     private boolean stageSelectionOpened;
     private boolean stageSelectionClosed;
     private boolean draggingCameraHeight;
@@ -58,6 +60,8 @@ public class StageSelectScreen extends Screen {
     private int hoveredMotionIndex = -1;
     private boolean hoveredRefresh;
     private boolean hoveredCinematic;
+    private boolean hoveredEndPolicy;
+    private com.shiroha.mmdskin.config.StageEndPolicy endPolicy = com.shiroha.mmdskin.config.StageConfig.getInstance().endPolicy;
     private boolean hoveredUseHostCamera;
     private boolean hoveredAudioSlider;
     private boolean hoveredPrimary;
@@ -126,6 +130,20 @@ public class StageSelectScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        if (audioLoad != null && audioLoad.isDone()) {
+            String failure = audioLoad.failure();
+            if (failure != null) {
+                audioLoad.cancel();
+                audioLoad = null;
+                if (minecraft.player != null) minecraft.player.displayClientMessage(Component.translatable("message.mmdskin.stage.audio_load_failed", failure), false);
+            } else {
+                StageAudioLoadTask completed = audioLoad;
+                audioLoad = null;
+                beginPlayback();
+                if (!stageStarted) completed.cancel();
+                return;
+            }
+        }
         syncAssignPanel();
     }
 
@@ -144,10 +162,12 @@ public class StageSelectScreen extends Screen {
         if (assignPanel != null) {
             assignPanel.render(graphics, mouseX, mouseY);
         }
+        if (audioLoad != null) StageAudioLoadingScreen.drawProgress(graphics, width, height, audioLoad.progress());
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (audioLoad != null) return true;
         if (button != 0) {
             return super.mouseClicked(mouseX, mouseY, button);
         }
@@ -161,6 +181,7 @@ public class StageSelectScreen extends Screen {
             reloadStagePacks();
             return true;
         }
+        if (!facade.isSessionMember() && hoveredEndPolicy) { endPolicy=endPolicy.next(); return true; }
         if (hoveredCinematic) {
             state.toggleCinematicMode();
             return true;
@@ -276,6 +297,7 @@ public class StageSelectScreen extends Screen {
 
     @Override
     public void removed() {
+        if (audioLoad != null) { audioLoad.cancel(); audioLoad = null; }
         closeStageSelectionSession();
         super.removed();
     }
@@ -334,6 +356,7 @@ public class StageSelectScreen extends Screen {
         hoveredPackIndex = -1;
         hoveredMotionIndex = -1;
         hoveredRefresh = isRectHovered(mouseX, mouseY, leftPanelX + LEFT_PANEL_WIDTH - 70, leftPanelY + 8, 60, BUTTON_HEIGHT);
+        hoveredEndPolicy = !facade.isSessionMember() && isRectHovered(mouseX, mouseY, leftPanelX + 8, cinematicToggleY + 16, LEFT_PANEL_WIDTH - 16, BUTTON_HEIGHT);
         hoveredCinematic = isRectHovered(mouseX, mouseY, leftPanelX + 10, cinematicToggleY, LEFT_PANEL_WIDTH - 20, 14);
         hoveredUseHostCamera = facade.isSessionMember() && isRectHovered(mouseX, mouseY, leftPanelX + 10, useHostCameraY, LEFT_PANEL_WIDTH - 20, 14);
         hoveredAudioSlider = isAudioSliderHovered(mouseX, mouseY);
@@ -435,6 +458,8 @@ public class StageSelectScreen extends Screen {
         drawToggle(graphics, leftPanelX + 10, cinematicToggleY, LEFT_PANEL_WIDTH - 20, 14, state.cinematicMode(), hoveredCinematic,
                 Component.translatable("gui.mmdskin.stage.cinematic").getString());
 
+        if (!facade.isSessionMember()) drawButton(graphics,leftPanelX+8,cinematicToggleY+16,LEFT_PANEL_WIDTH-16,BUTTON_HEIGHT,
+                Component.translatable("gui.mmdskin.stage.end_policy",Component.translatable(endPolicy.translationKey())).getString(),hoveredEndPolicy,false,false,true);
         boolean hostCanStart = facade.canStartStage(state.selectedPack());
         String primaryText = facade.isSessionMember()
                 ? Component.translatable(facade.isLocalReady() ? "gui.mmdskin.stage.unready" : "gui.mmdskin.stage.ready").getString()
@@ -545,6 +570,15 @@ public class StageSelectScreen extends Screen {
             return;
         }
         persistPreferences();
+        String audioPath = state.selectedPack().getFirstAudioPath();
+        if (audioPath != null && !audioPath.isEmpty()) {
+            audioLoad = StageAudioLoadTask.prepare(audioPath);
+            return;
+        }
+        beginPlayback();
+    }
+
+    private void beginPlayback() {
         if (!facade.startStage(state.selectedPack(), state.cinematicMode(), state.cameraHeightOffset(), state.selectedHostMotionFileName())) {
             return;
         }
@@ -553,6 +587,7 @@ public class StageSelectScreen extends Screen {
     }
 
     private void persistPreferences() {
+        if (!facade.isSessionMember()) com.shiroha.mmdskin.config.StageConfig.getInstance().endPolicy=endPolicy;
         StagePack selectedPack = state.selectedPack();
         facade.savePreferences(
                 selectedPack != null ? selectedPack.getName() : "",

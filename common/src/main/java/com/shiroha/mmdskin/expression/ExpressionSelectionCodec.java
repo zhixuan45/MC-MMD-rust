@@ -2,6 +2,7 @@ package com.shiroha.mmdskin.expression;
 
 public final class ExpressionSelectionCodec {
     public static final String RESET_TOKEN = "__reset__";
+    public static final String RESET_POSE_TOKEN = "__reset_pose__";
     private static final String PRESET_PREFIX = "preset:";
     private static final String FILE_PREFIX = "vpd:";
 
@@ -14,12 +15,14 @@ public final class ExpressionSelectionCodec {
         }
         return switch (selection.type()) {
             case RESET -> RESET_TOKEN;
+            case RESET_POSE -> RESET_POSE_TOKEN;
             case PRESET -> PRESET_PREFIX + selection.value();
             case FILE -> FILE_PREFIX + selection.value();
         };
     }
 
     public static ExpressionSelection decode(String token) {
+        if (RESET_POSE_TOKEN.equals(token)) return ExpressionSelection.resetPose();
         if (token == null || token.isEmpty() || RESET_TOKEN.equals(token)) {
             return ExpressionSelection.reset();
         }

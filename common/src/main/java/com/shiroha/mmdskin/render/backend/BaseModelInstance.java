@@ -63,6 +63,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     protected final AtomicLong nativeUpdateRevision = new AtomicLong(0L);
     private boolean physicsStateInitialized = false;
     private boolean physicsEnabled = true;
+    private long heldItemEvaluationFrame = Long.MIN_VALUE;
     private volatile long failedEvaluationFrame = -1;
     private final FirstPersonPoseState firstPersonPoseState = new FirstPersonPoseState();
     private final FrameEvaluationCache evaluationCache = new FrameEvaluationCache();
@@ -222,14 +223,12 @@ public abstract class BaseModelInstance implements ModelInstance {
         if (model == 0 || !isReady()) return;
         evaluationScene = RenderPerformanceProfiler.scene(context);
 
-        WorldRenderPolicy.Decision worldDecision = nonWorldDecision();
+        WorldRenderPolicy.Decision worldDecision = nonWorldDecision(context);
         if (context != null && context.isWorldScene()) {
             worldDecision = WorldRenderPolicy.get().resolve(model, entityIn);
             if (!worldDecision.shouldRender()) {
                 return;
             }
-        } else {
-            applyPhysicsState(RuntimeConfigPortHolder.get().isPhysicsEnabled());
         }
         RenderPerformanceProfiler.get().recordModel(evaluationScene, model);
 
@@ -240,7 +239,10 @@ public abstract class BaseModelInstance implements ModelInstance {
         }
 
         applyPhysicsState(worldDecision.physicsEnabled());
-        if (worldDecision.shouldUpdate()) {
+        long frame = com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current();
+        boolean held = context != null && context.isHeldItem();
+        if (worldDecision.shouldUpdate() && (!held || heldItemEvaluationFrame != frame)) {
+            if (held) heldItemEvaluationFrame = frame;
             update();
         }
         doRenderModel(entityIn, entityYaw, entityPitch, entityTrans, mat, packedLight, context);
@@ -673,8 +675,8 @@ public abstract class BaseModelInstance implements ModelInstance {
     private static final WorldRenderPolicy.Decision NON_WORLD_DECISION =
             new WorldRenderPolicy.Decision(true, true, true);
 
-    private WorldRenderPolicy.Decision nonWorldDecision() {
-        boolean physics = RuntimeConfigPortHolder.get().isPhysicsEnabled();
+    private WorldRenderPolicy.Decision nonWorldDecision(RenderScene scene) {
+        boolean physics = RuntimeConfigPortHolder.get().isPhysicsEnabled() && (scene == null || scene.allowsPhysics());
         if (physics) {
             return NON_WORLD_DECISION;
         }

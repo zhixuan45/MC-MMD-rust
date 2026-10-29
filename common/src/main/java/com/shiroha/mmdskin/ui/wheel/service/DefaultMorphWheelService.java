@@ -58,6 +58,9 @@ public class DefaultMorphWheelService implements MorphWheelService {
             options.add(new MorphOption(entry.displayName, entry.morphName, filePath, syncToken, false));
         }
         options.add(new MorphOption(
+                net.minecraft.network.chat.Component.translatable("gui.mmdskin.reset_pose").getString(),
+                ExpressionSelectionCodec.RESET_POSE_TOKEN, null, ExpressionSelectionCodec.RESET_POSE_TOKEN, true));
+        options.add(new MorphOption(
                 net.minecraft.network.chat.Component.translatable("gui.mmdskin.reset_morph").getString(),
                 ExpressionSelectionCodec.RESET_TOKEN,
                 null,

@@ -19,6 +19,9 @@ public interface NativeAnimationPort {
 
     float getAnimationMaxFrame(long animationHandle);
 
+    default float getCameraEndFrame(long animationHandle) { return hasCameraData(animationHandle) ? getAnimationMaxFrame(animationHandle) : -1; }
+    default float getMotionEndFrame(long animationHandle) { return hasBoneData(animationHandle) || hasMorphData(animationHandle) ? getAnimationMaxFrame(animationHandle) : -1; }
+
     void seekLayer(long modelHandle, long layer, float frame);
 
     /** 设置动画层播放速度；默认实现保持轻量测试替身兼容。 */

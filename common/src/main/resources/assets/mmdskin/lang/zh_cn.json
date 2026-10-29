@@ -482,5 +482,20 @@
   "gui.mmdskin.mod_settings.debug_transparency_models": "逐模型透明队列诊断",
   "gui.mmdskin.mod_settings.debug_transparency_models.tooltip": "每约 120 帧记录各 PMX 的队列接纳/回退、FBO 与深度附件、实体深度快照及统计到 latest.log。默认关闭，保存后生效。",
   "gui.mmdskin.mod_settings.debug_transparency_stages": "半透明阶段诊断日志",
-  "gui.mmdskin.mod_settings.debug_transparency_stages.tooltip": "约每 120 帧向 latest.log 记录 Iris/BSL 的帧缓冲颜色目标、阶段匹配及深度快照状态，用于排查实体和半透明遮挡。默认关闭；保存后生效。"
+  "gui.mmdskin.mod_settings.debug_transparency_stages.tooltip": "约每 120 帧向 latest.log 记录 Iris/BSL 的帧缓冲颜色目标、阶段匹配及深度快照状态，用于排查实体和半透明遮挡。默认关闭；保存后生效。",
+  "gui.mmdskin.stage.audio_loading": "正在加载和处理音频",
+  "gui.mmdskin.stage.audio_loading_progress": "%s%% · ESC 取消",
+  "message.mmdskin.stage.audio_load_failed": "舞台音频加载失败：%s",
+  "gui.mmdskin.reset_pose": "恢复默认姿势",
+  "gui.mmdskin.load_vpd_pose": "加载 VPD 姿势",
+  "gui.mmdskin.vpd_empty": "将 VPD 放入角色目录或 CustomMorph 后重开此页",
+  "gui.mmdskin.model_settings.held_pmx_options": "道具物理",
+  "gui.mmdskin.model_settings.held_pmx_physics": "启用道具物理",
+  "gui.mmdskin.stage.end_policy": "结束依据：%s",
+  "gui.mmdskin.stage.end_policy.legacy": "沿用当前",
+  "gui.mmdskin.stage.end_policy.camera": "镜头末帧",
+  "gui.mmdskin.stage.end_policy.motion": "动作末帧",
+  "gui.mmdskin.stage.end_policy.audio": "音乐结束",
+  "gui.mmdskin.stage.end_policy.shortest": "可用来源最短",
+  "message.mmdskin.stage.audio_check_log": "请查看日志中的具体原因"
 }

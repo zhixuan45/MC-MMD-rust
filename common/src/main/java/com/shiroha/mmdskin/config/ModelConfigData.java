@@ -48,6 +48,7 @@ public class ModelConfigData {
 
     /** Independent main-hand prop PMX; empty disables replacement. */
     public String heldPmxFile = "";
+    public boolean heldPmxPhysicsEnabled = true;
 
     /** Extra PMX prop transformation in main-hand local coordinates. */
     public float heldPmxScale = 1.0f;
@@ -87,6 +88,7 @@ public class ModelConfigData {
         c.heldItemScale = this.heldItemScale;
         c.mainPmxFile = this.mainPmxFile;
         c.heldPmxFile = this.heldPmxFile;
+        c.heldPmxPhysicsEnabled = this.heldPmxPhysicsEnabled;
         c.heldPmxScale = this.heldPmxScale;
         c.heldPmxOffsetX = this.heldPmxOffsetX;
         c.heldPmxOffsetY = this.heldPmxOffsetY;

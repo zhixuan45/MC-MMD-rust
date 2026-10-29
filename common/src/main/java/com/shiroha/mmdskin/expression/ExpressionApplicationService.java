@@ -57,6 +57,10 @@ public final class ExpressionApplicationService {
     public static boolean apply(long modelHandle, ExpressionSelection selection, String playerName) {
         NativeMorphPort nativeBridge = morphPort;
         return switch (selection.type()) {
+            case RESET_POSE -> {
+                nativeBridge.clearVpdPose(modelHandle);
+                yield true;
+            }
             case RESET -> {
                 nativeBridge.resetAllMorphs(modelHandle);
                 PRESET_STATE.remove(modelHandle);
@@ -104,7 +108,7 @@ public final class ExpressionApplicationService {
             logger.warn("[Expression] Failed to apply VPD for {}: {} ({})", playerName, filePath, result);
             return false;
         }
-        return true;
+        return result != 0;
     }
 
     private static void clearPresetMorphs(long modelHandle) {

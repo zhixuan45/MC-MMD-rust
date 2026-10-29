@@ -90,6 +90,7 @@ class ModelConfigDataTest {
         ModelConfigData config = new ModelConfigData();
         config.mainPmxFile = "普通.pmx";
         config.heldPmxFile = "手持模型.PMX";
+        config.heldPmxPhysicsEnabled = false;
         ModelConfigData copied = config.normalizedCopy();
         assertEquals("普通.pmx", copied.mainPmxFile);
         assertEquals("手持模型.PMX", copied.heldPmxFile);
@@ -101,6 +102,8 @@ class ModelConfigDataTest {
         ModelConfigData loaded = ModelConfigData.load(saved);
         assertEquals("普通.pmx", loaded.mainPmxFile);
         assertEquals("手持模型.PMX", loaded.heldPmxFile);
+        assertFalse(loaded.heldPmxPhysicsEnabled);
+        assertTrue(new ModelConfigData().heldPmxPhysicsEnabled);
         assertEquals(1.0f, loaded.heldPmxScale);
         assertEquals(0.0f, loaded.heldPmxOffsetX);
         assertEquals("", new ModelConfigData().heldPmxFile);

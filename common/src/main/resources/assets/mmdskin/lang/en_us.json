@@ -470,5 +470,20 @@
   "gui.mmdskin.mod_settings.debug_transparency_models": "Per-model transparency diagnostics",
   "gui.mmdskin.mod_settings.debug_transparency_models.tooltip": "Approximately every 120 frames log PMX queue admission/fallback, FBO and depth attachments, entity depth snapshots and frame totals to latest.log. Off by default; applies on save.",
   "gui.mmdskin.mod_settings.debug_transparency_stages": "Transparency stage diagnostics",
-  "gui.mmdskin.mod_settings.debug_transparency_stages.tooltip": "About every 120 frames, log Iris/BSL color attachments, stage matching and opaque depth snapshot status to latest.log. Helps diagnose entity and translucent occlusion. Off by default; applies on save."
+  "gui.mmdskin.mod_settings.debug_transparency_stages.tooltip": "About every 120 frames, log Iris/BSL color attachments, stage matching and opaque depth snapshot status to latest.log. Helps diagnose entity and translucent occlusion. Off by default; applies on save.",
+  "gui.mmdskin.stage.audio_loading": "Loading and processing audio",
+  "gui.mmdskin.stage.audio_loading_progress": "%s%% · ESC to cancel",
+  "message.mmdskin.stage.audio_load_failed": "Stage audio could not be loaded: %s",
+  "gui.mmdskin.reset_pose": "Restore default pose",
+  "gui.mmdskin.load_vpd_pose": "Load VPD pose",
+  "gui.mmdskin.vpd_empty": "Add VPD files to your model folder or CustomMorph",
+  "gui.mmdskin.model_settings.held_pmx_options": "Prop physics",
+  "gui.mmdskin.model_settings.held_pmx_physics": "Enable physics",
+  "gui.mmdskin.stage.end_policy": "End at: %s",
+  "gui.mmdskin.stage.end_policy.legacy": "Current rule",
+  "gui.mmdskin.stage.end_policy.camera": "Camera end",
+  "gui.mmdskin.stage.end_policy.motion": "Motion end",
+  "gui.mmdskin.stage.end_policy.audio": "Audio end",
+  "gui.mmdskin.stage.end_policy.shortest": "Shortest available",
+  "message.mmdskin.stage.audio_check_log": "check the log for details"
 }

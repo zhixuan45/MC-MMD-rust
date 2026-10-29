@@ -116,6 +116,10 @@ public class ModelSettingsScreen extends Screen {
             return true;
         }
 
+        if (layout.contentHit(layout.heldPmxPhysicsToggle, mouseX, mouseY)) {
+            config.heldPmxPhysicsEnabled = !config.heldPmxPhysicsEnabled;
+            return true;
+        }
         if (layout.contentHit(layout.eyeToggle, mouseX, mouseY)) {
             config.eyeTrackingEnabled = !config.eyeTrackingEnabled;
             return true;
@@ -530,6 +534,9 @@ public class ModelSettingsScreen extends Screen {
                 Component.translatable("gui.mmdskin.model_settings.held_pmx_transform_reset").getString(),
                 layout.contentHit(layout.heldPmxTransformReset, hoverMouseX, hoverMouseY));
 
+        drawFallbackCard(guiGraphics, layout.heldPmxOptionsCard, Component.translatable("gui.mmdskin.model_settings.held_pmx_options").getString());
+        guiGraphics.drawString(font,Component.translatable("gui.mmdskin.model_settings.held_pmx_physics"),layout.heldPmxOptionsCard.x+4,layout.heldPmxPhysicsToggle.y,TranslucentTrayChrome.BODY_TEXT,false);
+        drawFallbackToggle(guiGraphics,layout.heldPmxPhysicsToggle,config.heldPmxPhysicsEnabled,layout.contentHit(layout.heldPmxPhysicsToggle,hoverMouseX,hoverMouseY));
         drawFallbackCard(guiGraphics, layout.tailCard, Component.translatable("gui.mmdskin.model_settings.tail_physics").getString());
         guiGraphics.drawString(this.font, Component.translatable("gui.mmdskin.model_settings.tail_idle_lift").getString(),
                 layout.tailCard.x + 4, layout.tailIdleToggle.y, TranslucentTrayChrome.BODY_TEXT, false);

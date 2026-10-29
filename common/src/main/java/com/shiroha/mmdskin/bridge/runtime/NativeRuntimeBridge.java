@@ -585,6 +585,12 @@ public final class NativeRuntimeBridge implements
     }
 
     @Override
+    public void clearVpdPose(long modelHandle) {
+        NativePoseInputs.changed(modelHandle);
+        nativeFunc().ClearVpdPose(modelHandle);
+    }
+
+    @Override
     public boolean setBoneOverride(long modelHandle, int boneIndex,
                                    float tx, float ty, float tz,
                                    float qx, float qy, float qz, float qw) {

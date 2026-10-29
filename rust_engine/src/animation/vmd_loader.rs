@@ -140,6 +140,8 @@ impl VmdFile {
     pub fn max_frame(&self) -> u32 {
         self.motion.duration()
     }
+
+
 }
 
 /// 读取骨骼关键帧
@@ -412,6 +414,18 @@ pub struct VmdAnimation {
 }
 
 impl VmdAnimation {
+    pub fn camera_end_frame(&self) -> Option<u32> {
+        if self.motion.camera_track.is_empty() { None }
+        else { Some(self.motion.camera_track.max_frame_index()) }
+    }
+
+    pub fn motion_end_frame(&self) -> Option<u32> {
+        use crate::animation::motion_track::MotionTrack;
+        self.motion.bone_tracks.values().map(|track| track.max_frame_index())
+            .chain(self.motion.morph_tracks.values().map(|track| track.max_frame_index()))
+            .chain(self.motion.ik_tracks.values().map(|track| track.max_frame_index())).max()
+    }
+
     /// 从 VmdFile 创建
     pub fn from_vmd_file(vmd: VmdFile) -> Self {
         Self { motion: vmd.motion }
@@ -601,5 +615,23 @@ impl VmdAnimation {
     /// 获取 Morph 轨道名称列表
     pub fn morph_track_names(&self) -> Vec<String> {
         self.motion.morph_track_names().cloned().collect()
+    }
+}
+
+#[cfg(test)]
+mod track_duration_tests {
+    use super::*;
+    #[test]
+    fn mixed_vmd_reports_camera_and_motion_end_frames_independently() {
+        let mut motion = Motion::new();
+        motion.insert_camera_keyframe(CameraKeyframe { frame_index: 900, ..Default::default() });
+        motion.insert_bone_keyframe("Root", BoneKeyframe::with_transform(600, Vec3::ZERO, Quat::IDENTITY));
+        let animation = VmdAnimation::from_motion(motion);
+        assert_eq!(animation.camera_end_frame(), Some(900));
+        assert_eq!(animation.motion_end_frame(), Some(600));
+        assert_eq!(animation.max_frame(), 900);
+        let empty = VmdAnimation::from_motion(Motion::new());
+        assert_eq!(empty.camera_end_frame(), None);
+        assert_eq!(empty.motion_end_frame(), None);
     }
 }

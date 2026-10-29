@@ -148,3 +148,20 @@ fn animation_transition_sends_blended_pose_to_bullet_without_blending_dynamic_ou
         assert!(model.bone_manager.get_skinning_matrices()[2].abs_diff_eq(expected_dynamic, 1e-4));
     }
 }
+
+#[test]
+fn resetting_vpd_pose_preserves_external_bone_inputs_in_both_evaluation_paths() {
+    for cpu in [true, false] {
+        let mut model = model();
+        model.set_vpd_bone_override(0, Vec3::X, Quat::IDENTITY);
+        model.set_external_bone_override(0, Vec3::X * 2.0, Quat::IDENTITY);
+        tick(&mut model, cpu, 0.01);
+        assert!((model.bone_manager.get_global_transform(0).w_axis.x - 2.0).abs() < 1e-5);
+        model.clear_vpd_bone_overrides();
+        tick(&mut model, cpu, 0.01);
+        assert!((model.bone_manager.get_global_transform(0).w_axis.x - 2.0).abs() < 1e-5);
+        model.clear_external_bone_overrides();
+        tick(&mut model, cpu, 0.01);
+        assert!(model.bone_manager.get_global_transform(0).abs_diff_eq(Mat4::IDENTITY, 1e-5));
+    }
+}

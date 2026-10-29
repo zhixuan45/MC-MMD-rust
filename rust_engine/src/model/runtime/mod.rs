@@ -208,6 +208,8 @@ pub struct MmdModel {
 
     // VPD 骨骼姿势覆盖（骨骼索引 -> (位移, 旋转)）
     vpd_bone_overrides: HashMap<usize, (Vec3, Quat)>,
+    external_bone_overrides: HashMap<usize, (Vec3, Quat)>,
+    vpd_morph_indices: Vec<usize>,
     external_ik_overrides: HashMap<String, bool>,
 
     // ======== 第一人称模式 ========
@@ -339,6 +341,8 @@ impl MmdModel {
             effective_weights_buf: Vec::new(),
             material_morph_results_flat_cache: Vec::new(),
             vpd_bone_overrides: HashMap::new(),
+            external_bone_overrides: HashMap::new(),
+            vpd_morph_indices: Vec::new(),
             external_ik_overrides: HashMap::new(),
             vr_hand_mode: 0,
             hand_submesh_flags: Vec::new(),

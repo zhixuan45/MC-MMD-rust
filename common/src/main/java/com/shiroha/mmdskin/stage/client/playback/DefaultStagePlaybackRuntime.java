@@ -157,6 +157,7 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
             LOGGER.warn("[舞台模式] 相机控制器启动失败，已释放动画句柄");
             return HostStartResult.failed();
         }
+        sessionDescriptor.setEndFrame(cameraController.getMaxFrame());
         StageDescriptor remoteDescriptor = buildRemoteStageDescriptor(sessionDescriptor, null);
         return HostStartResult.success(sessionDescriptor, remoteDescriptor);
     }
@@ -239,6 +240,7 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                     cameraController.setWatchCamera(cameraAnim, effectiveHeight);
                 }
                 cameraController.setWatchMotion(mergedAnim, localModelBinding.modelHandle(), localModelBinding.modelName());
+                cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
                 if (audioPath != null && !audioPath.isEmpty()) {
                     cameraController.loadWatchAudio(audioPath);
                 }
@@ -262,6 +264,7 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                 LOGGER.warn("[多人舞台] 启动播放失败");
                 return GuestStartResult.failed();
             }
+            cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
             return GuestStartResult.success(
                     effectiveDescriptor,
                     buildRemoteStageDescriptor(effectiveDescriptor, motionPackName)

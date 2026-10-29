@@ -10,6 +10,7 @@ public final class StageDescriptor {
     private List<String> motionFiles = new ArrayList<>();
     private String cameraFile;
     private String audioFile;
+    private Float endFrame;
 
     public StageDescriptor() {
     }
@@ -57,11 +58,17 @@ public final class StageDescriptor {
         return !motionFiles.isEmpty();
     }
 
+    public Float getEndFrame() { return endFrame; }
+    public void setEndFrame(Float frame) { this.endFrame=frame; }
+
     public StageDescriptor copy() {
-        return new StageDescriptor(packName, motionFiles, cameraFile, audioFile);
+        StageDescriptor copy=new StageDescriptor(packName, motionFiles, cameraFile, audioFile);
+        copy.endFrame=endFrame;
+        return copy;
     }
 
     public boolean isValid() {
+        if (endFrame != null && (!Float.isFinite(endFrame) || endFrame<0)) return false;
         if (!isSafeName(packName) || motionFiles.isEmpty()) {
             return false;
         }

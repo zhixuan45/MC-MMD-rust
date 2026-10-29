@@ -41,6 +41,9 @@ public final class NativeAnimationBridge implements NativeAnimationPort {
         return NativeFunc.GetInst().GetAnimMaxFrame(animationHandle);
     }
 
+    @Override public float getCameraEndFrame(long handle) { return NativeFunc.GetInst().GetCameraEndFrame(handle); }
+    @Override public float getMotionEndFrame(long handle) { return NativeFunc.GetInst().GetMotionEndFrame(handle); }
+
     @Override
     public void seekLayer(long modelHandle, long layer, float frame) {
         NativePoseInputs.changed(modelHandle);

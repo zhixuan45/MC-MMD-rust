@@ -24,6 +24,7 @@ public class StageConfig {
     public boolean cinematicMode = true;
     public float cameraHeightOffset = 0.0f;
     public float audioVolume = 1.0f;
+    public StageEndPolicy endPolicy = StageEndPolicy.LEGACY;
 
     private StageConfig() {}
 
@@ -70,6 +71,7 @@ public class StageConfig {
     }
 
     private void normalizeLoadedValues(JsonObject root) {
+        if (endPolicy == null) endPolicy = StageEndPolicy.LEGACY;
         if (lastStagePack == null) {
             lastStagePack = "";
         }

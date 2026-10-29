@@ -53,6 +53,8 @@ public final class DefaultStageLocalModelBindingPort implements StageLocalModelB
         if (modelHandle == 0L) {
             return;
         }
+        com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(modelHandle,
+                com.shiroha.mmdskin.expression.ExpressionSelection.resetPose(), "stage");
         scenePort.setAutoBlinkEnabled(modelHandle, false);
         scenePort.setEyeTrackingEnabled(modelHandle, false);
     }

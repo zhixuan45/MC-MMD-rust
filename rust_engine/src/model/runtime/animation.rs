@@ -465,6 +465,22 @@ impl MmdModel {
             .insert(bone_index, (translation, rotation));
     }
 
+    pub fn set_external_bone_override(&mut self, bone_index: usize, translation: Vec3, rotation: Quat) {
+        self.external_bone_overrides.insert(bone_index, (translation, rotation));
+    }
+
+    pub fn clear_external_bone_overrides(&mut self) {
+        self.external_bone_overrides.clear();
+    }
+
+    pub fn clear_vpd_morphs(&mut self) {
+        for index in self.vpd_morph_indices.drain(..) {
+            self.morph_manager.set_morph_weight(index, 0.0);
+        }
+    }
+
+    pub fn track_vpd_morph(&mut self, index: usize) { self.vpd_morph_indices.push(index); }
+
     /// 清除所有 VPD 骨骼姿势覆盖
     pub fn clear_vpd_bone_overrides(&mut self) {
         self.vpd_bone_overrides.clear();
@@ -472,7 +488,7 @@ impl MmdModel {
 
     /// 应用 VPD 骨骼姿势覆盖到 BoneManager
     fn apply_vpd_bone_overrides(&mut self) {
-        for (&bone_index, &(translation, rotation)) in &self.vpd_bone_overrides {
+        for (&bone_index, &(translation, rotation)) in self.vpd_bone_overrides.iter().chain(self.external_bone_overrides.iter()) {
             let t = self.bone_manager.convert_vmd_translation(translation);
             let r = self.bone_manager.convert_vmd_rotation(rotation);
             self.bone_manager.set_bone_translation(bone_index, t);

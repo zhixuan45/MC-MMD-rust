@@ -62,7 +62,7 @@ final class HeldItemPmxRenderer {
             // NULL entity avoids living-entity animation/IK state being applied to the prop.
             // ITEM scene avoids a second full character world render or player pose mutation.
             prop.modelInstance().render(null, 0.0f, 0.0f, new Vector3f(),
-                    tickDelta, poseStack, packedLight, RenderScene.ITEM);
+                    tickDelta, poseStack, packedLight, config.heldPmxPhysicsEnabled ? RenderScene.HELD_ITEM : RenderScene.HELD_ITEM_NO_PHYSICS);
             return true;
         } catch (RuntimeException e) {
             LOGGER.debug("PMX main-hand prop render failed for {}: {}", modelName, pmx, e);

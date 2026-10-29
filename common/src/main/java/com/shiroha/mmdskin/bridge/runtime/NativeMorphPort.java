@@ -10,4 +10,6 @@ public interface NativeMorphPort {
     void syncGpuMorphWeights(long modelHandle);
 
     int applyVpdMorph(long modelHandle, String filePath);
+
+    default void clearVpdPose(long modelHandle) { }
 }

@@ -5,6 +5,7 @@ import java.util.Objects;
 public record ExpressionSelection(Type type, String value) {
     public enum Type {
         RESET,
+        RESET_POSE,
         PRESET,
         FILE
     }
@@ -16,6 +17,10 @@ public record ExpressionSelection(Type type, String value) {
 
     public static ExpressionSelection reset() {
         return new ExpressionSelection(Type.RESET, "");
+    }
+
+    public static ExpressionSelection resetPose() {
+        return new ExpressionSelection(Type.RESET_POSE, "");
     }
 
     public static ExpressionSelection preset(String presetId) {

@@ -8,6 +8,7 @@ final class StageCameraPlaybackSession {
 
     private float currentFrame = 0.0f;
     private float maxFrame = 0.0f;
+    private boolean lastFramePresented;
     private float playbackSpeed = 1.0f;
     private float cameraHeightOffset = 0.0f;
 
@@ -34,6 +35,7 @@ final class StageCameraPlaybackSession {
         this.modelName = modelName;
         this.cameraHeightOffset = cameraHeightOffset;
         this.currentFrame = 0.0f;
+        this.lastFramePresented = false;
         this.frameSyncCounter = 0;
         this.targetSyncFrame = UNSET_SYNC_FRAME;
         return this.cameraAnimHandle != 0L;
@@ -62,6 +64,7 @@ final class StageCameraPlaybackSession {
                                  float catchupSpeedMax,
                                  float catchupSpeedMin,
                                  float syncTolerance) {
+        if (lastFramePresented) return new StagePlaybackAdvance(currentFrame, targetSyncFrame, playbackSpeed, true);
         StagePlaybackAdvance advance = StageCameraTimeline.advanceFrame(
                 currentFrame,
                 targetSyncFrame,
@@ -75,6 +78,11 @@ final class StageCameraPlaybackSession {
         );
         this.currentFrame = advance.frame();
         this.targetSyncFrame = advance.targetSyncFrame();
+        if (advance.completed()) {
+            // Publish the selected last pose for one rendered frame before teardown.
+            lastFramePresented = true;
+            return new StagePlaybackAdvance(advance.frame(), advance.targetSyncFrame(), advance.effectiveSpeed(), false);
+        }
         return advance;
     }
 
@@ -98,6 +106,7 @@ final class StageCameraPlaybackSession {
         this.modelName = null;
         this.currentFrame = 0.0f;
         this.maxFrame = 0.0f;
+        this.lastFramePresented = false;
         this.frameSyncCounter = 0;
         this.targetSyncFrame = UNSET_SYNC_FRAME;
     }
@@ -118,6 +127,10 @@ final class StageCameraPlaybackSession {
 
     float maxFrame() {
         return maxFrame;
+    }
+
+    void setMaxFrame(float frame) {
+        if (Float.isFinite(frame) && frame>=0) this.maxFrame=frame;
     }
 
     float playbackSpeed() {

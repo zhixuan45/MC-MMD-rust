@@ -1,23 +1,13 @@
 package com.shiroha.mmdskin.stage.client.camera;
 
-import javazoom.jl.decoder.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.openal.AL;
 import org.lwjgl.openal.AL10;
 import org.lwjgl.openal.AL11;
-import org.lwjgl.stb.STBVorbis;
-import org.lwjgl.system.MemoryStack;
+import org.lwjgl.openal.EXTFloat32;
 import org.lwjgl.system.MemoryUtil;
-
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-
-import java.io.*;
 import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
-import java.nio.ShortBuffer;
-import java.nio.file.Files;
 
 /** 负责舞台模式音频的解码、加载与 OpenAL 播放控制。 */
 public class StageAudioPlayer {
@@ -31,91 +21,72 @@ public class StageAudioPlayer {
     private float durationSeconds = 0.0f;
 
     private float volume = 1.0f;
+    private float syncGain = 1.0f;
+    private final StageAudioSync sync = new StageAudioSync();
 
-    public boolean load(String filePath) {
+    private StageAudioLoadTask loading;
+
+    /** Starts disk I/O and conversion off the render thread. */
+    public void loadAsync(String path) {
         cleanup();
-        
-        if (filePath == null || filePath.isEmpty()) return false;
-        
-        File file = new File(filePath);
-        
-        try {
-            if (!file.exists() || !file.isFile()) {
-                logger.warn("[StageAudio] 文件不存在或不是文件: {}", filePath);
-                return false;
-            }
-        } catch (SecurityException e) {
-            logger.error("[StageAudio] 路径校验失败: {} - {}", filePath, e.getMessage());
-            return false;
-        }
-        
-        String ext = getExtension(filePath).toLowerCase();
-        
-        PcmData pcm;
-        try {
-            switch (ext) {
-                case "mp3":
-                    pcm = decodeMp3(file);
-                    break;
-                case "ogg":
-                    pcm = decodeOgg(file);
-                    break;
-                case "wav":
-                    pcm = decodeWav(file);
-                    break;
-                default:
-                    logger.warn("[StageAudio] 不支持的音频格式: {}", ext);
-                    return false;
-            }
-        } catch (Exception e) {
-            logger.error("[StageAudio] 解码失败: {} - {}", filePath, e.getMessage());
-            return false;
-        }
-        
-        if (pcm == null || pcm.data == null || pcm.data.limit() == 0) {
-            logger.warn("[StageAudio] 解码结果为空: {}", filePath);
-            return false;
-        }
-        
-        int alFormat = getAlFormat(pcm.channels, pcm.bitsPerSample);
-        if (alFormat == 0) {
-            logger.error("[StageAudio] 不支持的 PCM 格式: ch={}, bits={}", pcm.channels, pcm.bitsPerSample);
-            MemoryUtil.memFree(pcm.data);
-            return false;
-        }
-        
-        alBuffer = AL10.alGenBuffers();
-        AL10.alBufferData(alBuffer, alFormat, pcm.data, pcm.sampleRate);
-        
-        int err = AL10.alGetError();
-        if (err != AL10.AL_NO_ERROR) {
-            logger.error("[StageAudio] alBufferData 错误: 0x{}", Integer.toHexString(err));
-            AL10.alDeleteBuffers(alBuffer);
-            alBuffer = 0;
-            MemoryUtil.memFree(pcm.data);
-            return false;
-        }
-        
-        alSource = AL10.alGenSources();
-        AL10.alSourcei(alSource, AL10.AL_BUFFER, alBuffer);
-        AL10.alSourcef(alSource, AL10.AL_GAIN, volume);
-        AL10.alSourcei(alSource, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
-        AL10.alSource3f(alSource, AL10.AL_POSITION, 0, 0, 0);
-
-        int totalSamples = pcm.data.remaining() / (pcm.channels * (pcm.bitsPerSample / 8));
-        durationSeconds = (float) totalSamples / pcm.sampleRate;
-
-        MemoryUtil.memFree(pcm.data);
-        
-        this.audioPath = filePath;
-        this.initialized = true;
-        
-        return true;
+        loading = StageAudioLoadTask.takePrepared(path);
+        if (loading == null) loading = StageAudioLoadTask.start(path);
+        audioPath = path;
     }
-    
-    public void play() {
-        if (!initialized) return;
+
+    public StageAudioLoadTask loadingTask() { return loading; }
+
+    /** Called on the client thread with its current OpenAL context. */
+    public boolean finishLoading() {
+        if (loading == null || !loading.isDone()) return false;
+        StageAudioLoadTask task = loading;
+        loading = null;
+        ByteBuffer data = null;
+        try {
+            StagePcmDecoder.Pcm pcm = task.result();
+            if (!AL.getCapabilities().AL_EXT_FLOAT32) {
+                throw new IllegalStateException("The audio device does not support 32-bit float audio (AL_EXT_FLOAT32)");
+            }
+            data = MemoryUtil.memAlloc(pcm.data().length);
+            data.put(pcm.data()).flip();
+            alBuffer = AL10.alGenBuffers();
+            int format = pcm.channels() == 1 ? EXTFloat32.AL_FORMAT_MONO_FLOAT32 : EXTFloat32.AL_FORMAT_STEREO_FLOAT32;
+            AL10.alBufferData(alBuffer, format, data, pcm.sampleRate());
+            checkAlError("float32 buffer upload");
+            alSource = AL10.alGenSources();
+            AL10.alSourcei(alSource, AL10.AL_BUFFER, alBuffer);
+            AL10.alSourcef(alSource, AL10.AL_GAIN, volume);
+            AL10.alSourcei(alSource, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
+            AL10.alSource3f(alSource, AL10.AL_POSITION, 0, 0, 0);
+            checkAlError("source creation");
+            durationSeconds = (float) (pcm.data().length / (double) (pcm.channels() * 4 * (long) pcm.sampleRate()));
+            initialized = true;
+            task.uploaded();
+            return true;
+        } catch (Exception e) {
+            logger.error("[StageAudio] 32-bit audio load failed: {}", audioPath, e);
+            cleanup();
+            return false;
+        } finally {
+            if (data != null) MemoryUtil.memFree(data);
+        }
+    }
+
+    private static void checkAlError(String operation) {
+        int error = AL10.alGetError();
+        if (error != AL10.AL_NO_ERROR) throw new IllegalStateException(operation + ": OpenAL error " + error);
+    }
+
+    public void play() { playFrom(0); }
+
+    public void playFrom(float seconds) {
+        if (!initialized || !Float.isFinite(seconds) || seconds >= durationSeconds) return;
+        sync.reset();
+        syncGain = 1.0f;
+        AL10.alSourcef(alSource, AL10.AL_GAIN, volume);
+        AL10.alSourcef(alSource, AL10.AL_PITCH, 1.0f);
         AL10.alSourceRewind(alSource);
+        if (seconds > 0) setPlaybackPosition(seconds);
         AL10.alSourcePlay(alSource);
     }
     
@@ -148,16 +119,30 @@ public class StageAudioPlayer {
     }
     
     public void setPlaybackPosition(float seconds) {
-        if (!initialized) return;
+        if (!initialized || !Float.isFinite(seconds)) return;
         seconds = Math.max(0, Math.min(seconds, durationSeconds));
         AL10.alSourcef(alSource, AL11.AL_SEC_OFFSET, seconds);
     }
     
     public void setVolume(float vol) {
-        this.volume = Math.max(0.0f, Math.min(1.0f, vol));
+        this.volume = Float.isFinite(vol) ? Math.max(0.0f, Math.min(1.0f, vol)) : 1.0f;
         if (initialized) {
-            AL10.alSourcef(alSource, AL10.AL_GAIN, this.volume);
+            AL10.alSourcef(alSource, AL10.AL_GAIN, this.volume * syncGain);
         }
+    }
+
+    public void synchronize(float seconds) {
+        if (!initialized || !Float.isFinite(seconds)) return;
+        // A shorter soundtrack ends once. Never repeatedly seek/restart it at its end.
+        if (seconds >= durationSeconds) {
+            sync.reset();
+            return;
+        }
+        StageAudioSync.Adjustment adjustment = sync.update(Math.max(0, seconds), getPlaybackPosition(), System.nanoTime());
+        syncGain = adjustment.gain();
+        AL10.alSourcef(alSource, AL10.AL_GAIN, volume * syncGain);
+        AL10.alSourcef(alSource, AL10.AL_PITCH, adjustment.pitch());
+        if (Float.isFinite(adjustment.seekSeconds())) setPlaybackPosition(adjustment.seekSeconds());
     }
     
     public float getVolume() {
@@ -177,6 +162,9 @@ public class StageAudioPlayer {
     }
     
     public void cleanup() {
+        if (loading != null) { loading.cancel(); loading = null; }
+        sync.reset();
+        syncGain = 1.0f;
         if (alSource != 0) {
             AL10.alSourceStop(alSource);
             AL10.alDeleteSources(alSource);
@@ -191,154 +179,4 @@ public class StageAudioPlayer {
         durationSeconds = 0.0f;
     }
     
-    private static class PcmData {
-        ByteBuffer data;
-        int sampleRate;
-        int channels;
-        int bitsPerSample;
-        
-        PcmData(ByteBuffer data, int sampleRate, int channels, int bitsPerSample) {
-            this.data = data;
-            this.sampleRate = sampleRate;
-            this.channels = channels;
-            this.bitsPerSample = bitsPerSample;
-        }
-    }
-    
-    private PcmData decodeMp3(File file) throws Exception {
-        ByteArrayOutputStream pcmOut = new ByteArrayOutputStream();
-        
-        int sampleRate = 0;
-        int channels = 0;
-        
-        try (FileInputStream fis = new FileInputStream(file)) {
-            Bitstream bitstream = new Bitstream(fis);
-            Decoder decoder = new Decoder();
-            
-            Header header;
-            while ((header = bitstream.readFrame()) != null) {
-                if (sampleRate == 0) {
-                    sampleRate = header.frequency();
-                    channels = header.mode() == Header.SINGLE_CHANNEL ? 1 : 2;
-                }
-                
-                SampleBuffer output = (SampleBuffer) decoder.decodeFrame(header, bitstream);
-                short[] samples = output.getBuffer();
-                int len = output.getBufferLength();
-
-                for (int i = 0; i < len; i++) {
-                    pcmOut.write(samples[i] & 0xFF);
-                    pcmOut.write((samples[i] >> 8) & 0xFF);
-                }
-                
-                bitstream.closeFrame();
-            }
-            
-            bitstream.close();
-        }
-        
-        byte[] pcmBytes = pcmOut.toByteArray();
-        if (pcmBytes.length == 0 || sampleRate == 0) return null;
-        
-        ByteBuffer buffer = MemoryUtil.memAlloc(pcmBytes.length);
-        buffer.put(pcmBytes).flip();
-        
-        return new PcmData(buffer, sampleRate, channels, 16);
-    }
-    
-    private PcmData decodeOgg(File file) throws Exception {
-        byte[] fileBytes = Files.readAllBytes(file.toPath());
-        ByteBuffer fileBuffer = MemoryUtil.memAlloc(fileBytes.length);
-        fileBuffer.put(fileBytes).flip();
-        
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            IntBuffer channelsBuffer = stack.mallocInt(1);
-            IntBuffer sampleRateBuffer = stack.mallocInt(1);
-            
-            ShortBuffer decoded = STBVorbis.stb_vorbis_decode_memory(
-                fileBuffer, channelsBuffer, sampleRateBuffer
-            );
-            
-            MemoryUtil.memFree(fileBuffer);
-            
-            if (decoded == null) {
-                logger.error("[StageAudio] STB Vorbis 解码失败");
-                return null;
-            }
-            
-            int channels = channelsBuffer.get(0);
-            int sampleRate = sampleRateBuffer.get(0);
-            
-            ByteBuffer pcmBuffer = MemoryUtil.memAlloc(decoded.remaining() * 2);
-            while (decoded.hasRemaining()) {
-                short s = decoded.get();
-                pcmBuffer.put((byte) (s & 0xFF));
-                pcmBuffer.put((byte) ((s >> 8) & 0xFF));
-            }
-            pcmBuffer.flip();
-            
-            MemoryUtil.memFree(decoded);
-            
-            return new PcmData(pcmBuffer, sampleRate, channels, 16);
-        }
-    }
-    
-    private PcmData decodeWav(File file) throws Exception {
-        try (AudioInputStream ais = AudioSystem.getAudioInputStream(file)) {
-            AudioFormat fmt = ais.getFormat();
-            
-            AudioFormat targetFmt = fmt;
-            boolean needConvert = fmt.getEncoding() != AudioFormat.Encoding.PCM_SIGNED;
-            AudioInputStream targetAis = needConvert 
-                ? AudioSystem.getAudioInputStream(
-                    new AudioFormat(
-                        AudioFormat.Encoding.PCM_SIGNED,
-                        fmt.getSampleRate(),
-                        16,
-                        fmt.getChannels(),
-                        fmt.getChannels() * 2,
-                        fmt.getSampleRate(),
-                        false
-                    ), ais)
-                : ais;
-            
-            try {
-                if (needConvert) {
-                    targetFmt = targetAis.getFormat();
-                }
-                
-                byte[] pcmBytes = targetAis.readAllBytes();
-                
-                ByteBuffer buffer = MemoryUtil.memAlloc(pcmBytes.length);
-                buffer.put(pcmBytes).flip();
-                
-                return new PcmData(
-                    buffer,
-                    (int) targetFmt.getSampleRate(),
-                    targetFmt.getChannels(),
-                    targetFmt.getSampleSizeInBits()
-                );
-            } finally {
-                if (needConvert) {
-                    targetAis.close();
-                }
-            }
-        }
-    }
-    
-    private static int getAlFormat(int channels, int bitsPerSample) {
-        if (channels == 1) {
-            if (bitsPerSample == 8) return AL10.AL_FORMAT_MONO8;
-            if (bitsPerSample == 16) return AL10.AL_FORMAT_MONO16;
-        } else if (channels == 2) {
-            if (bitsPerSample == 8) return AL10.AL_FORMAT_STEREO8;
-            if (bitsPerSample == 16) return AL10.AL_FORMAT_STEREO16;
-        }
-        return 0;
-    }
-    
-    private static String getExtension(String path) {
-        int dot = path.lastIndexOf('.');
-        return dot >= 0 ? path.substring(dot + 1) : "";
-    }
 }
