@@ -423,63 +423,63 @@ jobs:
           path: build/ci-native-artifact/*
           if-no-files-found: error
 
-  # 每个平台等待公共测试验证和自己的原生库，独立产出 Fabric / NeoForge 包。
+  # 测试单独报告；每个平台只等待自己的原生库，不受其它平台或公共测试失败影响。
   package-windows-x64:
-    needs: [validation, build-rust-windows-x64]
+    needs: build-rust-windows-x64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: windows-x64
 
   package-windows-arm64:
-    needs: [validation, build-rust-windows-arm64]
+    needs: build-rust-windows-arm64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: windows-arm64
 
   package-linux-x64:
-    needs: [validation, build-rust-linux-x64]
+    needs: build-rust-linux-x64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: linux-x64
 
   package-linux-arm64:
-    needs: [validation, build-rust-linux-arm64]
+    needs: build-rust-linux-arm64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: linux-arm64
 
   package-linux-loongarch64:
-    needs: [validation, build-rust-linux-loongarch64]
+    needs: build-rust-linux-loongarch64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: linux-loongarch64
 
   package-linux-riscv64:
-    needs: [validation, build-rust-linux-riscv64]
+    needs: build-rust-linux-riscv64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: linux-riscv64
 
   package-macos-x64:
-    needs: [validation, build-rust-macos-x64]
+    needs: build-rust-macos-x64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: macos-x64
 
   package-macos-arm64:
-    needs: [validation, build-rust-macos-arm64]
+    needs: build-rust-macos-arm64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: macos-arm64
 
   package-android-arm64:
-    needs: [validation, build-rust-android-arm64]
+    needs: build-rust-android-arm64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: android-arm64
 
   package-android-amd64:
-    needs: [validation, build-rust-android-amd64]
+    needs: build-rust-android-amd64
     uses: ./.github/workflows/package-platform.yml
     with:
       arch: android-amd64

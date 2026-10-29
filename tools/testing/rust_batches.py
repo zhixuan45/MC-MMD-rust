@@ -35,7 +35,9 @@ def main():
     requested = list(GROUPS['rust']) + ['serial'] if args.groups == 'all' else args.groups.split(',')
     if not requested or any(g not in set(GROUPS['rust']) | {'serial'} for g in requested):
         parser.error('Unknown or empty Rust batch')
-    command = ['cargo', 'test', '--locked', '--lib', '--no-run', '--message-format=json',
+    # Like native platform builds, allow a clean checkout to generate Cargo.lock:
+    # this repository intentionally does not track lockfiles.
+    command = ['cargo', 'test', '--lib', '--no-run', '--message-format=json',
                '--manifest-path', 'rust_engine/Cargo.toml']
     if args.offline:
         command.append('--offline')
