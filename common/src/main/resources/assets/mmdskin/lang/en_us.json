@@ -477,7 +477,7 @@
   "gui.mmdskin.reset_pose": "Restore default pose",
   "gui.mmdskin.load_vpd_pose": "Load VPD pose",
   "gui.mmdskin.vpd_empty": "Add VPD files to your model folder or CustomMorph",
-  "gui.mmdskin.model_settings.held_pmx_options": "Prop physics",
+  "gui.mmdskin.model_settings.held_pmx_options": "Prop settings",
   "gui.mmdskin.model_settings.held_pmx_physics": "Enable physics",
   "gui.mmdskin.stage.end_policy": "End at: %s",
   "gui.mmdskin.stage.end_policy.legacy": "Current rule",
@@ -485,5 +485,15 @@
   "gui.mmdskin.stage.end_policy.motion": "Motion end",
   "gui.mmdskin.stage.end_policy.audio": "Audio end",
   "gui.mmdskin.stage.end_policy.shortest": "Shortest available",
-  "message.mmdskin.stage.audio_check_log": "check the log for details"
+  "message.mmdskin.stage.audio_check_log": "check the log for details",
+  "gui.mmdskin.prop_selection.filter": "Filter or enter a bone name",
+  "gui.mmdskin.prop_selection.use_name": "Use entered bone name",
+  "gui.mmdskin.model_settings.prop_bone_title": "Prop attachment bone",
+  "gui.mmdskin.model_settings.prop_bone_hint": "Search or type; missing bones use the main hand",
+  "gui.mmdskin.model_settings.prop_bone_default": "Default main hand",
+  "gui.mmdskin.model_settings.prop_bone": "Bone: %s",
+  "gui.mmdskin.model_settings.prop_motion_title": "Independent prop stage VMD",
+  "gui.mmdskin.model_settings.prop_motion_hint": "VMD files in the model folder and anims",
+  "gui.mmdskin.model_settings.prop_motion_disabled": "Off (no VMD)",
+  "gui.mmdskin.model_settings.prop_motion": "Prop VMD: %s"
 }

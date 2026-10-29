@@ -92,6 +92,8 @@ public final class StageClientRuntime {
         }
     }
 
+    public static StageClientRuntime peek() { return instance; }
+
     public static StageClientRuntime get() {
         StageClientRuntime runtime = instance;
         if (runtime == null) {

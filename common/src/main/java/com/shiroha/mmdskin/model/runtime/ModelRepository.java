@@ -201,7 +201,10 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
                 ModelRenderProperties.from(properties));
         // Prop PMX is independent geometry, not an alternate character skeleton.
         // Do not apply the character idle VMD or material indices to this model.
-        if (!requestKey.isHeldItem()) {
+        if (requestKey.isHeldItem()) {
+            // A prop's authored VMD must not be overwritten by character blink/look automation.
+            runtimeAccessPort.configurePropPose(modelInstance.getModelHandle());
+        } else {
             initializePhysicsOptions(modelInstance, config);
             modelInstance.changeAnim(managedModel.animationLibrary().animation("idle"), 0);
             applyMaterialVisibility(modelInstance.getModelHandle(), requestKey.modelName(), config);

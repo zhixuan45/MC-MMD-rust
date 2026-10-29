@@ -202,6 +202,11 @@ public final class NativeRuntimeBridge implements
     }
 
     @Override
+    public boolean populateBoneMatrix(long modelHandle, long matrixHandle, String boneName) {
+        return nativeFunc().GetBoneMatByName(modelHandle, matrixHandle, boneName);
+    }
+
+    @Override
     public boolean setTaczArmTargets(long modelHandle, float[] columnMajorMatrices, int validMask) {
         NativePoseInputs.externalPose(modelHandle);
         if (!isValidTaczArmTargetPacket(columnMajorMatrices, validMask)) {

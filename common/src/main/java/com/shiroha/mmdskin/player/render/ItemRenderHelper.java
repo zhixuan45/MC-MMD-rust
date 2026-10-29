@@ -112,6 +112,18 @@ public class ItemRenderHelper {
         return convertToMatrix4f(runtimeBridge, handMat, model.entityState().matBuffer);
     }
 
+    public static void applyPropAttachment(ManagedModel model, PoseStack stack, String boneName) {
+        stack.last().pose().mul(resolvePropAttachment(matrixPort,model.modelInstance().getModelHandle(),
+                model.entityState().rightHandMat,model.entityState().matBuffer,boneName));
+    }
+
+    static Matrix4f resolvePropAttachment(NativeMatrixPort port,long modelHandle,long matrix,ByteBuffer buffer,String boneName) {
+        if (boneName != null && !boneName.isEmpty()
+                && port.populateBoneMatrix(modelHandle, matrix, boneName)) return convertToMatrix4f(port,matrix,buffer);
+        port.populateHandMatrix(modelHandle,matrix,true);
+        return convertToMatrix4f(port,matrix,buffer);
+    }
+
     private static void renderHandItem(AbstractClientPlayer player, ManagedModel model,
                                           PoseStack matrixStack, MultiBufferSource vertexConsumers,
                                           int packedLight, InteractionHand hand, float heldItemScale) {

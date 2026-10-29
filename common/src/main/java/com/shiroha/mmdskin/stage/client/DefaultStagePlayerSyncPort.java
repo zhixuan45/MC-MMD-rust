@@ -27,4 +27,13 @@ public final class DefaultStagePlayerSyncPort implements StagePlayerSyncPort {
             animSyncHelper.end(minecraft.player);
         }
     }
+
+    @Override public void beginLocalProp(com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment) {
+        Minecraft minecraft=StageClientContext.minecraft();
+        if (minecraft.player!=null) animSyncHelper.propAnimations().begin(minecraft.player.getUUID(),assignment);
+    }
+    @Override public void stopLocalProp() {
+        Minecraft minecraft=StageClientContext.minecraft();
+        if (minecraft.player!=null) animSyncHelper.propAnimations().stop(minecraft.player.getUUID());
+    }
 }

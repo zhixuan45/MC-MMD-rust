@@ -30,6 +30,19 @@ public class DefaultModelSettingsRuntimeGateway implements ModelSettingsRuntimeG
     }
 
     @Override
+    public List<String> listBoneNames(String modelName) {
+        if (!(nativeScenePortSupplier.get() instanceof com.shiroha.mmdskin.bridge.runtime.NativeModelQueryPort query)) return List.of();
+        for (ManagedModel model : ClientRenderRuntime.get().modelDiagnostics().loadedModels()) {
+            if (modelName.equals(model.modelName()) && model.requestKey().subjectKind() == com.shiroha.mmdskin.model.runtime.ModelSubjectKind.PLAYER) {
+                String json = query.getBoneNames(model.modelInstance().getModelHandle());
+                String[] names = new com.google.gson.Gson().fromJson(json, String[].class);
+                return names == null ? List.of() : java.util.Arrays.stream(names).filter(java.util.Objects::nonNull).distinct().toList();
+            }
+        }
+        return List.of();
+    }
+
+    @Override
     public void applyConfigIfSelected(String modelName, ModelConfigData config) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) {
@@ -50,6 +63,9 @@ public class DefaultModelSettingsRuntimeGateway implements ModelSettingsRuntimeG
         }
 
         ModelDiagnosticsPort diagnostics = runtime.modelDiagnostics();
+        for (ManagedModel model:diagnostics.loadedModels()) {
+            if (modelName.equals(model.modelName()) && model.requestKey().isHeldItem()) model.modelInstance().resetPhysics();
+        }
         List<TailPhysicsTarget> targets = diagnostics.loadedModels().stream()
                 .map(loadedModel -> new TailPhysicsTarget(
                         loadedModel.modelName(), loadedModel.modelInstance().getModelHandle()))

@@ -139,4 +139,20 @@ class ModelConfigDataTest {
         assertEquals("角色.PMX", ModelConfigData.normalizePmxFileName("角色.PMX"));
     }
 
+    @Test
+    void propBoneAndStageMotionAreCopiedNormalizedAndPersisted(@TempDir Path dir) {
+        ModelConfigData config=new ModelConfigData();
+        config.heldPmxBone="  頭  "; config.heldPmxStageMotion="fan.VMD";
+        ModelConfigData copy=config.normalizedCopy();
+        config.heldPmxBone="changed";
+        assertEquals("頭",copy.heldPmxBone); assertEquals("fan.VMD",copy.heldPmxStageMotion);
+        File file=dir.resolve("props.json").toFile(); copy.save(file);
+        ModelConfigData loaded=ModelConfigData.load(file);
+        assertEquals("頭",loaded.heldPmxBone); assertEquals("fan.VMD",loaded.heldPmxStageMotion);
+        assertEquals("",new ModelConfigData().heldPmxBone); assertEquals("",new ModelConfigData().heldPmxStageMotion);
+        assertEquals("",ModelConfigData.normalizeVmdFileName("../bad.vmd"));
+        assertEquals("",ModelConfigData.normalizeVmdFileName("bad.pmx"));
+        assertEquals("",ModelConfigData.normalizeVmdFileName("C:bad.vmd"));
+        assertEquals("",ModelConfigData.normalizeBoneName("head\n"));
+    }
 }

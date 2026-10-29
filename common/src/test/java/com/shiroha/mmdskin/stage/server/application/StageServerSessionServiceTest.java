@@ -45,6 +45,8 @@ class StageServerSessionServiceTest {
         StagePacket startPacket = new StagePacket(StagePacketType.REMOTE_STAGE_START);
         startPacket.sessionId = sessionId.toString();
         startPacket.descriptor = new StageDescriptor("pack_a", List.of("dance.vmd"), null, null);
+        var prop = new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("fan.pmx", "fan.vmd");
+        startPacket.descriptor.setPropAssignment(prop);
         service.handlePacket(platform, platform.findPlayer(memberId), encode(startPacket));
 
         StagePacket stopPacket = new StagePacket(StagePacketType.REMOTE_STAGE_STOP);
@@ -53,6 +55,8 @@ class StageServerSessionServiceTest {
 
         List<SentPacket> remotePackets = platform.remotePackets();
         assertEquals(4, remotePackets.size());
+        remotePackets.stream().filter(p -> p.packet().type == StagePacketType.REMOTE_STAGE_START)
+                .forEach(p -> assertEquals(prop, p.packet().descriptor.getPropAssignment()));
         assertTrue(remotePackets.stream().anyMatch(packet -> packet.targetPlayerId().equals(hostId)
                 && packet.packet().type == StagePacketType.REMOTE_STAGE_START
                 && sessionId.toString().equals(packet.packet().sessionId)));
@@ -117,6 +121,19 @@ class StageServerSessionServiceTest {
         service.handlePacket(platform, platform.findPlayer(invitedId), encode(packet));
 
         assertEquals(baselinePackets, platform.remotePackets().size());
+    }
+
+    @Test
+    void unsafePropAssetsAreNotRelayedToOtherPlayers() {
+        UUID host=UUID.randomUUID(), member=UUID.randomUUID(), session=UUID.randomUUID();
+        FakePlatform platform=new FakePlatform(player(host,"Host"),player(member,"Member"));
+        establishAcceptedSession(platform,host,member,session);
+        StagePacket packet=new StagePacket(StagePacketType.REMOTE_STAGE_START);
+        packet.sessionId=session.toString();
+        packet.descriptor=new StageDescriptor("pack_a",List.of("dance.vmd"),null,null);
+        packet.descriptor.setPropAssignment(new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("fan.pmx","../other.vmd"));
+        service.handlePacket(platform,platform.findPlayer(member),encode(packet));
+        assertTrue(platform.remotePackets().isEmpty());
     }
 
     private void establishAcceptedSession(FakePlatform platform, UUID hostId, UUID memberId, UUID sessionId) {

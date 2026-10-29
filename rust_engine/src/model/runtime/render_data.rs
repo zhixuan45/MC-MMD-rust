@@ -53,6 +53,12 @@ impl MmdModel {
         )
     }
 
+    /// Evaluated bone global matrix, including bind translation and physics, never an inverse-bind skinning matrix.
+    pub fn get_bone_attachment_matrix(&self, name: &str) -> Option<Mat4> {
+        self.bone_manager.find_bone_by_name(name)
+            .map(|index| self.bone_manager.get_global_transform(index))
+    }
+
     fn get_hand_attachment_matrix(
         &self,
         explicit_name: &str,
@@ -660,6 +666,23 @@ impl MmdModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn named_attachment_uses_final_bone_global_transform_not_skinning_offset() {
+        let mut model = MmdModel::new();
+        let mut bone = crate::skeleton::BoneLink::new("head".into());
+        bone.initial_position = Vec3::new(1.0, 2.0, 3.0);
+        model.bone_manager.add_bone(bone);
+        model.bone_manager.build_hierarchy();
+        model.bone_manager.update_transforms(false);
+        let bind = model.get_bone_attachment_matrix("head").unwrap();
+        assert_eq!(bind.w_axis.truncate(), Vec3::new(1.0, 2.0, 3.0));
+        assert!(!bind.abs_diff_eq(model.bone_manager.get_skinning_matrices()[0], 1e-5));
+        let evaluated = Mat4::from_rotation_translation(Quat::from_rotation_y(0.6), Vec3::new(3.0, 8.0, -4.0));
+        model.bone_manager.set_global_transform_physics(0, evaluated);
+        assert!(model.get_bone_attachment_matrix("head").unwrap().abs_diff_eq(evaluated, 1e-5));
+        assert!(model.get_bone_attachment_matrix("missing").is_none());
+    }
 
     #[test]
     fn model_world_position_for_inertia_stays_in_minecraft_blocks() {

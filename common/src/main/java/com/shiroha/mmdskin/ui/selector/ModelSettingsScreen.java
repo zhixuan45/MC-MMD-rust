@@ -120,6 +120,24 @@ public class ModelSettingsScreen extends Screen {
             config.heldPmxPhysicsEnabled = !config.heldPmxPhysicsEnabled;
             return true;
         }
+        if (layout.contentHit(layout.heldPmxBoneButton,mouseX,mouseY)) {
+            minecraft.setScreen(new HeldPmxSelectionScreen(this,
+                    Component.translatable("gui.mmdskin.model_settings.prop_bone_title"),
+                    Component.translatable("gui.mmdskin.model_settings.prop_bone_hint"),
+                    Component.translatable("gui.mmdskin.model_settings.prop_bone_default"),
+                    SERVICE.listBoneNames(modelName),config.heldPmxBone,true,
+                    value -> config.heldPmxBone=ModelConfigData.normalizeBoneName(value)));
+            return true;
+        }
+        if (layout.contentHit(layout.heldPmxMotionButton,mouseX,mouseY)) {
+            minecraft.setScreen(new HeldPmxSelectionScreen(this,
+                    Component.translatable("gui.mmdskin.model_settings.prop_motion_title"),
+                    Component.translatable("gui.mmdskin.model_settings.prop_motion_hint"),
+                    Component.translatable("gui.mmdskin.model_settings.prop_motion_disabled"),
+                    SERVICE.listPropMotions(modelName),config.heldPmxStageMotion,false,
+                    value -> config.heldPmxStageMotion=value));
+            return true;
+        }
         if (layout.contentHit(layout.eyeToggle, mouseX, mouseY)) {
             config.eyeTrackingEnabled = !config.eyeTrackingEnabled;
             return true;
@@ -537,6 +555,10 @@ public class ModelSettingsScreen extends Screen {
         drawFallbackCard(guiGraphics, layout.heldPmxOptionsCard, Component.translatable("gui.mmdskin.model_settings.held_pmx_options").getString());
         guiGraphics.drawString(font,Component.translatable("gui.mmdskin.model_settings.held_pmx_physics"),layout.heldPmxOptionsCard.x+4,layout.heldPmxPhysicsToggle.y,TranslucentTrayChrome.BODY_TEXT,false);
         drawFallbackToggle(guiGraphics,layout.heldPmxPhysicsToggle,config.heldPmxPhysicsEnabled,layout.contentHit(layout.heldPmxPhysicsToggle,hoverMouseX,hoverMouseY));
+        String bone=config.heldPmxBone.isEmpty()?Component.translatable("gui.mmdskin.model_settings.prop_bone_default").getString():config.heldPmxBone;
+        String motion=config.heldPmxStageMotion.isEmpty()?Component.translatable("gui.mmdskin.model_settings.prop_motion_disabled").getString():config.heldPmxStageMotion;
+        drawFallbackButton(guiGraphics,layout.heldPmxBoneButton,font.plainSubstrByWidth(Component.translatable("gui.mmdskin.model_settings.prop_bone",bone).getString(),layout.heldPmxBoneButton.w-8),layout.contentHit(layout.heldPmxBoneButton,hoverMouseX,hoverMouseY));
+        drawFallbackButton(guiGraphics,layout.heldPmxMotionButton,font.plainSubstrByWidth(Component.translatable("gui.mmdskin.model_settings.prop_motion",motion).getString(),layout.heldPmxMotionButton.w-8),layout.contentHit(layout.heldPmxMotionButton,hoverMouseX,hoverMouseY));
         drawFallbackCard(guiGraphics, layout.tailCard, Component.translatable("gui.mmdskin.model_settings.tail_physics").getString());
         guiGraphics.drawString(this.font, Component.translatable("gui.mmdskin.model_settings.tail_idle_lift").getString(),
                 layout.tailCard.x + 4, layout.tailIdleToggle.y, TranslucentTrayChrome.BODY_TEXT, false);

@@ -11,5 +11,8 @@ public interface NativeMatrixPort {
 
     void populateHandMatrix(long modelHandle, long handMatrixHandle, boolean mainHand);
 
+    /** Returns false without writing when the bone or model is absent. */
+    default boolean populateBoneMatrix(long modelHandle, long matrixHandle, String boneName) { return false; }
+
     boolean copyMatrixToBuffer(long matrixHandle, ByteBuffer targetBuffer);
 }

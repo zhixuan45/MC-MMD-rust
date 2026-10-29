@@ -45,7 +45,9 @@ public final class DefaultStageLocalModelBindingPort implements StageLocalModelB
 
         long modelHandle = modelData.modelInstance().getModelHandle();
         MmdSkinRendererPlayerHelper.startStageAnimation(modelData, mergedAnim);
-        return new StageLocalModelBinding(modelHandle, modelName);
+        var config=com.shiroha.mmdskin.config.ModelConfigManager.getConfig(modelName);
+        var prop=new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment(config.heldPmxFile,config.heldPmxStageMotion);
+        return new StageLocalModelBinding(modelHandle, modelName, prop.isValid()?prop:null);
     }
 
     @Override

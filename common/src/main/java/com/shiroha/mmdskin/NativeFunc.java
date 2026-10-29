@@ -297,6 +297,7 @@ public class NativeFunc {
 
     public native int ApplyVpdMorph(long model, String filename);
     public native void ClearVpdPose(long model);
+    public native boolean GetBoneMatByName(long model, long matrix, String boneName);
     public native float GetCameraEndFrame(long animation);
     public native float GetMotionEndFrame(long animation);
 

@@ -183,6 +183,10 @@ public final class MMDCameraController {
         if (result.fallback()) LOGGER.warn("[舞台模式] 所选结束依据不可用，沿用当前规则");
     }
 
+    public void setLocalPropAssignment(com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment) {
+        playerSyncPort.beginLocalProp(assignment);
+    }
+
     public void setHostEndFrame(Float frame) {
         if (frame != null) playbackSession.setMaxFrame(frame);
     }
@@ -479,6 +483,7 @@ public final class MMDCameraController {
             return;
         }
 
+        playerSyncPort.stopLocalProp();
         audioPlayer.cleanup();
         if (cinematicMode) {
             environmentController.leaveCinematicMode(Minecraft.getInstance());
@@ -683,6 +688,7 @@ public final class MMDCameraController {
     }
 
     private void cleanupPlayingResources() {
+        playerSyncPort.stopLocalProp();
         audioPlayer.cleanup();
         if (cinematicMode) {
             environmentController.leaveCinematicMode(Minecraft.getInstance());
@@ -719,6 +725,7 @@ public final class MMDCameraController {
     }
 
     private void forceCleanupForWatch() {
+        playerSyncPort.stopLocalProp();
         if (stateMachine.isPlaying()) {
             cleanupPlayingResources();
         }

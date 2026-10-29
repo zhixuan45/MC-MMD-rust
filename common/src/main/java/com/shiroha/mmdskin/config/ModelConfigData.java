@@ -49,8 +49,12 @@ public class ModelConfigData {
     /** Independent main-hand prop PMX; empty disables replacement. */
     public String heldPmxFile = "";
     public boolean heldPmxPhysicsEnabled = true;
+    /** Empty uses the existing main-hand attachment; otherwise an exact character bone name. */
+    public String heldPmxBone = "";
+    /** Optional prop-only VMD in the character's model folder or anims subfolder. */
+    public String heldPmxStageMotion = "";
 
-    /** Extra PMX prop transformation in main-hand local coordinates. */
+    /** Extra PMX prop transformation in the selected attachment bone coordinates. */
     public float heldPmxScale = 1.0f;
     public float heldPmxOffsetX = 0.0f;
     public float heldPmxOffsetY = 0.0f;
@@ -89,6 +93,8 @@ public class ModelConfigData {
         c.mainPmxFile = this.mainPmxFile;
         c.heldPmxFile = this.heldPmxFile;
         c.heldPmxPhysicsEnabled = this.heldPmxPhysicsEnabled;
+        c.heldPmxBone = this.heldPmxBone;
+        c.heldPmxStageMotion = this.heldPmxStageMotion;
         c.heldPmxScale = this.heldPmxScale;
         c.heldPmxOffsetX = this.heldPmxOffsetX;
         c.heldPmxOffsetY = this.heldPmxOffsetY;
@@ -114,6 +120,8 @@ public class ModelConfigData {
                 DEFAULT_HELD_ITEM_SCALE);
         mainPmxFile = normalizePmxFileName(mainPmxFile);
         heldPmxFile = normalizePmxFileName(heldPmxFile);
+        heldPmxBone = normalizeBoneName(heldPmxBone);
+        heldPmxStageMotion = normalizeVmdFileName(heldPmxStageMotion);
         heldPmxScale = clampOrDefault(heldPmxScale, 0.01f, 20.0f, 1.0f);
         heldPmxOffsetX = clampOrDefault(heldPmxOffsetX, -20.0f, 20.0f, 0.0f);
         heldPmxOffsetY = clampOrDefault(heldPmxOffsetY, -20.0f, 20.0f, 0.0f);
@@ -151,6 +159,17 @@ public class ModelConfigData {
             return fallback;
         }
         return Math.max(min, Math.min(max, value));
+    }
+
+    public static String normalizeBoneName(String value) {
+        return value == null || value.length() > 256 || value.chars().anyMatch(Character::isISOControl) ? "" : value.trim();
+    }
+
+    public static String normalizeVmdFileName(String value) {
+        if (value == null || value.isBlank() || !value.equals(value.trim()) || value.contains("/")
+                || value.contains("\\") || value.contains(":") || value.chars().anyMatch(Character::isISOControl)
+                || !value.toLowerCase(java.util.Locale.ROOT).endsWith(".vmd")) return "";
+        return value;
     }
 
     private static Set<Integer> normalizeHiddenMaterials(Set<Integer> source) {

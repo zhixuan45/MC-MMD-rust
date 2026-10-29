@@ -39,4 +39,6 @@ public interface ModelRuntimeAccessPort {
 
     default void setTailPhysicsOptions(long modelHandle, boolean idleLift, boolean movementBoost) {
     }
+
+    default void configurePropPose(long modelHandle) { }
 }

@@ -1794,6 +1794,25 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_CopyMatToBuffer(
     0
 }
 
+/// Read an evaluated attachment bone, retaining the hand-matrix fallback on missing bones.
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetBoneMatByName(
+    mut env: JNIEnv, _class: JClass, model: jlong, mat: jlong, name: JString,
+) -> jboolean {
+    let name: String = match env.get_string(&name) { Ok(value) => value.into(), Err(_) => return 0 };
+    let value = {
+        let models = MODELS.read().unwrap();
+        let Some(model) = models.get(&model) else { return 0; };
+        let model = model.lock().unwrap();
+        model.get_bone_attachment_matrix(&name)
+    };
+    let Some(value) = value else { return 0; };
+    let mut matrices = MATRICES.lock().unwrap();
+    let Some(target) = matrices.get_mut(&mat) else { return 0; };
+    *target = value;
+    1
+}
+
 /// 获取右手矩阵
 #[no_mangle]
 pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetRightHandMat(
@@ -3505,10 +3524,10 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetBoneNames(
         let mut names = Vec::with_capacity(bone_count);
         for i in 0..bone_count {
             if let Some(bone) = model.bone_manager.get_bone(i) {
-                names.push(format!("\"{}\"", bone.name.replace('"', "\\\"")));
+                names.push(bone.name.clone());
             }
         }
-        let json = format!("[{}]", names.join(","));
+        let json = serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string());
         if let Ok(s) = env.new_string(&json) {
             return s.into_raw();
         }

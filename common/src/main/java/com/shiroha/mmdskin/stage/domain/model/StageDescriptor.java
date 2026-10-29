@@ -11,6 +11,7 @@ public final class StageDescriptor {
     private String cameraFile;
     private String audioFile;
     private Float endFrame;
+    private StagePropAssignment propAssignment;
 
     public StageDescriptor() {
     }
@@ -60,14 +61,18 @@ public final class StageDescriptor {
 
     public Float getEndFrame() { return endFrame; }
     public void setEndFrame(Float frame) { this.endFrame=frame; }
+    public StagePropAssignment getPropAssignment() { return propAssignment; }
+    public void setPropAssignment(StagePropAssignment assignment) { this.propAssignment=assignment; }
 
     public StageDescriptor copy() {
         StageDescriptor copy=new StageDescriptor(packName, motionFiles, cameraFile, audioFile);
         copy.endFrame=endFrame;
+        copy.propAssignment=propAssignment;
         return copy;
     }
 
     public boolean isValid() {
+        if (propAssignment!=null && !propAssignment.isValid()) return false;
         if (endFrame != null && (!Float.isFinite(endFrame) || endFrame<0)) return false;
         if (!isSafeName(packName) || motionFiles.isEmpty()) {
             return false;

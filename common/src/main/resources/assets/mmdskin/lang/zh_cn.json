@@ -489,7 +489,7 @@
   "gui.mmdskin.reset_pose": "恢复默认姿势",
   "gui.mmdskin.load_vpd_pose": "加载 VPD 姿势",
   "gui.mmdskin.vpd_empty": "将 VPD 放入角色目录或 CustomMorph 后重开此页",
-  "gui.mmdskin.model_settings.held_pmx_options": "道具物理",
+  "gui.mmdskin.model_settings.held_pmx_options": "道具设置",
   "gui.mmdskin.model_settings.held_pmx_physics": "启用道具物理",
   "gui.mmdskin.stage.end_policy": "结束依据：%s",
   "gui.mmdskin.stage.end_policy.legacy": "沿用当前",
@@ -497,5 +497,15 @@
   "gui.mmdskin.stage.end_policy.motion": "动作末帧",
   "gui.mmdskin.stage.end_policy.audio": "音乐结束",
   "gui.mmdskin.stage.end_policy.shortest": "可用来源最短",
-  "message.mmdskin.stage.audio_check_log": "请查看日志中的具体原因"
+  "message.mmdskin.stage.audio_check_log": "请查看日志中的具体原因",
+  "gui.mmdskin.prop_selection.filter": "筛选或输入骨骼名称",
+  "gui.mmdskin.prop_selection.use_name": "使用输入的骨骼名称",
+  "gui.mmdskin.model_settings.prop_bone_title": "道具绑定骨骼",
+  "gui.mmdskin.model_settings.prop_bone_hint": "支持搜索或输入；无匹配时回退主手",
+  "gui.mmdskin.model_settings.prop_bone_default": "默认主手",
+  "gui.mmdskin.model_settings.prop_bone": "绑定：%s",
+  "gui.mmdskin.model_settings.prop_motion_title": "道具独立舞台 VMD",
+  "gui.mmdskin.model_settings.prop_motion_hint": "读取角色目录和 anims 内的 VMD",
+  "gui.mmdskin.model_settings.prop_motion_disabled": "关闭（不加载 VMD）",
+  "gui.mmdskin.model_settings.prop_motion": "道具 VMD：%s"
 }

@@ -6,12 +6,13 @@ final class ModelSettingsLayout {
     private static final int CARD_HEIGHT = 35;
     private static final int TAIL_HEIGHT = 42;
     private static final int PMX_HEIGHT = 38;
+    private static final int PROP_OPTIONS_HEIGHT = 82;
     private static final int QUICK_HEIGHT = 47;
     private static final int TRANSFORM_ROW_HEIGHT = 28;
     private static final int TRANSFORM_HEIGHT = 38 + HeldPmxTransformControl.values().length * TRANSFORM_ROW_HEIGHT;
     private static final int SECTION_GAP = 4;
     private static final int CONTENT_HEIGHT = EYE_HEIGHT + CARD_HEIGHT * 2 + PMX_HEIGHT * 2
-            + TAIL_HEIGHT + QUICK_HEIGHT + TRANSFORM_HEIGHT + CARD_HEIGHT + SECTION_GAP * 8;
+            + TAIL_HEIGHT + QUICK_HEIGHT + TRANSFORM_HEIGHT + PROP_OPTIONS_HEIGHT + SECTION_GAP * 8;
     final UiRect panel, header, viewport, scrollTrack, scrollThumb;
     final UiRect eyeCard, eyeToggle, eyeSlider, scaleCard, scaleSlider;
     final UiRect heldBlockCard, heldBlockSlider, tailCard, tailIdleToggle, tailMovementToggle;
@@ -19,6 +20,7 @@ final class ModelSettingsLayout {
     final UiRect heldPmxCard, heldPmxPrev, heldPmxValue, heldPmxNext;
     final UiRect heldPmxTransformCard, heldPmxTransformReset;
     final UiRect heldPmxOptionsCard, heldPmxPhysicsToggle;
+    final UiRect heldPmxBoneButton, heldPmxMotionButton;
     final UiRect[] heldPmxTransformSliders, heldPmxTransformMinus, heldPmxTransformPlus;
     final UiRect quickCard, saveButton, resetButton, animButton, doneButton;
     final UiRect[] quickSlotButtons;
@@ -78,8 +80,10 @@ final class ModelSettingsLayout {
         }
         heldPmxTransformReset = new UiRect(viewport.x + 4, heldPmxTransformCard.bottom() - 20, cardWidth - 8, 16);
 
-        heldPmxOptionsCard = new UiRect(viewport.x, heldPmxTransformCard.bottom() + SECTION_GAP, cardWidth, CARD_HEIGHT);
+        heldPmxOptionsCard = new UiRect(viewport.x, heldPmxTransformCard.bottom() + SECTION_GAP, cardWidth, PROP_OPTIONS_HEIGHT);
         heldPmxPhysicsToggle = new UiRect(heldPmxOptionsCard.right() - 34, heldPmxOptionsCard.y + 19, 26, 9);
+        heldPmxBoneButton = new UiRect(viewport.x+4,heldPmxOptionsCard.y+36,cardWidth-8,16);
+        heldPmxMotionButton = new UiRect(viewport.x+4,heldPmxOptionsCard.y+58,cardWidth-8,16);
         tailCard = new UiRect(viewport.x, heldPmxOptionsCard.bottom() + SECTION_GAP, cardWidth, TAIL_HEIGHT);
         tailIdleToggle = new UiRect(tailCard.right() - 34, tailCard.y + 16, 26, 9);
         tailMovementToggle = new UiRect(tailCard.right() - 34, tailCard.y + 30, 26, 9);

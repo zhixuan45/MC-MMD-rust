@@ -5,4 +5,7 @@ public interface StagePlayerSyncPort {
     void syncStageFrame(float frame);
 
     void stopLocalStageAnimation();
+
+    default void beginLocalProp(com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment) { }
+    default void stopLocalProp() { }
 }

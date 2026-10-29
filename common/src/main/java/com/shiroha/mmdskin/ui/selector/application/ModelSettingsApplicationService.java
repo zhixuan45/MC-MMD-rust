@@ -47,6 +47,13 @@ public class ModelSettingsApplicationService {
         return ModelCatalogEntry.listPmxFiles(modelName);
     }
 
+    public List<String> listBoneNames(String modelName) { return runtimeGateway.listBoneNames(modelName); }
+
+    public List<String> listPropMotions(String modelName) {
+        return com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles.list(
+                com.shiroha.mmdskin.config.PathConstants.getModelDir(modelName).toPath());
+    }
+
     public ModelConfigData resetToDefaults() {
         return new ModelConfigData();
     }

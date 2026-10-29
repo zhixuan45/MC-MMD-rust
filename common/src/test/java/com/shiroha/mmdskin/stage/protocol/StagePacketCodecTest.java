@@ -80,4 +80,16 @@ class StagePacketCodecTest {
         restored.descriptor.setEndFrame(Float.POSITIVE_INFINITY);
         org.junit.jupiter.api.Assertions.assertFalse(restored.descriptor.isValid());
     }
+    @Test
+    void propAssignmentSurvivesTheWireAndUnsafeAssetsAreRejected() {
+        StagePacket packet=new StagePacket(StagePacketType.PLAYBACK_START);
+        packet.descriptor=new StageDescriptor("pack",List.of("dance.vmd"),null,null);
+        var prop=new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("fan.pmx","fan.vmd");
+        packet.descriptor.setPropAssignment(prop);
+        StagePacket restored=StagePacketCodec.decode(StagePacketCodec.encode(packet));
+        assertNotNull(restored); assertEquals(prop,restored.descriptor.copy().getPropAssignment());
+        assertTrue(restored.descriptor.isValid());
+        restored.descriptor.setPropAssignment(new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("fan.pmx","../bad.vmd"));
+        org.junit.jupiter.api.Assertions.assertFalse(restored.descriptor.isValid());
+    }
 }

@@ -31,4 +31,17 @@ class ModelSettingsLayoutTest {
             assertTrue(top.heldPmxTransformReset.bottom() < top.tailCard.y);
         }
     }
+    @Test
+    void boneAndStageMotionChoicesCanBeScrolledIntoSmallWindows() {
+        for (int height:new int[]{180,240,480}) {
+            ModelSettingsLayout top=ModelSettingsLayout.create(320,height,0);
+            for (boolean bone:new boolean[]{true,false}) {
+                var original=bone?top.heldPmxBoneButton:top.heldPmxMotionButton;
+                var layout=ModelSettingsLayout.create(320,height,original.y-top.viewport.y);
+                var button=bone?layout.heldPmxBoneButton:layout.heldPmxMotionButton;
+                assertTrue(layout.contentHit(button,button.centerX(),button.centerY()));
+                assertTrue(button.bottom()<layout.saveButton.y);
+            }
+        }
+    }
 }

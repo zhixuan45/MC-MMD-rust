@@ -112,4 +112,12 @@ public final class DefaultModelRuntimeAccessPort implements ModelRuntimeAccessPo
             scenePort.setTailPhysicsOptions(modelHandle, idleLift, movementBoost);
         }
     }
+
+    @Override
+    public void configurePropPose(long modelHandle) {
+        if (nativeModelPort instanceof NativeScenePort scenePort) {
+            scenePort.setAutoBlinkEnabled(modelHandle,false);
+            scenePort.setEyeTrackingEnabled(modelHandle,false);
+        }
+    }
 }

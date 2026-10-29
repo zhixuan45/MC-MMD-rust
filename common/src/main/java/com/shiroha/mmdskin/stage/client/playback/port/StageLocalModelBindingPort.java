@@ -4,7 +4,9 @@ package com.shiroha.mmdskin.stage.client.playback.port;
 public interface StageLocalModelBindingPort extends PlayerStageAnimationPort {
     StageLocalModelBinding bindLocalModel(long mergedAnim);
 
-    record StageLocalModelBinding(long modelHandle, String modelName) {
+    record StageLocalModelBinding(long modelHandle, String modelName,
+                                  com.shiroha.mmdskin.stage.domain.model.StagePropAssignment propAssignment) {
+        public StageLocalModelBinding(long modelHandle,String modelName) { this(modelHandle,modelName,null); }
         public static StageLocalModelBinding empty() {
             return new StageLocalModelBinding(0, null);
         }

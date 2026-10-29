@@ -157,6 +157,8 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
             LOGGER.warn("[舞台模式] 相机控制器启动失败，已释放动画句柄");
             return HostStartResult.failed();
         }
+        cameraController.setLocalPropAssignment(localModelBinding.propAssignment());
+        sessionDescriptor.setPropAssignment(localModelBinding.propAssignment());
         sessionDescriptor.setEndFrame(cameraController.getMaxFrame());
         StageDescriptor remoteDescriptor = buildRemoteStageDescriptor(sessionDescriptor, null);
         return HostStartResult.success(sessionDescriptor, remoteDescriptor);
@@ -241,12 +243,13 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                 }
                 cameraController.setWatchMotion(mergedAnim, localModelBinding.modelHandle(), localModelBinding.modelName());
                 cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
+                cameraController.setLocalPropAssignment(localModelBinding.propAssignment());
                 if (audioPath != null && !audioPath.isEmpty()) {
                     cameraController.loadWatchAudio(audioPath);
                 }
                 return GuestStartResult.success(
                         effectiveDescriptor,
-                        buildRemoteStageDescriptor(effectiveDescriptor, motionPackName)
+                        buildRemoteStageDescriptor(effectiveDescriptor, motionPackName, localModelBinding.propAssignment())
                 );
             }
 
@@ -265,9 +268,10 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                 return GuestStartResult.failed();
             }
             cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
+            cameraController.setLocalPropAssignment(localModelBinding.propAssignment());
             return GuestStartResult.success(
                     effectiveDescriptor,
-                    buildRemoteStageDescriptor(effectiveDescriptor, motionPackName)
+                    buildRemoteStageDescriptor(effectiveDescriptor, motionPackName, localModelBinding.propAssignment())
             );
         } catch (Exception e) {
             LOGGER.error("[多人舞台] 启动来宾播放失败", e);
@@ -317,6 +321,13 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
             return null;
         }
         return motionStageDir;
+    }
+
+    private StageDescriptor buildRemoteStageDescriptor(StageDescriptor descriptor, String motionPackName,
+            com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment) {
+        StageDescriptor result=buildRemoteStageDescriptor(descriptor,motionPackName);
+        if (result!=null) result.setPropAssignment(assignment);
+        return result;
     }
 
     private StageDescriptor buildRemoteStageDescriptor(StageDescriptor descriptor, String motionPackName) {

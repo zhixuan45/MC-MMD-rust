@@ -32,6 +32,7 @@ public final class StageAnimSyncHelper {
     private final Map<UUID, PendingStageAnim> pendingAnims = new ConcurrentHashMap<>();
     private final StageFrameQueryPort frameQueryPort;
     private final NativeAnimationPort animationPort;
+    private final com.shiroha.mmdskin.stage.client.playback.StagePropAnimationController propAnimations;
 
     private record PendingStageAnim(UUID playerUUID, StageDescriptor descriptor, int ticksWaited) {
         private PendingStageAnim nextTick() {
@@ -42,7 +43,10 @@ public final class StageAnimSyncHelper {
     public StageAnimSyncHelper(StageFrameQueryPort frameQueryPort, NativeAnimationPort animationPort) {
         this.frameQueryPort = Objects.requireNonNull(frameQueryPort, "frameQueryPort");
         this.animationPort = Objects.requireNonNull(animationPort, "animationPort");
+        this.propAnimations = new com.shiroha.mmdskin.stage.client.playback.StagePropAnimationController(animationPort);
     }
+
+    public com.shiroha.mmdskin.stage.client.playback.StagePropAnimationController propAnimations() { return propAnimations; }
 
     public static StageAnimSyncHelper getInstance() {
         return StageClientRuntime.get().animSyncHelper();
@@ -79,6 +83,7 @@ public final class StageAnimSyncHelper {
 
         PlayerModelResolver.Result resolved = PlayerModelResolver.resolve(player);
         if (resolved == null) {
+            cleanupRemoteStageAnim(player.getUUID());
             pendingAnims.put(player.getUUID(), new PendingStageAnim(player.getUUID(), descriptor.copy(), 0));
             LOGGER.info("[StageSync] Player model still loading for {}", player.getName().getString());
             return;
@@ -149,9 +154,11 @@ public final class StageAnimSyncHelper {
         if (remoteStageModels.isEmpty()) {
             return;
         }
-        for (Long modelHandle : remoteStageModels.values()) {
+        for (var entry : remoteStageModels.entrySet()) {
+            Long modelHandle = entry.getValue();
             if (modelHandle != null && modelHandle != 0L) {
                 animationPort.seekLayer(modelHandle, 0, frame);
+                propAnimations.seek(entry.getKey(), frame);
             }
         }
     }
@@ -162,16 +169,20 @@ public final class StageAnimSyncHelper {
             return;
         }
         PlayerModelResolver.Result resolved = PlayerModelResolver.resolve(minecraft.player);
-        if (resolved == null || !resolved.model().entityState().playStageAnim) {
+        if (resolved == null) return;
+        if (!resolved.model().entityState().playStageAnim) {
+            propAnimations.stop(minecraft.player.getUUID());
             return;
         }
         long modelHandle = resolved.model().modelInstance().getModelHandle();
         if (modelHandle != 0L) {
             animationPort.seekLayer(modelHandle, 0, frame);
+            propAnimations.seek(minecraft.player.getUUID(), frame);
         }
     }
 
     public void disconnect() {
+        propAnimations.clear();
         pendingAnims.clear();
         for (Long modelHandle : remoteStageModels.values()) {
             if (modelHandle != null && modelHandle != 0L) {
@@ -214,9 +225,11 @@ public final class StageAnimSyncHelper {
         tracked.add(mergedAnim);
         remoteStageAnims.put(playerUUID, tracked);
         remoteStageModels.put(playerUUID, modelHandle);
+        propAnimations.begin(playerUUID, descriptor.getPropAssignment());
 
         if (frameQueryPort.isStagePresentationActive()) {
             animationPort.seekLayer(modelHandle, 0, frameQueryPort.getCurrentFrame());
+            propAnimations.seek(playerUUID, frameQueryPort.getCurrentFrame());
         }
     }
 
@@ -251,6 +264,7 @@ public final class StageAnimSyncHelper {
     }
 
     private void cleanupRemoteStageAnim(UUID playerUUID) {
+        propAnimations.stop(playerUUID);
         Long modelHandle = remoteStageModels.remove(playerUUID);
         if (modelHandle != null && modelHandle != 0L) {
             animationPort.setLayerSpeed(modelHandle, 0, 1.0f);

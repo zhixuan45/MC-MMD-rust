@@ -9,14 +9,13 @@ import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.world.InteractionHand;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * Renders an independent PMX prop in the character's evaluated main-hand space.
+ * Renders an independent PMX prop in the character's selected evaluated bone space.
  * A missing, pending or failed prop never suppresses the normal Minecraft item.
  */
 final class HeldItemPmxRenderer {
@@ -34,7 +33,11 @@ final class HeldItemPmxRenderer {
 
         String modelName = character.requestKey().modelName();
         ModelConfigData config = ModelConfigManager.getConfig(modelName);
-        String pmx = config.heldPmxFile;
+        var stageRuntime = com.shiroha.mmdskin.stage.client.StageClientRuntime.peek();
+        var propAnimations = stageRuntime != null ? stageRuntime.animSyncHelper().propAnimations() : null;
+        boolean inStage = character.entityState().playStageAnim;
+        var assignment = inStage && propAnimations != null ? propAnimations.assignment(player.getUUID()) : null;
+        String pmx = assignment != null ? assignment.pmxFile() : config.heldPmxFile;
         if (pmx == null || pmx.isEmpty()) return false;
 
         // Restrict the separately loaded prop to an existing PMX in this character folder.
@@ -44,10 +47,13 @@ final class HeldItemPmxRenderer {
         ManagedModel prop = ClientRenderRuntime.get().modelRepository().acquire(propKey);
         if (prop == null || prop.modelInstance().getModelHandle() == 0L) return false;
 
+        if (inStage && propAnimations != null) propAnimations.bind(player.getUUID(), prop.modelInstance(), java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx);
+        else if (propAnimations != null) propAnimations.stop(player.getUUID());
+
         // All geometry transforms and draw state are local to this prop.
         poseStack.pushPose();
         try {
-            ItemRenderHelper.applyMmdHandMatrix(character, poseStack, InteractionHand.MAIN_HAND);
+            ItemRenderHelper.applyPropAttachment(character, poseStack, config.heldPmxBone);
             poseStack.translate(config.heldPmxOffsetX, config.heldPmxOffsetY, config.heldPmxOffsetZ);
             poseStack.mulPose(new Quaternionf().rotationXYZ(
                     config.heldPmxRotX * RAD_PER_DEGREE,
