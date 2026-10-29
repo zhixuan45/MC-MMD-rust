@@ -67,9 +67,7 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
         }
 
         ManagedModel loadedModel = loadCoordinator.resolveOrQueue(
-                requestKey.cacheKey(),
-                requestKey.modelName(),
-                requestKey.pmxVariant(),
+                requestKey,
                 result -> finalizeLoadedModel(requestKey, result));
         if (loadedModel != null) {
             modelCache.put(requestKey.cacheKey(), loadedModel);
@@ -191,6 +189,15 @@ public final class ModelRepository implements ModelRepositoryPort, ModelDiagnost
     }
 
     private ManagedModel createManagedModel(ModelRequestKey requestKey, ModelInstance modelInstance) {
+        if (requestKey.subjectKind() == ModelSubjectKind.SCENE) {
+            Properties properties = new Properties();
+            ModelPropertiesLoader.loadFromDirectory(modelInstance.getModelDir(), properties);
+            ManagedModel managedModel = new ManagedModel(requestKey, requestKey.modelName(), modelInstance,
+                    properties, ModelRenderProperties.from(properties));
+            modelInstance.resetPhysics();
+            runtimeAccessPort.configurePropPose(modelInstance.getModelHandle());
+            return managedModel;
+        }
         ModelConfigData config = ModelConfigManager.getConfig(requestKey.modelName());
         Properties properties = loadProperties(requestKey.modelName());
         ManagedModel managedModel = new ManagedModel(

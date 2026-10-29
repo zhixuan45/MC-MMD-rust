@@ -3,6 +3,9 @@ package com.shiroha.mmdskin.model.runtime.loading;
 import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
 import com.shiroha.mmdskin.model.port.ModelRuntimeAccessPort;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
+import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
+import com.shiroha.mmdskin.model.runtime.ModelSubjectKind;
+import com.shiroha.mmdskin.scene.client.SceneModelCatalog;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -95,6 +98,19 @@ public final class ModelLoadCoordinator {
                                        String modelName,
                                        String pmxVariant,
                                        Function<AsyncLoadResult, ManagedModel> finalizer) {
+        return resolveOrQueue(new ModelRequestKey(ModelSubjectKind.OTHER, "unknown", modelName, pmxVariant),
+                fullCacheKey, finalizer);
+    }
+
+    public ManagedModel resolveOrQueue(ModelRequestKey requestKey,
+                                       Function<AsyncLoadResult, ManagedModel> finalizer) {
+        return resolveOrQueue(requestKey, requestKey.cacheKey(), finalizer);
+    }
+
+    private ManagedModel resolveOrQueue(ModelRequestKey requestKey,
+                                        String fullCacheKey,
+                                        Function<AsyncLoadResult, ManagedModel> finalizer) {
+        String modelName = requestKey.modelName();
         PendingLoad pendingLoad = pendingLoads.get(fullCacheKey);
         if (pendingLoad != null) {
             Future<AsyncLoadResult> future = pendingLoad.future();
@@ -111,10 +127,13 @@ public final class ModelLoadCoordinator {
         }
         failedLoads.remove(fullCacheKey);
 
-        ModelCatalogEntry modelInfo = ModelCatalogEntry.resolveModelFile(modelName, pmxVariant);
+        // Scene folders belong to SceneModel, even when a character has the same folder name.
+        ModelCatalogEntry modelInfo = requestKey.subjectKind() == ModelSubjectKind.SCENE
+                ? SceneModelCatalog.getInstance().findByFolderName(modelName).orElse(null)
+                : ModelCatalogEntry.resolveModelFile(modelName, requestKey.pmxVariant());
         if (modelInfo == null) {
-            if (missingModels.add(modelName)) {
-                logger.warn("模型本地不存在，跳过加载: {}", modelName);
+            if (missingModels.add(fullCacheKey)) {
+                logger.warn("模型本地不存在，跳过加载: {}", fullCacheKey);
             }
             return null;
         }

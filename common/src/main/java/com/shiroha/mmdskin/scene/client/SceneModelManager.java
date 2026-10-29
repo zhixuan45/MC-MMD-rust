@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
 import com.shiroha.mmdskin.bridge.runtime.NativeScenePort;
+import com.shiroha.mmdskin.config.ModelConfigManager;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
@@ -155,9 +156,12 @@ public final class SceneModelManager {
             return;
         }
 
-        float posX = (float) (placeX * MODEL_SCALE);
-        float posY = (float) (placeY * MODEL_SCALE);
-        float posZ = (float) (placeZ * MODEL_SCALE);
+        // Native physics expects Minecraft world coordinates in blocks.
+        float posX = (float) placeX;
+        float posY = (float) placeY;
+        float posZ = (float) placeZ;
+        scenePort.setTailPhysicsScale(modelHandle, MODEL_SCALE
+                * ModelConfigManager.getConfig(sceneModelName).modelScale);
         scenePort.setModelPositionAndYaw(modelHandle, posX, posY, posZ, placeYawRadians);
 
         float offsetX = (float) (placeX - entityRenderX);
@@ -176,11 +180,10 @@ public final class SceneModelManager {
                 tickDelta,
                 poseStack,
                 packedLight,
-                RenderScene.WORLD
+                RenderScene.PLACED_SCENE
         );
 
         poseStack.popPose();
-        scenePort.setModelPositionAndYaw(modelHandle, posX, posY, posZ, placeYawRadians);
     }
 
     private ManagedModel resolveSceneModel() {

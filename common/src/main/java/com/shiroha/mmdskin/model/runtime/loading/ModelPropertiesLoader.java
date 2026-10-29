@@ -6,6 +6,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.FileInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
@@ -26,12 +27,20 @@ public final class ModelPropertiesLoader {
             return;
         }
 
-        String pathToProperties = info.getFolderPath() + "/model.properties";
+        loadFromDirectory(info.getFolderPath(), properties);
+    }
+
+    public static void loadFromDirectory(String modelDir, Properties properties) {
+        properties.clear();
+        if (modelDir == null || modelDir.isBlank()) {
+            return;
+        }
+        File pathToProperties = new File(modelDir, "model.properties");
         try (InputStream stream = new FileInputStream(pathToProperties)) {
             properties.load(stream);
-            logger.debug("模型属性加载成功: {}", modelName);
+            logger.debug("模型属性加载成功: {}", modelDir);
         } catch (IOException e) {
-            logger.debug("模型属性文件未找到: {}", modelName);
+            logger.debug("模型属性文件未找到: {}", modelDir);
         }
     }
 }

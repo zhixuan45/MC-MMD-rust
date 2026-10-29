@@ -64,6 +64,10 @@ public final class LivingEntityModelStateHelper {
     public static void syncModelState(NativeScenePort scenePort, long modelHandle, LivingEntity entity,
                                       float entityYaw, float tickDelta, RenderScene context,
                                       String modelName, boolean stagePlaying, boolean vrActive) {
+        // The player only supplies the scene's render context; its physics root stays at placement.
+        if (context != null && context.isPlacedScene()) {
+            return;
+        }
         if (stagePlaying) {
             scenePort.setHeadAngle(modelHandle, 0.0f, 0.0f, 0.0f, context.isWorldScene());
         } else if (!vrActive) {

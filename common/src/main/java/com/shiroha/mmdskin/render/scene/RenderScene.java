@@ -12,6 +12,7 @@ public final class RenderScene {
     }
 
     public static final RenderScene WORLD = new Builder().sceneType(SceneType.WORLD).build();
+    public static final RenderScene PLACED_SCENE = new Builder().sceneType(SceneType.WORLD).build();
     public static final RenderScene INVENTORY = new Builder().sceneType(SceneType.INVENTORY).mirror(true).build();
     public static final RenderScene FIRST_PERSON = new Builder().sceneType(SceneType.WORLD).firstPerson(true).build();
     public static final RenderScene ITEM = new Builder().sceneType(SceneType.ITEM).build();
@@ -55,6 +56,10 @@ public final class RenderScene {
 
     public boolean isPaperDoll() {
         return this == PAPERDOLL;
+    }
+
+    public boolean isPlacedScene() {
+        return this == PLACED_SCENE;
     }
 
     public boolean isHeldItem() { return heldItem; }
