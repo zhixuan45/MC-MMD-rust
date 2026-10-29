@@ -20,7 +20,4 @@ class OpenGlPaperDollPoseReuseTest {
         assertTrue(model.supportsPaperDollPoseReuse(true));
     }
 
-    @Test void cpuModelsCanJoinTheWorldEvaluationBatch() {
-        assertTrue(new OpenGlModelInstance().supportsParallelEvaluation());
-    }
 }

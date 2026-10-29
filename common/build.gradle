@@ -39,3 +39,5 @@ tasks.named("sourcesJar").configure {
 test {
 	useJUnitPlatform()
 }
+
+apply from: rootProject.file('tools/testing/tests.gradle')

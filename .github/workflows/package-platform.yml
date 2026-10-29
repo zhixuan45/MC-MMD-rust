@@ -53,8 +53,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Fabric and NeoForge and run Java tests
-        run: ./gradlew build --no-daemon --stacktrace -PnativeResourcesPath=build/ci-native-resources
+      - name: Build Fabric and NeoForge (domain tests run once in validation)
+        run: ./gradlew :fabric:build :neoforge:build -x :common:test --no-daemon --stacktrace -PnativeResourcesPath=build/ci-native-resources
 
       - name: Verify and name platform JARs
         env:
@@ -74,13 +74,3 @@ jobs:
           name: mmdskin-neoforge-${{ steps.version.outputs.mod_version }}-${{ inputs.arch }}
           path: neoforge/build/libs/*-${{ inputs.arch }}.jar
           if-no-files-found: error
-
-      - name: Upload Java test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: java-test-reports-1.21.1-${{ inputs.arch }}
-          path: |
-            common/build/reports/tests/
-            common/build/test-results/
-          if-no-files-found: ignore

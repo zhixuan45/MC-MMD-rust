@@ -1,0 +1,116 @@
+name: Layered tests
+
+on:
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run every default-backend batch
+        type: boolean
+        default: true
+      legacy:
+        description: Also validate the opt-in legacy physics backend
+        type: boolean
+        default: false
+  schedule:
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      java: ${{ steps.plan.outputs.java }}
+      rust: ${{ steps.plan.outputs.rust }}
+      has_java: ${{ steps.plan.outputs.has_java }}
+      has_rust: ${{ steps.plan.outputs.has_rust }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify selection rules and complete test inventory
+        run: python -m unittest discover -s tools/testing -p 'test_*.py'
+      - name: Select affected batches (full when base history is unavailable)
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FULL: ${{ inputs.full || github.event_name == 'schedule' || startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        run: |
+          args=(--base "$BASE_SHA" --head HEAD --github-output "$GITHUB_OUTPUT")
+          if [ "$FULL" = true ]; then args+=(--full); fi
+          python tools/testing/plan.py "${args[@]}"
+
+  java:
+    needs: plan
+    if: needs.plan.outputs.has_java == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.java) }}
+    name: Java / ${{ matrix.task }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test only this Java domain without compiling native libraries
+        run: bash gradlew :common:${{ matrix.task }} -x :prepareNativeResources --no-daemon --stacktrace
+      - name: Upload domain test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-tests-${{ matrix.task }}
+          path: |
+            common/build/reports/tests/${{ matrix.task }}/
+            common/build/test-results/${{ matrix.task }}/
+          if-no-files-found: warn
+
+  rust:
+    needs: plan
+    if: needs.plan.outputs.has_rust == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Checkout pinned Bullet source
+        run: python tools/ci/prepare_bullet.py
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_engine -> target
+      - name: Compile once and run selected Rust batches
+        env:
+          TEST_GROUPS: ${{ needs.plan.outputs.rust }}
+        run: python tools/testing/rust_batches.py --groups "$TEST_GROUPS"
+
+  legacy:
+    if: github.event_name == 'workflow_dispatch' && inputs.legacy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/ci/prepare_bullet.py
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_engine -> target
+      - run: python tools/testing/rust_batches.py --legacy --groups all

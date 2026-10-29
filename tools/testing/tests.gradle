@@ -1,0 +1,21 @@
+// Shared inventory for local batches and CI. Standard :common:test stays a full run.
+def inventory = new groovy.json.JsonSlurper().parse(rootProject.file('tools/testing/groups.json'))
+def registerBatch = { String taskName, List patterns ->
+    tasks.register(taskName, Test) {
+        group = 'verification'
+        description = "Run ${taskName} only; no other test batches are scheduled"
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        useJUnitPlatform()
+        patterns.each { include it }
+        filter { failOnNoMatchingTests = true }
+        // Each batch gets its own Gradle reports and up-to-date state.
+    }
+}
+registerBatch('testQuick', inventory.quick)
+inventory.java.each { name, patterns -> registerBatch("test${name.capitalize()}", patterns) }
+tasks.register('testAll') {
+    group = 'verification'
+    description = 'Run all Java domain batches once (choose this or :common:test)'
+    dependsOn inventory.java.keySet().collect { "test${it.capitalize()}" }
+}
