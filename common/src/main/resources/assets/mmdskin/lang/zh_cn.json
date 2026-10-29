@@ -384,6 +384,8 @@
   "gui.mmdskin.scene_selector.active": "当前: %s",
   "gui.mmdskin.scene_selector.models": "个场景",
   "gui.mmdskin.scene_selector.cancel": "移除场景",
+  "gui.mmdskin.scene_selector.outline": "场景 PMX 描边：%s",
+  "gui.mmdskin.scene_selector.outline.tooltip": "仅控制场景模型，立即生效并自动保存。描边需同时开启 Toon 渲染和总描边开关。",
   "gui.mmdskin.refresh": "刷新",
   "gui.mmdskin.select_all": "全选",
   "gui.mmdskin.clear_all": "清空",

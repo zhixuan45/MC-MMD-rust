@@ -139,7 +139,7 @@ final class GpuSkinningModelRenderer {
         boolean drawQueryStarted = GpuTimerQueryPool.draw().begin();
         try {
             if (useToon && GpuSkinningModelInstance.toonShaderCpu != null && GpuSkinningModelInstance.toonShaderCpu.isInitialized()) {
-                renderToon(target, minecraft, light, toonIntensity, firstPersonIndexReady, !isGuiScene);
+                renderToon(target, minecraft, light, toonIntensity, firstPersonIndexReady, !isGuiScene, context);
             } else {
                 renderNormal(target, minecraft, light, firstPersonIndexReady, deliverStack, isGuiScene);
             }
@@ -484,7 +484,7 @@ final class GpuSkinningModelRenderer {
                                    LightingHelper.LightData light,
                                    float lightIntensity,
                                    boolean firstPersonIndexReady,
-                                   boolean irisEntityScene) {
+                                   boolean irisEntityScene, RenderScene context) {
         BufferUploader.reset();
         GL46C.glBindVertexArray(target.vertexArrayObject);
         RenderSystem.enableBlend();
@@ -548,7 +548,7 @@ final class GpuSkinningModelRenderer {
                 }
             }
 
-            if (GpuSkinningModelInstance.toonConfig.isOutlineEnabled()) {
+            if (GpuSkinningModelInstance.toonConfig.isOutlineEnabled() && (context == null || context.allowsOutline())) {
                 renderOutlinePass(target);
             }
 

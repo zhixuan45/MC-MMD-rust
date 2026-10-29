@@ -342,6 +342,8 @@
   "gui.mmdskin.scene_selector.active": "現在: %s",
   "gui.mmdskin.scene_selector.models": "シーン",
   "gui.mmdskin.scene_selector.cancel": "シーン削除",
+  "gui.mmdskin.scene_selector.outline": "シーン PMX 輪郭線: %s",
+  "gui.mmdskin.scene_selector.outline.tooltip": "シーンモデルのみに適用し、即時反映・自動保存します。Toon 描画と全体の輪郭線設定も有効にしてください。",
   "gui.mmdskin.refresh": "更新",
   "gui.mmdskin.select_all": "全選択",
   "gui.mmdskin.clear_all": "クリア",

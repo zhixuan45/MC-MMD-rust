@@ -13,6 +13,7 @@ public final class RenderScene {
 
     public static final RenderScene WORLD = new Builder().sceneType(SceneType.WORLD).build();
     public static final RenderScene PLACED_SCENE = new Builder().sceneType(SceneType.WORLD).build();
+    public static final RenderScene PLACED_SCENE_NO_OUTLINE = new Builder().sceneType(SceneType.WORLD).outline(false).build();
     public static final RenderScene INVENTORY = new Builder().sceneType(SceneType.INVENTORY).mirror(true).build();
     public static final RenderScene FIRST_PERSON = new Builder().sceneType(SceneType.WORLD).firstPerson(true).build();
     public static final RenderScene ITEM = new Builder().sceneType(SceneType.ITEM).build();
@@ -25,6 +26,7 @@ public final class RenderScene {
     private final boolean mirror;
     private final boolean heldItem;
     private final boolean physics;
+    private final boolean outline;
 
     private RenderScene(Builder builder) {
         this.sceneType = builder.sceneType;
@@ -32,6 +34,7 @@ public final class RenderScene {
         this.mirror = builder.mirror;
         this.heldItem = builder.heldItem;
         this.physics = builder.physics;
+        this.outline = builder.outline;
     }
 
     public SceneType sceneType() {
@@ -59,18 +62,21 @@ public final class RenderScene {
     }
 
     public boolean isPlacedScene() {
-        return this == PLACED_SCENE;
+        return this == PLACED_SCENE || this == PLACED_SCENE_NO_OUTLINE;
     }
 
     public boolean isHeldItem() { return heldItem; }
     public boolean allowsPhysics() { return physics; }
+    public boolean allowsOutline() { return outline; }
 
     public static final class Builder {
         private boolean heldItem;
         private boolean physics = true;
+        private boolean outline = true;
 
         public Builder heldItem(boolean value) { heldItem=value; return this; }
         public Builder physics(boolean value) { physics=value; return this; }
+        public Builder outline(boolean value) { outline=value; return this; }
         private SceneType sceneType = SceneType.WORLD;
         private boolean firstPerson;
         private boolean mirror;

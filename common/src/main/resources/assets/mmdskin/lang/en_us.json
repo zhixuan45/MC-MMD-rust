@@ -373,6 +373,8 @@
   "gui.mmdskin.scene_selector.active": "Active: %s",
   "gui.mmdskin.scene_selector.models": "scenes",
   "gui.mmdskin.scene_selector.cancel": "Remove Scene",
+  "gui.mmdskin.scene_selector.outline": "Scene PMX outline: %s",
+  "gui.mmdskin.scene_selector.outline.tooltip": "Applies only to scene models. Changes apply immediately and save automatically. Requires Toon rendering and the main outline setting.",
   "gui.mmdskin.refresh": "Refresh",
   "gui.mmdskin.select_all": "All",
   "gui.mmdskin.clear_all": "Clear",

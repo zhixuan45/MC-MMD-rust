@@ -2,6 +2,7 @@
 package com.shiroha.mmdskin.ui.selector;
 
 import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
+import com.shiroha.mmdskin.config.SceneConfig;
 import com.shiroha.mmdskin.scene.client.SceneModelCatalog;
 import com.shiroha.mmdskin.scene.client.SceneModelManager;
 import com.shiroha.mmdskin.ui.chrome.TranslucentTrayChrome;
@@ -47,7 +48,8 @@ public class SceneSelectorScreen extends Screen {
     private enum ButtonTarget {
         NONE,
         DONE,
-        SECONDARY
+        SECONDARY,
+        OUTLINE
     }
 
     public SceneSelectorScreen() {
@@ -71,6 +73,10 @@ public class SceneSelectorScreen extends Screen {
             updateHoverState(mouseX, mouseY);
             updateScrollAnimation();
             renderFallback(guiGraphics);
+            if (hoveredButton == ButtonTarget.OUTLINE) {
+                guiGraphics.renderTooltip(this.font,
+                        Component.translatable("gui.mmdskin.scene_selector.outline.tooltip"), mouseX, mouseY);
+            }
             flushPendingActions(minecraft);
         } catch (Throwable throwable) {
             closeAfterFailure(throwable);
@@ -93,6 +99,12 @@ public class SceneSelectorScreen extends Screen {
 
         if (layout.secondaryButton.contains(mouseX, mouseY)) {
             performSecondaryAction();
+            return true;
+        }
+
+        if (layout.outlineButton.contains(mouseX, mouseY)) {
+            SceneConfig config = SceneConfig.getInstance();
+            config.setOutlineEnabled(!config.isOutlineEnabled());
             return true;
         }
 
@@ -142,12 +154,13 @@ public class SceneSelectorScreen extends Screen {
         int buttonWidth = (header.w - BUTTON_GAP) / 2;
         UiRect doneButton = new UiRect(header.x, buttonY, buttonWidth, BUTTON_HEIGHT);
         UiRect secondaryButton = new UiRect(header.x + buttonWidth + BUTTON_GAP, buttonY, buttonWidth, BUTTON_HEIGHT);
+        UiRect outlineButton = new UiRect(header.x, buttonY - BUTTON_HEIGHT - BUTTON_GAP, header.w, BUTTON_HEIGHT);
 
         int listY = header.y + header.h + 2;
-        int listBottom = buttonY - 4;
+        int listBottom = outlineButton.y - BUTTON_GAP;
         int listHeight = Math.max(48, listBottom - listY);
         UiRect listBox = new UiRect(header.x, listY, header.w, listHeight);
-        layout = new Layout(panel, header, listBox, doneButton, secondaryButton);
+        layout = new Layout(panel, header, listBox, doneButton, secondaryButton, outlineButton);
 
         float maxScroll = maxScroll();
         targetScroll = Mth.clamp(targetScroll, 0.0f, maxScroll);
@@ -164,6 +177,10 @@ public class SceneSelectorScreen extends Screen {
         }
         if (layout.secondaryButton.contains(mouseX, mouseY)) {
             hoveredButton = ButtonTarget.SECONDARY;
+            return;
+        }
+        if (layout.outlineButton.contains(mouseX, mouseY)) {
+            hoveredButton = ButtonTarget.OUTLINE;
             return;
         }
 
@@ -216,6 +233,11 @@ public class SceneSelectorScreen extends Screen {
 
         drawFallbackButton(guiGraphics, layout.doneButton, Component.translatable("gui.done").getString(), hoveredButton == ButtonTarget.DONE);
         drawFallbackButton(guiGraphics, layout.secondaryButton, secondaryText, hoveredButton == ButtonTarget.SECONDARY);
+        String outlineState = Component.translatable(SceneConfig.getInstance().isOutlineEnabled()
+                ? "options.on" : "options.off").getString();
+        drawFallbackButton(guiGraphics, layout.outlineButton,
+                Component.translatable("gui.mmdskin.scene_selector.outline", outlineState).getString(),
+                hoveredButton == ButtonTarget.OUTLINE);
 
         UiRect list = layout.listBox;
         TranslucentTrayChrome.fillListArea(guiGraphics, list.x, list.y, list.w, list.h);
@@ -342,10 +364,10 @@ public class SceneSelectorScreen extends Screen {
         }
     }
 
-    private record Layout(UiRect panel, UiRect header, UiRect listBox, UiRect doneButton, UiRect secondaryButton) {
+    private record Layout(UiRect panel, UiRect header, UiRect listBox, UiRect doneButton, UiRect secondaryButton, UiRect outlineButton) {
         static Layout empty() {
             UiRect empty = UiRect.empty();
-            return new Layout(empty, empty, empty, empty, empty);
+            return new Layout(empty, empty, empty, empty, empty, empty);
         }
     }
 }

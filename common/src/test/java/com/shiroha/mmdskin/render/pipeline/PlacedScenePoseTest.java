@@ -17,13 +17,27 @@ class PlacedScenePoseTest {
                 });
         for (boolean stagePlaying : new boolean[]{false, true}) {
             for (boolean vrActive : new boolean[]{false, true}) {
-                LivingEntityModelStateHelper.syncModelState(port, 42L, null, 120.0f, 0.5f,
-                        RenderScene.PLACED_SCENE, "stage", stagePlaying, vrActive);
+                for (RenderScene scene : new RenderScene[]{RenderScene.PLACED_SCENE, RenderScene.PLACED_SCENE_NO_OUTLINE}) {
+                    LivingEntityModelStateHelper.syncModelState(port, 42L, null, 120.0f, 0.5f,
+                            scene, "stage", stagePlaying, vrActive);
+                }
             }
         }
         assertTrue(RenderScene.PLACED_SCENE.isWorldScene());
         assertTrue(RenderScene.PLACED_SCENE.allowsPhysics());
         assertFalse(RenderScene.WORLD.isPlacedScene());
         assertFalse(RenderScene.FIRST_PERSON.isPlacedScene());
+    }
+
+    @Test
+    void disablingSceneOutlinesKeepsWorldRenderingAndPhysicsAndOtherModelsUnchanged() {
+        assertTrue(RenderScene.PLACED_SCENE_NO_OUTLINE.isPlacedScene());
+        assertTrue(RenderScene.PLACED_SCENE_NO_OUTLINE.isWorldScene());
+        assertTrue(RenderScene.PLACED_SCENE_NO_OUTLINE.allowsPhysics());
+        assertFalse(RenderScene.PLACED_SCENE_NO_OUTLINE.allowsOutline());
+        for (RenderScene scene : new RenderScene[]{RenderScene.PLACED_SCENE, RenderScene.WORLD,
+                RenderScene.FIRST_PERSON, RenderScene.HELD_ITEM, RenderScene.PAPERDOLL}) {
+            assertTrue(scene.allowsOutline());
+        }
     }
 }

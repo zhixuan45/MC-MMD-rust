@@ -33,6 +33,7 @@ public final class PathConstants {
     public static final String MORPH_WHEEL_CONFIG = "morph_wheel.json";
     public static final String MAIN_CONFIG = "config.json";
     public static final String STAGE_CONFIG = "stage_config.json";
+    public static final String SCENE_CONFIG = "scene_config.json";
 
     public static final String VMD_EXTENSION = ".vmd";
     public static final String VPD_EXTENSION = ".vpd";

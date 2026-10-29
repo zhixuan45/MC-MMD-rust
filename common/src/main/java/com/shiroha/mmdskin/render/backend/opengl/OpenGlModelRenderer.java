@@ -133,7 +133,7 @@ final class OpenGlModelRenderer {
         if (useToon) {
             long drawTimer = RenderPerformanceProfiler.get().startTimer();
             try {
-                renderToon(target, minecraft, light, toonIntensity, deliverStack, !isGuiScene);
+                renderToon(target, minecraft, light, toonIntensity, deliverStack, !isGuiScene, context);
             } finally {
                 if (drawQueryStarted) GpuTimerQueryPool.draw().end();
                 RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
@@ -636,7 +636,7 @@ final class OpenGlModelRenderer {
     }
 
     private static void renderToon(OpenGlModelInstance target, Minecraft minecraft, LightingHelper.LightData light, float lightIntensity,
-                                   PoseStack deliverStack, boolean irisEntityScene) {
+                                   PoseStack deliverStack, boolean irisEntityScene, RenderScene context) {
         BufferUploader.reset();
         GL46C.glBindVertexArray(target.vertexArrayObject);
         RenderSystem.enableBlend();
@@ -694,7 +694,7 @@ final class OpenGlModelRenderer {
 
             renderToonMainPass(target, minecraft, lightIntensity, light, irisShader);
 
-            if (OpenGlModelInstance.toonConfig.isOutlineEnabled()) {
+            if (OpenGlModelInstance.toonConfig.isOutlineEnabled() && (context == null || context.allowsOutline())) {
                 renderOutlinePass(target);
             }
         } finally {

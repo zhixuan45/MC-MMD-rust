@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
 import com.shiroha.mmdskin.bridge.runtime.NativeScenePort;
 import com.shiroha.mmdskin.config.ModelConfigManager;
+import com.shiroha.mmdskin.config.SceneConfig;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
@@ -180,7 +181,8 @@ public final class SceneModelManager {
                 tickDelta,
                 poseStack,
                 packedLight,
-                RenderScene.PLACED_SCENE
+                SceneConfig.getInstance().isOutlineEnabled()
+                        ? RenderScene.PLACED_SCENE : RenderScene.PLACED_SCENE_NO_OUTLINE
         );
 
         poseStack.popPose();
