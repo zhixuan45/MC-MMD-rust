@@ -12,6 +12,7 @@ final class DrawMaterialCache {
     private final int[] baseAlphas;
     private final int[] textureIds;
     private final boolean[] textureResolved;
+    private final com.shiroha.mmdskin.render.effectpack.FxMaterialData[] effects;
 
     DrawMaterialCache(ModelMaterial[] materials, ByteBuffer morphs, SubMeshDrawHelper.AlphaResolver alphas) {
         this(materials, morphs, alphas, null);
@@ -28,6 +29,7 @@ final class DrawMaterialCache {
         baseAlphas = new int[materials.length];
         textureIds = new int[materials.length];
         textureResolved = new boolean[materials.length];
+        effects = new com.shiroha.mmdskin.render.effectpack.FxMaterialData[materials.length];
     }
 
     MaterialRenderState resolve(int materialId, float baseAlpha) {
@@ -48,5 +50,10 @@ final class DrawMaterialCache {
             textureResolved[materialId] = true;
         }
         return textureIds[materialId];
+    }
+
+    com.shiroha.mmdskin.render.effectpack.FxMaterialData effect(int materialId) {
+        if (effects[materialId] == null) effects[materialId] = com.shiroha.mmdskin.render.effectpack.FxMaterialData.capture(materialId, materials[materialId].name);
+        return effects[materialId];
     }
 }

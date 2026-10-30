@@ -32,7 +32,7 @@ float toonShaderFlatnessAmount() {
 // 100% 内保留色块平坦区，更高柔和度继续扩宽交界。
 float toonDiffuseRamp(float ndl) {
 #ifdef MMD_FX_RAY
-    if (FxMaterialEnabled) return ndl;
+    if (mmdFxRayEnabled()) return ndl;
 #endif
     float steps = float(clamp(ToonLevels, 2, 5) - 1);
     float antialiasWidth = clamp(fwidth(ndl), 0.002, 0.015);
@@ -53,7 +53,7 @@ float toonDiffuseRamp(float ndl) {
 
 vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination, float ramp) {
 #ifdef MMD_FX_RAY
-    if (FxMaterialEnabled) {
+    if (mmdFxRayEnabled()) {
         toonSurfaceIllumination = max(illumination, vec3(0.0));
         return albedo * mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp) * toonSurfaceIllumination;
     }

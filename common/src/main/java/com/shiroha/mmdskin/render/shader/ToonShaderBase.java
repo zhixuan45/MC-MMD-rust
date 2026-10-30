@@ -114,9 +114,8 @@ public abstract class ToonShaderBase {
         try {
             Programs programs = variants.get(key);
             if (programs == null) {
-                String fragment = outputSource(MAIN_FRAGMENT_SHADER_BODY
-                        .replace("/* MMD_FX_MATERIAL */", com.shiroha.mmdskin.render.effectpack.FxShaderSource.material(effects == null ? null : effects.current()))
-                        .replace("/* MMD_FX_COLOR */", effects == null ? com.shiroha.mmdskin.render.effectpack.FxEffect.IDENTITY : effects.colorFunction()), profile);
+                String fragment = outputSource(com.shiroha.mmdskin.render.effectpack.FxShaderSource.apply(MAIN_FRAGMENT_SHADER_BODY,
+                        effects == null ? com.shiroha.mmdskin.render.effectpack.FxProgram.EMPTY : effects.program()), profile);
                 int main = 0;
                 if (supportsBatchProfile(profile.id()) && TranslucentBatchShader.supported()) {
                     main = compileProgram(getMainVertexShader(), TranslucentBatchShader.source(fragment),
@@ -127,7 +126,7 @@ public abstract class ToonShaderBase {
                 if (main == 0) main = compileProgram(getMainVertexShader(), fragment,
                         getShaderName() + "主着色器/" + key);
                 if (main == 0) {
-                    if (effects != null && effects.enabled()) effects.problem("compile:" + key, "效果着色器编译失败: " + effects.current().name() + "；详见客户端日志");
+                    if (effects != null && effects.enabled()) effects.problem("compile:" + key, "材质组合着色器编译失败；详见客户端日志");
                     failedVariants.add(key);
                     return false;
                 }

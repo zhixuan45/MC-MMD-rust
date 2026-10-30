@@ -25,6 +25,9 @@ public final class EffectPackScreen extends Screen {
 
     @Override protected void init() {
         int left = Math.max(8, (width - 420) / 2), panel = Math.min(420, width - 16);
+        addRenderableWidget(Button.builder(Component.literal("材质组合"), b -> {
+            applySelectors(); runtime.save(); Minecraft.getInstance().setScreen(new MaterialEffectsScreen(this));
+        }).bounds(left + panel - 72, 5, 72, 20).build());
         importPath = new EditBox(font, left, 30, panel - 62, 20, Component.literal("ZIP / FX / 资源目录路径"));
         importPath.setMaxLength(2048);
         addRenderableWidget(importPath);

@@ -22,6 +22,9 @@ public final class EffectPackRuntime {
     private final Map<String, Integer> textures = new LinkedHashMap<>();
     private final Map<String, String> problems = new LinkedHashMap<>();
     private FxEffect current;
+    private List<MaterialEffectRule> materialRules = List.of();
+    private FxProgram program = FxProgram.EMPTY;
+    private boolean worldScene;
 
     private EffectPackRuntime() {
         this(PathConstants.getSkinRootDir().toPath().resolve("effectpacks"), PathConstants.getConfigRootPath().resolve("effectpacks.json"));
@@ -46,7 +49,16 @@ public final class EffectPackRuntime {
     public List<String> problems() { return List.copyOf(problems.values()); }
     public FxEffect effect(String id) { return effects.get(id); }
     public FxEffect current() { return current; }
-    public boolean enabled() { return current != null; }
+    public boolean enabled() { return program.enabled(); }
+    public FxProgram program() { return program; }
+    public FxEffect materialEffect(int index, String name) {
+        FxEffect selected = current;
+        for (MaterialEffectRule rule : materialRules) if (rule.matches(index, name)) { selected = effect(rule.effect()); break; }
+        return deduplicateWorld(selected);
+    }
+    private FxEffect deduplicateWorld(FxEffect effect) {
+        return effect != null && effect.supportsWorld() && worldScene && world() != null && effect.id().equals(world().id()) ? null : effect;
+    }
     public FxEffect world() {
         FxEffect result = effects.get(settings.world);
         return result != null && result.supportsWorld() ? result : null;
@@ -68,36 +80,50 @@ public final class EffectPackRuntime {
             problems.remove("scan");
             for (String id : new String[]{settings.characters, settings.scenes, settings.world})
                 if (!id.isEmpty() && !effects.containsKey(id)) problem("missing:" + id, "所选效果未加载: " + id);
+            java.util.stream.Stream.concat(settings.characterMaterials.values().stream(), settings.sceneMaterials.values().stream())
+                    .flatMap(List::stream).map(MaterialEffectRule::effect).filter(id -> !id.isEmpty() && !effects.containsKey(id))
+                    .forEach(id -> problem("missing:" + id, "材质绑定的效果未加载: " + id));
             FxEffect worldEffect = effect(settings.world);
             if (worldEffect != null && !worldEffect.supportsWorld()) problem("world-kind", "所选效果只有模型材质通道，无法作用于世界: " + worldEffect.name());
         } catch (IOException e) { problem("scan", "效果库扫描失败: " + e.getMessage()); }
     }
 
     public Scope enter(RenderScene scene, String model) {
-        FxEffect previous = current;
+        Scope previous = new Scope(current, materialRules, program, worldScene);
         current = null;
+        materialRules = List.of();
+        program = FxProgram.EMPTY;
+        worldScene = scene != null && scene.isWorldScene();
         if (scene != null && !IrisCompat.isRenderingShadows() && scene.sceneType() != RenderScene.SceneType.ITEM) {
             boolean placed = scene.isPlacedScene();
             String selector = placed ? settings.sceneModel : settings.characterModel;
             if (EffectPackSettings.matches(selector, model)) current = effect(placed ? settings.scenes : settings.characters);
-            // 全屏颜色效果已包含世界中的人物，避免相同效果应用两次；GUI 仍可单独预览。
-            if (current != null && current.supportsWorld() && scene.isWorldScene() && world() != null
-                    && current.id().equals(world().id())) current = null;
+            materialRules = settings.rules(placed, model);
+            current = deduplicateWorld(current);
+            var active = new java.util.ArrayList<FxEffect>();
+            active.add(current);
+            for (var rule : materialRules) active.add(deduplicateWorld(effect(rule.effect())));
+            program = FxProgram.of(active);
         }
-        return new Scope(previous);
+        return previous;
     }
 
     public final class Scope implements AutoCloseable {
         private final FxEffect previous;
-        private Scope(FxEffect previous) { this.previous = previous; }
-        @Override public void close() { current = previous; }
+        private final List<MaterialEffectRule> previousRules;
+        private final FxProgram previousProgram;
+        private final boolean previousWorld;
+        private Scope(FxEffect previous, List<MaterialEffectRule> rules, FxProgram program, boolean world) {
+            this.previous = previous; previousRules = rules; previousProgram = program; previousWorld = world;
+        }
+        @Override public void close() { current = previous; materialRules = previousRules; program = previousProgram; worldScene = previousWorld; }
     }
 
     public String colorFunction() {
-        return current != null && current.kind() == FxEffect.Kind.COLOR_FILTER ? current.colorFunction() : FxEffect.IDENTITY;
+        return program.colorFunction();
     }
     public String variantKey() {
-        return current == null ? "" : ":fx:" + (current.kind() == FxEffect.Kind.RAY_MATERIAL ? "ray2" : FxSource.sha256(colorFunction()).substring(0, 16));
+        return program.key();
     }
 
     public int texture(FxEffect effect, FxEffect.Channel channel) {

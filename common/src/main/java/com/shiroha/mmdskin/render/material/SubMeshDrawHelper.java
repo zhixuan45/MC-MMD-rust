@@ -169,6 +169,7 @@ public final class SubMeshDrawHelper {
                                         : pass == 2 && !classicDepthPrepass && !sharedWorld && !worldFallback ? 0 : 2;
                                 binding.apply(state, alphaPass, opaqueShadow ? 1.0f : state.alpha);
                                 sphere.apply(material, state);
+                                if (!shadowPass) effects.apply(materialCache.effect(materialId));
 
                                 if (bothFace) {
                                     RenderSystem.disableCull();

@@ -131,6 +131,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
     private record Batch(
             int texture,
             int sphereMaterial,
+            int effectMaterial,
             boolean cull,
             boolean hasAlpha,
             boolean hasTranslucent,
@@ -224,6 +225,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             boolean eye = eyeLocation >= 0 && GL46C.glGetUniformf(program, eyeLocation) > 0;
             boolean splitPixels = GL46C.glGetUniformLocation(program, "AlphaPass") >= 0;
             boolean sphere = GL46C.glGetUniformLocation(program, "SphereMode") >= 0;
+            boolean effects = GL46C.glGetUniformLocation(program, "FxSelection") >= 0;
             // Pack entity shaders may deform vertices or derive alpha beyond the diffuse atlas.
             // Own Toon programs have the known MaterialColor/texture-alpha formula.
             packEntity =
@@ -247,6 +249,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                                 // 球面模式及 morph 属于逐材质状态，不能只按主贴图合并。
                                 sphere && material.sphereTex > 0 && (material.sphereMode == 1 || material.sphereMode == 2)
                                         ? source.getInt(s * 20) : -1,
+                                effects ? source.getInt(s * 20) : -1,
                                 source.get(s * 20 + 17) == 0,
                                 material.hasAlpha,
                                 material.hasTranslucentPixels,
@@ -348,7 +351,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                 // Alpha coverage can eliminate entire submeshes. Their unused textures must not
                 // push an otherwise valid single-window pass back onto the CPU.
                 var devicePlan = TranslucentBatchPlan.singleWindowForCandidates(source, count,
-                        candidateOwners, candidateCount, materials, materialCache::texture, batchLayout.capacity());
+                        candidateOwners, candidateCount, materials, materialCache::texture, batchLayout.capacity(), materialCache::effect);
                 if (devicePlan != null && TranslucentBatchSubmission.supports(devicePlan.materials(), batchLayout)) {
                     boolean reuse = reusePreparation() && previousDevice && prepared.matches(inputs, candidateBuildCount, source, count, batches, packEntity);
                     if (reuse || device.prepare(inputs, deviceTopology(devicePlan.rowBySubmesh()))) {

@@ -29,8 +29,8 @@ uniform float EyeEmission;
 uniform float EyeMaterialMask;
 
 /* TOON_BATCH_MATERIALS */
-/* MMD_FX_MATERIAL */
 /* MMD_FX_COLOR */
+/* MMD_FX_MATERIAL */
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
 /* TOON_SURFACE_LIGHTING */
@@ -45,9 +45,6 @@ void main() {
     vec4 texColor = texture(Sampler0, texCoord0);
 #endif
     float finalAlpha = texColor.a * MaterialColor.a;
-#ifdef MMD_FX_RAY
-    if (FxMaterialEnabled) finalAlpha *= clamp(FxAlpha, 0.0, 1.0);
-#endif
     // 独立覆盖全局阈值；先裁切，再执行实心对照及透明分层。
     float cutoff = max(0.001, HairMaterial ? HairAlphaCutoff : AlphaCutoff);
     if (finalAlpha < cutoff) {

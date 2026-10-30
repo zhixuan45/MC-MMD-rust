@@ -1,4 +1,7 @@
-// std430: six vec4s per row, followed by one row index per sorted triangle.
+// 无组合时保持原来的六个 vec4；组合变体追加七个材质通道。
+#ifdef MMD_FX_COMBINED
+struct MmdFxChannel { vec4 value; vec4 options; vec4 uvSource; };
+#endif
 struct MmdBatchMaterial {
     vec4 color;
     vec4 specularPower;
@@ -6,6 +9,9 @@ struct MmdBatchMaterial {
     vec4 sphereAdd;
     vec4 shading; // eye mask, sphere mode, diffuse slot, sphere slot
     vec4 flags;   // double sided, hair
+#ifdef MMD_FX_COMBINED
+    MmdFxChannel effects[7];
+#endif
 };
 layout(std430, binding = 2) readonly buffer MmdBatchMaterials { MmdBatchMaterial mmdMaterials[]; };
 layout(std430, binding = 3) readonly buffer MmdBatchTriangles { int mmdTriangleRows[]; };
@@ -18,6 +24,10 @@ vec3 mmdSpecular;
 float mmdPower, mmdEyeMask;
 int mmdSphereMode, mmdDiffuseSlot, mmdSphereSlot;
 bool mmdCull, mmdHairMaterial;
+#ifdef MMD_FX_COMBINED
+int mmdFxKind, mmdFxSelection;
+MmdFxChannel mmdFxChannels[7];
+#endif
 vec2 mmdSphereUv, mmdSphereDx, mmdSphereDy;
 
 // Sampler selection is not dynamically uniform across primitives. Constant sampler
@@ -57,6 +67,11 @@ void mmdLoadMaterial() {
         mmdSphereAdd = row.sphereAdd;
         mmdEyeMask = row.shading.x;
         mmdHairMaterial = row.flags.y != 0.0;
+#ifdef MMD_FX_COMBINED
+        mmdFxKind = int(row.flags.z);
+        mmdFxSelection = int(row.flags.w);
+        for (int channel = 0; channel < 7; channel++) mmdFxChannels[channel] = row.effects[channel];
+#endif
         mmdSphereMode = int(row.shading.y);
         mmdDiffuseSlot = int(row.shading.z);
         mmdSphereSlot = int(row.shading.w);

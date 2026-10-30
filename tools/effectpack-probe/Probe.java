@@ -63,6 +63,19 @@ public final class Probe {
             testScopes();
             testProductionPrograms();
             testWorldPass();
+            Path original = runtime.library().resolve(ray.id());
+            Path alternate = runtime.library().resolve("second-ray"); Files.createDirectories(alternate);
+            try (var resources = Files.list(original.getParent())) {
+                for (Path resource : resources.filter(p -> p.toString().endsWith(".tga") || p.toString().endsWith(".fxsub")).toList())
+                    Files.copy(resource, alternate.resolve(resource.getFileName()));
+            }
+            Files.writeString(alternate.resolve("alternate.fx"), Files.readString(original)
+                    .replace("NORMAL_MAP_FROM 1", "NORMAL_MAP_FROM 0")
+                    .replace("SMOOTHNESS_MAP_FROM 1", "SMOOTHNESS_MAP_FROM 0")
+                    .replace("const float smoothness = 0.0;", "const float smoothness = 0.8;"));
+            Files.writeString(colors.resolve("warm.fx"), Files.readString(Path.of("examples/mmd-effects/warm.fx")));
+            runtime.reload();
+            checks += com.shiroha.mmdskin.render.material.MixedFxGlProbe.run(runtime, ray.id(), "second-ray/alternate.fx", "colors/gray.fx", "colors/warm.fx");
             check(GL33C.glGetError() == GL33C.GL_NO_ERROR, "无 GL 错误");
             runtime.reload();
             check(TextureRepository.getTextureCount() == 0, "重载释放额外贴图");

@@ -9,13 +9,17 @@ import org.lwjgl.system.MemoryUtil;
 /** Per-model buffers for ordered, multi-material submission on the vanilla Toon program. */
 final class TranslucentBatchSubmission implements AutoCloseable {
     private static final int ROW_BYTES = 96;
+    private static int rowBytes(int program) {
+        return ROW_BYTES + (GL46C.glGetUniformLocation(program, "FxSelection") >= 0
+                ? com.shiroha.mmdskin.render.effectpack.FxMaterialData.CHANNEL_BYTES : 0);
+    }
     private int materialsBuffer, trianglesBuffer;
     private ByteBuffer rows, triangles;
     private long uploadedBytes;
     private long materialBytes, triangleBytesAllocated;
 
     static boolean supports(TranslucentBatchPlan plan, ProgramSamplerLayout layout) {
-        long bytes = (long) plan.rows.size() * ROW_BYTES;
+        long bytes = (long) plan.rows.size() * rowBytes(GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM));
         return bytes <= Integer.MAX_VALUE
                 && bytes <= GL46C.glGetInteger64(GL46C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE)
                 && layout != null && layout.program() == GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM)
@@ -31,7 +35,7 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_SAMPLERS, 1);
             return -1;
         }
-        var plan = TranslucentBatchPlan.build(runs, count, materials, materialCache::texture, layout.capacity());
+        var plan = TranslucentBatchPlan.build(runs, count, materials, materialCache::texture, layout.capacity(), materialCache::effect);
         if (plan == null) {
             TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_CAPACITY, 1);
             return -1;
@@ -58,7 +62,8 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             TranslucentDiagnostics.add(TranslucentDiagnostics.Counter.BATCH_REJECT_CAPACITY, 1);
             return -1;
         }
-        long rowBytes = (long) plan.rows.size() * ROW_BYTES;
+        int stride = rowBytes(uniforms.program());
+        long rowBytes = (long) plan.rows.size() * stride;
         long triangleBytes = (long) plan.triangleRows.length * Integer.BYTES;
         long maxBlock = GL46C.glGetInteger64(GL46C.GL_MAX_SHADER_STORAGE_BLOCK_SIZE);
         if (rowBytes > maxBlock || triangleBytes > maxBlock
@@ -79,7 +84,9 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             rows.putFloat(material.eyeEmissionMaskMode()).putFloat(row.sphereSlot() < 0 ? 0 : material.sphereMode)
                     .putFloat(row.diffuseSlot()).putFloat(row.sphereSlot());
             // 复用空闲标记，不增加材质表大小或拆分批次。
-            rows.putFloat(key.bothFace() ? 1 : 0).putFloat(state.hair ? 1 : 0).putFloat(0).putFloat(0);
+            rows.putFloat(key.bothFace() ? 1 : 0).putFloat(state.hair ? 1 : 0)
+                    .putFloat(row.effect().kind()).putFloat(row.effect().selection());
+            if (stride > ROW_BYTES) row.effect().writeChannels(rows, row.effectSlots());
         }
         if (device == null) for (int row : plan.triangleRows) triangles.putInt(row);
         rows.flip();
