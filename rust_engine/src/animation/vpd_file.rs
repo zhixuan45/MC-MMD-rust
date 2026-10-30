@@ -12,6 +12,8 @@ use crate::{MmdError, Result};
 pub struct VpdBone {
     /// 骨骼名称
     pub name: String,
+    /// A second lossless legacy decoding, used only when the primary name does not match.
+    pub(crate) alternate_name: Option<String>,
     /// 平移
     pub translation: Vec3,
     /// 旋转（四元数）
@@ -23,6 +25,7 @@ pub struct VpdBone {
 pub struct VpdMorph {
     /// Morph 名称
     pub name: String,
+    pub(crate) alternate_name: Option<String>,
     /// 权重
     pub weight: f32,
 }
@@ -44,50 +47,53 @@ impl VpdFile {
     }
 
     pub fn load_from_bytes(bytes: &[u8]) -> Result<Self> {
-        let text = match std::str::from_utf8(bytes) {
-            Ok(text) => std::borrow::Cow::Borrowed(text),
-            Err(_) => {
-                let (text, _, errors) = encoding_rs::SHIFT_JIS.decode(bytes);
-                if errors { return Err(MmdError::VpdParse("Invalid text encoding".into())); }
-                text
-            }
-        };
-        let mut lines = text.trim_start_matches('\u{feff}').lines()
-            .map(|line| line.split("//").next().unwrap_or("").trim())
+        // MMD exports can mix CP932 standard bones with GBK custom names in one file.
+        // Parse ASCII structure and discard comments before decoding individual name fields.
+        let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
+        let mut lines = bytes.split(|&b| b == b'\n')
+            .map(|line| {
+                let end = line.windows(2).position(|w| w == b"//").unwrap_or(line.len());
+                line[..end].trim_ascii()
+            })
             .filter(|line| !line.is_empty());
         let error = |message: &str| MmdError::VpdParse(message.to_string());
-        if lines.next() != Some("Vocaloid Pose Data file") { return Err(error("Invalid VPD header")); }
-        let model_name = lines.next().ok_or_else(|| error("Missing model name"))?
-            .trim_end_matches(';').to_string();
-        let expected_bones: usize = lines.next().ok_or_else(|| error("Missing bone count"))?
+        if lines.next() != Some(b"Vocaloid Pose Data file".as_slice()) { return Err(error("Invalid VPD header")); }
+        let model_name = lines.next().ok_or_else(|| error("Missing model name"))?;
+        let (model_name, _) = decode_name(model_name.strip_suffix(b";").unwrap_or(model_name))?;
+        let expected_bones: usize = std::str::from_utf8(lines.next().ok_or_else(|| error("Missing bone count"))?)
+            .map_err(|_| error("Invalid bone count"))?
             .trim_end_matches(';').trim().parse().map_err(|_| error("Invalid bone count"))?;
         let mut bones = Vec::new();
         let mut morphs = Vec::new();
-        let mut block: Option<(bool, String)> = None;
+        let mut block: Option<(bool, String, Option<String>)> = None;
         let mut values = Vec::<f32>::new();
         for line in lines {
-            if let Some((prefix, name)) = line.split_once('{') {
+            if let Some(open) = line.iter().position(|&b| b == b'{') {
                 if block.is_some() { return Err(error("Unclosed VPD block")); }
-                let bone = prefix.starts_with("Bone");
-                if !bone && !prefix.starts_with("Morph") { return Err(error("Unknown VPD block")); }
-                if name.trim().is_empty() { return Err(error("Missing bone or morph name")); }
-                block = Some((bone, name.trim().to_string()));
+                let prefix = &line[..open];
+                let bone = prefix.starts_with(b"Bone");
+                if !bone && !prefix.starts_with(b"Morph") { return Err(error("Unknown VPD block")); }
+                let name = line[open + 1..].trim_ascii();
+                if name.is_empty() { return Err(error("Missing bone or morph name")); }
+                let (name, alternate_name) = decode_name(name)?;
+                block = Some((bone, name, alternate_name));
                 values.clear();
-            } else if line.trim_end_matches(';') == "}" {
-                let (bone, name) = block.take().ok_or_else(|| error("Unexpected block end"))?;
+            } else if line == b"}" || line == b"};" {
+                let (bone, name, alternate_name) = block.take().ok_or_else(|| error("Unexpected block end"))?;
                 if values.iter().any(|v| !v.is_finite()) { return Err(error("Non-finite VPD value")); }
                 if bone {
                     if values.len() != 7 { return Err(error("Expected 7 bone values")); }
                     let rotation = Quat::from_xyzw(values[3], values[4], -values[5], -values[6]);
                     if rotation.length_squared() < 1e-12 { return Err(error("Invalid bone rotation")); }
-                    bones.push(VpdBone { name,
+                    bones.push(VpdBone { name, alternate_name,
                         translation: Vec3::new(values[0], values[1], -values[2]),
                         rotation: rotation.normalize() });
                 } else {
                     if values.len() != 1 { return Err(error("Expected one morph weight")); }
-                    morphs.push(VpdMorph { name, weight: values[0] });
+                    morphs.push(VpdMorph { name, alternate_name, weight: values[0] });
                 }
             } else if block.is_some() {
+                let line = std::str::from_utf8(line).map_err(|_| error("Invalid numeric VPD value"))?;
                 for value in line.trim_end_matches(';').split(',').map(str::trim).filter(|s| !s.is_empty()) {
                     values.push(value.parse().map_err(|_| error("Invalid numeric VPD value"))?);
                 }
@@ -97,6 +103,22 @@ impl VpdFile {
         }
         if block.is_some() || bones.len() != expected_bones { return Err(error("Incomplete VPD pose")); }
         Ok(Self { model_name, bones, morphs })
+    }
+}
+
+fn decode_name(bytes: &[u8]) -> Result<(String, Option<String>)> {
+    if let Ok(name) = std::str::from_utf8(bytes) {
+        return Ok((name.to_string(), None));
+    }
+    let sjis = encoding_rs::SHIFT_JIS.decode_without_bom_handling_and_without_replacement(bytes);
+    let gbk = encoding_rs::GBK.decode_without_bom_handling_and_without_replacement(bytes);
+    match (sjis, gbk) {
+        (Some(name), alternate) => {
+            let alternate = alternate.filter(|other| other != &name).map(|other| other.into_owned());
+            Ok((name.into_owned(), alternate))
+        }
+        (None, Some(name)) => Ok((name.into_owned(), None)),
+        (None, None) => Err(MmdError::VpdParse("Invalid text encoding in VPD name".into())),
     }
 }
 
@@ -122,5 +144,25 @@ mod tests {
         assert!(VpdFile::load_from_bytes(POSE.replace("0,0,0,1", "0,0,0,0").as_bytes()).is_err());
         assert!(VpdFile::load_from_bytes(POSE.replace("1,2,3", "NaN,2,3").as_bytes()).is_err());
         assert!(VpdFile::load_from_bytes(POSE.split("Morph0").next().unwrap().trim_end_matches(['\r','\n','}']).as_bytes()).is_err());
+    }
+
+    #[test]
+    fn mixed_chinese_and_japanese_names_are_decoded_per_field_without_replacement() {
+        let mut bytes = b"Vocaloid Pose Data file\r\n".to_vec();
+        bytes.extend_from_slice(&encoding_rs::GBK.encode("洛天依.osm;").0);
+        // Comments are not semantic text and need not use the name's encoding.
+        bytes.extend_from_slice(b" // \x81\r\n2;\r\nBone0{");
+        bytes.extend_from_slice(&encoding_rs::SHIFT_JIS.encode("右腕").0);
+        bytes.extend_from_slice(b"\r\n1,2,3;\r\n0,0,0,1;\r\n}\r\nBone1{");
+        bytes.extend_from_slice(&encoding_rs::GBK.encode("腰部系绳指定").0);
+        bytes.extend_from_slice(b"\r\n0,0,0;\r\n0,0,0,1;\r\n}\r\nMorph0{");
+        bytes.extend_from_slice(&encoding_rs::GBK.encode("鞋 坠饰").0);
+        bytes.extend_from_slice(b"\r\n0.5;\r\n}\r\n");
+        let pose = VpdFile::load_from_bytes(&bytes).unwrap();
+        assert_eq!(pose.model_name, "洛天依.osm");
+        assert_eq!(pose.bones[0].name, "右腕");
+        assert_eq!(pose.bones[1].name, "腰部系绳指定");
+        assert_eq!(pose.morphs[0].alternate_name.as_deref(), Some("鞋 坠饰"));
+        assert!(decode_name(b"\x81").is_err(), "Do not silently replace invalid name bytes");
     }
 }
