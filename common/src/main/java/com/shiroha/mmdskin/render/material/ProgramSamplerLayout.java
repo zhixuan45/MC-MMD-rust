@@ -69,6 +69,23 @@ public final class ProgramSamplerLayout {
 
     public static void forget(int program) { CACHE.remove(program); }
 
+    /** 为一个完整的附加材质层同时分配单元，避免层内尚未设置的 uniform 互相占位。 */
+    public static int[] effectUnits(int program, int[] ownLocations, int count) {
+        Metadata metadata = metadata(program, true);
+        if (metadata == null) return new int[0];
+        boolean[] occupied = new boolean[GL46C.glGetInteger(GL46C.GL_MAX_TEXTURE_IMAGE_UNITS)];
+        for (Sampler sampler : metadata.samplers) for (int location : sampler.locations) {
+            if (java.util.Arrays.stream(ownLocations).anyMatch(own -> own == location)) continue;
+            int unit = GL46C.glGetUniformi(program, location);
+            if (unit >= 0 && unit < occupied.length) occupied[unit] = true;
+        }
+        int[] result = new int[count];
+        int next = 0;
+        for (int unit = occupied.length - 1; unit >= 3 && next < count; unit--)
+            if (!occupied[unit]) result[next++] = unit;
+        return next == count ? result : new int[0];
+    }
+
     int program() { return program; }
     int capacity() { return units.length; }
     int[] units() { return units; }

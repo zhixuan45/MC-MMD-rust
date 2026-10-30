@@ -57,7 +57,8 @@ final class GpuSkinningModelRenderer {
         try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
                 target.nativeModelHandle(), target.getModelName(), "GPU_COMPUTE",
                 samplingEnabled ? sceneKey(context) : "OTHER");
-             var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName())) {
+             var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName());
+             var effects = com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enter(context, target.getModelName())) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, context);
             target.renderSwimmingVeil(deliverStack, context);
         }
@@ -113,6 +114,10 @@ final class GpuSkinningModelRenderer {
         target.currentTranslucentOrder = target.translucentOrders.get(isGuiScene, firstPersonIndexReady);
 
         boolean useToon = initializeToonShaderIfNeeded(!isGuiScene, context != null && context.isWorldScene());
+        if (!useToon && com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled()) {
+            com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().problem("surface-route",
+                    "当前光影输出协议或程序编译未通过，模型效果未应用；可在效果包诊断和客户端日志中检查。");
+        }
         float toonIntensity = isGuiScene ? 1.0f
                 : (IrisCompat.isIrisShaderActive() ? light.intensity() * 0.8f : light.intensity());
 
@@ -202,7 +207,8 @@ final class GpuSkinningModelRenderer {
 
     private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene, boolean worldScene) {
         // 阴影通道复用 Iris 程序；GPU 蒙皮结果仍作为普通顶点输入。
-        if (IrisCompat.isRenderingShadows() || !ConfigManager.isToonRenderingEnabled()) {
+        if (IrisCompat.isRenderingShadows() || (!ConfigManager.isToonRenderingEnabled()
+                && !com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled())) {
             return false;
         }
         if (GpuSkinningModelInstance.toonShaderCpu == null) {

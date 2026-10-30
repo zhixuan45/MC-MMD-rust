@@ -61,7 +61,8 @@ public final class SubMeshDrawHelper {
         try (ShadowTextureAlpha shadowAlpha = opaqueShadow ? new ShadowTextureAlpha() : null;
              EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
              MaterialShaderBinding binding = new MaterialShaderBinding();
-             SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials))) {
+             SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials));
+             var effects = new com.shiroha.mmdskin.render.effectpack.FxMaterialBinding(shadowPass)) {
             // Compute this once instead of scanning every submesh for each render-policy branch.
             boolean translucent = !shadowPass && !binding.disablesTransparency()
                     && hasTranslucency(subMeshDataBuf, subMeshCount, materials, materialCache);

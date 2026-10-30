@@ -107,15 +107,18 @@ public abstract class ToonShaderBase {
 
     private boolean selectProfileVariant(ToonOutputProfile profile) {
         if (!profile.isSupported()) return false;
-        String key = profile.id();
+        var effects = com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.active();
+        String key = profile.id() + (effects == null ? "" : effects.variantKey());
         if (initialized && key.equals(activeProfile)) return true;
         if (failedVariants.contains(key)) return false;
         try {
             Programs programs = variants.get(key);
             if (programs == null) {
-                String fragment = outputSource(MAIN_FRAGMENT_SHADER_BODY, profile);
+                String fragment = outputSource(MAIN_FRAGMENT_SHADER_BODY
+                        .replace("/* MMD_FX_MATERIAL */", com.shiroha.mmdskin.render.effectpack.FxShaderSource.material(effects == null ? null : effects.current()))
+                        .replace("/* MMD_FX_COLOR */", effects == null ? com.shiroha.mmdskin.render.effectpack.FxEffect.IDENTITY : effects.colorFunction()), profile);
                 int main = 0;
-                if (supportsBatchProfile(key) && TranslucentBatchShader.supported()) {
+                if (supportsBatchProfile(profile.id()) && TranslucentBatchShader.supported()) {
                     main = compileProgram(getMainVertexShader(), TranslucentBatchShader.source(fragment),
                             getShaderName() + "主着色器/材质批量/" + key);
                     if (main != 0) TranslucentBatchShader.register(main);
@@ -124,6 +127,7 @@ public abstract class ToonShaderBase {
                 if (main == 0) main = compileProgram(getMainVertexShader(), fragment,
                         getShaderName() + "主着色器/" + key);
                 if (main == 0) {
+                    if (effects != null && effects.enabled()) effects.problem("compile:" + key, "效果着色器编译失败: " + effects.current().name() + "；详见客户端日志");
                     failedVariants.add(key);
                     return false;
                 }
@@ -160,7 +164,9 @@ public abstract class ToonShaderBase {
     }
 
     static String outputSource(String body, ToonOutputProfile profile) {
-        return body.replace("/* TOON_SURFACE_LIGHTING */", SURFACE_LIGHTING)
+        return body.replace("/* MMD_FX_MATERIAL */", com.shiroha.mmdskin.render.effectpack.FxShaderSource.DISABLED)
+                .replace("/* MMD_FX_COLOR */", com.shiroha.mmdskin.render.effectpack.FxEffect.IDENTITY)
+                .replace("/* TOON_SURFACE_LIGHTING */", SURFACE_LIGHTING)
                 .replace("/* TOON_OUTPUT_DECLARATIONS */", profile.fragmentDeclarations())
                 .replace("/* TOON_OUTPUT_WRITER */", profile.fragmentWriter())
                 .replace("/* TOON_LIGHTING */", profile.lightingSource().isEmpty()

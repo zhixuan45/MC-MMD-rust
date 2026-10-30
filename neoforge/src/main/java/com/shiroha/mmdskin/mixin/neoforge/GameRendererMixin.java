@@ -29,6 +29,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(GameRenderer.class)
 public abstract class GameRendererMixin {
 
+    @Inject(method = "render", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V", shift = At.Shift.AFTER))
+    private void mmdskin$applyWorldFx(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
+        com.shiroha.mmdskin.render.effectpack.WorldColorEffect.render();
+    }
+
+    @Inject(method = "close", at = @At("HEAD"))
+    private void mmdskin$releaseWorldFx(CallbackInfo ci) {
+        com.shiroha.mmdskin.render.effectpack.WorldColorEffect.release();
+        com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.release();
+    }
+
     @Inject(method = "render", at = @At("HEAD"))
     private void mmdskin$beginRenderFrame(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
         com.shiroha.mmdskin.render.pipeline.RenderFrameClock.begin();

@@ -58,6 +58,8 @@ public class ConfigWheelScreen extends AbstractWheelScreen {
         configSlots.add(new ConfigSlot("scene",
                 Component.translatable("gui.mmdskin.config.scene_mode"),
                 "scene", this::openSceneSelector));
+        configSlots.add(new ConfigSlot("effects", Component.literal("效果包"), "fx",
+                () -> Minecraft.getInstance().setScreen(new com.shiroha.mmdskin.ui.selector.EffectPackScreen(null))));
         configSlots.add(new ConfigSlot("stage",
                 Component.translatable("gui.mmdskin.config.stage_mode"),
                 "stage", this::openStageSelect));

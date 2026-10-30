@@ -29,6 +29,8 @@ uniform float EyeEmission;
 uniform float EyeMaterialMask;
 
 /* TOON_BATCH_MATERIALS */
+/* MMD_FX_MATERIAL */
+/* MMD_FX_COLOR */
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
 /* TOON_SURFACE_LIGHTING */
@@ -43,6 +45,9 @@ void main() {
     vec4 texColor = texture(Sampler0, texCoord0);
 #endif
     float finalAlpha = texColor.a * MaterialColor.a;
+#ifdef MMD_FX_RAY
+    if (FxMaterialEnabled) finalAlpha *= clamp(FxAlpha, 0.0, 1.0);
+#endif
     // 独立覆盖全局阈值；先裁切，再执行实心对照及透明分层。
     float cutoff = max(0.001, HairMaterial ? HairAlphaCutoff : AlphaCutoff);
     if (finalAlpha < cutoff) {
@@ -77,8 +82,8 @@ void main() {
         }
     }
 
-    vec3 albedo = texColor.rgb * MaterialColor.rgb;
-    vec3 normal = normalize(viewNormal);
+    vec3 albedo = mmdFxAlbedo(texColor.rgb * MaterialColor.rgb, texCoord0);
+    vec3 normal = mmdFxNormal(normalize(viewNormal), viewPos, texCoord0);
     vec3 lightDir = normalize(viewLightDir);
     float ramp = toonDiffuseRamp(saturate(dot(normal, lightDir)));
     vec3 finalColor;
@@ -90,6 +95,7 @@ void main() {
         finalColor = shadeToonSurface(albedo, normal, lightDir, viewPos,
                 vec3(max(LightIntensity, 0.0)), ramp);
     }
+    finalColor = mmdFxMaterialLight(finalColor, albedo, normal, viewPos, lightDir, texCoord0, toonSurfaceIllumination);
     float sphereStrength = (UsePackLighting || ToonGenericEnvironment)
             ? 1.0 - saturate(ToonShaderSphereSuppression) : 1.0;
     if ((SphereMode == 1 || SphereMode == 2) && sphereStrength > 0.0) {
@@ -125,5 +131,6 @@ void main() {
         discard;
     }
 
+    finalColor = mmdFxColor(vec4(finalColor, finalAlpha)).rgb;
     writeToonOutputs(finalColor, albedo, normal, finalAlpha);
 }

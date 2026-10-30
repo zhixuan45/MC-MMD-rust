@@ -50,7 +50,8 @@ final class OpenGlModelRenderer {
         try (TranslucentDiagnostics.Scope ignored = TranslucentDiagnostics.beginModel(
                 target.nativeModelHandle(), target.getModelName(), "CPU",
                 samplingEnabled ? sceneKey(context) : "OTHER");
-             var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName())) {
+             var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName());
+             var effects = com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enter(context, target.getModelName())) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, packedLight, context);
             target.renderSwimmingVeil(deliverStack, context);
         }
@@ -114,6 +115,10 @@ final class OpenGlModelRenderer {
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_SUB_MESH_FETCH, subMeshTimer);
 
         boolean useToon = initializeToonShaderIfNeeded(!isGuiScene, context != null && context.isWorldScene());
+        if (!useToon && com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled()) {
+            com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().problem("surface-route",
+                    "当前光影输出协议或程序编译未通过，模型效果未应用；可在效果包诊断和客户端日志中检查。");
+        }
         int diagnosticFlags = ConfigManager.getIssueDiagnosticFlags();
         if (OutlineRenderDiagnostics.shouldSample(diagnosticFlags, modelHandle, context, System.nanoTime())) {
             target.modelViewMatBuff.clear();
@@ -204,7 +209,8 @@ final class OpenGlModelRenderer {
 
     private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene, boolean worldScene) {
         // 阴影通道必须保留 Iris 的深度输出程序，跳过 Toon 与描边。
-        if (IrisCompat.isRenderingShadows() || !ConfigManager.isToonRenderingEnabled()) {
+        if (IrisCompat.isRenderingShadows() || (!ConfigManager.isToonRenderingEnabled()
+                && !com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled())) {
             return false;
         }
 

@@ -113,6 +113,7 @@ shader/
 !common/src/main/resources/assets/mmdskin/shader/
 common/src/main/resources/assets/mmdskin/shader/*
 !common/src/main/resources/assets/mmdskin/shader/toon_surface_lighting.glsl
+!common/src/main/resources/assets/mmdskin/shader/fx_material.glsl
 !common/src/main/resources/assets/mmdskin/shader/toon_batch_materials.glsl
 !common/src/main/resources/assets/mmdskin/shader/translucent_prepare.comp.glsl
 !common/src/main/resources/assets/mmdskin/shader/world_transparency_capture.glsl
