@@ -2775,36 +2775,13 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ApplyVpdMorph(
 
         match VpdFile::load(&filename_str) {
             Ok(vpd) => {
-                let mut morph_count = 0i32;
-                let mut bone_count = 0i32;
-
-                model.clear_vpd_morphs();
-                // 1. 应用 Morph 表情
-                for morph_data in &vpd.morphs {
-                    if let Some(idx) = model.morph_manager.find_morph_by_name(&morph_data.name) {
-                        model.morph_manager.set_morph_weight(idx, morph_data.weight);
-                        model.track_vpd_morph(idx);
-                        morph_count += 1;
-                    }
-                }
-
-                // 2. 设置 VPD 骨骼姿势覆盖（会在每帧动画评估后自动应用）
-                model.clear_vpd_bone_overrides();
-                for bone_data in &vpd.bones {
-                    if let Some(idx) = model.bone_manager.find_bone_by_name(&bone_data.name) {
-                        model.set_vpd_bone_override(idx, bone_data.translation, bone_data.rotation);
-                        bone_count += 1;
-                    }
-                }
-
-                // 同步到 GPU 缓冲区（用于 GPU 蒙皮模式）
-                model.sync_gpu_morph_weights();
-
-                model.reset_physics();
+                let (bone_count, morph_count) = model.apply_vpd_pose(&vpd);
+                log::info!("[VPD] {}: matched bones={}/{}, morphs={}/{}", filename_str, bone_count, vpd.bones.len(), morph_count, vpd.morphs.len());
                 // 返回编码值: 高16位骨骼数，低16位 Morph 数
-                return ((bone_count & 0xFFFF) << 16) | (morph_count & 0xFFFF);
+                return (((bone_count & 0xFFFF) << 16) | (morph_count & 0xFFFF)) as jint;
             }
-            Err(_) => {
+            Err(error) => {
+                log::warn!("[VPD] Failed to load {}: {}", filename_str, error);
                 return -1;
             }
         }
@@ -3067,7 +3044,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetMorphWeightByName(
     if let Some(model_arc) = models.get(&model) {
         let mut model = model_arc.lock().unwrap();
         if let Some(idx) = model.morph_manager.find_morph_by_name(&name_str) {
-            model.morph_manager.set_morph_weight(idx, weight);
+            model.set_user_morph_weight(idx, weight);
             model.sync_gpu_morph_weights();
             return 1;
         }
@@ -3142,7 +3119,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetMorphWeight(
     let models = MODELS.read().unwrap();
     if let Some(model_arc) = models.get(&model) {
         let mut model = model_arc.lock().unwrap();
-        model.morph_manager.set_morph_weight(index as usize, weight);
+        model.set_user_morph_weight(index as usize, weight);
     }
 }
 

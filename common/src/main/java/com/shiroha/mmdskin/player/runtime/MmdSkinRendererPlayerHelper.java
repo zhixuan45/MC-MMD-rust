@@ -44,21 +44,34 @@ public final class MmdSkinRendererPlayerHelper {
     public static boolean tryCustomAnim(Player player, String id) {
         if (player == null || id == null || id.isEmpty()) return false;
         PlayerModelResolver.Result resolved = PlayerModelResolver.resolve(player);
-        if (resolved == null) return false;
+        if (resolved == null) {
+            if (id.startsWith(com.shiroha.mmdskin.asset.catalog.AnimationInfo.VPD_ACTION_PREFIX)) {
+                reportVpdResult(player, "", new com.shiroha.mmdskin.expression.ExpressionApplicationService.VpdResult(
+                        com.shiroha.mmdskin.expression.ExpressionApplicationService.VpdStatus.MODEL_MISSING, 0, 0));
+            }
+            return false;
+        }
 
         ManagedModel managedModel = resolved.model();
         ModelInstance model = managedModel.modelInstance();
         if (id.equals(com.shiroha.mmdskin.asset.catalog.AnimationInfo.RESET_POSE_ACTION)) {
-            return com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
+            boolean restored = com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
                     com.shiroha.mmdskin.expression.ExpressionSelection.resetPose(), resolved.playerName());
+            if (restored) VpdPosePlayback.resumeAfterReset(managedModel);
+            return restored;
         }
         if (id.startsWith(com.shiroha.mmdskin.asset.catalog.AnimationInfo.VPD_ACTION_PREFIX)) {
             var pose = com.shiroha.mmdskin.asset.catalog.AnimationInfo.findPoseAction(id, managedModel.requestKey().modelName());
-            return pose != null && com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
-                    com.shiroha.mmdskin.expression.ExpressionSelection.file(pose.getFilePath()), resolved.playerName());
+            var result = pose == null
+                    ? new com.shiroha.mmdskin.expression.ExpressionApplicationService.VpdResult(
+                            com.shiroha.mmdskin.expression.ExpressionApplicationService.VpdStatus.MISSING_FILE, 0, 0)
+                    : VpdPosePlayback.apply(managedModel, pose.getFilePath(), resolved.playerName());
+            reportVpdResult(player, pose == null ? id : pose.getFileName(), result);
+            return result.applied();
         }
         com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
                 com.shiroha.mmdskin.expression.ExpressionSelection.resetPose(), resolved.playerName());
+        managedModel.entityState().playVpdPose = false;
         managedModel.entityState().playCustomAnim = true;
 
         managedModel.entityState().invalidateStateLayers();
@@ -72,6 +85,7 @@ public final class MmdSkinRendererPlayerHelper {
     public static void startStageAnimation(ManagedModel modelData, long animHandle) {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null || animHandle == 0) return;
 
+        VpdPosePlayback.leave(modelData);
         ModelInstance model = modelData.modelInstance();
         clearOverlayLayers(model);
         if (com.shiroha.mmdskin.config.ConfigManager.isStagePhysicsResetOnFirstFrame()) {
@@ -92,6 +106,7 @@ public final class MmdSkinRendererPlayerHelper {
     public static void resetModelAnimationState(Player player, ManagedModel modelData) {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null) return;
 
+        VpdPosePlayback.leave(modelData);
         ModelInstance model = modelData.modelInstance();
         model.setLayerSpeed(0, 1.0f);
         modelData.entityState().playCustomAnim = false;
@@ -109,6 +124,7 @@ public final class MmdSkinRendererPlayerHelper {
     public static void suppressDefaultAnimationState(ManagedModel modelData) {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null) return;
 
+        VpdPosePlayback.leave(modelData);
         ModelInstance model = modelData.modelInstance();
         model.setLayerSpeed(0, 1.0f);
         modelData.entityState().playCustomAnim = false;
@@ -123,6 +139,14 @@ public final class MmdSkinRendererPlayerHelper {
         model.setLayerLoop(1, true);
         model.changeAnim(0, 1);
         model.changeAnim(0, 2);
+    }
+
+    public static void reportVpdResult(Player player, String file, com.shiroha.mmdskin.expression.ExpressionApplicationService.VpdResult result) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (player != minecraft.player) return;
+        String key = "message.mmdskin.vpd." + result.status().name().toLowerCase(java.util.Locale.ROOT);
+        minecraft.gui.getChat().addMessage(net.minecraft.network.chat.Component.translatable(key, file, result.bones(), result.morphs())
+                .withStyle(result.applied() ? net.minecraft.ChatFormatting.GREEN : net.minecraft.ChatFormatting.RED));
     }
 
     public static void onDisconnect() {

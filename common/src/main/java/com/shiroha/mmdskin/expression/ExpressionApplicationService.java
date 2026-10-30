@@ -38,6 +38,12 @@ public final class ExpressionApplicationService {
     private ExpressionApplicationService() {
     }
 
+    public enum VpdStatus { APPLIED, MISSING_FILE, LOAD_FAILED, MODEL_MISSING, NO_MATCH }
+
+    public record VpdResult(VpdStatus status, int bones, int morphs) {
+        public boolean applied() { return status == VpdStatus.APPLIED; }
+    }
+
     public static void configureRuntimeCollaborators(NativeMorphPort morphPort) {
         ExpressionApplicationService.morphPort = morphPort != null ? morphPort : NOOP_MORPH_PORT;
     }
@@ -97,18 +103,29 @@ public final class ExpressionApplicationService {
     }
 
     private static boolean applyVpd(long modelHandle, String filePath, String playerName) {
-        clearPresetMorphs(modelHandle);
-        if (filePath == null || filePath.isEmpty() || !new File(filePath).exists()) {
+        return applyVpdWithResult(modelHandle, filePath, playerName).applied();
+    }
+
+    public static VpdResult applyVpdWithResult(long modelHandle, String filePath, String playerName) {
+        if (filePath == null || filePath.isEmpty() || !new File(filePath).isFile()) {
             logger.warn("[Expression] VPD file does not exist for {}: {}", playerName, filePath);
-            return false;
+            return new VpdResult(VpdStatus.MISSING_FILE, 0, 0);
         }
 
+        clearPresetMorphs(modelHandle);
         int result = morphPort.applyVpdMorph(modelHandle, filePath);
         if (result < 0) {
             logger.warn("[Expression] Failed to apply VPD for {}: {} ({})", playerName, filePath, result);
-            return false;
+            return new VpdResult(result == -2 ? VpdStatus.MODEL_MISSING : VpdStatus.LOAD_FAILED, 0, 0);
         }
-        return result != 0;
+        int bones = (result >>> 16) & 0xffff;
+        int morphs = result & 0xffff;
+        if (result == 0) {
+            logger.warn("[Expression] VPD has no matching bones or morphs for {}: {}", playerName, filePath);
+            return new VpdResult(VpdStatus.NO_MATCH, 0, 0);
+        }
+        logger.info("[Expression] VPD applied for {}: {} (bones={}, morphs={})", playerName, filePath, bones, morphs);
+        return new VpdResult(VpdStatus.APPLIED, bones, morphs);
     }
 
     private static void clearPresetMorphs(long modelHandle) {

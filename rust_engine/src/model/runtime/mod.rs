@@ -41,6 +41,7 @@ mod physics_snapshots;
 mod prop_physics;
 mod render_data;
 mod tail_options;
+mod vpd_pose;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -211,7 +212,7 @@ pub struct MmdModel {
     // VPD 骨骼姿势覆盖（骨骼索引 -> (位移, 旋转)）
     vpd_bone_overrides: HashMap<usize, (Vec3, Quat)>,
     external_bone_overrides: HashMap<usize, (Vec3, Quat)>,
-    vpd_morph_indices: Vec<usize>,
+    vpd_morph_overrides: HashMap<usize, f32>,
     external_ik_overrides: HashMap<String, bool>,
 
     // ======== 第一人称模式 ========
@@ -345,7 +346,7 @@ impl MmdModel {
             material_morph_results_flat_cache: Vec::new(),
             vpd_bone_overrides: HashMap::new(),
             external_bone_overrides: HashMap::new(),
-            vpd_morph_indices: Vec::new(),
+            vpd_morph_overrides: HashMap::new(),
             external_ik_overrides: HashMap::new(),
             vr_hand_mode: 0,
             hand_submesh_flags: Vec::new(),

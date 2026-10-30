@@ -312,7 +312,7 @@ impl MmdModel {
         total += ((self.vpd_bone_overrides.capacity() + self.external_bone_overrides.capacity())
             * (size_of::<usize>() + size_of::<(Vec3, Quat)>())) as u64;
 
-        total += (self.vpd_morph_indices.capacity() * size_of::<usize>()) as u64;
+        total += (self.vpd_morph_overrides.capacity() * (size_of::<usize>() + size_of::<f32>())) as u64;
         total
     }
 }

@@ -111,14 +111,23 @@ public class DefaultMorphWheelService implements MorphWheelService {
             ExpressionSelection resolvedSelection = selection.type() == ExpressionSelection.Type.FILE
                     ? ExpressionSelection.file(filePath)
                     : selection;
-            Long modelHandle = resolveModelHandle();
-            if (modelHandle == null) {
-                return false;
+            ManagedModel model = resolveManagedModel();
+            if (model == null) return false;
+            if (resolvedSelection.type() == ExpressionSelection.Type.FILE) {
+                var result = com.shiroha.mmdskin.player.runtime.VpdPosePlayback.apply(model, filePath, "local_player");
+                com.shiroha.mmdskin.player.runtime.MmdSkinRendererPlayerHelper.reportVpdResult(Minecraft.getInstance().player,
+                        filePath == null ? "" : new java.io.File(filePath).getName(), result);
+                return result.applied();
             }
-            return ExpressionApplicationService.apply(modelHandle, resolvedSelection, "local_player");
+            boolean applied = ExpressionApplicationService.apply(model.modelInstance().getModelHandle(), resolvedSelection, "local_player");
+            if (applied && (resolvedSelection.type() == ExpressionSelection.Type.RESET_POSE
+                    || resolvedSelection.type() == ExpressionSelection.Type.RESET)) {
+                com.shiroha.mmdskin.player.runtime.VpdPosePlayback.resumeAfterReset(model);
+            }
+            return applied;
         }
 
-        private Long resolveModelHandle() {
+        private ManagedModel resolveManagedModel() {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.player == null) {
                 return null;
@@ -137,7 +146,7 @@ public class DefaultMorphWheelService implements MorphWheelService {
                 logger.warn("Cannot resolve current player model {}", selectedModel);
                 return null;
             }
-            return model.modelInstance().getModelHandle();
+            return model;
         }
     }
 }

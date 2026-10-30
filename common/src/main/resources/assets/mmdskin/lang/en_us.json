@@ -497,5 +497,10 @@
   "gui.mmdskin.model_settings.prop_motion_hint": "VMD files in the model folder and anims",
   "gui.mmdskin.model_settings.prop_motion_disabled": "Off (no VMD)",
   "gui.mmdskin.model_settings.prop_motion": "Prop VMD: %s",
-  "gui.mmdskin.action_pose_hint": "Place .vpd files in 3d-skin/CustomAnim, refresh the list and enable them in the action wheel"
+  "gui.mmdskin.action_pose_hint": "Place .vpd files in 3d-skin/CustomAnim, refresh the list and enable them in the action wheel",
+  "message.mmdskin.vpd.applied": "Applied VPD %s: %s bones and %s morphs matched.",
+  "message.mmdskin.vpd.missing_file": "VPD file not found. Refresh the action list.",
+  "message.mmdskin.vpd.load_failed": "Could not read or parse VPD %s. See the client log for details.",
+  "message.mmdskin.vpd.model_missing": "The player model is not loaded yet. VPD pose could not be applied.",
+  "message.mmdskin.vpd.no_match": "VPD %s matches no bones or morphs in this model. Check the model and bone names."
 }

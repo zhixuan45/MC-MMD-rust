@@ -497,5 +497,10 @@
   "gui.mmdskin.model_settings.prop_motion_hint": "读取角色目录和 anims 内的 VMD",
   "gui.mmdskin.model_settings.prop_motion_disabled": "关闭（不加载 VMD）",
   "gui.mmdskin.model_settings.prop_motion": "道具 VMD：%s",
-  "gui.mmdskin.action_pose_hint": "将 .vpd 放入 3d-skin/CustomAnim，刷新列表后加入动作轮盘"
+  "gui.mmdskin.action_pose_hint": "将 .vpd 放入 3d-skin/CustomAnim，刷新列表后加入动作轮盘",
+  "message.mmdskin.vpd.applied": "VPD %s 已应用：匹配 %s 个骨骼、%s 个表情。",
+  "message.mmdskin.vpd.missing_file": "找不到对应的 VPD 文件，请刷新动作列表。",
+  "message.mmdskin.vpd.load_failed": "VPD %s 读取或解析失败，详细原因已记录在客户端日志中。",
+  "message.mmdskin.vpd.model_missing": "角色模型尚未加载，暂时无法应用 VPD 姿势。",
+  "message.mmdskin.vpd.no_match": "VPD %s 没有匹配到当前模型的骨骼或表情，请核对模型及骨骼名称。"
 }

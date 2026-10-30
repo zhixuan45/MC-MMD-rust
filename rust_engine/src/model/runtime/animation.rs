@@ -192,6 +192,7 @@ impl MmdModel {
         // 应用头部旋转
         self.apply_head_rotation();
 
+        self.apply_vpd_morph_overrides();
         self.update_morph_animation();
         self.update_node_animation(false);
         self.update_node_animation(true);
@@ -392,6 +393,7 @@ impl MmdModel {
         if !self.vr_enabled {
             self.apply_head_rotation();
         }
+        self.apply_vpd_morph_overrides();
         self.update_morph_animation();
 
         // 骨骼更新（物理前）— 先计算当前帧全局变换
@@ -474,12 +476,25 @@ impl MmdModel {
     }
 
     pub fn clear_vpd_morphs(&mut self) {
-        for index in self.vpd_morph_indices.drain(..) {
+        for (index, _) in self.vpd_morph_overrides.drain() {
             self.morph_manager.set_morph_weight(index, 0.0);
         }
     }
 
-    pub fn track_vpd_morph(&mut self, index: usize) { self.vpd_morph_indices.push(index); }
+    pub fn track_vpd_morph(&mut self, index: usize) {
+        self.vpd_morph_overrides.insert(index, self.morph_manager.get_morph_weight(index));
+    }
+
+    pub fn set_user_morph_weight(&mut self, index: usize, weight: f32) {
+        self.vpd_morph_overrides.remove(&index);
+        self.morph_manager.set_morph_weight(index, weight);
+    }
+
+    fn apply_vpd_morph_overrides(&mut self) {
+        for (&index, &weight) in &self.vpd_morph_overrides {
+            self.morph_manager.set_morph_weight(index, weight);
+        }
+    }
 
     /// 清除所有 VPD 骨骼姿势覆盖
     pub fn clear_vpd_bone_overrides(&mut self) {
@@ -535,6 +550,7 @@ impl MmdModel {
         if !self.vr_enabled {
             self.apply_head_rotation();
         }
+        self.apply_vpd_morph_overrides();
         self.update_morph_animation();
 
         // 一次性计算所有 Morph 有效权重，供顶点和 UV Morph 同步使用
@@ -640,6 +656,7 @@ impl MmdModel {
             runtime_state.process_expressions(model);
         });
 
+        self.apply_vpd_morph_overrides();
         self.update_morph_animation();
 
         if !cpu_skinning {

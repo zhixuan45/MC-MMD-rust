@@ -45,6 +45,7 @@ public class EntityAnimState {
     public enum AnimPhase { NONE, ENTERING, LOOPING, EXITING }
 
     public boolean playCustomAnim;
+    public boolean playVpdPose;
     public boolean playStageAnim;
     public long rightHandMat;
     public long leftHandMat;
