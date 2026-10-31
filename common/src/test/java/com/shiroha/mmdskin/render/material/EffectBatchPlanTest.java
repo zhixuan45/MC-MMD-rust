@@ -50,7 +50,7 @@ class EffectBatchPlanTest {
         var data = new FxMaterialData(e, 1, new int[]{0,42,0,0,0,0,0});
         ByteBuffer bytes = ByteBuffer.allocate(FxMaterialData.CHANNEL_BYTES).order(ByteOrder.nativeOrder());
         data.writeChannels(bytes, new int[]{-1,5,-1,-1,-1,-1,-1});
-        assertEquals(336, bytes.position());
+        assertEquals(480, bytes.position());
         assertEquals(0.2f, bytes.getFloat(48)); assertEquals(2f, bytes.getFloat(64));
         assertEquals(3f, bytes.getFloat(80)); assertEquals(4f, bytes.getFloat(84));
         assertEquals(1f, bytes.getFloat(88)); assertEquals(5f, bytes.getFloat(92));

@@ -60,9 +60,17 @@ public final class Probe {
             gray = runtime.scan().effects().stream().filter(e -> e.kind() == FxEffect.Kind.COLOR_FILTER).findFirst().orElseThrow();
             TextureRepository.Init(); TextureRepository.configureRuntimeCollaborators(new TgaPort());
             setup();
+            Path upstream = Path.of("build/ray-upstream-validation");
+            if (Files.isRegularFile(upstream.resolve("material_2.0.fx"))) {
+                FxEffect original = RayMaterialImporter.parse(upstream, upstream.resolve("material_2.0.fx"), Files.readString(upstream.resolve("material_2.0.fx")), "upstream");
+                check(original.channels().get("SMOOTHNESS").source() == 9, "原版默认材质导入并保留来源9");
+            }
             testScopes();
             testProductionPrograms();
             testWorldPass();
+            testNewMaterialChannels();
+            testGraphPixels();
+            testShadowPatch();
             Path original = runtime.library().resolve(ray.id());
             Path alternate = runtime.library().resolve("second-ray"); Files.createDirectories(alternate);
             try (var resources = Files.list(original.getParent())) {
@@ -84,6 +92,94 @@ public final class Probe {
             WorldColorEffect.release();
             GLFW.glfwDestroyWindow(window); GLFW.glfwTerminate();
         }
+    }
+
+    private static void testNewMaterialChannels() throws Exception {
+        String material = Files.readString(Path.of("common/src/main/resources/assets/mmdskin/shader/fx_material.glsl"));
+        String fragment = "#version 330 core\nuniform sampler2D Sampler0; uniform vec4 MaterialColor;\n"
+                + material + "\nout vec4 result; void main(){ result=vec4(mmdFxScalar(2,vec2(.25)),mmdFxAlpha(.8,.5,vec2(.25)),mmdFxAlbedo(vec3(0),vec2(.25)).r,1); }";
+        int p = ShaderCompiler.compileRenderProgram(VERTEX, fragment, "new FX channels"); check(p != 0, "新通道编译");
+        GL33C.glUseProgram(p); uniforms(p);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p, "FxMaterialEnabled"), 1);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p, "FxSources[2]"), 9);
+        GL33C.glUniform1f(GL33C.glGetUniformLocation(p, "FxMaterialPower"), 30);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p, "FxSources[9]"), 1);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p, "FxMap9"), 0);
+        GL33C.glUniform2f(GL33C.glGetUniformLocation(p, "FxRepeat[9]"), 1, 1);
+        GL33C.glUniform4i(GL33C.glGetUniformLocation(p, "FxOptions[9]"), 0,0,0,0);
+        GL33C.glUniform4f(GL33C.glGetUniformLocation(p, "FxValues[0]"), .4f,.4f,.4f,1);
+        GL33C.glUniform4f(GL33C.glGetUniformLocation(p, "FxValues[7]"), .5f,.5f,.5f,1);
+        GL33C.glUniform4i(GL33C.glGetUniformLocation(p, "FxOptions[7]"), 0,1,0,0);
+        float[] pixel = drawBound();
+        near(pixel[0], .29289322f, .0001f, "Ray 来源9公式");
+        near(pixel[1], 180f/255f*.5f, .0001f, "外置alpha替换贴图alpha并保留材质alpha");
+        near(pixel[2], .2f, .0001f, "副基础色乘法");
+        GL33C.glUniform1f(GL33C.glGetUniformLocation(p, "FxMaterialPower"), 0);
+        near(drawBound()[0], 0, .0001f, "来源9保留低于1的镜面指数");
+        int alphaMap = GL33C.glGenTextures(); GL33C.glBindTexture(GL33C.GL_TEXTURE_2D,alphaMap);
+        GL33C.glTexImage2D(GL33C.GL_TEXTURE_2D,0,GL33C.GL_RGBA32F,2,1,0,GL33C.GL_RGBA,GL33C.GL_FLOAT,new float[]{.25f,0,0,1,.75f,0,0,1});
+        GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D,GL33C.GL_TEXTURE_MIN_FILTER,GL33C.GL_NEAREST);
+        GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D,GL33C.GL_TEXTURE_MAG_FILTER,GL33C.GL_NEAREST);
+        near(drawBound()[1],.125f,.0001f,"外置alpha左像素");
+        GL33C.glUniform4i(GL33C.glGetUniformLocation(p,"FxOptions[9]"),1,0,0,0);
+        near(drawBound()[1],.375f,.0001f,"外置alpha翻转UV");
+        GL33C.glUniform4i(GL33C.glGetUniformLocation(p,"FxOptions[9]"),0,0,0,0);
+        GL33C.glUniform2f(GL33C.glGetUniformLocation(p,"FxRepeat[9]"),2,1);
+        near(drawBound()[1],.375f,.0001f,"外置alpha重复UV");
+        GL33C.glDeleteTextures(alphaMap); GL33C.glBindTexture(GL33C.GL_TEXTURE_2D,diffuse);
+        GL33C.glUseProgram(0); GL33C.glDeleteProgram(p);
+        String normalFragment = "#version 330 core\nuniform sampler2D Sampler0; uniform vec4 MaterialColor; in vec2 texCoord0; in vec3 viewPos;\n" + material
+                + "\nout vec4 result; void main(){result=vec4(mmdFxNormal(vec3(0,0,1),viewPos,texCoord0),1);}";
+        p=ShaderCompiler.compileRenderProgram(VERTEX,normalFragment,"subnormal"); check(p!=0,"副法线编译"); GL33C.glUseProgram(p);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"FxMaterialEnabled"),1);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"FxSources[8]"),1);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"FxMap8"),0);
+        GL33C.glUniform4f(GL33C.glGetUniformLocation(p,"FxValues[8]"),1,1,1,1);
+        GL33C.glUniform4i(GL33C.glGetUniformLocation(p,"FxOptions[8]"),0,1,0,0);
+        int detail=GL33C.glGenTextures(); GL33C.glBindTexture(GL33C.GL_TEXTURE_2D,detail);
+        GL33C.glTexImage2D(GL33C.GL_TEXTURE_2D,0,GL33C.GL_RGBA32F,1,1,0,GL33C.GL_RGBA,GL33C.GL_FLOAT,new float[]{.75f,.5f,1,1});
+        GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D,GL33C.GL_TEXTURE_MIN_FILTER,GL33C.GL_NEAREST);
+        GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D,GL33C.GL_TEXTURE_MAG_FILTER,GL33C.GL_NEAREST);
+        pixel=drawBound(); near(pixel[0],.5f,.0001f,"副法线X"); near(pixel[2],.8660254f,.0001f,"副法线重建Z");
+        GL33C.glUseProgram(0); GL33C.glDeleteProgram(p); GL33C.glDeleteTextures(detail); GL33C.glBindTexture(GL33C.GL_TEXTURE_2D,diffuse);
+    }
+
+    private static void testGraphPixels() throws Exception {
+        FxEffect half = MmeColorImporter.parse(Path.of("."), Path.of("a.fx"), FxPackLibraryColor("c.rgb = c.rgb * 0.5;"), "a");
+        FxEffect add = MmeColorImporter.parse(Path.of("."), Path.of("b.fx"), FxPackLibraryColor("c.rgb = c.rgb + float3(0.1,0.1,0.1);"), "b");
+        var graph = new FxWorldGraph(java.util.List.of(new FxWorldGraph.Stage("half", "scene", "half", half), new FxWorldGraph.Stage("add", "half", "result", add)), "result");
+        FxEffect effect = new FxEffect("graph", "graph", Path.of("."), FxEffect.Kind.WORLD_GRAPH, Map.of(),1,FxEffect.IDENTITY,java.util.List.of(),graph);
+        GL33C.glBindFramebuffer(GL33C.GL_FRAMEBUFFER, fbo); GL33C.glViewport(0,0,SIZE,SIZE);
+        GL33C.glDisable(GL33C.GL_SCISSOR_TEST); GL33C.glClearColor(.8f,.4f,.2f,.3f); GL33C.glClear(GL33C.GL_COLOR_BUFFER_BIT);
+        GL33C.glEnable(GL33C.GL_SCISSOR_TEST); GL33C.glScissor(1,1,2,2);
+        FxGraphGlBackend.render(effect, fbo, SIZE, SIZE);
+        check(GL33C.glIsEnabled(GL33C.GL_SCISSOR_TEST), "图恢复scissor");
+        GL33C.glDisable(GL33C.GL_SCISSOR_TEST);
+        float[] c = new float[4]; GL33C.glReadPixels(0,0,1,1,GL33C.GL_RGBA,GL33C.GL_FLOAT,c);
+        near(c[0], .5f, .001f, "多pass依赖 R"); near(c[1], .3f,.001f,"多pass依赖 G"); near(c[2], .2f,.001f,"多pass依赖 B"); near(c[3], .3f,.001f,"图保留alpha");
+        FxGraphGlBackend.release();
+    }
+
+    private static String FxPackLibraryColor(String operation) {
+        return "float Script : STANDARDSGLOBAL < string ScriptClass = \"scene\"; > = 0.8; texture Screen : RENDERCOLORTARGET; sampler S = sampler_state { Texture = <Screen>; }; float4 PS(float2 uv : TEXCOORD0) : COLOR0 { float4 c=tex2D(S,uv); " + operation + " return c; } technique T { pass P { PixelShader = compile ps_3_0 PS(); } }";
+    }
+
+    private static void testShadowPatch() throws Exception {
+        String fragment = "#version 330 core\nuniform sampler2D Diffuse; in vec2 texCoord0; out vec4 color; void main(){color=texture(Diffuse,texCoord0);color.a*=0.5;}";
+        int original = ShaderCompiler.compileRenderProgram(VERTEX, fragment, "shadow patch source"); check(original != 0,"shadow source");
+        GL33C.glUseProgram(original); GL33C.glUniform1i(GL33C.glGetUniformLocation(original,"Diffuse"),0);
+        var method = Class.forName("com.shiroha.mmdskin.render.material.ShadowFxAlphaBinding").getDeclaredMethod("patch", String.class, int.class); method.setAccessible(true);
+        String patched = (String)method.invoke(null,fragment,original);
+        int p = ShaderCompiler.compileRenderProgram(VERTEX,patched,"shadow external alpha"); check(p != 0,"shadow patch 编译");
+        GL33C.glUseProgram(p); GL33C.glActiveTexture(GL33C.GL_TEXTURE0); GL33C.glBindTexture(GL33C.GL_TEXTURE_2D,diffuse);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"Diffuse"),0); GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"MmdShadowFxMap"),0);
+        GL33C.glUniform2f(GL33C.glGetUniformLocation(p,"MmdShadowFxRepeat"),1,1);
+        GL33C.glUniform2i(GL33C.glGetUniformLocation(p,"MmdShadowFxOptions"),0,0);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"MmdShadowFxEnabled"),1);
+        float[] c=drawBound(); near(c[0],180f/255f,.0001f,"阴影保留RGB"); near(c[3],180f/255f*.5f,.0001f,"阴影替换alpha并保留原后续运算");
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"MmdShadowFxEnabled"),0);
+        near(drawBound()[3],128f/255f*.5f,.0001f,"无FX材质恢复原阴影alpha");
+        GL33C.glUseProgram(0); GL33C.glDeleteProgram(p); GL33C.glDeleteProgram(original);
     }
 
     private static void setup() {

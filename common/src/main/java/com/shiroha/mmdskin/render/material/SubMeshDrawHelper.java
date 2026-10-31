@@ -60,6 +60,7 @@ public final class SubMeshDrawHelper {
         boolean opaqueShadow = shadowPass && ConfigManager.isShadowOpaque();
         try (ShadowTextureAlpha shadowAlpha = opaqueShadow ? new ShadowTextureAlpha() : null;
              EntityPixelAlphaPass pixels = EntityPixelAlphaPass.begin(shadowPass);
+             ShadowFxAlphaBinding shadowEffects = new ShadowFxAlphaBinding(shadowPass && !opaqueShadow);
              MaterialShaderBinding binding = new MaterialShaderBinding();
              SphereTextureBinding sphere = new SphereTextureBinding(shadowPass || !hasSphere(materials));
              var effects = new com.shiroha.mmdskin.render.effectpack.FxMaterialBinding(shadowPass)) {
@@ -150,13 +151,14 @@ public final class SubMeshDrawHelper {
                                 }
                                 ModelMaterial material = materials[materialId];
                                 MaterialRenderState state = materialCache.resolve(materialId, alpha);
+                                boolean fxAlpha = !shadowPass && materialCache.effect(materialId).externalAlpha();
                                 if (state.alpha < 0.001f) continue;
                                 // 阴影由宿主 shader 按纹理 alpha 裁切，混合贴图不能整材质排除。
                                 if (!shadowPass && !forceOpaque) {
                                     if (binding.splitsTextureAlpha()) {
                                         if (pass == 0 && state.alpha < MaterialRenderState.OPAQUE_ALPHA) continue;
-                                        if ((pass == 1 || pass == 2) && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasAlpha) continue;
-                                        if (!classicDepthPrepass && pass == 2 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasTranslucentPixels) continue;
+                                        if ((pass == 1 || pass == 2) && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasAlpha && !fxAlpha) continue;
+                                        if (!classicDepthPrepass && pass == 2 && state.alpha >= MaterialRenderState.OPAQUE_ALPHA && !material.hasTranslucentPixels && !fxAlpha) continue;
                                     } else {
                                         boolean materialTranslucent = state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasTranslucentPixels;
                                         if (materialTranslucent != (pass != 0)) continue;
@@ -185,6 +187,7 @@ public final class SubMeshDrawHelper {
                                     lastBoundTexture = textureId;
                                 }
                                 if (shadowAlpha != null) shadowAlpha.apply(textureId);
+                                if (shadowPass && !opaqueShadow) shadowEffects.apply(materialId, material.name);
 
                                 beforeDraw.accept(materialId);
                                 if (pass == 1 || (pass == 2 && classicDepthPrepass)) hasTranslucentDraws = true;
@@ -232,7 +235,7 @@ public final class SubMeshDrawHelper {
                     || id < 0 || id >= materials.length) continue;
             float alpha = cache.resolve(id, source.getFloat(base + 12)).alpha;
             if (alpha >= 0.001f && (alpha < MaterialRenderState.OPAQUE_ALPHA
-                    || materials[id].hasTranslucentPixels)) return true;
+                    || materials[id].hasTranslucentPixels || cache.effect(id).externalAlpha())) return true;
         }
         return false;
     }

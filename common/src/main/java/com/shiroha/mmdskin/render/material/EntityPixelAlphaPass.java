@@ -19,8 +19,9 @@ final class EntityPixelAlphaPass implements AutoCloseable {
     private static final Pattern MAIN = Pattern.compile("void\\s+main\\s*\\(\\s*(?:void)?\\s*\\)\\s*\\{");
     private static final Pattern COMMENTS = Pattern.compile("/\\*.*?\\*/|//[^\\r\\n]*", Pattern.DOTALL);
     private static final Pattern VANILLA_CUTOFF = Pattern.compile("(if\\s*\\(\\s*color\\.a\\s*<\\s*)0\\.10*(\\s*\\))");
-    private static ShaderInstance cachedSource;
-    private static int cachedProgram;
+    private record CachedProgram(int source, int program, List<Uniform> uniforms) { }
+    private static final java.util.Map<ShaderInstance, CachedProgram> normalCache = new java.util.IdentityHashMap<>();
+    private static final java.util.Map<ShaderInstance, CachedProgram> shadowCache = new java.util.IdentityHashMap<>();
     private static List<Uniform> uniforms = List.of();
     private final int previousProgram;
 
@@ -32,25 +33,40 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         int original = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
         EntityPixelAlphaPass scope = new EntityPixelAlphaPass(original);
         ShaderInstance shader = RenderSystem.getShader();
-        if (shadowPass || shader == null || shader.getId() != original
+        var runtime = com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.active();
+        boolean fxShadow = shadowPass && !com.shiroha.mmdskin.config.ConfigManager.isShadowOpaque()
+                && runtime != null && runtime.hasExternalAlpha();
+        if ((shadowPass && !fxShadow) || shader == null || shader.getId() != original
                 || GL46C.glGetUniformLocation(original, "AlphaPass") >= 0) return scope;
         // 已知原版实体程序也需拆分实心覆盖，防止后方发片覆盖前方实心像素。
         if (!IrisCompat.isIrisProgram(shader) && !shader.getName().equals("rendertype_entity_translucent")) return scope;
-        if (shader != cachedSource) {
-            if (cachedProgram != 0) GL46C.glDeleteProgram(cachedProgram);
-            cachedProgram = 0;
-            cachedSource = shader;
+        var cache = fxShadow ? shadowCache : normalCache;
+        CachedProgram cached = cache.get(shader);
+        if (cached == null || cached.source() != original) {
+            if (cached != null && cached.program() != 0) {
+                ProgramSamplerLayout.forget(cached.program()); GL46C.glDeleteProgram(cached.program());
+            }
+            if (cache.size() >= 16) {
+                for (var old : cache.values()) if (old.program() != 0) {
+                    ProgramSamplerLayout.forget(old.program()); GL46C.glDeleteProgram(old.program());
+                }
+                cache.clear();
+            }
+            int created = 0;
+            uniforms = List.of();
             try {
                 int slot = IrisCompat.entityColorOutputSlot(shader);
-                if (slot >= 0) cachedProgram = create(original, slot, !IrisCompat.isIrisProgram(shader));
+                if (slot >= 0 || fxShadow) created = create(original, slot, !IrisCompat.isIrisProgram(shader), fxShadow);
             } catch (RuntimeException e) {
                 LogManager.getLogger().warn("实体像素 alpha 分通道初始化失败，保留原程序: {}", e.getMessage());
             }
+            cached = new CachedProgram(original, created, uniforms);
+            cache.put(shader, cached);
         }
-        if (cachedProgram == 0) return scope;
+        if (cached.program() == 0) return scope;
         try {
-            GL46C.glUseProgram(cachedProgram);
-            if (!copyUniforms(original)) {
+            GL46C.glUseProgram(cached.program());
+            if (!copyUniforms(original, cached.uniforms())) {
                 GL46C.glUseProgram(original);
                 return scope;
             }
@@ -61,9 +77,9 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         return scope;
     }
 
-    private static int create(int original, int colorSlot, boolean vanilla) {
-        String output = colorOutput(original, colorSlot);
-        if (output == null) return 0;
+    private static int create(int original, int colorSlot, boolean vanilla, boolean shadow) {
+        String output = shadow ? null : colorOutput(original, colorSlot);
+        if (!shadow && output == null) return 0;
         int[] shaders = new int[GL46C.glGetProgrami(original, GL46C.GL_ATTACHED_SHADERS)];
         GL46C.glGetAttachedShaders(original, (int[]) null, shaders);
         int vertex = 0;
@@ -93,7 +109,7 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         }
         if (braces != 0) return 0;
         // 在 main 之前声明，避免把 uniform 插到 #version/#extension 指令前面。
-        String source = fragment.substring(0, main.start()) + "uniform int AlphaPass;\n"
+        String source = shadow ? ShadowFxAlphaBinding.patch(fragment, original) : fragment.substring(0, main.start()) + "uniform int AlphaPass;\n"
                 + fragment.substring(main.start(), end - 1)
                 + "\nif (AlphaPass == 1 && " + output + ".a < 0.999) discard;\n"
                 + "if (AlphaPass == 2 && " + output + ".a >= 0.999) discard;\n"
@@ -112,7 +128,13 @@ final class EntityPixelAlphaPass implements AutoCloseable {
                 GL46C.glBindAttribLocation(program,GL46C.glGetAttribLocation(original,name),name);
             }
             // Iris 已变换的输出含显式位置；原版只有 fragColor，仍明确保留槽 0。
-            if (!output.startsWith("gl_")) GL46C.glBindFragDataLocation(program,colorSlot,output);
+            if (output != null && !output.startsWith("gl_")) GL46C.glBindFragDataLocation(program,colorSlot,output);
+            if (shadow) {
+                for (int slot = 0; slot < GL46C.glGetInteger(GL46C.GL_MAX_DRAW_BUFFERS); slot++) {
+                    String name = colorOutput(original, slot);
+                    if (name != null && !name.startsWith("gl_")) GL46C.glBindFragDataLocation(program, slot, name);
+                }
+            }
             GL46C.glLinkProgram(program);
             if (GL46C.glGetProgrami(program,GL46C.GL_LINK_STATUS)==0)
                 throw new IllegalStateException(GL46C.glGetProgramInfoLog(program));
@@ -172,7 +194,7 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         return null;
     }
 
-    private static boolean copyUniforms(int source) {
+    private static boolean copyUniforms(int source, List<Uniform> uniforms) {
         try (MemoryStack stack=MemoryStack.stackPush()) {
             FloatBuffer f=stack.mallocFloat(16);IntBuffer v=stack.mallocInt(4);
             for (Uniform u:uniforms) {

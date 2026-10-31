@@ -59,7 +59,7 @@ public final class EffectPackScreen extends Screen {
                     rebuildWidgets();
                 }).bounds(left + panel - 174 + target * 58, y, 56, 20)
                         .tooltip(Tooltip.create(Component.literal(effect.id() + "\n" + String.join("\n", effect.notes())))).build();
-                button.active = target != 2 || effect.supportsWorld();
+                button.active = target == 2 ? effect.supportsWorld() : effect.kind() != com.shiroha.mmdskin.render.effectpack.FxEffect.Kind.WORLD_GRAPH;
                 addRenderableWidget(button);
             }
         }

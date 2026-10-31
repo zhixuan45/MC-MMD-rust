@@ -1,4 +1,4 @@
-// 无组合时保持原来的六个 vec4；组合变体追加七个材质通道。
+// 无组合时保持原来的六个 vec4；组合变体追加 FX 材质通道。
 #ifdef MMD_FX_COMBINED
 struct MmdFxChannel { vec4 value; vec4 options; vec4 uvSource; };
 #endif
@@ -10,7 +10,7 @@ struct MmdBatchMaterial {
     vec4 shading; // eye mask, sphere mode, diffuse slot, sphere slot
     vec4 flags;   // double sided, hair
 #ifdef MMD_FX_COMBINED
-    MmdFxChannel effects[7];
+    MmdFxChannel effects[10];
 #endif
 };
 layout(std430, binding = 2) readonly buffer MmdBatchMaterials { MmdBatchMaterial mmdMaterials[]; };
@@ -26,7 +26,7 @@ int mmdSphereMode, mmdDiffuseSlot, mmdSphereSlot;
 bool mmdCull, mmdHairMaterial;
 #ifdef MMD_FX_COMBINED
 int mmdFxKind, mmdFxSelection;
-MmdFxChannel mmdFxChannels[7];
+MmdFxChannel mmdFxChannels[10];
 #endif
 vec2 mmdSphereUv, mmdSphereDx, mmdSphereDy;
 
@@ -70,7 +70,7 @@ void mmdLoadMaterial() {
 #ifdef MMD_FX_COMBINED
         mmdFxKind = int(row.flags.z);
         mmdFxSelection = int(row.flags.w);
-        for (int channel = 0; channel < 7; channel++) mmdFxChannels[channel] = row.effects[channel];
+        for (int channel = 0; channel < 10; channel++) mmdFxChannels[channel] = row.effects[channel];
 #endif
         mmdSphereMode = int(row.shading.y);
         mmdDiffuseSlot = int(row.shading.z);

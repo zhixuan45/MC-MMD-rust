@@ -104,6 +104,22 @@ public final class ShadowAlphaGlProbe {
         GL46C.glDeleteShader(vs); GL46C.glDeleteShader(fs); GL46C.glUseProgram(id);
         GL46C.glUniform1i(GL46C.glGetUniformLocation(id, "tex"), 0);
         GL46C.glUniform1i(GL46C.glGetUniformLocation(id, "noisetex"), 1);
+        // 检查真实 BSL + Iris 包装入口也能接入外置 alpha，不能只验证合成 main。
+        String patched = ShadowFxAlphaBinding.patch(bslFragment, id);
+        int patchedFs = shader(GL46C.GL_FRAGMENT_SHADER, patched);
+        int patchedVs = shader(GL46C.GL_VERTEX_SHADER, """
+                #version 120
+                attribute vec3 Position; attribute vec2 UV; attribute vec4 iris_Color;
+                varying vec2 texCoord; varying vec4 color; varying float mat; varying vec3 worldPos;
+                void main(){ texCoord=UV; color=iris_Color; mat=0.0; worldPos=Position; gl_Position=vec4(Position,1.0); }
+                """);
+        int patchedProgram = GL46C.glCreateProgram();
+        GL46C.glAttachShader(patchedProgram, patchedVs); GL46C.glAttachShader(patchedProgram, patchedFs);
+        GL46C.glLinkProgram(patchedProgram);
+        check(GL46C.glGetProgrami(patchedProgram, GL46C.GL_LINK_STATUS) != 0,
+                "外置alpha真实BSL链接: " + GL46C.glGetProgramInfoLog(patchedProgram));
+        GL46C.glDeleteProgram(patchedProgram); GL46C.glDeleteShader(patchedVs); GL46C.glDeleteShader(patchedFs);
+        System.out.println("PASS real BSL/Iris external alpha patch compile/link");
         return id;
     }
 

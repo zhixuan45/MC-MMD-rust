@@ -41,23 +41,32 @@ final class RayMaterialImporter {
         String remaining = INCLUDE.matcher(VALUE.matcher(DEFINE.matcher(clean).replaceAll("")).replaceAll("")).replaceAll("").trim();
         if (!remaining.isEmpty()) throw new IOException("Ray 参数文件包含未支持的代码/条件宏");
 
-        for (String flag : new String[]{"ALBEDO_SUB_ENABLE", "NORMAL_SUB_MAP_FROM", "PARALLAX_MAP_FROM", "CUSTOM_ENABLE",
+        for (String flag : new String[]{"PARALLAX_MAP_FROM", "CUSTOM_ENABLE",
                 "ALBEDO_MAP_APPLY_MORPH_COLOR", "EMISSIVE_MAP_APPLY_MORPH_COLOR", "EMISSIVE_MAP_APPLY_MORPH_INTENSITY", "EMISSIVE_MAP_APPLY_BLINK"}) {
             if (integer(definitions, flag, 0) != 0) throw new IOException("尚未适配 Ray 选项: " + flag);
         }
         if (integer(definitions, "ALBEDO_MAP_APPLY_DIFFUSE", 1) != 1)
             throw new IOException("当前要求 ALBEDO_MAP_APPLY_DIFFUSE=1");
-        if (constants.getOrDefault("alpha", new float[]{1})[0] != 1)
-            throw new IOException("Ray 常量 alpha 淡出尚未适配；当前保留 PMX 贴图和材质 morph 的透明度");
         int alphaSource = integer(definitions, "ALPHA_MAP_FROM", 3);
-        if (alphaSource != 3 || integer(definitions, "ALPHA_MAP_SWIZZLE", 3) != 3
+        if (alphaSource != 1 && (alphaSource != 3 || integer(definitions, "ALPHA_MAP_SWIZZLE", 3) != 3
                 || integer(definitions, "ALPHA_MAP_UV_FLIP", 0) != 0
-                || !unit(constants.getOrDefault("alphaMapLoopNum", new float[]{1, 1})))
-            throw new IOException("当前透明度仅支持原 PMX 贴图 alpha；外置 alpha/UV 变换需额外适配");
+                || !unit(constants.getOrDefault("alphaMapLoopNum", new float[]{1, 1}))))
+            throw new IOException("当前透明度支持原 PMX 贴图 alpha 或外置 alpha 贴图");
+        if (constants.getOrDefault("alpha", new float[]{1})[0] != 1)
+            throw new IOException("Ray 常量 alpha 淡出尚未适配");
 
         var channels = new LinkedHashMap<String, FxEffect.Channel>();
+        if (alphaSource == 1) add(channels, root, file, definitions, constants, "ALPHA", "alpha", new float[]{1}, 1);
         add(channels, root, file, definitions, constants, "ALBEDO", "albedo", new float[]{1, 1, 1}, 0);
+        int subMode = integer(definitions, "ALBEDO_SUB_ENABLE", 0);
+        if (subMode < 0 || subMode > 5 || subMode == 4) throw new IOException("尚未适配 Ray 选项: ALBEDO_SUB_ENABLE=" + subMode);
+        if (subMode != 0) {
+            add(channels, root, file, definitions, constants, "ALBEDO_SUB", "albedoSub", new float[]{1, 1, 1}, 0);
+            FxEffect.Channel sub = channels.get("ALBEDO_SUB");
+            channels.put("ALBEDO_SUB", new FxEffect.Channel(sub.source(), sub.file(), sub.value(), sub.uvFlip(), sub.repeat(), subMode, sub.component(), sub.scaleMode()));
+        }
         add(channels, root, file, definitions, constants, "NORMAL", "normalMapScale", new float[]{1}, 0);
+        add(channels, root, file, definitions, constants, "NORMAL_SUB", "normalSubMapScale", new float[]{1}, 0);
         add(channels, root, file, definitions, constants, "SMOOTHNESS", "smoothness", new float[]{0}, 0);
         add(channels, root, file, definitions, constants, "METALNESS", "metalness", new float[]{0}, 0);
         add(channels, root, file, definitions, constants, "SPECULAR", "specular", new float[]{0.5f, 0.5f, 0.5f}, 0);
@@ -73,6 +82,7 @@ final class RayMaterialImporter {
         var notes = new ArrayList<String>();
         notes.add("Ray 材质语义已转换；光照使用宿主环境，不复刻缺失的 Ray 灯光/IBL/后处理。");
         notes.add("贴图 UV 必须与目标模型匹配；不会自动推断 PMX 材质分配。");
+        if (alphaSource == 1) notes.add("外置 alpha 用于主体透明及深度；阴影支持唯一主纹理的两参数采样，不支持的阴影程序在运行时报告。");
         return new FxEffect(id, file.getFileName().toString(), root, FxEffect.Kind.RAY_MATERIAL,
                 Map.copyOf(channels), constants.getOrDefault("alpha", new float[]{1})[0], FxEffect.IDENTITY, notes);
     }
@@ -80,9 +90,10 @@ final class RayMaterialImporter {
     private static void add(Map<String, FxEffect.Channel> out, Path root, Path fx, Map<String, String> defs,
                             Map<String, float[]> values, String key, String valueName, float[] fallback, int defaultSource) throws IOException {
         int from = integer(defs, key + "_MAP_FROM", defaultSource);
-        if (from != 0 && from != 1 && from != 3) throw new IOException(key + ": 不支持贴图来源 " + from);
+        if (from != 0 && from != 1 && from != 3 && !(key.equals("SMOOTHNESS") && from == 9))
+            throw new IOException(key + ": 不支持贴图来源 " + from);
         int type = integer(defs, key + "_MAP_TYPE", 0);
-        if ((key.equals("NORMAL") && (type < 0 || type > 1)) || (key.equals("SMOOTHNESS") && (type < 0 || type > 2))
+        if (((key.equals("NORMAL") || key.equals("NORMAL_SUB")) && (type < 0 || type > 1)) || (key.equals("SMOOTHNESS") && (type < 0 || type > 2))
                 || (key.equals("OCCLUSION") && (type < 0 || type > 1))
                 || (key.equals("SPECULAR") && type != 0)) throw new IOException(key + ": 不支持贴图类型 " + type);
         String relative = "";
@@ -93,11 +104,15 @@ final class RayMaterialImporter {
             if (!Files.isRegularFile(texture)) throw new IOException("缺失活动贴图: " + texture.getFileName());
             relative = root.relativize(texture).toString().replace('\\', '/');
         }
-        int flip = integer(defs, key + "_MAP_UV_FLIP", 0), component = integer(defs, key + "_MAP_SWIZZLE", 0);
+        int flip = integer(defs, key + "_MAP_UV_FLIP", 0), component = integer(defs, key + "_MAP_SWIZZLE", key.equals("ALPHA") ? 3 : 0);
         int scale = integer(defs, key + "_MAP_APPLY_SCALE", 0);
         if (flip < 0 || flip > 3 || component < 0 || component > 3 || scale < 0 || scale > 2)
             throw new IOException(key + ": UV/通道/缩放选项越界");
-        String repeatName = key.toLowerCase(java.util.Locale.ROOT) + "MapLoopNum";
+        String repeatName = switch (key) {
+            case "ALBEDO_SUB" -> "albedoSubMapLoopNum";
+            case "NORMAL_SUB" -> "normalSubMapLoopNum";
+            default -> key.toLowerCase(java.util.Locale.ROOT) + "MapLoopNum";
+        };
         float[] repeats = values.getOrDefault(repeatName, new float[]{1, 1});
         float[] repeat = new float[]{repeats[0], repeats.length > 1 ? repeats[1] : repeats[0]};
         if (repeat[0] <= 0 || repeat[1] <= 0) throw new IOException(key + ": UV 重复次数必须为正");

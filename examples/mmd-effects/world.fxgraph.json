@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "output": "warmResult",
+  "passes": [
+    { "name": "warm", "input": "scene", "output": "warmResult", "effect": "warm.fx" }
+  ]
+}

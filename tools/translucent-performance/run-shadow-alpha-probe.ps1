@@ -36,6 +36,7 @@ try {
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/config/IToonConfig.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/SubMeshDrawHelper.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/ShadowTextureAlpha.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/ShadowFxAlphaBinding.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/DrawMaterialCache.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/MaterialShaderBinding.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/SphereTextureBinding.java'),

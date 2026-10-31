@@ -233,6 +233,13 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                             && GL46C.glGetUniformLocation(program, "MaterialColor") < 0;
             coverageSafe = splitPixels && !packEntity;
             for (int s = 0; s < count; s++) {
+                int id = source.getInt(s * 20);
+                if (id >= 0 && id < materials.length && materialCache.effect(id).externalAlpha()) {
+                    coverageSafe = false;
+                    break;
+                }
+            }
+            for (int s = 0; s < count; s++) {
                 batches[s] = -1;
                 if (!includes(source, s, materials, materialCache)) continue;
                 triangles += source.getInt(s * 20 + 8) / 3;
@@ -264,7 +271,8 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                                 eye ? material.eyeEmissionMaskMode() : 0);
                 batches[s] = batchIds.computeIfAbsent(batch, k -> batchIds.size());
                 // 材质透明时，贴图实心像素也必须进入透明排序。
-                includeOpaque[s] = !splitPixels || state.alpha < MaterialRenderState.OPAQUE_ALPHA;
+                includeOpaque[s] = !splitPixels || state.alpha < MaterialRenderState.OPAQUE_ALPHA
+                        || materialCache.effect(source.getInt(s * 20)).externalAlpha();
             }
         } finally {
             TranslucentDiagnostics.endTimer(TranslucentDiagnostics.Stage.CLASSIFY, classifyTimer);
@@ -614,7 +622,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
         ModelMaterial material = materials[id];
         MaterialRenderState state = materialCache.resolve(id, source.getFloat(b + 12));
         return state.alpha >= .001f
-                && (state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasAlpha);
+                && (state.alpha < MaterialRenderState.OPAQUE_ALPHA || material.hasAlpha || materialCache.effect(id).externalAlpha());
     }
 
     private boolean candidateCacheMatches(

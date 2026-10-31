@@ -1,9 +1,10 @@
 // Ray 材质参数的宿主实现；不使用原 MME 的 G-buffer 编码和渲染脚本。
 uniform bool FxMaterialEnabled;
-uniform int FxSources[7];
-uniform vec4 FxValues[7];
-uniform ivec4 FxOptions[7]; // UV flip、type、swizzle、scale
-uniform vec2 FxRepeat[7];
+uniform float FxMaterialPower;
+uniform int FxSources[10];
+uniform vec4 FxValues[10];
+uniform ivec4 FxOptions[10]; // UV flip、type、swizzle、scale
+uniform vec2 FxRepeat[10];
 uniform sampler2D FxMap0;
 uniform sampler2D FxMap1;
 uniform sampler2D FxMap2;
@@ -11,6 +12,9 @@ uniform sampler2D FxMap3;
 uniform sampler2D FxMap4;
 uniform sampler2D FxMap5;
 uniform sampler2D FxMap6;
+uniform sampler2D FxMap7;
+uniform sampler2D FxMap8;
+uniform sampler2D FxMap9;
 
 bool mmdFxRayEnabled() {
 #if defined(MMD_BATCH_MATERIALS) && defined(MMD_FX_COMBINED)
@@ -69,12 +73,26 @@ vec4 mmdFxSample(int slot, vec2 uv) {
     if (slot == 3) return texture(FxMap3, uv);
     if (slot == 4) return texture(FxMap4, uv);
     if (slot == 5) return texture(FxMap5, uv);
-    return texture(FxMap6, uv);
+    if (slot == 6) return texture(FxMap6, uv);
+    if (slot == 7) return texture(FxMap7, uv);
+    if (slot == 8) return texture(FxMap8, uv);
+    return texture(FxMap9, uv);
+}
+
+float mmdFxAlpha(float original, float materialAlpha, vec2 uv) {
+    if (!mmdFxRayEnabled() || mmdFxSource(9) != 1) return original;
+    return clamp(mmdFxSample(9, uv)[mmdFxOption(9).z] * materialAlpha, 0.0, 1.0);
 }
 
 float mmdFxScalar(int slot, vec2 uv) {
     if (mmdFxSource(slot) == 0) return clamp(mmdFxValue(slot).x, 0.0, 1.0);
-    vec4 sampled = mmdFxSample(slot, uv);
+    float fxPower = FxMaterialPower;
+#if defined(MMD_BATCH_MATERIALS) && defined(MMD_FX_COMBINED)
+    if (MmdBatchEnabled) fxPower = mmdFxChannels[2].value.w;
+#endif
+    vec4 sampled = slot == 2 && mmdFxSource(slot) == 9
+        ? vec4(1.0 - pow(max(0.0, 2.0 / (fxPower + 2.0)), 0.125))
+        : mmdFxSample(slot, uv);
     float result = sampled[mmdFxOption(slot).z];
     if (slot == 2) {
         if (mmdFxOption(slot).y == 1) result = 1.0 - sqrt(max(result, 0.0));
@@ -95,15 +113,40 @@ vec3 mmdFxAlbedo(vec3 original, vec2 uv) {
         if (mmdFxOption(0).w == 1) color *= mmdFxValue(0).rgb;
         if (mmdFxOption(0).w == 2) color = pow(max(color, vec3(0.00001)), mmdFxValue(0).rgb);
     }
-    return max(color * MaterialColor.rgb, vec3(0.0));
+    color *= MaterialColor.rgb;
+    int subMode = mmdFxOption(7).y;
+    if (subMode != 0) {
+        vec4 sub = mmdFxSample(7, uv);
+        if (mmdFxSource(7) != 0 && mmdFxOption(7).w == 1) sub.rgb *= mmdFxValue(7).rgb;
+        if (mmdFxSource(7) != 0 && mmdFxOption(7).w == 2) sub.rgb = pow(max(sub.rgb, vec3(0.00001)), mmdFxValue(7).rgb);
+        if (subMode == 1) color *= sub.rgb;
+        if (subMode == 2) color = pow(max(color, vec3(0.0)), sub.rgb);
+        if (subMode == 3) color += sub.rgb;
+        if (subMode == 5) color = mix(color, sub.rgb, sub.a);
+        color = clamp(color, 0.0, 1.0);
+    }
+    return max(color, vec3(0.0));
 }
 
+vec3 mmdFxTangentNormal(int slot, vec2 uv) {
+    vec3 tangent = mmdFxSample(slot, uv).xyz * 2.0 - 1.0;
+    if (mmdFxOption(slot).y == 1) tangent.z = sqrt(max(0.0, 1.0 - dot(tangent.xy, tangent.xy)));
+    tangent.xy *= mmdFxValue(slot).x;
+    return tangent / max(length(tangent), 0.00001);
+}
 vec3 mmdFxNormal(vec3 n, vec3 p, vec2 uv) {
-    if (!mmdFxRayEnabled() || mmdFxSource(1) == 0) return n;
-    vec3 tangent = mmdFxSample(1, uv).xyz * 2.0 - 1.0;
-    if (mmdFxOption(1).y == 1) tangent.z = sqrt(max(0.0, 1.0 - dot(tangent.xy, tangent.xy)));
-    tangent.xy *= mmdFxValue(1).x;
-    tangent /= max(length(tangent), 0.00001);
+    if (!mmdFxRayEnabled() || (mmdFxSource(1) == 0 && mmdFxSource(8) == 0)) return n;
+    vec3 tangent = mmdFxSource(1) == 0 ? vec3(0.0, 0.0, 1.0) : mmdFxTangentNormal(1, uv);
+    if (mmdFxSource(8) != 0) {
+        vec3 sub = mmdFxTangentNormal(8, uv);
+        if (mmdFxSource(1) == 0) tangent = sub;
+        else {
+            vec3 base = tangent + vec3(0.0, 0.0, 1.0);
+            vec3 detail = sub * vec3(-1.0, -1.0, 1.0);
+            tangent = base * dot(base, detail) / max(base.z, 0.00001) - detail;
+            tangent /= max(length(tangent), 0.00001);
+        }
+    }
     // 从实际蒙皮后的位置和 UV 构造切线基；CPU/GPU 路径无需新增切线顶点属性。
     vec3 dp1 = dFdx(p), dp2 = dFdy(p);
     vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
@@ -139,7 +182,8 @@ vec3 mmdFxMaterialLight(vec3 lit, vec3 albedo, vec3 n, vec3 p, vec3 light, vec2 
     vec3 f0 = mix(specular * 0.08, base, metalness);
     vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
     vec3 reflection = distribution * geometry * fresnel / max(4.0 * nv * max(nl, 0.001), 0.0001);
-    vec3 diffuse = pow(max(lit, vec3(0.0)), vec3(2.2)) * (1.0 - metalness) * ao;
+    // Fresnel 反射占据的能量不再进入漫反射；场景照明仍由宿主提供。
+    vec3 diffuse = pow(max(lit, vec3(0.0)), vec3(2.2)) * (1.0 - fresnel) * (1.0 - metalness) * ao;
     vec3 emission = mmdFxSample(6, uv).rgb;
     if (mmdFxSource(6) != 0) emission *= mmdFxValue(6).rgb;
     return pow(max(diffuse + reflection * nl * max(illumination, vec3(0.0)) + emission, vec3(0.0)), vec3(1.0 / 2.2));

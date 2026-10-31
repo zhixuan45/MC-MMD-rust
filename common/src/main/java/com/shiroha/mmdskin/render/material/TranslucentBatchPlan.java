@@ -145,9 +145,9 @@ final class TranslucentBatchPlan {
     }
 
     private static int[] effectSlots(FxMaterialData effect, HashMap<Integer, Integer> slots) {
-        int[] result = new int[7];
+        int[] result = new int[com.shiroha.mmdskin.render.effectpack.FxMaterialData.CHANNELS.length];
         java.util.Arrays.fill(result, -1);
-        for (int i = 0; i < result.length; i++) if (effect.textures()[i] > 0)
+        for (int i = 0; i < Math.min(result.length, effect.textures().length); i++) if (effect.textures()[i] > 0)
             result[i] = slots.computeIfAbsent(effect.textures()[i], unused -> slots.size());
         return result;
     }

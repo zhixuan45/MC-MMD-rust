@@ -10,6 +10,7 @@ public final class MaterialRenderState {
     public final float[] sphereMul = new float[4];
     public final float[] sphereAdd = new float[4];
     public float specularPower;
+    public float fxSpecularPower;
     public float alpha;
     public boolean hair;
 
@@ -24,7 +25,8 @@ public final class MaterialRenderState {
             color[channel] = clamp(diffuse * 0.5f + ambient) * Math.max(0.0f, textureTint);
             specular[channel] = morph(material.specular[channel], morphs, materialId, 4 + channel);
         }
-        specularPower = Math.max(1.0f, morph(material.specularPower, morphs, materialId, 7));
+        fxSpecularPower = morph(material.specularPower, morphs, materialId, 7);
+        specularPower = Math.max(1.0f, fxSpecularPower);
         // effectiveAlpha 已包含 diffuse alpha morph 与全局透明度，各项只应用一次。
         alpha = clamp(effectiveAlpha * morph(1.0f, morphs, materialId, 19));
         for (int channel = 0; channel < 4; channel++) {

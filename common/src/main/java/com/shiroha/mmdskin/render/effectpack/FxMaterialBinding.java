@@ -6,8 +6,8 @@ import org.lwjgl.opengl.GL46C;
 /** 一次绘制中复用纹理单元；普通提交逐材质切换，批量提交由材质表选择效果。 */
 public final class FxMaterialBinding implements AutoCloseable {
     private final int program, enabled, selection;
-    private final int[] samplers = new int[7], previousUniforms = new int[7];
-    private final int[] sources = new int[7], values = new int[7], options = new int[7], repeats = new int[7];
+    private final int[] samplers = new int[FxMaterialData.CHANNELS.length], previousUniforms = new int[FxMaterialData.CHANNELS.length];
+    private final int[] sources = new int[FxMaterialData.CHANNELS.length], values = new int[FxMaterialData.CHANNELS.length], options = new int[FxMaterialData.CHANNELS.length], repeats = new int[FxMaterialData.CHANNELS.length];
     private int[] units = new int[0], previousTextures = new int[0], previousSamplers = new int[0];
     private FxEffect applied;
     private boolean appliedOnce;
@@ -21,7 +21,7 @@ public final class FxMaterialBinding implements AutoCloseable {
         var runtime = EffectPackRuntime.active();
         if (shadow || runtime == null || (enabled < 0 && selection < 0)) return;
         if (enabled >= 0) {
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < FxMaterialData.CHANNELS.length; i++) {
                 samplers[i] = GL46C.glGetUniformLocation(program, "FxMap" + i);
                 previousUniforms[i] = samplers[i] < 0 ? 0 : GL46C.glGetUniformi(program, samplers[i]);
                 sources[i] = GL46C.glGetUniformLocation(program, "FxSources[" + i + "]");
@@ -57,7 +57,7 @@ public final class FxMaterialBinding implements AutoCloseable {
         int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
         try {
             int next = 0;
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < FxMaterialData.CHANNELS.length; i++) {
                 FxEffect.Channel channel = effect.channels().get(FxMaterialData.CHANNELS[i]);
                 int from = channel == null ? 0 : channel.source(), unit = units[0];
                 if (from == 1) {
@@ -89,7 +89,7 @@ public final class FxMaterialBinding implements AutoCloseable {
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTextures[i]);
             GL46C.glBindSampler(units[i], previousSamplers[i]);
         }
-        for (int i = 0; i < 7; i++) if (samplers[i] >= 0) GL46C.glUniform1i(samplers[i], previousUniforms[i]);
+        for (int i = 0; i < FxMaterialData.CHANNELS.length; i++) if (samplers[i] >= 0) GL46C.glUniform1i(samplers[i], previousUniforms[i]);
         GL46C.glActiveTexture(active);
     }
 }

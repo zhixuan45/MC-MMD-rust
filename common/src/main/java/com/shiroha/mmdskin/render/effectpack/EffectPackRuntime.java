@@ -54,6 +54,10 @@ public final class EffectPackRuntime {
     public FxEffect materialEffect(int index, String name) {
         FxEffect selected = current;
         for (MaterialEffectRule rule : materialRules) if (rule.matches(index, name)) { selected = effect(rule.effect()); break; }
+        if (selected != null && selected.kind() == FxEffect.Kind.WORLD_GRAPH) {
+            problem("graph-model:" + selected.id(), "多 pass 渲染图只能用于世界画面: " + selected.name());
+            return null;
+        }
         return deduplicateWorld(selected);
     }
     private FxEffect deduplicateWorld(FxEffect effect) {
@@ -94,7 +98,7 @@ public final class EffectPackRuntime {
         materialRules = List.of();
         program = FxProgram.EMPTY;
         worldScene = scene != null && scene.isWorldScene();
-        if (scene != null && !IrisCompat.isRenderingShadows() && scene.sceneType() != RenderScene.SceneType.ITEM) {
+        if (scene != null && scene.sceneType() != RenderScene.SceneType.ITEM) {
             boolean placed = scene.isPlacedScene();
             String selector = placed ? settings.sceneModel : settings.characterModel;
             if (EffectPackSettings.matches(selector, model)) current = effect(placed ? settings.scenes : settings.characters);
@@ -103,9 +107,15 @@ public final class EffectPackRuntime {
             var active = new java.util.ArrayList<FxEffect>();
             active.add(current);
             for (var rule : materialRules) active.add(deduplicateWorld(effect(rule.effect())));
-            program = FxProgram.of(active);
+            if (!IrisCompat.isRenderingShadows()) program = FxProgram.of(active);
         }
         return previous;
+    }
+
+    public boolean hasExternalAlpha() {
+        if (current != null && current.channels().containsKey("ALPHA")) return true;
+        return materialRules.stream().map(r -> effect(r.effect())).filter(java.util.Objects::nonNull)
+                .anyMatch(e -> e.channels().containsKey("ALPHA"));
     }
 
     public final class Scope implements AutoCloseable {

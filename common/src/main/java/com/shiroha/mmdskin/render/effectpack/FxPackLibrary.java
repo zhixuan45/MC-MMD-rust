@@ -25,7 +25,8 @@ public final class FxPackLibrary {
         var failures = new ArrayList<Failure>();
         if (!Files.isDirectory(library)) return new Scan(List.of(), List.of());
         try (var paths = Files.walk(library, 12)) {
-            List<Path> files = paths.filter(p -> p.toString().toLowerCase(Locale.ROOT).endsWith(".fx"))
+            List<Path> files = paths.filter(p -> p.toString().toLowerCase(Locale.ROOT).endsWith(".fx")
+                            || p.toString().toLowerCase(Locale.ROOT).endsWith(".fxgraph.json"))
                     .sorted().limit(MAX_FILES + 1).toList();
             if (files.size() > MAX_FILES) throw new IOException("FX 文件数量超限");
             for (Path file : files) {
@@ -37,7 +38,9 @@ public final class FxPackLibrary {
                     // 库中的每个顶层目录为独立包，不允许跨包 include/贴图。
                     if (!Files.isDirectory(packRoot)) throw new IOException("FX 必须放在效果包子目录内");
                     String source = Files.readString(file, StandardCharsets.UTF_8);
-                    FxEffect effect = source.contains("material_common_2.0.fxsub")
+                    FxEffect effect = file.toString().toLowerCase(Locale.ROOT).endsWith(".fxgraph.json")
+                            ? FxWorldGraph.parse(packRoot, file, source, id)
+                            : source.contains("material_common_2.0.fxsub")
                             ? RayMaterialImporter.parse(packRoot, file, source, id)
                             : MmeColorImporter.parse(packRoot, file, source, id);
                     effects.add(effect);
@@ -112,10 +115,12 @@ public final class FxPackLibrary {
             for (FxEffect effect : result.effects()) {
                 if (!effect.id().startsWith(prefix)) continue;
                 String local = effect.id().substring(prefix.length());
-                String generated = "_converted/" + local + (effect.supportsWorld() ? ".glsl" : ".material.json");
+                String generated = "_converted/" + local + (effect.graph() != null ? ".graph.json" : effect.supportsWorld() ? ".glsl" : ".material.json");
                 Path output = FxPaths.resolve(destination, destination, generated);
                 Files.createDirectories(output.getParent());
-                Files.writeString(output, effect.supportsWorld() ? effect.colorFunction()
+                Files.writeString(output, effect.graph() != null ? gson.toJson(java.util.Map.of("format", 1, "output", effect.graph().output(),
+                        "passes", effect.graph().stages().stream().map(s -> java.util.Map.of("name", s.name(), "input", s.input(), "output", s.output(), "colorFunction", s.effect().colorFunction())).toList()))
+                        : effect.supportsWorld() ? effect.colorFunction()
                         : gson.toJson(java.util.Map.of("format", 1, "channels", effect.channels(), "alpha", effect.alpha())));
                 converted.add(new MapEntry(local, effect.kind().name(), generated));
             }

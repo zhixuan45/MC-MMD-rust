@@ -18,24 +18,28 @@ public final class WorldColorEffect {
             """;
     private static int program, texture, vao, width, height;
     private static String compiled;
+    private static final java.util.Map<String, Integer> programs = new java.util.LinkedHashMap<>();
 
     public static void render() {
         FxEffect effect = EffectPackRuntime.get().world();
         if (effect == null) return;
         var target = Minecraft.getInstance().getMainRenderTarget();
         if (target.width <= 0 || target.height <= 0) return;
+        if (effect.graph() != null) {
+            FxGraphGlBackend.render(effect, target.frameBufferId, target.width, target.height);
+            return;
+        }
         apply(effect, target.frameBufferId, target.width, target.height);
     }
 
-    static void apply(FxEffect effect, int framebuffer, int targetWidth, int targetHeight) {
+    static boolean apply(FxEffect effect, int framebuffer, int targetWidth, int targetHeight) {
         try (State state = new State()) {
             if (!Objects.equals(compiled, effect.colorFunction())) {
-                if (program != 0) GL33C.glDeleteProgram(program);
                 compiled = effect.colorFunction();
-                program = ShaderCompiler.compileRenderProgram(VERTEX, fragment(compiled), "MMD FX 世界/" + effect.name());
+                program = programs.computeIfAbsent(compiled, key -> ShaderCompiler.compileRenderProgram(VERTEX, fragment(key), "MMD FX 世界/" + effect.name()));
                 if (program == 0) EffectPackRuntime.get().problem("world-compile:" + effect.id(), "世界效果编译失败: " + effect.name() + "；详见客户端日志");
             }
-            if (program == 0) return;
+            if (program == 0) return false;
             if (vao == 0) vao = GL33C.glGenVertexArrays();
             if (texture == 0) texture = GL33C.glGenTextures();
             GL33C.glActiveTexture(GL33C.GL_TEXTURE0);
@@ -67,6 +71,7 @@ public final class WorldColorEffect {
             GL33C.glUniform1i(GL33C.glGetUniformLocation(program, "FxScreen"), 0);
             GL33C.glBindVertexArray(vao);
             GL33C.glDrawArrays(GL33C.GL_TRIANGLES, 0, 3);
+            return true;
         }
     }
 
@@ -76,7 +81,9 @@ public final class WorldColorEffect {
     }
 
     public static void release() {
-        if (program != 0) GL33C.glDeleteProgram(program);
+        for (int cached : programs.values()) if (cached != 0) GL33C.glDeleteProgram(cached);
+        programs.clear();
+        FxGraphGlBackend.release();
         if (texture != 0) GL33C.glDeleteTextures(texture);
         if (vao != 0) GL33C.glDeleteVertexArrays(vao);
         program = texture = vao = width = height = 0;
@@ -84,7 +91,7 @@ public final class WorldColorEffect {
     }
 
     /** 只使用原始 GL 修改并成对恢复，保持 RenderSystem 状态缓存与原状态一致。 */
-    private static final class State implements AutoCloseable {
+    static final class State implements AutoCloseable {
         final int program = GL33C.glGetInteger(GL33C.GL_CURRENT_PROGRAM);
         final int vao = GL33C.glGetInteger(GL33C.GL_VERTEX_ARRAY_BINDING);
         final int active = GL33C.glGetInteger(GL33C.GL_ACTIVE_TEXTURE);

@@ -6,6 +6,7 @@ import com.shiroha.mmdskin.util.AssetsUtil;
 public final class FxShaderSource {
     public static final String DISABLED = """
             bool mmdFxRayEnabled() { return false; }
+            float mmdFxAlpha(float a, float materialAlpha, vec2 uv) { return a; }
             vec3 mmdFxAlbedo(vec3 a, vec2 uv) { return a; }
             vec3 mmdFxNormal(vec3 n, vec3 p, vec2 uv) { return n; }
             vec3 mmdFxMaterialLight(vec3 lit, vec3 a, vec3 n, vec3 p, vec3 l, vec2 uv, vec3 e) { return lit; }

@@ -86,7 +86,7 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             // 复用空闲标记，不增加材质表大小或拆分批次。
             rows.putFloat(key.bothFace() ? 1 : 0).putFloat(state.hair ? 1 : 0)
                     .putFloat(row.effect().kind()).putFloat(row.effect().selection());
-            if (stride > ROW_BYTES) row.effect().writeChannels(rows, row.effectSlots());
+            if (stride > ROW_BYTES) row.effect().writeChannels(rows, row.effectSlots(), state.fxSpecularPower);
         }
         if (device == null) for (int row : plan.triangleRows) triangles.putInt(row);
         rows.flip();

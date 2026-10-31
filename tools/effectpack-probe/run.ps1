@@ -4,7 +4,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$taskOutput = Join-Path $taskRoot 'build/effectpack-probe'
+$taskOutput = Join-Path $taskRoot ('build/effectpack-probe-' + [guid]::NewGuid().ToString('N'))
 $taskCpFile = Join-Path $taskRoot 'build/sphere-texture-probe/classpath.txt'
 if (!(Test-Path -LiteralPath $taskCpFile)) { throw '先运行 gradlew :common:writeSphereProbeClasspath -I tools/sphere-texture-probe/classpath.gradle' }
 $taskCp = (Get-Content -LiteralPath $taskCpFile -Raw).Trim()

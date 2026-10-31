@@ -10,7 +10,7 @@ public record FxProgram(List<FxEffect> effects) {
 
     public static FxProgram of(Collection<FxEffect> effects) {
         return new FxProgram(effects.stream().filter(java.util.Objects::nonNull)
-                .distinct().sorted(Comparator.comparing(FxEffect::id)).toList());
+                .filter(e -> e.kind() != FxEffect.Kind.WORLD_GRAPH).distinct().sorted(Comparator.comparing(FxEffect::id)).toList());
     }
     public boolean enabled() { return !effects.isEmpty(); }
     public boolean hasRay() { return effects.stream().anyMatch(e -> e.kind() == FxEffect.Kind.RAY_MATERIAL); }

@@ -44,7 +44,7 @@ void main() {
 #else
     vec4 texColor = texture(Sampler0, texCoord0);
 #endif
-    float finalAlpha = texColor.a * MaterialColor.a;
+    float finalAlpha = mmdFxAlpha(texColor.a * MaterialColor.a, MaterialColor.a, texCoord0);
     // 独立覆盖全局阈值；先裁切，再执行实心对照及透明分层。
     float cutoff = max(0.001, HairMaterial ? HairAlphaCutoff : AlphaCutoff);
     if (finalAlpha < cutoff) {
