@@ -19,7 +19,48 @@ public final class EffectPackScreen extends Screen {
     private EditBox importPath, characters, scenes;
     private int page;
     private boolean importing;
-    private String status = "导入 ZIP、FX 或资源目录；点击目标按钮启用/关闭。";
+    private String importText = "";
+    private final java.util.Set<String> expanded = new java.util.HashSet<>();
+    private java.util.List<TreeRow> visibleRows = java.util.List.of();
+
+    private record TreeRow(String path, int depth, boolean directory,
+                           com.shiroha.mmdskin.render.effectpack.FxEffect effect, String failure) { }
+
+    private java.util.List<TreeRow> treeRows() {
+        var entries = new java.util.TreeMap<String, TreeRow>();
+        for (var effect : runtime.scan().effects()) addTreeEntry(entries, effect.id(), effect, null);
+        for (var failure : runtime.scan().failures()) addTreeEntry(entries, failure.file(), null, failure.reason());
+        var result = new java.util.ArrayList<TreeRow>();
+        for (var row : entries.values()) {
+            int slash = row.path().lastIndexOf('/');
+            boolean visible = true;
+            while (slash >= 0) {
+                String parentPath = row.path().substring(0, slash);
+                if (!expanded.contains(parentPath)) { visible = false; break; }
+                slash = parentPath.lastIndexOf('/');
+            }
+            if (visible) result.add(row);
+        }
+        return result;
+    }
+
+    private void addTreeEntry(java.util.Map<String, TreeRow> entries, String path,
+                              com.shiroha.mmdskin.render.effectpack.FxEffect effect, String failure) {
+        int slash = path.indexOf('/');
+        int depth = 0;
+        while (slash >= 0) {
+            String directory = path.substring(0, slash);
+            entries.putIfAbsent(directory + "/", new TreeRow(directory, depth++, true, null, null));
+            slash = path.indexOf('/', slash + 1);
+        }
+        entries.put(path, new TreeRow(path, depth, false, effect, failure));
+    }
+
+    private String rowLabel(TreeRow row) {
+        String name = row.path().substring(row.path().lastIndexOf('/') + 1);
+        return "  ".repeat(row.depth()) + (row.directory() ? (expanded.contains(row.path()) ? "▼ " : "▶ ") : row.failure() != null ? "! " : "  ") + name;
+    }
+    private String status = "展开目录查看效果；! 表示未加载，悬停查看相对路径和原因。";
 
     public EffectPackScreen(Screen parent) { super(Component.literal("MMD 效果包")); this.parent = parent; }
 
@@ -30,6 +71,8 @@ public final class EffectPackScreen extends Screen {
         }).bounds(left + panel - 72, 5, 72, 20).build());
         importPath = new EditBox(font, left, 30, panel - 62, 20, Component.literal("ZIP / FX / 资源目录路径"));
         importPath.setMaxLength(2048);
+        importPath.setValue(importText);
+        importPath.setResponder(value -> importText = value);
         addRenderableWidget(importPath);
         addRenderableWidget(Button.builder(Component.literal("导入"), b -> importPack()).bounds(left + panel - 58, 30, 58, 20).build());
         characters = new EditBox(font, left + 78, 56, (panel - 88) / 2, 18, Component.literal("人物模型目录名，* 表示全部"));
@@ -38,12 +81,28 @@ public final class EffectPackScreen extends Screen {
         scenes = new EditBox(font, left + 88 + (panel - 88) / 2, 56, (panel - 88) / 2, 18, Component.literal("场景模型目录名，* 表示全部"));
         scenes.setValue(runtime.settings().sceneModel);
         addRenderableWidget(scenes);
-        int perPage = rows(), from = page * perPage;
-        var effects = runtime.scan().effects();
-        if (from >= effects.size() && page > 0) { page = 0; rebuildWidgets(); return; }
-        for (int i = from; i < Math.min(from + perPage, effects.size()); i++) {
-            var effect = effects.get(i);
+        visibleRows = treeRows();
+        int perPage = rows();
+        if (page * perPage >= visibleRows.size() && page > 0) page = Math.max(0, (visibleRows.size() - 1) / perPage);
+        int from = page * perPage;
+        for (int i = from; i < Math.min(from + perPage, visibleRows.size()); i++) {
+            var row = visibleRows.get(i);
             int y = 94 + (i - from) * 24;
+            String details = row.path() + (row.failure() != null ? "\n未加载: " + row.failure()
+                    : row.effect() != null ? "\n" + String.join("\n", row.effect().notes()) : "");
+            Button nameButton = Button.builder(Component.literal(font.plainSubstrByWidth(rowLabel(row), Math.max(16, panel - 185))), b -> {
+                applySelectors();
+                if (row.directory()) {
+                    if (!expanded.add(row.path())) expanded.remove(row.path());
+                    rebuildWidgets();
+                } else {
+                    status = details.replace('\n', ' ');
+                }
+            }).bounds(left, y, Math.max(20, panel - 178), 20)
+                    .tooltip(Tooltip.create(Component.literal(details))).build();
+            addRenderableWidget(nameButton);
+            var effect = row.effect();
+            if (effect == null) continue;
             for (int target = 0; target < 3; target++) {
                 final int slot = target;
                 String selected = target == 0 ? runtime.settings().characters : target == 1 ? runtime.settings().scenes : runtime.settings().world;
@@ -55,10 +114,10 @@ public final class EffectPackScreen extends Screen {
                     else if (slot == 1) runtime.settings().scenes = id;
                     else runtime.settings().world = id;
                     runtime.save();
-                    status = String.join(" ", effect.notes());
+                    status = effect.id() + " " + String.join(" ", effect.notes());
                     rebuildWidgets();
                 }).bounds(left + panel - 174 + target * 58, y, 56, 20)
-                        .tooltip(Tooltip.create(Component.literal(effect.id() + "\n" + String.join("\n", effect.notes())))).build();
+                        .tooltip(Tooltip.create(Component.literal(details))).build();
                 button.active = target == 2 ? effect.supportsWorld() : effect.kind() != com.shiroha.mmdskin.render.effectpack.FxEffect.Kind.WORLD_GRAPH;
                 addRenderableWidget(button);
             }
@@ -66,7 +125,7 @@ public final class EffectPackScreen extends Screen {
         int bottom = height - 29;
         int cell = (panel - 20) / 6;
         addRenderableWidget(Button.builder(Component.literal("上一页"), b -> { applySelectors(); page = Math.max(0, page - 1); rebuildWidgets(); }).bounds(left, bottom, cell, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("下一页"), b -> { applySelectors(); if ((page + 1) * rows() < effects.size()) page++; rebuildWidgets(); }).bounds(left + cell + 4, bottom, cell, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("下一页"), b -> { applySelectors(); if ((page + 1) * rows() < visibleRows.size()) page++; rebuildWidgets(); }).bounds(left + cell + 4, bottom, cell, 20).build());
         addRenderableWidget(Button.builder(Component.literal("重载"), b -> { applySelectors(); runtime.reload(); com.shiroha.mmdskin.render.effectpack.WorldColorEffect.release(); status = "已重载；兼容性报告位于效果包内 import-report.json"; rebuildWidgets(); }).bounds(left + (cell + 4) * 2, bottom, cell, 20).build());
         addRenderableWidget(Button.builder(Component.literal("诊断"), b -> {
             var lines = new java.util.ArrayList<>(runtime.problems());
@@ -112,11 +171,6 @@ public final class EffectPackScreen extends Screen {
         graphics.drawCenteredString(font, title, width / 2, 12, 0xffffff);
         graphics.drawString(font, "模型范围：", left, 61, 0xdddddd);
         graphics.drawString(font, "人物目录名                     场景目录名（* = 全部）", left + 78, 80, 0xaaaaaa);
-        var effects = runtime.scan().effects();
-        for (int i = page * rows(); i < Math.min((page + 1) * rows(), effects.size()); i++) {
-            String label = effects.get(i).name();
-            graphics.drawString(font, font.plainSubstrByWidth(label, Math.max(16, panel - 180)), left, 100 + (i - page * rows()) * 24, 0xffffff);
-        }
         var lines = font.split(Component.literal(status), panel);
         for (int i = 0; i < Math.min(2, lines.size()); i++) graphics.drawString(font, lines.get(i), left, height - 55 + i * 10, 0xcccccc);
     }

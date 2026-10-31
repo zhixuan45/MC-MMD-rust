@@ -24,7 +24,7 @@ public final class FxPackLibrary {
         var effects = new ArrayList<FxEffect>();
         var failures = new ArrayList<Failure>();
         if (!Files.isDirectory(library)) return new Scan(List.of(), List.of());
-        try (var paths = Files.walk(library, 12)) {
+        try (var paths = Files.walk(library)) {
             List<Path> files = paths.filter(p -> p.toString().toLowerCase(Locale.ROOT).endsWith(".fx")
                             || p.toString().toLowerCase(Locale.ROOT).endsWith(".fxgraph.json"))
                     .sorted().limit(MAX_FILES + 1).toList();
@@ -63,7 +63,7 @@ public final class FxPackLibrary {
         int[] count = {0};
         try {
             if (Files.isDirectory(source)) {
-                try (var paths = Files.walk(source, 12)) {
+                try (var paths = Files.walk(source)) {
                     List<Path> entries = paths.limit(MAX_FILES * 4L + 1).sorted().toList();
                     if (entries.size() > MAX_FILES * 4) throw new IOException("资源目录条目过多");
                     for (Path path : entries) {

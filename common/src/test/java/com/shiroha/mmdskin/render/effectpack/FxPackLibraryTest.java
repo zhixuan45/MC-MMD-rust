@@ -51,6 +51,21 @@ class FxPackLibraryTest {
         assertEquals(1, result.failures().size());
     }
 
+    @Test void importsAndScansDeeplyNestedFxIncludingFailures() throws Exception {
+        Path input = temporary.resolve("input");
+        Path nested = input;
+        for (int i = 0; i < 14; i++) nested = nested.resolve("d" + i);
+        Files.createDirectories(nested);
+        Files.writeString(nested.resolve("ok.fx"), colorFx("return tex2D(ScreenSampler, uv);"));
+        Files.writeString(nested.resolve("bad.fx"), "unsupported");
+        Path library = temporary.resolve("library");
+        Path pack = FxPackLibrary.importPack(input, library);
+        var result = FxPackLibrary.scan(library);
+        String prefix = pack.getFileName() + "/" + input.relativize(nested).toString().replace('\\', '/') + "/";
+        assertTrue(result.effects().stream().anyMatch(effect -> effect.id().equals(prefix + "ok.fx")));
+        assertTrue(result.failures().stream().anyMatch(failure -> failure.file().equals(prefix + "bad.fx")));
+    }
+
     @Test void rejectsNeighborSamplingRatherThanChangingItsMeaning() throws Exception {
         var result = scan("blur.fx", colorFx("return tex2D(ScreenSampler, uv + float2(0.1, 0.0));"));
         assertTrue(result.effects().isEmpty());
