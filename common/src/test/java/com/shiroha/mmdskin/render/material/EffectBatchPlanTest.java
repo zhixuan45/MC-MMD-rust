@@ -54,5 +54,19 @@ class EffectBatchPlanTest {
         assertEquals(0.2f, bytes.getFloat(48)); assertEquals(2f, bytes.getFloat(64));
         assertEquals(3f, bytes.getFloat(80)); assertEquals(4f, bytes.getFloat(84));
         assertEquals(1f, bytes.getFloat(88)); assertEquals(5f, bytes.getFloat(92));
+        assertEquals(-1f, bytes.getFloat(9 * 48 + 40));
+    }
+    @Test void constantAlphaAndDiffuseSwitchSurviveBatchSerialization() {
+        var alpha = new FxEffect.Channel(0, "", new float[]{.25f}, 0, new float[]{1, 1}, 0, 3, 0);
+        var albedo = new FxEffect.Channel(0, "", new float[]{1, 1, 1}, 0, new float[]{1, 1}, 0, 0, 0);
+        var e = new FxEffect("pack/a", "static", Path.of("."), FxEffect.Kind.RAY_MATERIAL,
+                Map.of("ALPHA", alpha, "ALBEDO", albedo), .25f, FxEffect.IDENTITY, List.of());
+        var data = new FxMaterialData(e, 1, new int[FxMaterialData.CHANNELS.length]);
+        ByteBuffer bytes = ByteBuffer.allocate(FxMaterialData.CHANNEL_BYTES).order(ByteOrder.nativeOrder());
+        data.writeChannels(bytes, new int[0]);
+        assertTrue(data.externalAlpha());
+        assertEquals(.25f, bytes.getFloat(9 * 48));
+        assertEquals(0f, bytes.getFloat(9 * 48 + 40));
+        assertEquals(0f, bytes.getFloat(20));
     }
 }

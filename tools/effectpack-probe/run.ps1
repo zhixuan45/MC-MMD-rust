@@ -20,5 +20,5 @@ try {
     & (Join-Path $Jdk 'bin/javac.exe') -encoding UTF-8 -proc:none -cp $taskCp -d $taskOutput (Join-Path $PSScriptRoot 'Probe.java') (Join-Path $PSScriptRoot 'MixedFxGlProbe.java')
     if ($LASTEXITCODE -ne 0) { throw 'FX probe compilation failed' }
     & (Join-Path $Jdk 'bin/java.exe') '-Djava.awt.headless=true' -cp "$taskOutput;$taskCp" com.shiroha.mmdskin.render.effectpack.Probe $FxZip
-    if ($LASTEXITCODE -ne 0) { throw 'FX GL probe failed' }
+    if ($LASTEXITCODE -ne 0) { throw "FX GL probe failed (Java exit code $LASTEXITCODE)" }
 } finally { Pop-Location }

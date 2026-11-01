@@ -6,60 +6,47 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /** Ray 2.0 的参数协议适配器；自定义实现和未支持的选项必须显式拒绝。 */
 final class RayMaterialImporter {
     private static final String COMMON_HASH = "a0383fe1fc8079ed41f5865a61f6d5a69bdcf74e74d85b8dcf88905fe4fc6304";
-    private static final Pattern DEFINE = Pattern.compile("(?m)^\\s*#define\\s+(\\w+)\\s+([^\\r\\n]+)");
-    private static final Pattern VALUE = Pattern.compile("const\\s+float([234]?)\\s+(\\w+)\\s*=\\s*([^;]+);");
-    private static final Pattern INCLUDE = Pattern.compile("#include\\s+\"([^\"]+)\"");
-
     static FxEffect parse(Path root, Path file, String source, String id) throws IOException {
-        String clean = FxSource.withoutComments(source);
-        var definitions = new LinkedHashMap<String, String>();
-        var constants = new LinkedHashMap<String, float[]>();
-        var matcher = DEFINE.matcher(clean);
-        while (matcher.find()) {
-            if (definitions.put(matcher.group(1), matcher.group(2).trim()) != null)
-                throw new IOException("重复宏: " + matcher.group(1));
-        }
-        matcher = VALUE.matcher(clean);
-        while (matcher.find()) {
-            int width = matcher.group(1).isEmpty() ? 1 : Integer.parseInt(matcher.group(1));
-            constants.put(matcher.group(2), numbers(matcher.group(3), width));
-        }
-        matcher = INCLUDE.matcher(clean);
-        if (!matcher.find()) throw new IOException("缺少 Ray 2.0 公共实现");
-        Path common = FxPaths.resolve(root, file.getParent(), matcher.group(1));
+        var parameters = RayMaterialParameters.parse(source);
+        if (parameters.includes().isEmpty()) throw new IOException("缺少 Ray 2.0 公共实现");
+        if (parameters.includes().size() != 1) throw new IOException("额外 include 尚未适配");
+        Path common = FxPaths.resolve(root, file.getParent(), parameters.includes().getFirst());
         if (Files.size(common) > 1024 * 1024) throw new IOException("Ray 公共源码超过 1 MiB");
         String commonSource = Files.readString(common).replace("\r", "");
         if (!FxSource.sha256(commonSource).equals(COMMON_HASH))
             throw new IOException("Ray 公共实现版本或自定义代码未适配: " + common.getFileName());
-        if (matcher.find()) throw new IOException("额外 include 尚未适配");
-        // 参数文件只允许声明；不能忽略夹带的自定义函数或条件预处理。
-        String remaining = INCLUDE.matcher(VALUE.matcher(DEFINE.matcher(clean).replaceAll("")).replaceAll("")).replaceAll("").trim();
-        if (!remaining.isEmpty()) throw new IOException("Ray 参数文件包含未支持的代码/条件宏");
+        return convert(root, file, parameters, id);
+    }
 
+    static FxEffect convert(Path root, Path file, RayMaterialParameters parameters, String id) throws IOException {
+        var definitions = parameters.definitions();
+        var constants = parameters.constants();
         for (String flag : new String[]{"PARALLAX_MAP_FROM", "CUSTOM_ENABLE",
                 "ALBEDO_MAP_APPLY_MORPH_COLOR", "EMISSIVE_MAP_APPLY_MORPH_COLOR", "EMISSIVE_MAP_APPLY_MORPH_INTENSITY", "EMISSIVE_MAP_APPLY_BLINK"}) {
             if (integer(definitions, flag, 0) != 0) throw new IOException("尚未适配 Ray 选项: " + flag);
         }
-        if (integer(definitions, "ALBEDO_MAP_APPLY_DIFFUSE", 1) != 1)
-            throw new IOException("当前要求 ALBEDO_MAP_APPLY_DIFFUSE=1");
+        int applyDiffuse = integer(definitions, "ALBEDO_MAP_APPLY_DIFFUSE", 1);
+        if (applyDiffuse < 0 || applyDiffuse > 1) throw new IOException("ALBEDO_MAP_APPLY_DIFFUSE 要求 0 或 1");
         int alphaSource = integer(definitions, "ALPHA_MAP_FROM", 3);
-        if (alphaSource != 1 && (alphaSource != 3 || integer(definitions, "ALPHA_MAP_SWIZZLE", 3) != 3
+        if (alphaSource != 0 && alphaSource != 1 && (alphaSource != 3 || integer(definitions, "ALPHA_MAP_SWIZZLE", 3) != 3
                 || integer(definitions, "ALPHA_MAP_UV_FLIP", 0) != 0
                 || !unit(constants.getOrDefault("alphaMapLoopNum", new float[]{1, 1}))))
-            throw new IOException("当前透明度支持原 PMX 贴图 alpha 或外置 alpha 贴图");
-        if (constants.getOrDefault("alpha", new float[]{1})[0] != 1)
-            throw new IOException("Ray 常量 alpha 淡出尚未适配");
+            throw new IOException("当前透明度支持常量、原 PMX 贴图 alpha 或外置 alpha 贴图");
 
         var channels = new LinkedHashMap<String, FxEffect.Channel>();
-        if (alphaSource == 1) add(channels, root, file, definitions, constants, "ALPHA", "alpha", new float[]{1}, 1);
+        if (alphaSource == 0 || alphaSource == 1)
+            add(channels, root, file, definitions, constants, "ALPHA", "alpha", new float[]{1}, 1);
         add(channels, root, file, definitions, constants, "ALBEDO", "albedo", new float[]{1, 1, 1}, 0);
+        FxEffect.Channel albedo = channels.get("ALBEDO");
+        // ALBEDO's type field carries the diffuse multiplier switch; Ray has no albedo map type.
+        channels.put("ALBEDO", new FxEffect.Channel(albedo.source(), albedo.file(), albedo.value(), albedo.uvFlip(),
+                albedo.repeat(), applyDiffuse, albedo.component(), albedo.scaleMode()));
         int subMode = integer(definitions, "ALBEDO_SUB_ENABLE", 0);
-        if (subMode < 0 || subMode > 5 || subMode == 4) throw new IOException("尚未适配 Ray 选项: ALBEDO_SUB_ENABLE=" + subMode);
+        if (subMode < 0 || subMode > 5) throw new IOException("尚未适配 Ray 选项: ALBEDO_SUB_ENABLE=" + subMode);
         if (subMode != 0) {
             add(channels, root, file, definitions, constants, "ALBEDO_SUB", "albedoSub", new float[]{1, 1, 1}, 0);
             FxEffect.Channel sub = channels.get("ALBEDO_SUB");
@@ -82,6 +69,7 @@ final class RayMaterialImporter {
         var notes = new ArrayList<String>();
         notes.add("Ray 材质语义已转换；光照使用宿主环境，不复刻缺失的 Ray 灯光/IBL/后处理。");
         notes.add("贴图 UV 必须与目标模型匹配；不会自动推断 PMX 材质分配。");
+        if (alphaSource == 0) notes.add("常量 alpha 替换 PMX 贴图 alpha，并保留材质透明度；阴影程序不支持时在运行时报告。");
         if (alphaSource == 1) notes.add("外置 alpha 用于主体透明及深度；阴影支持唯一主纹理的两参数采样，不支持的阴影程序在运行时报告。");
         return new FxEffect(id, file.getFileName().toString(), root, FxEffect.Kind.RAY_MATERIAL,
                 Map.copyOf(channels), constants.getOrDefault("alpha", new float[]{1})[0], FxEffect.IDENTITY, notes);
@@ -122,23 +110,16 @@ final class RayMaterialImporter {
     }
 
     static int integer(Map<String, String> definitions, String key, int fallback) throws IOException {
-        try { return Integer.parseInt(definitions.getOrDefault(key, Integer.toString(fallback)).trim()); }
-        catch (NumberFormatException e) { throw new IOException("宏要求整数常量: " + key); }
+        if (!definitions.containsKey(key)) return fallback;
+        float value = new FxConstantExpression(Map.of(), definitions, Map.of()).evaluate(definitions.get(key), 1)[0];
+        if (value != Math.rint(value) || value < Integer.MIN_VALUE || (double) value > Integer.MAX_VALUE)
+            throw new IOException("宏要求整数常量: " + key);
+        return (int) value;
     }
 
     private static boolean unit(float[] values) { for (float v : values) if (v != 1) return false; return true; }
 
     static float[] numbers(String expression, int width) throws IOException {
-        String text = expression.trim().replaceFirst("^(?:float[234]|half[234])\\s*\\((.*)\\)$", "$1");
-        String[] components = text.split(",");
-        if (components.length != 1 && components.length != width) throw new IOException("向量宽度不匹配: " + expression);
-        float[] result = new float[width];
-        try {
-            for (int i = 0; i < width; i++) {
-                result[i] = Float.parseFloat(components[components.length == 1 ? 0 : i].trim().replaceFirst("[fF]$", ""));
-                if (!Float.isFinite(result[i])) throw new NumberFormatException();
-            }
-        } catch (NumberFormatException e) { throw new IOException("仅支持有限数值常量: " + expression); }
-        return result;
+        return new FxConstantExpression(Map.of(), Map.of(), Map.of()).evaluate(expression, width);
     }
 }
