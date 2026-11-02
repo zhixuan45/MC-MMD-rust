@@ -1,10 +1,10 @@
 // Ray 材质参数的宿主实现；不使用原 MME 的 G-buffer 编码和渲染脚本。
 uniform bool FxMaterialEnabled;
 uniform float FxMaterialPower;
-uniform int FxSources[10];
-uniform vec4 FxValues[10];
-uniform ivec4 FxOptions[10]; // UV flip、type、swizzle、scale
-uniform vec2 FxRepeat[10];
+uniform int FxSources[12];
+uniform vec4 FxValues[12]; // xyz: value; w: channel flags (slot 2 retains material power in batches)
+uniform ivec4 FxOptions[12]; // UV flip、type (CUSTOM_A: shading model)、swizzle、scale
+uniform vec2 FxRepeat[12];
 uniform sampler2D FxMap0;
 uniform sampler2D FxMap1;
 uniform sampler2D FxMap2;
@@ -15,6 +15,8 @@ uniform sampler2D FxMap6;
 uniform sampler2D FxMap7;
 uniform sampler2D FxMap8;
 uniform sampler2D FxMap9;
+uniform sampler2D FxMap10;
+uniform sampler2D FxMap11;
 
 bool mmdFxRayEnabled() {
 #if defined(MMD_BATCH_MATERIALS) && defined(MMD_FX_COMBINED)
@@ -56,7 +58,7 @@ vec4 mmdFxSample(int slot, vec2 uv) {
     if (flip == 1 || flip == 3) uv.x = 1.0 - uv.x;
     if (flip == 2 || flip == 3) uv.y = 1.0 - uv.y;
     uv *= mmdFxLoop(slot);
-    if (mmdFxSource(slot) == 0) return mmdFxValue(slot);
+    if (mmdFxSource(slot) == 0) return vec4(mmdFxValue(slot).rgb, 1.0);
     if (mmdFxSource(slot) == 3) {
 #ifdef MMD_BATCH_MATERIALS
         return mmdDiffuse(uv);
@@ -76,7 +78,9 @@ vec4 mmdFxSample(int slot, vec2 uv) {
     if (slot == 6) return texture(FxMap6, uv);
     if (slot == 7) return texture(FxMap7, uv);
     if (slot == 8) return texture(FxMap8, uv);
-    return texture(FxMap9, uv);
+    if (slot == 9) return texture(FxMap9, uv);
+    if (slot == 10) return texture(FxMap10, uv);
+    return texture(FxMap11, uv);
 }
 
 float mmdFxAlpha(float original, float materialAlpha, vec2 uv) {
@@ -113,7 +117,7 @@ vec3 mmdFxAlbedo(vec3 original, vec2 uv) {
         if (mmdFxOption(0).w == 1) color *= mmdFxValue(0).rgb;
         if (mmdFxOption(0).w == 2) color = pow(max(color, vec3(0.00001)), mmdFxValue(0).rgb);
     }
-    color *= MaterialColor.rgb;
+    if (mmdFxValue(0).w == 0.0) color *= MaterialColor.rgb;
     int subMode = mmdFxOption(7).y;
     if (subMode != 0) {
         vec4 sub = mmdFxSample(7, uv);
@@ -160,6 +164,33 @@ vec3 mmdFxNormal(vec3 n, vec3 p, vec2 uv) {
     return length(result) > 0.00001 ? normalize(result) : n;
 }
 
+vec3 mmdFxSrgbToLinear(vec3 color) {
+    return mix(pow((max(color, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)),
+               color / 12.92, lessThan(color, vec3(0.04045)));
+}
+
+float mmdFxClothWeight(vec2 uv) {
+    float weight = mmdFxSource(10) == 0 ? mmdFxValue(10).x : mmdFxSample(10, uv)[mmdFxOption(10).z];
+    if (mmdFxSource(10) != 0) {
+        if (mmdFxOption(10).w == 1) weight *= mmdFxValue(10).x;
+        if (mmdFxOption(10).w == 2) weight = pow(max(weight, 0.0), mmdFxValue(10).x);
+    }
+    if (mmdFxValue(10).w != 0.0) weight = 1.0 - weight;
+    return clamp(weight, 0.0, 1.0);
+}
+
+vec3 mmdFxClothColor(vec2 uv) {
+    vec3 color = mmdFxSample(11, uv).rgb;
+    if (mmdFxSource(11) == 0 || mmdFxOption(11).y == 0) color = mmdFxSrgbToLinear(color);
+    // Ray only applies B's invert/scale options when sampling a map.
+    if (mmdFxSource(11) != 0) {
+        if (mmdFxValue(11).w != 0.0) color = 1.0 - color;
+        if (mmdFxOption(11).w == 1) color *= mmdFxValue(11).rgb;
+        if (mmdFxOption(11).w == 2) color = pow(max(color, vec3(0.0)), mmdFxValue(11).rgb);
+    }
+    return clamp(color, 0.0, 1.0);
+}
+
 vec3 mmdFxMaterialLight(vec3 lit, vec3 albedo, vec3 n, vec3 p, vec3 light, vec2 uv, vec3 illumination) {
     if (!mmdFxRayEnabled()) return lit;
     float smoothness = mmdFxScalar(2, uv);
@@ -182,6 +213,18 @@ vec3 mmdFxMaterialLight(vec3 lit, vec3 albedo, vec3 n, vec3 p, vec3 light, vec2 
     vec3 f0 = mix(specular * 0.08, base, metalness);
     vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
     vec3 reflection = distribution * geometry * fresnel / max(4.0 * nv * max(nl, 0.001), 0.0001);
+    if (mmdFxOption(10).y == 5) {
+        // Ray 1.5.2 ClothShading: customA mixes GGX with Charlie sheen and
+        // Neubelt visibility; customB is the linear sheen color, reduced by metalness.
+        float clothRoughness = max((1.0 - smoothness) * (1.0 - smoothness), 0.001);
+        float vh = clamp(dot(v, h), 0.0, 1.0);
+        vec3 sheenColor = mmdFxClothColor(uv) * (1.0 - metalness);
+        vec3 sheenFresnel = sheenColor + (1.0 - sheenColor) * pow(1.0 - vh, 5.0);
+        float sheenDistribution = (2.0 + 1.0 / clothRoughness)
+            * pow(max(1.0 - nh * nh, 0.0), 0.5 / clothRoughness) * 0.5;
+        vec3 sheen = sheenFresnel * sheenDistribution / max(4.0 * (nl + nv - nl * nv), 0.00001);
+        reflection = mix(reflection, sheen, mmdFxClothWeight(uv));
+    }
     // Fresnel 反射占据的能量不再进入漫反射；场景照明仍由宿主提供。
     vec3 diffuse = pow(max(lit, vec3(0.0)), vec3(2.2)) * (1.0 - fresnel) * (1.0 - metalness) * ao;
     vec3 emission = mmdFxSample(6, uv).rgb;

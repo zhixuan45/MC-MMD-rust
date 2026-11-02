@@ -70,7 +70,7 @@ public final class FxMaterialBinding implements AutoCloseable {
                 GL46C.glUniform1i(sources[i], from);
                 float[] value = channel == null ? new float[]{0} : channel.value();
                 float x = value[0];
-                GL46C.glUniform4f(values[i], x, value.length > 1 ? value[1] : x, value.length > 2 ? value[2] : x, 1);
+                GL46C.glUniform4f(values[i], x, value.length > 1 ? value[1] : x, value.length > 2 ? value[2] : x, channel == null ? 0 : channel.flags());
                 GL46C.glUniform4i(options[i], channel == null ? 0 : channel.uvFlip(), channel == null ? 0 : channel.type(),
                         channel == null ? 0 : channel.component(), channel == null ? 0 : channel.scaleMode());
                 GL46C.glUniform2f(repeats[i], channel == null ? 1 : channel.repeat()[0], channel == null ? 1 : channel.repeat()[1]);

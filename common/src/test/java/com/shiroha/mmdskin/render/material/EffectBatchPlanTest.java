@@ -50,9 +50,31 @@ class EffectBatchPlanTest {
         var data = new FxMaterialData(e, 1, new int[]{0,42,0,0,0,0,0});
         ByteBuffer bytes = ByteBuffer.allocate(FxMaterialData.CHANNEL_BYTES).order(ByteOrder.nativeOrder());
         data.writeChannels(bytes, new int[]{-1,5,-1,-1,-1,-1,-1});
-        assertEquals(480, bytes.position());
+        assertEquals(576, bytes.position());
         assertEquals(0.2f, bytes.getFloat(48)); assertEquals(2f, bytes.getFloat(64));
         assertEquals(3f, bytes.getFloat(80)); assertEquals(4f, bytes.getFloat(84));
         assertEquals(1f, bytes.getFloat(88)); assertEquals(5f, bytes.getFloat(92));
+    }
+
+    @Test void clothChannelsAndFlagsSurviveTheBatchTable() {
+        var albedo = new FxEffect.Channel(0, "", new float[]{1,1,1}, 0, new float[]{1,1}, 0,0,0,1);
+        var weight = new FxEffect.Channel(1, "weight.png", new float[]{0.7f}, 3, new float[]{2,3}, 5,2,1,1);
+        var sheen = new FxEffect.Channel(1, "sheen.png", new float[]{0.4f,0.2f,0.1f}, 1, new float[]{4,5}, 1,0,2,1);
+        var e = new FxEffect("cloth", "cloth", Path.of("."), FxEffect.Kind.RAY_MATERIAL,
+                Map.of("ALBEDO", albedo, "CUSTOM_A", weight, "CUSTOM_B", sheen), 1, FxEffect.IDENTITY, List.of());
+        ByteBuffer bytes = ByteBuffer.allocate(FxMaterialData.CHANNEL_BYTES).order(ByteOrder.nativeOrder());
+        int[] slots = new int[12]; slots[10] = 6; slots[11] = 7;
+        new FxMaterialData(e, 1, new int[12]).writeChannels(bytes, slots, 30);
+        assertEquals(1f, bytes.getFloat(12)); // disable diffuse
+        assertEquals(30f, bytes.getFloat(2 * 48 + 12)); // smoothness still carries PMX power
+        assertEquals(0.7f, bytes.getFloat(10 * 48));
+        assertEquals(1f, bytes.getFloat(10 * 48 + 12)); // invert weight
+        assertEquals(5f, bytes.getFloat(10 * 48 + 20)); // shading model
+        assertEquals(2f, bytes.getFloat(10 * 48 + 24)); // swizzle
+        assertEquals(6f, bytes.getFloat(10 * 48 + 44));
+        assertEquals(0.4f, bytes.getFloat(11 * 48));
+        assertEquals(1f, bytes.getFloat(11 * 48 + 12));
+        assertEquals(1f, bytes.getFloat(11 * 48 + 20)); // linear map
+        assertEquals(7f, bytes.getFloat(11 * 48 + 44));
     }
 }

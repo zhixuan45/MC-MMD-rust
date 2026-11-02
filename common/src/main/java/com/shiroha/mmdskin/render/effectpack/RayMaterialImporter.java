@@ -41,12 +41,15 @@ final class RayMaterialImporter {
         String remaining = INCLUDE.matcher(VALUE.matcher(DEFINE.matcher(clean).replaceAll("")).replaceAll("")).replaceAll("").trim();
         if (!remaining.isEmpty()) throw new IOException("Ray 参数文件包含未支持的代码/条件宏");
 
-        for (String flag : new String[]{"PARALLAX_MAP_FROM", "CUSTOM_ENABLE",
+        for (String flag : new String[]{"PARALLAX_MAP_FROM",
                 "ALBEDO_MAP_APPLY_MORPH_COLOR", "EMISSIVE_MAP_APPLY_MORPH_COLOR", "EMISSIVE_MAP_APPLY_MORPH_INTENSITY", "EMISSIVE_MAP_APPLY_BLINK"}) {
             if (integer(definitions, flag, 0) != 0) throw new IOException("尚未适配 Ray 选项: " + flag);
         }
-        if (integer(definitions, "ALBEDO_MAP_APPLY_DIFFUSE", 1) != 1)
-            throw new IOException("当前要求 ALBEDO_MAP_APPLY_DIFFUSE=1");
+        int custom = integer(definitions, "CUSTOM_ENABLE", 0);
+        if (custom != 0 && custom != 5)
+            throw new IOException("尚未适配 Ray 着色模型: CUSTOM_ENABLE=" + custom + "（当前支持默认及布料 5）");
+        int diffuse = integer(definitions, "ALBEDO_MAP_APPLY_DIFFUSE", 1);
+        if (diffuse < 0 || diffuse > 1) throw new IOException("ALBEDO_MAP_APPLY_DIFFUSE 要求 0 或 1");
         int alphaSource = integer(definitions, "ALPHA_MAP_FROM", 3);
         if (alphaSource != 1 && (alphaSource != 3 || integer(definitions, "ALPHA_MAP_SWIZZLE", 3) != 3
                 || integer(definitions, "ALPHA_MAP_UV_FLIP", 0) != 0
@@ -58,6 +61,7 @@ final class RayMaterialImporter {
         var channels = new LinkedHashMap<String, FxEffect.Channel>();
         if (alphaSource == 1) add(channels, root, file, definitions, constants, "ALPHA", "alpha", new float[]{1}, 1);
         add(channels, root, file, definitions, constants, "ALBEDO", "albedo", new float[]{1, 1, 1}, 0);
+        channels.put("ALBEDO", channels.get("ALBEDO").withFlags(diffuse == 0 ? 1 : 0));
         int subMode = integer(definitions, "ALBEDO_SUB_ENABLE", 0);
         if (subMode < 0 || subMode > 5 || subMode == 4) throw new IOException("尚未适配 Ray 选项: ALBEDO_SUB_ENABLE=" + subMode);
         if (subMode != 0) {
@@ -71,6 +75,19 @@ final class RayMaterialImporter {
         add(channels, root, file, definitions, constants, "METALNESS", "metalness", new float[]{0}, 0);
         add(channels, root, file, definitions, constants, "SPECULAR", "specular", new float[]{0.5f, 0.5f, 0.5f}, 0);
         add(channels, root, file, definitions, constants, "OCCLUSION", "occlusion", new float[]{1}, 0);
+        if (custom == 5) {
+            if (channels.get("SPECULAR").source() != 0)
+                throw new IOException("布料材质当前要求常量 SPECULAR，尚未适配其单通道反射贴图");
+            add(channels, root, file, definitions, constants, "CUSTOM_A", "customA", new float[]{0}, 0);
+            add(channels, root, file, definitions, constants, "CUSTOM_B", "customB", new float[]{0, 0, 0}, 0);
+            for (String key : new String[]{"CUSTOM_A", "CUSTOM_B"}) {
+                int flip = integer(definitions, key + "_MAP_COLOR_FLIP", 0);
+                if (flip < 0 || flip > 1) throw new IOException(key + ": COLOR_FLIP 要求 0 或 1");
+                FxEffect.Channel channel = channels.get(key);
+                channels.put(key, new FxEffect.Channel(channel.source(), channel.file(), channel.value(), channel.uvFlip(),
+                        channel.repeat(), key.equals("CUSTOM_A") ? custom : channel.type(), channel.component(), channel.scaleMode(), flip));
+            }
+        }
         if (integer(definitions, "EMISSIVE_ENABLE", 0) != 0) {
             add(channels, root, file, definitions, constants, "EMISSIVE", "emissive", new float[]{1, 1, 1}, 0);
             float intensity = constants.getOrDefault("emissiveIntensity", new float[]{1})[0];
@@ -82,6 +99,7 @@ final class RayMaterialImporter {
         var notes = new ArrayList<String>();
         notes.add("Ray 材质语义已转换；光照使用宿主环境，不复刻缺失的 Ray 灯光/IBL/后处理。");
         notes.add("贴图 UV 必须与目标模型匹配；不会自动推断 PMX 材质分配。");
+        if (custom == 5) notes.add("布料模型已转换：customA 控制 GGX/绒面反射混合，customB 控制绒面颜色；照明仍使用宿主环境。");
         if (alphaSource == 1) notes.add("外置 alpha 用于主体透明及深度；阴影支持唯一主纹理的两参数采样，不支持的阴影程序在运行时报告。");
         return new FxEffect(id, file.getFileName().toString(), root, FxEffect.Kind.RAY_MATERIAL,
                 Map.copyOf(channels), constants.getOrDefault("alpha", new float[]{1})[0], FxEffect.IDENTITY, notes);
@@ -95,6 +113,7 @@ final class RayMaterialImporter {
         int type = integer(defs, key + "_MAP_TYPE", 0);
         if (((key.equals("NORMAL") || key.equals("NORMAL_SUB")) && (type < 0 || type > 1)) || (key.equals("SMOOTHNESS") && (type < 0 || type > 2))
                 || (key.equals("OCCLUSION") && (type < 0 || type > 1))
+                || (key.equals("CUSTOM_B") && (type < 0 || type > 1))
                 || (key.equals("SPECULAR") && type != 0)) throw new IOException(key + ": 不支持贴图类型 " + type);
         String relative = "";
         if (from == 1) {
@@ -111,6 +130,8 @@ final class RayMaterialImporter {
         String repeatName = switch (key) {
             case "ALBEDO_SUB" -> "albedoSubMapLoopNum";
             case "NORMAL_SUB" -> "normalSubMapLoopNum";
+            case "CUSTOM_A" -> "customAMapLoopNum";
+            case "CUSTOM_B" -> "customBMapLoopNum";
             default -> key.toLowerCase(java.util.Locale.ROOT) + "MapLoopNum";
         };
         float[] repeats = values.getOrDefault(repeatName, new float[]{1, 1});
