@@ -44,7 +44,7 @@ public record FxMaterialData(FxEffect effect, int selection, int[] textures) {
             target.putFloat(channel == null ? 0 : channel.uvFlip()).putFloat(channel == null ? 0 : channel.type())
                     .putFloat(channel == null ? 0 : channel.component()).putFloat(channel == null ? 0 : channel.scaleMode());
             target.putFloat(channel == null ? 1 : channel.repeat()[0]).putFloat(channel == null ? 1 : channel.repeat()[1])
-                    .putFloat(channel == null ? 0 : channel.source()).putFloat(i < textureSlots.length ? textureSlots[i] : -1);
+                    .putFloat(channel == null ? (i == 9 ? -1 : 0) : channel.source()).putFloat(i < textureSlots.length ? textureSlots[i] : -1);
         }
     }
 }

@@ -9,6 +9,9 @@ import org.lwjgl.opengl.GL46C;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.function.IntPredicate;
+import java.util.function.IntFunction;
+import com.shiroha.mmdskin.render.effectpack.EffectPackRuntime;
+import com.shiroha.mmdskin.render.effectpack.FxEffect;
 
 /** 集中执行 CPU 与 GPU 蒙皮共用的描边绘制。 */
 public final class OutlineRenderPass {
@@ -47,6 +50,12 @@ public final class OutlineRenderPass {
 
     public static void draw(ToonShaderBase shader, Inputs inputs,
                             AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver) {
+        draw(shader, inputs, alphaResolver, textureResolver, hairResolver, id -> "");
+    }
+
+    public static void draw(ToonShaderBase shader, Inputs inputs,
+                            AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver,
+                            IntFunction<String> materialNames) {
         int positionLocation = shader.getOutlinePositionLocation();
         int normalLocation = shader.getOutlineNormalLocation();
         int uvLocation = shader.getOutlineUvLocation();
@@ -85,7 +94,7 @@ public final class OutlineRenderPass {
                 shader.setOutlineWidth(0);
                 shader.setOutlineOcclusion(true);
                 try {
-                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, true, false);
+                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, config, true, false);
                 } finally {
                     shader.setOutlineOcclusion(false);
                     pass.endOcclusion();
@@ -99,7 +108,7 @@ public final class OutlineRenderPass {
             GL46C.glCullFace(GL46C.GL_FRONT);
             GL46C.glEnable(GL46C.GL_CULL_FACE);
             boolean capture = sharedWorld && WorldTransparencyPipeline.prepareModel();
-            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, config, false, capture);
+            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, config, false, capture);
             pass.composite();
         }
     }
@@ -116,7 +125,7 @@ public final class OutlineRenderPass {
     }
 
     private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver,
-                                      TextureResolver textureResolver, IntPredicate hairResolver, ToonConfig config,
+                                      TextureResolver textureResolver, IntPredicate hairResolver, IntFunction<String> materialNames, ToonConfig config,
                                       boolean occlusion, boolean sharedWorld) {
         ByteBuffer data = inputs.subMeshData();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
@@ -129,13 +138,17 @@ public final class OutlineRenderPass {
                 else { GL46C.glEnable(GL46C.GL_CULL_FACE); GL46C.glCullFace(GL46C.GL_BACK); }
             }
             float alpha = alphaResolver.resolve(data.getInt(base), data.getFloat(base + 12));
+            var runtime = EffectPackRuntime.active();
+            var coverage = coverage(alpha, runtime == null ? null
+                    : runtime.materialEffect(data.getInt(base), materialNames.apply(data.getInt(base))));
+            alpha = coverage.alpha();
             if (alpha < 0.001f) continue;
             float cutoff = hairResolver.test(data.getInt(base)) ? config.getHairAlphaCutoff() : config.getAlphaCutoff();
             // 主体裁掉的像素不留下描边；保留原贴图遮罩的 0.1 下限。
             shader.setOutlineAlphaCutoff(occlusion ? Math.max(0.001f, cutoff) / alpha
                     : Math.max(0.1f, cutoff / alpha));
             // 无纹理材质沿用实心遮罩，不采样上一材质的残留绑定。
-            int texture = textureResolver.resolve(data.getInt(base));
+            int texture = coverage.textureAlpha() ? textureResolver.resolve(data.getInt(base)) : 0;
             shader.setOutlineUseTextureAlpha(texture > 0);
             if (texture > 0) GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
             shader.setOutlineAlpha(alpha);
@@ -144,5 +157,14 @@ public final class OutlineRenderPass {
                         (long) data.getInt(base + 4) * inputs.indexElementSize());
             }
         }
+    }
+
+    record Coverage(float alpha, boolean textureAlpha) { }
+
+    static Coverage coverage(float materialAlpha, FxEffect effect) {
+        var channel = effect == null ? null : effect.channels().get("ALPHA");
+        if (channel != null && channel.source() == 0)
+            return new Coverage(Math.max(0, Math.min(1, materialAlpha * channel.value()[0])), false);
+        return new Coverage(materialAlpha, true);
     }
 }

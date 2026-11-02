@@ -69,6 +69,7 @@ public final class Probe {
             testProductionPrograms();
             testWorldPass();
             testNewMaterialChannels();
+            testStaticMaterialChannels();
             testGraphPixels();
             testShadowPatch();
             Path original = runtime.library().resolve(ray.id());
@@ -84,6 +85,20 @@ public final class Probe {
             Files.writeString(colors.resolve("warm.fx"), Files.readString(Path.of("examples/mmd-effects/warm.fx")));
             runtime.reload();
             checks += com.shiroha.mmdskin.render.material.MixedFxGlProbe.run(runtime, ray.id(), "second-ray/alternate.fx", "colors/gray.fx", "colors/warm.fx");
+            String staticSource = """
+                    #define ALBEDO_MAP_FROM 0
+                    #define ALBEDO_MAP_APPLY_DIFFUSE 0
+                    #define ALPHA_MAP_FROM 0
+                    #define ALBEDO_SUB_ENABLE 4
+                    const float3 albedo = float3(204,153,102)/255;
+                    const float3 albedoSub = .1;
+                    const float alpha = .5;
+                    #include "material_common_2.0.fxsub"
+                    """;
+            Files.writeString(alternate.resolve("static.fx"), staticSource);
+            Files.writeString(alternate.resolve("tinted.fx"), staticSource.replace("APPLY_DIFFUSE 0", "APPLY_DIFFUSE 1"));
+            runtime.reload();
+            checks += com.shiroha.mmdskin.render.material.MixedFxGlProbe.run(runtime, "second-ray/static.fx", "second-ray/tinted.fx", "colors/gray.fx", "colors/warm.fx");
             check(GL33C.glGetError() == GL33C.GL_NO_ERROR, "无 GL 错误");
             runtime.reload();
             check(TextureRepository.getTextureCount() == 0, "重载释放额外贴图");
@@ -113,7 +128,7 @@ public final class Probe {
         float[] pixel = drawBound();
         near(pixel[0], .29289322f, .0001f, "Ray 来源9公式");
         near(pixel[1], 180f/255f*.5f, .0001f, "外置alpha替换贴图alpha并保留材质alpha");
-        near(pixel[2], .2f, .0001f, "副基础色乘法");
+        near(pixel[2], (float)Math.pow(.2,1.0/2.2), .0001f, "副基础色在线性空间乘法");
         GL33C.glUniform1f(GL33C.glGetUniformLocation(p, "FxMaterialPower"), 0);
         near(drawBound()[0], 0, .0001f, "来源9保留低于1的镜面指数");
         int alphaMap = GL33C.glGenTextures(); GL33C.glBindTexture(GL33C.GL_TEXTURE_2D,alphaMap);
@@ -142,6 +157,40 @@ public final class Probe {
         GL33C.glTexParameteri(GL33C.GL_TEXTURE_2D,GL33C.GL_TEXTURE_MAG_FILTER,GL33C.GL_NEAREST);
         pixel=drawBound(); near(pixel[0],.5f,.0001f,"副法线X"); near(pixel[2],.8660254f,.0001f,"副法线重建Z");
         GL33C.glUseProgram(0); GL33C.glDeleteProgram(p); GL33C.glDeleteTextures(detail); GL33C.glBindTexture(GL33C.GL_TEXTURE_2D,diffuse);
+    }
+
+    private static void testStaticMaterialChannels() throws Exception {
+        String material = Files.readString(Path.of("common/src/main/resources/assets/mmdskin/shader/fx_material.glsl"));
+        String fragment = "#version 330 core\nuniform sampler2D Sampler0; uniform vec4 MaterialColor;\n"
+                + material + "\nout vec4 result; void main(){result=vec4(mmdFxAlbedo(vec3(0),vec2(.25)),mmdFxAlpha(.02,MaterialColor.a,vec2(.25)));}";
+        int program = ShaderCompiler.compileRenderProgram(VERTEX, fragment, "static Ray semantics");
+        check(program != 0, "static material compile");
+        GL33C.glUseProgram(program);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(program, "FxMaterialEnabled"), 1);
+        GL33C.glUniform4f(GL33C.glGetUniformLocation(program, "MaterialColor"), .25f,.5f,.75f,.4f);
+        GL33C.glUniform4f(GL33C.glGetUniformLocation(program, "FxValues[0]"), .8f,.6f,.4f,1);
+        GL33C.glUniform4f(GL33C.glGetUniformLocation(program, "FxValues[9]"), .5f,.5f,.5f,1);
+        float[] pixel = drawBound();
+        near(pixel[0],(float)Math.pow(.8,1.0/2.2),.0001f,"linear constant with diffuse switch off");
+        near(pixel[1],(float)Math.pow(.6,1.0/2.2),.0001f,"linear static green");
+        near(pixel[2],(float)Math.pow(.4,1.0/2.2),.0001f,"linear static blue");
+        near(pixel[3],.2f,.0001f,"constant alpha replaces texture alpha and retains material alpha");
+        GL33C.glUniform4i(GL33C.glGetUniformLocation(program,"FxOptions[0]"),0,1,0,0);
+        pixel=drawBound();
+        near(pixel[0],(float)Math.pow(.8,1.0/2.2)*.25f,.0001f,"diffuse switch on red");
+        near(pixel[1],(float)Math.pow(.6,1.0/2.2)*.5f,.0001f,"diffuse switch on green");
+        near(pixel[2],(float)Math.pow(.4,1.0/2.2)*.75f,.0001f,"diffuse switch on blue");
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(program,"FxSources[9]"),-1);
+        near(drawBound()[3],.02f,.0001f,"original PMX alpha sentinel");
+        GL33C.glUniform4i(GL33C.glGetUniformLocation(program,"FxOptions[7]"),0,4,0,0);
+        GL33C.glUniform4f(GL33C.glGetUniformLocation(program,"FxValues[7]"),.1f,.2f,.3f,1);
+        pixel=drawBound();
+        float red=.8f*(float)Math.pow(.25,2.2), green=.6f*(float)Math.pow(.5,2.2), blue=.4f*(float)Math.pow(.75,2.2);
+        float luminance=red*.299f+green*.587f+blue*.114f;
+        near(pixel[0],(float)Math.pow(red*(.9f+red*luminance*.1f),1.0/2.2),.0001f,"linear ColorSynthesis red");
+        near(pixel[1],(float)Math.pow(green*(.8f+green*luminance*.2f),1.0/2.2),.0001f,"linear ColorSynthesis green");
+        near(pixel[2],(float)Math.pow(blue*(.7f+blue*luminance*.3f),1.0/2.2),.0001f,"linear ColorSynthesis blue");
+        GL33C.glUseProgram(0); GL33C.glDeleteProgram(program);
     }
 
     private static void testGraphPixels() throws Exception {
@@ -176,7 +225,11 @@ public final class Probe {
         GL33C.glUniform2f(GL33C.glGetUniformLocation(p,"MmdShadowFxRepeat"),1,1);
         GL33C.glUniform2i(GL33C.glGetUniformLocation(p,"MmdShadowFxOptions"),0,0);
         GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"MmdShadowFxEnabled"),1);
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"MmdShadowFxMode"),1);
         float[] c=drawBound(); near(c[0],180f/255f,.0001f,"阴影保留RGB"); near(c[3],180f/255f*.5f,.0001f,"阴影替换alpha并保留原后续运算");
+        GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"MmdShadowFxMode"),0);
+        GL33C.glUniform1f(GL33C.glGetUniformLocation(p,"MmdShadowFxAlpha"),.25f);
+        near(drawBound()[3],.125f,.0001f,"constant shadow alpha retains downstream material alpha");
         GL33C.glUniform1i(GL33C.glGetUniformLocation(p,"MmdShadowFxEnabled"),0);
         near(drawBound()[3],128f/255f*.5f,.0001f,"无FX材质恢复原阴影alpha");
         GL33C.glUseProgram(0); GL33C.glDeleteProgram(p); GL33C.glDeleteProgram(original);

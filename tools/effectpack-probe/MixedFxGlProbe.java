@@ -35,6 +35,7 @@ public final class MixedFxGlProbe {
             """;
 
     public static int run(EffectPackRuntime runtime, String rayA, String rayB, String gray, String warm) throws Exception {
+        int previousChecks = checks;
         runtime.settings().characters = gray; runtime.settings().characterModel = "*"; runtime.settings().world = "";
         String[] names = {"skin", "hair", "eyes", "cloth", "prop", "body"};
         String[] effects = {rayA, rayB, gray, warm, ""};
@@ -70,6 +71,8 @@ public final class MixedFxGlProbe {
         for (int i=0;i<materials.length;i++) {
             ModelMaterial m = materials[i] = new ModelMaterial(); m.name = names[i]; m.tex = diffuse;
             m.hasAlpha = true; m.hasTranslucentPixels = true;
+            m.diffuse = new float[]{.4f,.7f,.9f,1};
+            m.ambient = new float[]{0,0,0};
         }
         try (var scope = runtime.enter(RenderScene.WORLD,"mixed")) {
             int legacy = compile(runtime,false), batch = compile(runtime,true);
@@ -93,7 +96,8 @@ public final class MixedFxGlProbe {
                 ProgramSamplerLayout small=constructor.newInstance(batch,Arrays.copyOf(full.units(),4));
                 clear();
                 int windows=submission.draw(runs,owners.length,materials,cache,small);
-                check(windows>=3,"effect texture windows preserve interleaving: "+windows);
+                boolean textured = runtime.effect(rayA).channels().values().stream().anyMatch(c -> c.source() == 1);
+                check(windows >= (textured ? 3 : 1), "effect texture windows preserve interleaving: " + windows);
                 compare(expected,pixels(),"CPU windows");
                 GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER,ebo);
                 try (var order = new TranslucentDrawOrder()) {
@@ -116,8 +120,8 @@ public final class MixedFxGlProbe {
             GL46C.glDeleteBuffers(ebo); GL46C.glDeleteBuffers(positions); GL46C.glDeleteVertexArrays(vao);
             GL46C.glDeleteFramebuffers(fbo); GL46C.glDeleteTextures(target); GL46C.glDeleteTextures(diffuse);
         }
-        System.out.println("PASS mixed cross-pack Ray/color/off/inherit, CPU windows and GPU sort: "+checks+" checks");
-        return checks;
+        System.out.println("PASS mixed cross-pack Ray/color/off/inherit, CPU windows and GPU sort: "+(checks-previousChecks)+" checks");
+        return checks - previousChecks;
     }
 
     private static int compile(EffectPackRuntime runtime, boolean batch) throws Exception {

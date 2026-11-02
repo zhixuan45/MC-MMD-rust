@@ -34,8 +34,14 @@ final class ShadowFxAlphaBinding implements AutoCloseable {
         var channel = effect == null ? null : effect.channels().get("ALPHA");
         if (enabled >= 0) GL46C.glUniform1i(enabled, 0);
         if (channel == null) return;
+        if (enabled >= 0 && channel.source() == 0) {
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "MmdShadowFxMode"), 0);
+            GL46C.glUniform1f(GL46C.glGetUniformLocation(program, "MmdShadowFxAlpha"), channel.value()[0]);
+            GL46C.glUniform1i(enabled, 1);
+            return;
+        }
         if (unit < 0) {
-            runtime.problem("shadow-alpha:" + effect.id(), "当前阴影 shader 未适配外置 alpha: " + effect.name());
+            runtime.problem("shadow-alpha:" + effect.id(), "当前阴影 shader 未适配 FX alpha: " + effect.name());
             return;
         }
         int id = runtime.texture(effect, channel);
@@ -47,6 +53,7 @@ final class ShadowFxAlphaBinding implements AutoCloseable {
             GL46C.glBindSampler(unit, 0);
             GL46C.glUniform2f(GL46C.glGetUniformLocation(program, "MmdShadowFxRepeat"), channel.repeat()[0], channel.repeat()[1]);
             GL46C.glUniform2i(GL46C.glGetUniformLocation(program, "MmdShadowFxOptions"), channel.uvFlip(), channel.component());
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "MmdShadowFxMode"), 1);
             GL46C.glUniform1i(enabled, 1);
         } finally { GL46C.glActiveTexture(previous); }
     }
@@ -89,12 +96,17 @@ final class ShadowFxAlphaBinding implements AutoCloseable {
         String sample = !version.find() || Integer.parseInt(version.group(1)) < 130 ? "texture2D" : "texture";
         String helper = """
                 uniform bool MmdShadowFxEnabled;
+                uniform int MmdShadowFxMode;
+                uniform float MmdShadowFxAlpha;
                 uniform sampler2D MmdShadowFxMap;
                 uniform vec2 MmdShadowFxRepeat;
                 uniform ivec2 MmdShadowFxOptions;
                 vec4 mmdShadowFxSample(sampler2D original, vec2 uv) {
                     vec4 c = SAMPLE(original, uv);
-                    if (MmdShadowFxEnabled) {
+                    if (MmdShadowFxEnabled && MmdShadowFxMode == 0) {
+                        // The host applies material alpha after sampling.
+                        c.a = MmdShadowFxAlpha;
+                    } else if (MmdShadowFxEnabled) {
                         vec2 q = uv;
                         if (MmdShadowFxOptions.x == 1 || MmdShadowFxOptions.x == 3) q.x = 1.0-q.x;
                         if (MmdShadowFxOptions.x == 2 || MmdShadowFxOptions.x == 3) q.y = 1.0-q.y;

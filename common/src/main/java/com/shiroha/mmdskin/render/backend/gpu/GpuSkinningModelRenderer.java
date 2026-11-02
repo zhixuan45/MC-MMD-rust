@@ -500,6 +500,7 @@ final class GpuSkinningModelRenderer {
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
         ShaderInstance irisShader = irisEntityScene ? IrisToonCompat.preparedEntityShader() : null;
+        ShaderInstance hostShader = irisShader != null ? irisShader : RenderSystem.getShader();
         try {
             // 先设普通混合，再让 Iris 应用每个缓冲的混合规则。
             if (irisShader != null) {
@@ -559,9 +560,13 @@ final class GpuSkinningModelRenderer {
             }
 
         } finally {
-            if (irisShader != null) irisShader.clear();
-            GL46C.glUseProgram(0);
-            clearRenderState(target);
+            try {
+                // 与 CPU 路径一致，清理原版/Iris 宿主的程序缓存。
+                IrisCompat.clearProgram(hostShader, -1, -1);
+            } finally {
+                GL46C.glUseProgram(0);
+                clearRenderState(target);
+            }
         }
     }
 
@@ -575,7 +580,8 @@ final class GpuSkinningModelRenderer {
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
                 (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
                 materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex,
-                materialId -> target.mats[materialId] != null && target.mats[materialId].isHair());
+                materialId -> target.mats[materialId] != null && target.mats[materialId].isHair(),
+                materialId -> target.mats[materialId] == null ? "" : target.mats[materialId].name);
         } finally {
             RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
         }

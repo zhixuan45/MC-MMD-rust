@@ -59,7 +59,7 @@ public final class FxMaterialBinding implements AutoCloseable {
             int next = 0;
             for (int i = 0; i < FxMaterialData.CHANNELS.length; i++) {
                 FxEffect.Channel channel = effect.channels().get(FxMaterialData.CHANNELS[i]);
-                int from = channel == null ? 0 : channel.source(), unit = units[0];
+                int from = channel == null ? (i == 9 ? -1 : 0) : channel.source(), unit = units[0];
                 if (from == 1) {
                     unit = units[next++];
                     GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + unit);

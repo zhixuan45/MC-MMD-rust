@@ -653,6 +653,7 @@ final class OpenGlModelRenderer {
 
         // Iris 全局开启不代表 GUI 当前 shader 是 Iris 实体程序。
         ShaderInstance irisShader = irisEntityScene ? IrisToonCompat.preparedEntityShader() : null;
+        ShaderInstance hostShader = irisShader != null ? irisShader : RenderSystem.getShader();
         try {
             if (irisShader != null) {
                 target.setUniforms(irisShader, deliverStack);
@@ -704,22 +705,25 @@ final class OpenGlModelRenderer {
                 renderOutlinePass(target);
             }
         } finally {
-            // 清理 Iris 的各缓冲混合覆盖，再恢复原版状态。
-            if (irisShader != null) irisShader.clear();
-            GL46C.glBindVertexArray(0);
-            GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
-            GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
-            GL46C.glUseProgram(0);
-            RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
+            try {
+                // 原版宿主也须清理程序缓存，保证 Toon 之后的 apply 会重新绑定。
+                IrisCompat.clearProgram(hostShader, -1, -1);
+            } finally {
+                GL46C.glBindVertexArray(0);
+                GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
+                GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
+                GL46C.glUseProgram(0);
+                RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
 
-            RenderSystem.enableCull();
-            GL46C.glCullFace(GL46C.GL_BACK);
-            RenderSystem.depthMask(true);
-            RenderSystem.enableDepthTest();
-            RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
-            RenderSystem.defaultBlendFunc();
-            RenderSystem.disableBlend();
-            RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+                RenderSystem.enableCull();
+                GL46C.glCullFace(GL46C.GL_BACK);
+                RenderSystem.depthMask(true);
+                RenderSystem.enableDepthTest();
+                RenderSystem.blendEquation(GL46C.GL_FUNC_ADD);
+                RenderSystem.defaultBlendFunc();
+                RenderSystem.disableBlend();
+                RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+            }
         }
     }
 
@@ -732,7 +736,8 @@ final class OpenGlModelRenderer {
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
                 (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
                 materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex,
-                materialId -> target.mats[materialId] != null && target.mats[materialId].isHair());
+                materialId -> target.mats[materialId] != null && target.mats[materialId].isHair(),
+                materialId -> target.mats[materialId] == null ? "" : target.mats[materialId].name);
         } finally {
             RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
         }

@@ -84,7 +84,8 @@ vec4 mmdFxSample(int slot, vec2 uv) {
 }
 
 float mmdFxAlpha(float original, float materialAlpha, vec2 uv) {
-    if (!mmdFxRayEnabled() || mmdFxSource(9) != 1) return original;
+    if (!mmdFxRayEnabled() || mmdFxSource(9) < 0) return original;
+    if (mmdFxSource(9) == 0) return clamp(mmdFxValue(9).x * materialAlpha, 0.0, 1.0);
     return clamp(mmdFxSample(9, uv)[mmdFxOption(9).z] * materialAlpha, 0.0, 1.0);
 }
 
@@ -114,10 +115,13 @@ vec3 mmdFxAlbedo(vec3 original, vec2 uv) {
     if (!mmdFxRayEnabled()) return original;
     vec3 color = mmdFxSample(0, uv).rgb;
     if (mmdFxSource(0) != 0) {
+        if (mmdFxOption(0).y != 0) color *= MaterialColor.rgb;
+        color = pow(max(abs(color), vec3(0.00001)), vec3(2.2));
         if (mmdFxOption(0).w == 1) color *= mmdFxValue(0).rgb;
         if (mmdFxOption(0).w == 2) color = pow(max(color, vec3(0.00001)), mmdFxValue(0).rgb);
+    } else if (mmdFxOption(0).y != 0) {
+        color *= pow(max(abs(MaterialColor.rgb), vec3(0.00001)), vec3(2.2));
     }
-    if (mmdFxValue(0).w == 0.0) color *= MaterialColor.rgb;
     int subMode = mmdFxOption(7).y;
     if (subMode != 0) {
         vec4 sub = mmdFxSample(7, uv);
@@ -126,10 +130,15 @@ vec3 mmdFxAlbedo(vec3 original, vec2 uv) {
         if (subMode == 1) color *= sub.rgb;
         if (subMode == 2) color = pow(max(color, vec3(0.0)), sub.rgb);
         if (subMode == 3) color += sub.rgb;
+        if (subMode == 4) {
+            vec3 melanin = color * dot(color, vec3(0.299, 0.587, 0.114));
+            color *= mix(vec3(1.0), melanin, sub.rgb);
+        }
         if (subMode == 5) color = mix(color, sub.rgb, sub.a);
         color = clamp(color, 0.0, 1.0);
     }
-    return max(color, vec3(0.0));
+    // Ray albedo constants and composition operate in linear space; the host lighting consumes sRGB.
+    return pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));
 }
 
 vec3 mmdFxTangentNormal(int slot, vec2 uv) {
