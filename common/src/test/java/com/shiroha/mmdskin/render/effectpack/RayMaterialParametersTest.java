@@ -63,7 +63,7 @@ class RayMaterialParametersTest {
                 "#define f(x,x) x\n", "#define f(x) x\n#define f(y) y\n"}) {
             assertThrows(IOException.class, () -> RayMaterialParameters.parse(source), source);
         }
-        assertThrows(IOException.class, () -> effect("#define CUSTOM_ENABLE 6\n"));
+        assertThrows(IOException.class, () -> effect("#define CUSTOM_ENABLE 10\n"));
         assertThrows(IOException.class, () -> effect("#define EMISSIVE_MAP_APPLY_BLINK 1\n"));
         assertThrows(IOException.class, () -> effect("#define ALBEDO_MAP_APPLY_DIFFUSE 2\n"));
     }

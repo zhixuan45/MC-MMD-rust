@@ -7,6 +7,7 @@ public final class MaterialRenderState {
     public static final float OPAQUE_ALPHA = 0.999f;
     public final float[] color = new float[3];
     public final float[] specular = new float[3];
+    public final float[] fxAmbient = new float[3];
     public final float[] sphereMul = new float[4];
     public final float[] sphereAdd = new float[4];
     public float specularPower;
@@ -19,6 +20,7 @@ public final class MaterialRenderState {
         for (int channel = 0; channel < 3; channel++) {
             float diffuse = morph(material.diffuse[channel], morphs, materialId, channel);
             float ambient = morph(material.ambient[channel], morphs, materialId, 8 + channel);
+            fxAmbient[channel] = ambient;
             float textureTint = morph(1.0f, morphs, materialId, 16 + channel);
             // Toon/原版共享的 PMX 基础光照色：默认 diffuse=1、ambient=.5 时保持白色。
             // 极端/负值须在相加后裁剪，不能先裁剪而丢失作者用于压黑的参数。

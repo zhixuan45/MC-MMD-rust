@@ -75,6 +75,7 @@ public final class EffectPackRuntime {
 
     public void reload() {
         releaseTextures();
+        FxSceneColor.release();
         problems.keySet().removeIf(key -> !key.equals("config") && !key.equals("save"));
         try {
             scan = FxPackLibrary.scan(library);
@@ -157,5 +158,5 @@ public final class EffectPackRuntime {
         textures.clear();
     }
 
-    public static void release() { if (instance != null) instance.releaseTextures(); }
+    public static void release() { if (instance != null) instance.releaseTextures(); FxSceneColor.release(); }
 }

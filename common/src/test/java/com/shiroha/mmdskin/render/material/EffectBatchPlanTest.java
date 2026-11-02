@@ -71,15 +71,19 @@ class EffectBatchPlanTest {
     }
 
     @Test void clothChannelsAndFlagsSurviveTheBatchTable() {
-        var albedo = new FxEffect.Channel(0, "", new float[]{1,1,1}, 0, new float[]{1,1}, 0,0,0,1);
+        var albedo = new FxEffect.Channel(0, "", new float[]{1,1,1}, 0, new float[]{1,1}, 0,0,0);
         var weight = new FxEffect.Channel(1, "weight.png", new float[]{0.7f}, 3, new float[]{2,3}, 5,2,1,1);
         var sheen = new FxEffect.Channel(1, "sheen.png", new float[]{0.4f,0.2f,0.1f}, 1, new float[]{4,5}, 1,0,2,1);
         var e = new FxEffect("cloth", "cloth", Path.of("."), FxEffect.Kind.RAY_MATERIAL,
                 Map.of("ALBEDO", albedo, "CUSTOM_A", weight, "CUSTOM_B", sheen), 1, FxEffect.IDENTITY, List.of());
         ByteBuffer bytes = ByteBuffer.allocate(FxMaterialData.CHANNEL_BYTES).order(ByteOrder.nativeOrder());
         int[] slots = new int[12]; slots[10] = 6; slots[11] = 7;
-        new FxMaterialData(e, 1, new int[12]).writeChannels(bytes, slots, 30);
-        assertEquals(1f, bytes.getFloat(12)); // disable diffuse
+        new FxMaterialData(e, 1, new int[12]).writeChannels(bytes, slots, 30,new float[]{.1f,.2f,.3f},new float[]{.4f,.5f,.6f});
+        assertEquals(0f, bytes.getFloat(20)); // disable diffuse uses the original type field
+        assertEquals(.1f,bytes.getFloat(48+4));
+        assertEquals(.3f,bytes.getFloat(48+12));
+        assertEquals(.4f,bytes.getFloat(3*48+4));
+        assertEquals(.6f,bytes.getFloat(3*48+12));
         assertEquals(30f, bytes.getFloat(2 * 48 + 12)); // smoothness still carries PMX power
         assertEquals(0.7f, bytes.getFloat(10 * 48));
         assertEquals(1f, bytes.getFloat(10 * 48 + 12)); // invert weight

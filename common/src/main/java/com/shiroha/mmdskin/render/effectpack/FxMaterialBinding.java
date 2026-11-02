@@ -11,11 +11,17 @@ public final class FxMaterialBinding implements AutoCloseable {
     private int[] units = new int[0], previousTextures = new int[0], previousSamplers = new int[0];
     private FxEffect applied;
     private boolean appliedOnce;
+    private final int scene, sceneEnabled;
+    private int previousSceneUnit;
 
     public FxMaterialBinding(boolean shadow) {
         program = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
         enabled = GL46C.glGetUniformLocation(program, "FxMaterialEnabled");
         selection = GL46C.glGetUniformLocation(program, "FxSelection");
+        scene = GL46C.glGetUniformLocation(program, "FxSceneColor");
+        sceneEnabled = GL46C.glGetUniformLocation(program, "FxSceneEnabled");
+        previousSceneUnit = scene < 0 ? 0 : GL46C.glGetUniformi(program, scene);
+        if (sceneEnabled >= 0) GL46C.glUniform1i(sceneEnabled, 0);
         if (enabled >= 0) GL46C.glUniform1i(enabled, 0);
         if (selection >= 0) GL46C.glUniform1i(selection, 0);
         var runtime = EffectPackRuntime.active();
@@ -31,7 +37,10 @@ public final class FxMaterialBinding implements AutoCloseable {
             }
             int count = runtime.program().effects().stream().filter(e -> e.kind() == FxEffect.Kind.RAY_MATERIAL)
                     .mapToInt(e -> (int)e.channels().values().stream().filter(c -> c.source() == 1).count()).max().orElse(0);
-            units = ProgramSamplerLayout.effectUnits(program, samplers, Math.max(1, count));
+            boolean glass = scene >= 0 && runtime.program().hasGlass();
+            int[] owned = java.util.Arrays.copyOf(samplers, samplers.length + 1);
+            owned[samplers.length] = scene;
+            units = ProgramSamplerLayout.effectUnits(program, owned, Math.max(1, count) + (glass ? 1 : 0));
             if (units.length == 0) runtime.problem("samplers", "当前程序没有足够的空闲 sampler，普通提交的 Ray 效果未应用。");
             previousTextures = new int[units.length]; previousSamplers = new int[units.length];
             int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
@@ -41,6 +50,18 @@ public final class FxMaterialBinding implements AutoCloseable {
                 previousSamplers[i] = GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, units[i]);
             }
             GL46C.glActiveTexture(active);
+            if (glass && units.length > 0) {
+                int unit = units[units.length - 1];
+                int[] viewport = new int[4]; GL46C.glGetIntegerv(GL46C.GL_VIEWPORT, viewport);
+                try {
+                    if (FxSceneColor.capture(unit, viewport)) {
+                        GL46C.glUniform1i(scene, unit);
+                        GL46C.glUniform1i(sceneEnabled, 1);
+                        GL46C.glUniform4f(GL46C.glGetUniformLocation(program, "FxSceneViewport"), viewport[0],viewport[1],viewport[2],viewport[3]);
+                    } else runtime.problem("glass-scene", "当前颜色目标无法用于玻璃折射；保留表面反射和 PMX 透明度。");
+                } catch (RuntimeException | Error failure) { close(); throw failure; }
+                finally { GL46C.glActiveTexture(active); }
+            }
         }
         try { apply(FxMaterialData.capture(-1, "")); }
         catch (RuntimeException | Error failure) { close(); throw failure; }
@@ -70,7 +91,8 @@ public final class FxMaterialBinding implements AutoCloseable {
                 GL46C.glUniform1i(sources[i], from);
                 float[] value = channel == null ? new float[]{0} : channel.value();
                 float x = value[0];
-                GL46C.glUniform4f(values[i], x, value.length > 1 ? value[1] : x, value.length > 2 ? value[2] : x, channel == null ? 0 : channel.flags());
+                float extra = channel == null ? 0 : i == 6 ? (value.length > 3 ? value[3] : 1) : channel.flags();
+                GL46C.glUniform4f(values[i], x, value.length > 1 ? value[1] : x, value.length > 2 ? value[2] : x, extra);
                 GL46C.glUniform4i(options[i], channel == null ? 0 : channel.uvFlip(), channel == null ? 0 : channel.type(),
                         channel == null ? 0 : channel.component(), channel == null ? 0 : channel.scaleMode());
                 GL46C.glUniform2f(repeats[i], channel == null ? 1 : channel.repeat()[0], channel == null ? 1 : channel.repeat()[1]);
@@ -80,9 +102,11 @@ public final class FxMaterialBinding implements AutoCloseable {
     }
 
     @Override public void close() {
+        if (sceneEnabled >= 0) GL46C.glUniform1i(sceneEnabled, 0);
         if (enabled >= 0) GL46C.glUniform1i(enabled, 0);
         if (selection >= 0) GL46C.glUniform1i(selection, 0);
         if (units.length == 0) return;
+        if (scene >= 0) GL46C.glUniform1i(scene, previousSceneUnit);
         int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
         for (int i = 0; i < units.length; i++) {
             GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + units[i]);

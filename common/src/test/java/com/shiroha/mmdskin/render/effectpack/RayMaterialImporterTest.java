@@ -26,6 +26,19 @@ class RayMaterialImporterTest {
         // Importer checks resource existence; bitmap decoding is a separate GL probe.
         Files.createDirectories(root.resolve("_MaterialMap"));
         Files.write(root.resolve("_MaterialMap/Fabric02_N by 2gou.bmp"), new byte[]{0});
+        try (var files = Files.walk(root)) {
+            for (Path file : files.filter(p -> p.toString().endsWith(".fx")).toList()) {
+                var defs = RayMaterialParameters.parse(Files.readString(file)).definitions();
+                for (var entry : defs.entrySet()) {
+                    if (!entry.getKey().endsWith("_MAP_FILE")) continue;
+                    String key = entry.getKey().replace("_MAP_FILE", "_MAP_FROM");
+                    if (RayMaterialImporter.integer(defs, key, 0) != 1) continue;
+                    String name = entry.getValue();
+                    Path resource = FxPaths.resolve(root, file.getParent(), name.substring(1,name.length()-1));
+                    Files.createDirectories(resource.getParent()); Files.write(resource,new byte[]{0});
+                }
+            }
+        }
         cloth = root.resolve("Cloth/material_cloth.fx");
     }
 
@@ -41,7 +54,7 @@ class RayMaterialImporterTest {
             assertEquals(1f, effect.channels().get("CUSTOM_A").value()[0]);
             assertArrayEquals(name.equals("material_black_coat.fx") ? new float[]{.4f,.4f,.4f} : new float[]{1,1,1},
                     effect.channels().get("CUSTOM_B").value());
-            assertEquals(name.equals("material_cloth.fx") ? 0 : 1, effect.channels().get("ALBEDO").flags());
+            assertEquals(name.equals("material_cloth.fx") ? 1 : 0, effect.channels().get("ALBEDO").type());
             var normal = effect.channels().get("NORMAL");
             assertEquals("_MaterialMap/Fabric02_N by 2gou.bmp", normal.file());
             assertArrayEquals(new float[]{5,5}, normal.repeat());
@@ -50,7 +63,7 @@ class RayMaterialImporterTest {
         }
         var scan = FxPackLibrary.scan(temporary.resolve("library"));
         assertTrue(scan.failures().isEmpty(), scan.failures().toString());
-        assertEquals(3, scan.effects().size());
+        assertEquals(10, scan.effects().size());
     }
 
     @Test void preservesCustomMapSamplingAndInvertOptions() throws Exception {
@@ -85,13 +98,50 @@ class RayMaterialImporterTest {
         assertTrue(assertThrows(IOException.class, () -> parse(cloth,
                 source.replace("CUSTOM_A_MAP_FROM 0", "CUSTOM_A_MAP_FROM 1"))).getMessage().contains("缺失活动贴图"));
         assertTrue(assertThrows(IOException.class, () -> parse(cloth,
-                source.replace("CUSTOM_ENABLE 5", "CUSTOM_ENABLE 4"))).getMessage().contains("CUSTOM_ENABLE=4"));
+                source.replace("CUSTOM_ENABLE 5", "CUSTOM_ENABLE 10"))).getMessage().contains("CUSTOM_ENABLE=10"));
     }
 
     @Test void defaultMaterialKeepsPmxDiffuseAndShininess() throws Exception {
         var effect = parse(cloth, Files.readString(cloth).replace("CUSTOM_ENABLE 5", "CUSTOM_ENABLE 0")
                 .replace("SMOOTHNESS_MAP_FROM 0", "SMOOTHNESS_MAP_FROM 9"));
-        assertEquals(0, effect.channels().get("ALBEDO").flags());
+        assertEquals(1, effect.channels().get("ALBEDO").type());
         assertEquals(9, effect.channels().get("SMOOTHNESS").source());
+    }
+
+    @Test void importsEveryModelAndIgnoresInputsThatTheModelDoesNotUse() throws Exception {
+        String original = Files.readString(cloth);
+        for (int model=0; model<=9; model++) {
+            var effect = parse(cloth,original.replace("CUSTOM_ENABLE 5","CUSTOM_ENABLE "+model));
+            if (model==0) assertFalse(effect.channels().containsKey("CUSTOM_A"));
+            else assertEquals(model,effect.channels().get("CUSTOM_A").type());
+            assertEquals(model!=0 && model!=2 && model!=6,effect.channels().containsKey("CUSTOM_B"));
+        }
+        parse(cloth,original.replace("CUSTOM_ENABLE 5","CUSTOM_ENABLE 2")
+                .replace("CUSTOM_A_MAP_FROM 0","CUSTOM_A_MAP_FROM 1").replace("CUSTOM_B_MAP_FROM 0","CUSTOM_B_MAP_FROM 1"));
+        parse(cloth,original.replace("CUSTOM_ENABLE 5","CUSTOM_ENABLE 6").replace("CUSTOM_B_MAP_FROM 0","CUSTOM_B_MAP_FROM 1"));
+    }
+
+    @Test void retainsSpecularTypesPmxInputsAndSeparateEmissionIntensity() throws Exception {
+        var effect = RayMaterialImporter.convert(root,cloth,RayMaterialParameters.parse("""
+                #define CUSTOM_ENABLE 3
+                #define CUSTOM_A_MAP_FROM 7
+                #define CUSTOM_B_MAP_FROM 8
+                #define SPECULAR_MAP_FROM 3
+                #define SPECULAR_MAP_TYPE 3
+                #define SPECULAR_MAP_SWIZZLE 2
+                #define EMISSIVE_ENABLE 1
+                const float3 emissive = .5;
+                const float emissiveIntensity = 4;
+                """),"aniso");
+        assertEquals(7,effect.channels().get("CUSTOM_A").source());
+        assertEquals(8,effect.channels().get("CUSTOM_B").source());
+        assertEquals(3,effect.channels().get("SPECULAR").type());
+        assertEquals(2,effect.channels().get("SPECULAR").component());
+        assertArrayEquals(new float[]{.5f,.5f,.5f,4},effect.channels().get("EMISSIVE").value());
+        assertThrows(IOException.class,()->RayMaterialImporter.convert(root,cloth,RayMaterialParameters.parse("""
+                #define CUSTOM_ENABLE 3
+                #define SPECULAR_MAP_FROM 3
+                #define SPECULAR_MAP_TYPE 0
+                """),"bad"));
     }
 }

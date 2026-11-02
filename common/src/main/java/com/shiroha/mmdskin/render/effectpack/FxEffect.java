@@ -15,7 +15,7 @@ public record FxEffect(String id, String name, Path root, Kind kind,
 
     public record Channel(int source, String file, float[] value, int uvFlip, float[] repeat,
                           int type, int component, int scaleMode, int flags) {
-        // flags bit 0: ALBEDO skips PMX diffuse; CUSTOM_A/B invert their sampled color.
+        // CUSTOM_A/B flags bit 0: invert color. EMISSIVE value[3] holds linear intensity.
         public Channel(int source, String file, float[] value, int uvFlip, float[] repeat,
                        int type, int component, int scaleMode) {
             this(source, file, value, uvFlip, repeat, type, component, scaleMode, 0);

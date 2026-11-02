@@ -1,8 +1,11 @@
 // Ray 材质参数的宿主实现；不使用原 MME 的 G-buffer 编码和渲染脚本。
 uniform bool FxMaterialEnabled;
 uniform float FxMaterialPower;
+uniform vec3 FxMaterialAmbient, FxMaterialSpecular;
 uniform int FxSources[12];
-uniform vec4 FxValues[12]; // xyz: value; w: channel flags (slot 2 retains material power in batches)
+// xyz: channel value. w: custom invert flag; slot 6: emission intensity.
+// Batches pack evaluated PMX ambient/specular into slots 1/3 yzw and power into slot 2 w.
+uniform vec4 FxValues[12];
 uniform ivec4 FxOptions[12]; // UV flip、type (CUSTOM_A: shading model)、swizzle、scale
 uniform vec2 FxRepeat[12];
 uniform sampler2D FxMap0;
@@ -17,6 +20,11 @@ uniform sampler2D FxMap8;
 uniform sampler2D FxMap9;
 uniform sampler2D FxMap10;
 uniform sampler2D FxMap11;
+#ifdef MMD_FX_GLASS
+uniform sampler2D FxSceneColor;
+uniform bool FxSceneEnabled;
+uniform vec4 FxSceneViewport;
+#endif
 
 bool mmdFxRayEnabled() {
 #if defined(MMD_BATCH_MATERIALS) && defined(MMD_FX_COMBINED)
@@ -53,12 +61,20 @@ vec2 mmdFxLoop(int slot) {
     return FxRepeat[slot];
 }
 
+vec3 mmdFxPmxColor(bool specular) {
+#if defined(MMD_BATCH_MATERIALS) && defined(MMD_FX_COMBINED)
+    if (MmdBatchEnabled) return mmdFxChannels[specular ? 3 : 1].value.yzw;
+#endif
+    return specular ? FxMaterialSpecular : FxMaterialAmbient;
+}
+
 vec4 mmdFxSample(int slot, vec2 uv) {
     int flip = mmdFxOption(slot).x;
     if (flip == 1 || flip == 3) uv.x = 1.0 - uv.x;
     if (flip == 2 || flip == 3) uv.y = 1.0 - uv.y;
     uv *= mmdFxLoop(slot);
     if (mmdFxSource(slot) == 0) return vec4(mmdFxValue(slot).rgb, 1.0);
+    if (mmdFxSource(slot) == 7 || mmdFxSource(slot) == 8) return vec4(mmdFxPmxColor(mmdFxSource(slot) == 8), 1.0);
     if (mmdFxSource(slot) == 3) {
 #ifdef MMD_BATCH_MATERIALS
         return mmdDiffuse(uv);
@@ -178,17 +194,18 @@ vec3 mmdFxSrgbToLinear(vec3 color) {
                color / 12.92, lessThan(color, vec3(0.04045)));
 }
 
-float mmdFxClothWeight(vec2 uv) {
+float mmdFxCustomA(vec2 uv) {
     float weight = mmdFxSource(10) == 0 ? mmdFxValue(10).x : mmdFxSample(10, uv)[mmdFxOption(10).z];
     if (mmdFxSource(10) != 0) {
         if (mmdFxOption(10).w == 1) weight *= mmdFxValue(10).x;
         if (mmdFxOption(10).w == 2) weight = pow(max(weight, 0.0), mmdFxValue(10).x);
     }
-    if (mmdFxValue(10).w != 0.0) weight = 1.0 - weight;
+    if (mmdFxValue(10).w != 0.0) weight = mmdFxOption(10).y == 6
+        ? 1.0 - sqrt(max(weight, 0.0)) : 1.0 - weight;
     return clamp(weight, 0.0, 1.0);
 }
 
-vec3 mmdFxClothColor(vec2 uv) {
+vec3 mmdFxCustomB(vec2 uv) {
     vec3 color = mmdFxSample(11, uv).rgb;
     if (mmdFxSource(11) == 0 || mmdFxOption(11).y == 0) color = mmdFxSrgbToLinear(color);
     // Ray only applies B's invert/scale options when sampling a map.
@@ -200,14 +217,62 @@ vec3 mmdFxClothColor(vec2 uv) {
     return clamp(color, 0.0, 1.0);
 }
 
+// Preserve the cloth probe helpers while all shading models share the same input protocol.
+float mmdFxClothWeight(vec2 uv) { return mmdFxCustomA(uv); }
+vec3 mmdFxClothColor(vec2 uv) { return mmdFxCustomB(uv); }
+
+vec3 mmdFxSpecular(vec2 uv) {
+    vec3 color = mmdFxSample(4, uv).rgb;
+    int type = mmdFxOption(4).y;
+    if (mmdFxSource(4) != 0 && (type == 2 || type == 3)) color = vec3(mmdFxSample(4, uv)[mmdFxOption(4).z]);
+    if (type == 1 || type == 3) color = 0.16 * color * color;
+    else if (type != 4) color *= 0.08;
+    if (mmdFxSource(4) != 0) {
+        if (mmdFxOption(4).w == 1) color *= mmdFxValue(4).rgb;
+        if (mmdFxOption(4).w == 2) color = pow(max(color, vec3(0.0)), mmdFxValue(4).rgb);
+        return clamp(color, 0.01, 1.0);
+    }
+    return clamp(color, 0.0, 1.0);
+}
+
+vec3 mmdFxEmissionColor(vec2 uv) {
+    if (mmdFxValue(6).w == 0.0 && all(equal(mmdFxValue(6).rgb,vec3(0.0)))) return vec3(0.0);
+    vec3 color = mmdFxSample(6, uv).rgb;
+    if (mmdFxSource(6) >= 1 && mmdFxSource(6) <= 6) color *= mmdFxSample(6, uv).a;
+    color = mmdFxSrgbToLinear(color);
+    if (mmdFxOption(6).w != 0) color *= mmdFxValue(6).rgb;
+    return color;
+}
+vec3 mmdFxEmission(vec2 uv) { return mmdFxEmissionColor(uv) * mmdFxValue(6).w; }
+
+vec3 mmdFxAnisotropic(vec3 n, vec3 h, float nl, float nv, float vh, float roughness,
+                      float anisotropy, vec3 shift, vec3 f0) {
+    vec3 x = cross(n, vec3(0,1,0)) + n * shift.r;
+    if (dot(x,x) < 1e-10) x = cross(n, vec3(1,0,0));
+    x = normalize(x);
+    vec3 y = cross(n,x) + n * shift.r;
+    y /= max(length(y), 0.00001);
+    float aspect = inversesqrt(max(1.0 - anisotropy * 0.9, 0.1));
+    float ax = 1.0 / (roughness * aspect), ay = aspect / roughness;
+    float d = pow(dot(x,h) * ax, 2.0) + pow(dot(y,h) * ay, 2.0) + pow(dot(n,h), 2.0);
+    float distribution = ax * ay / max(d*d, 1e-10);
+    float gv = nl * (nv * (1.0-roughness) + roughness);
+    float gl = nv * (nl * (1.0-roughness) + roughness);
+    vec3 fresnel = f0 + (1.0-f0) * pow(1.0-vh, 5.0);
+    return distribution * 0.5 / max(gv+gl, 0.00001) * fresnel;
+}
+
 vec3 mmdFxMaterialLight(vec3 lit, vec3 albedo, vec3 n, vec3 p, vec3 light, vec2 uv, vec3 illumination) {
     if (!mmdFxRayEnabled()) return lit;
     float smoothness = mmdFxScalar(2, uv);
     float metalness = mmdFxScalar(3, uv);
     float ao = mmdFxScalar(5, uv);
-    vec3 specular = clamp(mmdFxSample(4, uv).rgb, 0.0, 1.0);
-    if (mmdFxSource(4) != 0 && mmdFxOption(4).w == 1) specular *= mmdFxValue(4).rgb;
-    if (mmdFxSource(4) != 0 && mmdFxOption(4).w == 2) specular = pow(max(specular, vec3(0.00001)), mmdFxValue(4).rgb);
+    vec3 specular = mmdFxSpecular(uv);
+    int model = mmdFxOption(10).y;
+    vec3 emission = mmdFxEmission(uv);
+    if (any(greaterThan(mmdFxEmissionColor(uv),vec3(2.0/255.0)))) model = 2;
+    float customA = mmdFxCustomA(uv);
+    vec3 customB = mmdFxCustomB(uv);
     vec3 v = -p / max(length(p), 0.00001);
     vec3 h = light + v;
     h /= max(length(h), 0.00001);
@@ -219,24 +284,72 @@ vec3 mmdFxMaterialLight(vec3 lit, vec3 albedo, vec3 n, vec3 p, vec3 light, vec2 
     float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;
     float geometry = (nv / (nv * (1.0 - k) + k)) * (nl / max(nl * (1.0 - k) + k, 0.00001));
     vec3 base = pow(max(albedo, vec3(0.0)), vec3(2.2));
-    vec3 f0 = mix(specular * 0.08, base, metalness);
+    vec3 f0 = mix(specular, base, metalness);
     vec3 fresnel = f0 + (1.0 - f0) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
     vec3 reflection = distribution * geometry * fresnel / max(4.0 * nv * max(nl, 0.001), 0.0001);
-    if (mmdFxOption(10).y == 5) {
+    if (model == 5) {
         // Ray 1.5.2 ClothShading: customA mixes GGX with Charlie sheen and
         // Neubelt visibility; customB is the linear sheen color, reduced by metalness.
         float clothRoughness = max((1.0 - smoothness) * (1.0 - smoothness), 0.001);
         float vh = clamp(dot(v, h), 0.0, 1.0);
-        vec3 sheenColor = mmdFxClothColor(uv) * (1.0 - metalness);
+        vec3 sheenColor = customB * (1.0 - metalness);
         vec3 sheenFresnel = sheenColor + (1.0 - sheenColor) * pow(1.0 - vh, 5.0);
         float sheenDistribution = (2.0 + 1.0 / clothRoughness)
             * pow(max(1.0 - nh * nh, 0.0), 0.5 / clothRoughness) * 0.5;
         vec3 sheen = sheenFresnel * sheenDistribution / max(4.0 * (nl + nv - nl * nv), 0.00001);
-        reflection = mix(reflection, sheen, mmdFxClothWeight(uv));
+        reflection = mix(reflection, sheen, customA);
+    } else if (model == 3) {
+        reflection = mmdFxAnisotropic(n, h, nl, nv, clamp(dot(v,h),0.0,1.0),
+            max((1.0-smoothness)*(1.0-smoothness),0.001), customA, customB, f0);
+    } else if (model == 6) {
+        float coat = max((1.0-customA)*(1.0-customA),0.001);
+        float m2 = coat*coat, vh = clamp(dot(v,h),0.0,1.0);
+        float d = (nh*m2-nh)*nh+1.0;
+        float coatSpecular = m2 / max(d*d*(4.0*vh*vh+1e-5),1e-10);
+        float coatFresnel = 0.04+0.96*pow(1.0-vh,5.0);
+        reflection = mix(reflection,vec3(coatSpecular),coatFresnel);
+    } else if (model == 4) {
+        float exponent = exp2(10.0*smoothness+1.0);
+        reflection = vec3((exponent+2.0)/8.0 * pow(nh,exponent));
     }
     // Fresnel 反射占据的能量不再进入漫反射；场景照明仍由宿主提供。
     vec3 diffuse = pow(max(lit, vec3(0.0)), vec3(2.2)) * (1.0 - fresnel) * (1.0 - metalness) * ao;
-    vec3 emission = mmdFxSample(6, uv).rgb;
-    if (mmdFxSource(6) != 0) emission *= mmdFxValue(6).rgb;
+    if (model == 4) {
+        float transAngle = 1.0-clamp(dot(h,-light),0.0,1.0);
+        vec3 trans = mix(specular,vec3(1.0),transAngle);
+        diffuse += customA * customB * trans * max(dot(n,-light),0.0) * max(illumination,vec3(0.0));
+    } else if (model == 1 || model == 7) {
+        float signedNl = dot(n,light);
+        float front = clamp(signedNl,0.0,1.0), back = clamp(-signedNl,0.0,1.0);
+        vec3 scattering = customB*(1.0-metalness) * pow(1.0-front,2.0)
+            * pow(1.0-back,3.0/(customA+0.001)) * max(customA-0.04,0.0);
+        diffuse += scattering * max(illumination,vec3(0.0)) * ao;
+    } else if (model == 8 || model == 9) {
+        float signedNl = dot(n,light);
+        float mask = model == 8 ? smoothstep(customA-0.02,customA,(signedNl*0.5+0.5)*ao)
+            : clamp(signedNl*customA+1.0-customA,0.0,1.0)*ao;
+        diffuse = base * mix(customB*(1.0-metalness),vec3(1.0),mask)
+            * max(illumination,vec3(0.0)) * (1.0-metalness);
+        if (model == 9) diffuse *= 1.0-fresnel;
+    }
     return pow(max(diffuse + reflection * nl * max(illumination, vec3(0.0)) + emission, vec3(0.0)), vec3(1.0 / 2.2));
+}
+
+vec3 mmdFxGlass(vec3 lit, vec3 albedo, vec3 n, vec3 p, vec2 uv, float alpha) {
+#ifdef MMD_FX_GLASS
+    if (mmdFxRayEnabled() && mmdFxOption(10).y == 4 && FxSceneEnabled && MaterialColor.a < 0.999
+            && !any(greaterThan(mmdFxEmissionColor(uv),vec3(2.0/255.0)))) {
+        vec2 screen = (gl_FragCoord.xy-FxSceneViewport.xy) / FxSceneViewport.zw;
+        vec2 halfPixel = 0.5 / FxSceneViewport.zw;
+        vec2 offset = n.xy * mmdFxCustomA(uv) * 0.04;
+        vec3 background = texture(FxSceneColor,clamp(screen+offset,halfPixel,1.0-halfPixel)).rgb;
+        vec3 view = -p / max(length(p),0.00001);
+        float smoothness = mmdFxScalar(2,uv);
+        vec3 specular = mmdFxSpecular(uv);
+        vec3 fresnel = specular + (1.0-specular) * pow(1.0-clamp(dot(n,view),0.0,1.0),5.0) / (40.0-39.0*smoothness);
+        // Host alpha blending keeps coverage and sorting. Refraction uses the pre-model scene snapshot.
+        return mix(background * max(albedo,vec3(0.02)),lit,clamp(fresnel*alpha,0.0,1.0));
+    }
+#endif
+    return lit;
 }

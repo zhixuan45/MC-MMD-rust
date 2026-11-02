@@ -8,6 +8,7 @@ final class MaterialShaderBinding implements AutoCloseable {
     private final int materialSpecular;
     private final int materialPower;
     private final int fxMaterialPower;
+    private final int fxAmbient, fxSpecular;
     private final int alphaPass;
     private final int hairMaterial;
     private final boolean disableTransparency;
@@ -31,6 +32,8 @@ final class MaterialShaderBinding implements AutoCloseable {
         materialSpecular = GL46C.glGetUniformLocation(program, "MaterialSpecular");
         materialPower = GL46C.glGetUniformLocation(program, "MaterialSpecularPower");
         fxMaterialPower = GL46C.glGetUniformLocation(program, "FxMaterialPower");
+        fxAmbient = GL46C.glGetUniformLocation(program, "FxMaterialAmbient");
+        fxSpecular = GL46C.glGetUniformLocation(program, "FxMaterialSpecular");
         alphaPass = GL46C.glGetUniformLocation(program, "AlphaPass");
         hairMaterial = GL46C.glGetUniformLocation(program, "HairMaterial");
         int opaque = GL46C.glGetUniformLocation(program, "DisableTransparency");
@@ -64,6 +67,8 @@ final class MaterialShaderBinding implements AutoCloseable {
 
     void apply(MaterialRenderState state, int pass, float alpha) {
         if (fxMaterialPower >= 0) GL46C.glUniform1f(fxMaterialPower, state.fxSpecularPower);
+        if (fxAmbient >= 0) GL46C.glUniform3f(fxAmbient, state.fxAmbient[0], state.fxAmbient[1], state.fxAmbient[2]);
+        if (fxSpecular >= 0) GL46C.glUniform3f(fxSpecular, state.specular[0], state.specular[1], state.specular[2]);
         int hair = state.hair ? 1 : 0;
         if (hairMaterial >= 0 && lastHair != hair) {
             GL46C.glUniform1i(hairMaterial, hair);
