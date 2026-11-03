@@ -70,6 +70,17 @@ public final class Probe {
             near(sample(program, new float[]{1,0,0,0.09f}, 0.4f), new float[4]);
             near(sample(program, new float[]{1,0,0,0.5f}, 0.4f), new float[]{0.2f,0.3f,0.4f,0.2f});
             near(sample(program, new float[]{1,1,1,1}, 0), new float[4]);
+            int autoLoc = GL46C.glGetUniformLocation(program, "AutoMaterialColor");
+            int diffLoc = GL46C.glGetUniformLocation(program, "MaterialDiffuse");
+            check(autoLoc >= 0, "AutoMaterialColor uniform 必须存在");
+            check(diffLoc >= 0, "MaterialDiffuse uniform 必须存在");
+            GL46C.glUniform1i(autoLoc, 1);
+            GL46C.glUniform3f(diffLoc, 1.0f, 0.5f, 0.2f);
+            float[] autoSample = sample(program, new float[]{1,1,1,1}, 1.0f);
+            check(autoSample[0] > autoSample[1] && autoSample[1] > autoSample[2],
+                    "自动描边颜色必须保留暖色相梯度: " + Arrays.toString(autoSample));
+            GL46C.glUniform1i(autoLoc, 0);
+            near(sample(program, new float[]{0,1,0,1}, 0.4f), opaque);
             GL46C.glDeleteTextures(texture);
             GL46C.glDeleteBuffers(positions);
             GL46C.glDeleteBuffers(normals);

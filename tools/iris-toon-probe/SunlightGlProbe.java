@@ -1,0 +1,78 @@
+import com.shiroha.mmdskin.render.shader.LightingProbe;
+import com.shiroha.mmdskin.render.shader.ToonOutputProfile;
+import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
+import net.irisshaders.iris.helpers.StringPair;
+import net.irisshaders.iris.shaderpack.preprocessor.JcppProcessor;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GL46C;
+
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.regex.Pattern;
+import java.util.zip.ZipFile;
+
+/** Real pack GLSL and production body/outline shaders; does not launch Minecraft. */
+public final class SunlightGlProbe {
+    public static void main(String[] args) throws Exception {
+        if (!GLFW.glfwInit()) throw new IllegalStateException("GLFW initialization");
+        GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
+        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_COMPAT_PROFILE);
+        long window = GLFW.glfwCreateWindow(16, 16, "Sunlight validation", 0, 0);
+        if (window == 0) throw new IllegalStateException("Hidden GL context");
+        try {
+            GLFW.glfwMakeContextCurrent(window);
+            GL.createCapabilities();
+            System.out.println("GL: " + GL46C.glGetString(GL46C.GL_VERSION) + " / " + GL46C.glGetString(GL46C.GL_RENDERER));
+            int checked = 0;
+            for (String pack : List.of("BSL_v8.4.02.2.zip", "BSL_v10.1.8.zip", "ComplementaryShaders_v4.7.1.zip",
+                    "ComplementaryReimagined_r5.9.3.zip", "ComplementaryUnbound_r5.9.3.zip")) {
+                Path path = Path.of(args[0], pack);
+                var options = Probe.options(Path.of(path + ".txt"));
+                var defines = List.of(new StringPair("MC_VERSION", "12101"), new StringPair("IS_IRIS", "1"),
+                        new StringPair("IRIS_VERSION", "10814"));
+                try (var zip = new ZipFile(path.toFile())) {
+                    for (String dimension : List.of("world0", "world-1", "world1")) {
+                        for (String program : List.of("gbuffers_entities", "gbuffers_hand")) {
+                            String wrapper = "shaders/" + dimension + "/" + program;
+                            if (zip.getEntry(wrapper + ".fsh") == null) wrapper = "shaders/" + program;
+                            String fragment = JcppProcessor.glslPreprocessSource(Probe.include(zip, wrapper + ".fsh", options), defines);
+                            String vertex = JcppProcessor.glslPreprocessSource(Probe.include(zip, wrapper + ".vsh", options), defines);
+                            var matcher = Pattern.compile("DRAWBUFFERS\\s*:\\s*([0-9]+)|RENDERTARGETS\\s*:\\s*([0-9, ]+)").matcher(fragment);
+                            int[] buffers = null;
+                            while (matcher.find()) buffers = matcher.group(1) != null
+                                    ? matcher.group(1).chars().map(c -> c - '0').toArray()
+                                    : Arrays.stream(matcher.group(2).split(",")).map(String::trim).mapToInt(Integer::parseInt).toArray();
+                            if (buffers == null) throw new AssertionError("Missing output layout");
+                            var profile = ToonOutputProfile.resolve(pack, program, fragment, vertex, buffers);
+                            if (!profile.isSupported() || profile.lightingSource().isEmpty())
+                                throw new AssertionError(pack + "/" + dimension + "/" + program + ": " + profile.reason());
+                            var shader = new ToonShaderCpu();
+                            try {
+                                if (!shader.selectOutputProfile(profile)) throw new AssertionError("Shader compilation: " + profile.id());
+                                Probe.checkSelectedProfile(shader, profile);
+                                if (dimension.equals("world0") && program.equals("gbuffers_entities")) {
+                                    java.nio.file.Files.writeString(Path.of("build/sunlight-probe", pack + ".lighting.glsl"), profile.lightingSource());
+                                    if (!profile.lightingSource().contains("toonPrepareSunlight("))
+                                        throw new AssertionError("Missing verified sunlight path: " + pack);
+                                    System.out.println("PIXELS " + pack);
+                                    LightingProbe.run(shader, profile);
+                                }
+                                checked++;
+                                System.out.println("PASS compile " + pack + "/" + dimension + "/" + program);
+                            } finally { shader.cleanup(); }
+                        }
+                    }
+                }
+            }
+            if (GL46C.glGetError() != GL46C.GL_NO_ERROR) throw new AssertionError("Final GL error");
+            System.out.println("PASS sunlight validation: " + checked + " real pack main/outline variants");
+        } finally {
+            GLFW.glfwDestroyWindow(window);
+            GLFW.glfwTerminate();
+        }
+    }
+}

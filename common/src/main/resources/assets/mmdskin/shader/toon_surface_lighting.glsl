@@ -29,6 +29,28 @@ float toonShaderFlatnessAmount() {
     return (UsePackLighting || ToonGenericEnvironment) ? saturate(ToonShaderFlatness) : 0.0;
 }
 
+float toonSunlightStrength = 0.0;
+float toonSunVisibility = 0.0;
+
+void toonPrepareSunlight(vec3 sun, vec3 light, vec3 up) {
+    // Only a verified pack shadow path may enable sunlight fill.
+    float daylight = step(0.5, dot(normalize(sun), normalize(light)));
+    float elevation = smoothstep(0.05, 0.35, dot(normalize(light), normalize(up)));
+    float skylight = saturate((ToonLightmap.y * 256.0 - 8.0) / 240.0);
+    toonSunlightStrength = toonShaderFlatnessAmount() * daylight * elevation * smoothstep(0.75, 0.95, skylight);
+    toonSunVisibility = 0.0;
+}
+
+float toonShadowSampleNdotL(float ndl) {
+    // Tangent faces still need a real occlusion sample before receiving fill.
+    return toonSunlightStrength > 0.0 && ndl <= 0.0 ? 0.2 : ndl;
+}
+
+float toonSunlitRamp(float ramp) {
+    float exposed = smoothstep(0.8, 1.0, toonSunVisibility);
+    return mix(ramp, 1.0, toonSunlightStrength * exposed);
+}
+
 // 100% 内保留色块平坦区，更高柔和度继续扩宽交界。
 float toonDiffuseRamp(float ndl) {
 #ifdef MMD_FX_RAY
@@ -36,7 +58,7 @@ float toonDiffuseRamp(float ndl) {
 #endif
     float steps = float(clamp(ToonLevels, 2, 5) - 1);
     float antialiasWidth = clamp(fwidth(ndl), 0.002, 0.015);
-    float softness = clamp(ToonTransitionSoftness, 0.0, 2.0) * (1.0 - toonShaderFlatnessAmount());
+    float softness = clamp(ToonTransitionSoftness, 0.0, 2.0);
     float width = max(antialiasWidth, softness * 0.45 / steps);
     float ramp = 0.0;
     for (int i = 0; i < 4; ++i) {
@@ -49,6 +71,12 @@ float toonDiffuseRamp(float ndl) {
         ramp += (value - start) / (end - start) / steps;
     }
     return ramp;
+}
+
+float toonSunDiffuseRamp(float ndl, vec3 shadow) {
+    // Dark and colored cast shadows keep their original diffuse response.
+    toonSunVisibility = saturate(min(shadow.r, min(shadow.g, shadow.b)));
+    return toonSunlitRamp(toonDiffuseRamp(ndl));
 }
 
 vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination, float ramp) {

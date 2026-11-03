@@ -38,6 +38,7 @@ public final class ToonConfig {
     public static float alphaCutoff = .001f, hairAlphaCutoff = .001f;
     public float getAlphaCutoff() { return alphaCutoff; }
     public float getHairAlphaCutoff() { return hairAlphaCutoff; }
+    public boolean isOutlineMaterialColor() { return false; }
 }
 '@
     'com/shiroha/mmdskin/render/shader/ToonShaderBase.java' = @'
@@ -58,12 +59,28 @@ public class ToonShaderBase {
     public void setOutlineOcclusion(boolean value) {}
     public void setOutlineColor(float r, float g, float b) {}
     public void setOutlineAlpha(float value) {}
+    public void setOutlineAutoMaterialColor(boolean value) {}
+    public void setOutlineMaterialDiffuse(float r, float g, float b) {}
 }
 '@
     'com/shiroha/mmdskin/render/material/ToonTransparencySettings.java' = @'
 package com.shiroha.mmdskin.render.material;
 public final class ToonTransparencySettings {
     public static boolean disableDepthSeal() { return false; }
+}
+'@
+    'com/shiroha/mmdskin/render/effectpack/EffectPackRuntime.java' = @'
+package com.shiroha.mmdskin.render.effectpack;
+public final class EffectPackRuntime {
+    public static EffectPackRuntime active() { return null; }
+    public FxEffect materialEffect(int id, String name) { return null; }
+}
+'@
+    'com/shiroha/mmdskin/render/effectpack/FxEffect.java' = @'
+package com.shiroha.mmdskin.render.effectpack;
+import java.util.Map;
+public record FxEffect(Map<String, Channel> channels) {
+    public record Channel(int source, float[] value) {}
 }
 '@
     'com/shiroha/mmdskin/render/pipeline/transparency/WorldTransparencyPipeline.java' = @'

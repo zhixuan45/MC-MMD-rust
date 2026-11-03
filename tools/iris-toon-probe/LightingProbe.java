@@ -30,14 +30,13 @@ public final class LightingProbe {
     }
 
     public static void run(ToonShaderCpu shader, ToonOutputProfile profile) {
-        boolean bsl = profile.id().startsWith("bsl:");
         int target = shader.getMainProgram();
         List<Uniform> uniforms = activePackUniforms(target, profile.lightingSource());
         List<LightingCase> scenes = List.of(
                 new LightingCase("day", .25f, 0, 0, 15, 1),
                 new LightingCase("night", .75f, 0, 0, 15, 1),
-                new LightingCase("cave", .25f, 0, 0, 0, 1),
-                new LightingCase("torch", .25f, 0, 15, 0, 1),
+                new LightingCase("cave", .25f, 0, 0, 0, 0),
+                new LightingCase("torch", .25f, 0, 15, 0, 0),
                 new LightingCase("rain", .25f, 1, 0, 15, 1),
                 new LightingCase("shadow", .25f, 0, 0, 15, 0));
         // 位置由另一程序独立分配，不能直接复用 Iris 的 location。
@@ -61,8 +60,14 @@ public final class LightingProbe {
                 case "ivec2" -> GL46C.glUniform2i(location, 240, 240);
                 case "vec3" -> GL46C.glUniform3f(location, .5f, .5f, .5f);
                 case "int" -> GL46C.glUniform1i(location, 0);
-                case "float" -> GL46C.glUniform1f(location, uniform.name().equals("screenBrightness") ? .5f
-                        : uniform.name().equals("shadowFade") ? 1 : 0);
+                case "float" -> GL46C.glUniform1f(location, switch (uniform.name()) {
+                    case "screenBrightness" -> .5f;
+                    case "shadowFade" -> 1;
+                    case "viewWidth", "viewHeight" -> 16;
+                    case "far" -> 128;
+                    case "near" -> .1f;
+                    default -> 0;
+                });
                 case "sampler2D", "sampler2DShadow" -> {
                     int texture = uniform.type().equals("sampler2DShadow") ? depthTexture(unit) : colorTexture(unit);
                     GL46C.glUniform1i(location, unit++);
@@ -104,7 +109,7 @@ public final class LightingProbe {
         for (int i = 0; i < scenes.size(); i++) {
             LightingCase scene = scenes.get(i);
             if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, scene.shadowDepth());
-            if (bsl && opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, scene.shadowDepth());
+            if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, scene.shadowDepth());
             bodyPixels[i] = sample(shader, source, sourceIdentity, scene);
             outlinePixels[i] = sampleOutline(shader, source, sourceIdentity, scene);
             System.out.printf("Lighting %s profile=%s body=%s outline=%s%n", scene.name(), profile.id(),
@@ -125,7 +130,7 @@ public final class LightingProbe {
         check(luminance(outlineDay) > luminance(outlineShadow), "描边应受阴影图影响");
         check(luminance(outlineDay) > luminance(outlineRain), "描边应受降雨影响");
         if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 1);
-        if (bsl && opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
         GL46C.glUseProgram(source);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "sunAngle"), .25f);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeAngle"), .25f);
@@ -133,7 +138,9 @@ public final class LightingProbe {
         var rotation = Pattern.compile("sunPathRotation\\s*=\\s*([-0-9.]+)").matcher(profile.lightingSource());
         check(rotation.find(), "太阳旋转参数");
         double angle = Math.toRadians(Double.parseDouble(rotation.group(1)));
-        if (!bsl) ToonControlsProbe.run(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
+        checkSunlightFill(shader, source, sourceIdentity, normals, shadowTexture, opaqueShadowTexture,
+                new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
+        if (profile.id().startsWith("complementary:")) ToonControlsProbe.run(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
         else ToonControlsProbe.runShaderStyle(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
         shader.useMain();
         check(!shader.setEnvironmentLighting(0, 15, 15), "GUI/无 Iris 应关闭包内光照");
@@ -149,6 +156,89 @@ public final class LightingProbe {
         GL46C.glDeleteProgram(source);
         check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "光照探针 GL 状态");
         System.out.println("PASS lighting: production body/outline shaders, profile encoding, daylight/night/cave/torch/rain/shadow, GUI reset");
+    }
+
+    private static void checkSunlightFill(ToonShaderCpu shader, int source, Object identity, int normals,
+            int shadowTexture, int opaqueShadowTexture, float[] light) {
+        shader.useMain();
+        shader.setSpecular(96, 0);
+        shader.setRimLight(5, 0);
+        shader.setTransitionSoftness(1.2f);
+        shader.setToonLevels(4);
+        var day = new LightingCase("sunlight-fill", .25f, 0, 0, 15, 1);
+        prepareScene(source, day);
+        shader.useMain();
+        check(shader.setEnvironmentLighting(source, identity, 0, 15), "直射光测试须使用真实包照明");
+        float[] low = normalWithDot(light, .08f), high = normalWithDot(light, .95f);
+        shader.setShaderStyle(0, 0);
+        float[] originalLow = sampleNormal(shader, normals, low);
+        float[] originalHigh = sampleNormal(shader, normals, high);
+        float originalDifference = distance(originalLow, originalHigh);
+        check(originalDifference > .01f, "基线须有太阳朝向明暗差");
+        shader.setShaderStyle(.7f, 0);
+        float[] filledLow = sampleNormal(shader, normals, low);
+        float[] filledHigh = sampleNormal(shader, normals, high);
+        check(distance(filledLow, filledHigh) < originalDifference * .6f, "70% 须明显减弱朝向明暗差");
+        check(luminance(filledLow) > luminance(originalLow), "阳光下暗朝向须获得补光");
+        shader.setShaderStyle(1, 0);
+        float[] flatLow = sampleNormal(shader, normals, low);
+        float[] flatHigh = sampleNormal(shader, normals, high);
+        check(distance(flatLow, flatHigh) < .001f, "100% 阳光补光须趋向均匀照亮");
+        float[] tangent = sampleNormal(shader, normals, normalWithDot(light, 0));
+        check(distance(tangent, flatHigh) < .001f, "切向表面须先采样遮挡再补光");
+        check(Math.abs(flatLow[3] - originalLow[3]) < .00001f, "补光不得改变 alpha");
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 0);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 0);
+        shader.useMain();
+        for (float[] n : new float[][]{low, high, normalWithDot(light, 0)}) {
+            shader.setShaderStyle(0, 0);
+            float[] originalShadow = sampleNormal(shader, normals, n);
+            shader.setShaderStyle(1, 0);
+            float[] filledShadow = sampleNormal(shader, normals, n);
+            check(distance(originalShadow, filledShadow) < .0001f, "实际遮挡阴影内部不得补光");
+        }
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 1);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
+        prepareScene(source, new LightingCase("moonlight-fill", .75f, 0, 0, 15, 1));
+        shader.useMain();
+        check(shader.setEnvironmentLighting(source, identity, 0, 15), "月光输入同步");
+        shader.setShaderStyle(0, 0);
+        float[] originalNight = sampleNormal(shader, normals, low);
+        shader.setShaderStyle(1, 0);
+        check(distance(originalNight, sampleNormal(shader, normals, low)) < .0001f, "月光不得使用太阳补光");
+        prepareScene(source, day);
+        shader.useMain();
+        for (int block : new int[]{0, 15}) {
+            check(shader.setEnvironmentLighting(source, identity, block, 0), "室内照明输入同步");
+            shader.setShaderStyle(0, 0);
+            float[] originalIndoor = sampleNormal(shader, normals, low);
+            shader.setShaderStyle(1, 0);
+            check(distance(originalIndoor, sampleNormal(shader, normals, low)) < .0001f,
+                    "低天空光室内/火把不得因阴影采样回退为无遮挡而补光");
+        }
+        prepareScene(source, day);
+        shader.useMain();
+        shader.setEnvironmentLighting(source, identity, 0, 15);
+        shader.setShaderStyle(0, 0);
+        check(distance(originalLow, sampleNormal(shader, normals, low)) < .0001f, "归零须恢复原像素");
+        System.out.printf("PASS sunlight fill: baseline spread=%.6f, 70%%=%.6f, 100%%=%.6f; cast shadow/moonlight/indoor/torch/alpha/zero restore%n",
+                originalDifference, distance(filledLow, filledHigh), distance(flatLow, flatHigh));
+    }
+
+    private static float[] normalWithDot(float[] light, float dot) {
+        return new float[]{(float) Math.sqrt(1 - dot * dot), light[1] * dot, light[2] * dot};
+    }
+
+    private static float[] sampleNormal(ToonShaderCpu shader, int buffer, float[] n) {
+        GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, buffer);
+        GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0,
+                new float[]{n[0], n[1], n[2], n[0], n[1], n[2], n[0], n[1], n[2]});
+        draw(shader.getMainProgram());
+        return readPixel();
+    }
+
+    private static float distance(float[] a, float[] b) {
+        return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
     }
 
     private static float[] sample(ToonShaderCpu shader, int source, Object identity, LightingCase scene) {
@@ -184,6 +274,7 @@ public final class LightingProbe {
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "timeBrightness"), scene.angle() < .5f ? 1 : 0);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrengthS"), scene.rain());
         GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainStrength"), scene.rain());
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(source, "rainFactor"), scene.rain());
     }
 
     private static void draw(int program) {

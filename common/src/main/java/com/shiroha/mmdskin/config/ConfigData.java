@@ -63,6 +63,8 @@ public class ConfigData {
     public boolean toonOutlineEnabled = true;
     /** 描边默认跟随主体光照。 */
     public boolean toonOutlineFollowLighting = true;
+    /** 描边使用材质与贴图自适应颜色。 */
+    public boolean toonOutlineMaterialColor = false;
     public float toonOutlineWidth = 0.0022f;
     public float toonOutlineR = 0.06f;
     public float toonOutlineG = 0.08f;

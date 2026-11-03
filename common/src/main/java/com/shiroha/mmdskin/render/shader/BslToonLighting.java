@@ -8,6 +8,8 @@ final class BslToonLighting {
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*\\)\\s*\\{");
     private static final Pattern LIGHTING = Pattern.compile("void\\s+GetLighting\\s*\\(([^)]*)\\)\\s*\\{");
     private static final Pattern DIFFUSE = Pattern.compile("fullShadow\\s*=\\s*max\\(\\s*shadow\\s*\\*\\s*NoL\\s*,");
+    private static final Pattern SHADOW_GATE = Pattern.compile("\\bNoL\\s*>\\s*0\\.0\\b");
+    private static final Pattern SHADOW_SAMPLE = Pattern.compile("\\bGetShadow\\(\\s*worldPos\\s*,\\s*normal\\s*,\\s*NoL\\s*,");
 
     private BslToonLighting() {}
 
@@ -43,7 +45,15 @@ final class BslToonLighting {
         }
         // BSL 的 out shadow 在背光分支可能未赋值；不能让未定义值污染颜色。
         source = LIGHTING.matcher(source).replaceFirst("$0\n" + shadowName + " = vec3(0.0);");
-        source = DIFFUSE.matcher(source).replaceAll("fullShadow = max(shadow * toonDiffuseRamp(NoL),");
+        boolean sunlight = !nether && DIFFUSE.matcher(source).find() && SHADOW_GATE.matcher(source).find()
+                && SHADOW_SAMPLE.matcher(source).find();
+        if (sunlight) {
+            source = SHADOW_GATE.matcher(source).replaceAll("(toonSunlightStrength > 0.0 || NoL > 0.0)");
+            source = SHADOW_SAMPLE.matcher(source).replaceAll("GetShadow(worldPos, normal, toonShadowSampleNdotL(NoL),");
+        }
+        source = DIFFUSE.matcher(source).replaceAll(sunlight
+                ? "fullShadow = max(shadow * toonSunDiffuseRamp(NoL, shadow),"
+                : "fullShadow = max(shadow * toonDiffuseRamp(NoL),");
         int varyingStart = source.indexOf("varying ");
         if (varyingStart < 0) return "";
         StringBuilder before = new StringBuilder(), after = new StringBuilder();
@@ -71,10 +81,12 @@ final class BslToonLighting {
                 + "lmCoord = clamp((ToonLightmap - vec2(0.03125)) * 1.06667, vec2(0.0), vec2(0.9333, 1.0));\n"
                 + after + "\nvec3 world = ToWorld(p);\n" + extra
                 + "vec3 toonLight = " + (nether ? "viewLightDir" : "lightVec") + ";\n"
+                + (sunlight ? "toonPrepareSunlight(sunVec, toonLight, upVec);\n" : "")
                 + "float ndl = clamp(dot(n, toonLight), 0.0, 1.0);\n"
                 + "vec3 lit = vec3(1.0), shadow = vec3(0.0);\n"
                 + "GetLighting(lit, shadow, p, world, " + (hand ? "vec3(0.0)" : "n")
                 + ", lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0);\n"
-                + "return shadeToonSurface(raw, n, toonLight, p, pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2)), toonDiffuseRamp(ndl));\n}\n";
+                + "return shadeToonSurface(raw, n, toonLight, p, pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2)), "
+                + (sunlight ? "toonSunlitRamp(toonDiffuseRamp(ndl))" : "toonDiffuseRamp(ndl)") + ");\n}\n";
     }
 }

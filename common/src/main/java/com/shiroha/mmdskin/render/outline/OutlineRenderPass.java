@@ -56,6 +56,12 @@ public final class OutlineRenderPass {
     public static void draw(ToonShaderBase shader, Inputs inputs,
                             AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver,
                             IntFunction<String> materialNames) {
+        draw(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, id -> null);
+    }
+
+    public static void draw(ToonShaderBase shader, Inputs inputs,
+                            AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver,
+                            IntFunction<String> materialNames, IntFunction<float[]> diffuseResolver) {
         int positionLocation = shader.getOutlinePositionLocation();
         int normalLocation = shader.getOutlineNormalLocation();
         int uvLocation = shader.getOutlineUvLocation();
@@ -93,14 +99,17 @@ public final class OutlineRenderPass {
                 pass.beginOcclusion();
                 shader.setOutlineWidth(0);
                 shader.setOutlineOcclusion(true);
+                shader.setOutlineAutoMaterialColor(false);
                 try {
-                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, config, true, false);
+                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, diffuseResolver, config, true, false);
                 } finally {
                     shader.setOutlineOcclusion(false);
                     pass.endOcclusion();
                 }
             }
             shader.setOutlineWidth(width);
+            boolean autoColor = config.isOutlineMaterialColor();
+            shader.setOutlineAutoMaterialColor(autoColor);
             shader.setOutlineColor(config.getOutlineColorR(), config.getOutlineColorG(), config.getOutlineColorB());
             GL46C.glDepthMask(false);
             // GUI 的同深度薄片不能由倒置外壳再次覆盖，外缘仍通过背景深度。
@@ -108,7 +117,7 @@ public final class OutlineRenderPass {
             GL46C.glCullFace(GL46C.GL_FRONT);
             GL46C.glEnable(GL46C.GL_CULL_FACE);
             boolean capture = sharedWorld && WorldTransparencyPipeline.prepareModel();
-            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, config, false, capture);
+            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, diffuseResolver, config, false, capture);
             pass.composite();
         }
     }
@@ -125,9 +134,11 @@ public final class OutlineRenderPass {
     }
 
     private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver,
-                                      TextureResolver textureResolver, IntPredicate hairResolver, IntFunction<String> materialNames, ToonConfig config,
+                                      TextureResolver textureResolver, IntPredicate hairResolver, IntFunction<String> materialNames,
+                                      IntFunction<float[]> diffuseResolver, ToonConfig config,
                                       boolean occlusion, boolean sharedWorld) {
         ByteBuffer data = inputs.subMeshData();
+        boolean autoColor = !occlusion && config.isOutlineMaterialColor();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
             int base = i * SUB_MESH_STRIDE;
             // 私有遮挡缓冲也只能收集当前可见的子网格；offset 16 是 Rust 侧 isVisible。
@@ -137,20 +148,29 @@ public final class OutlineRenderPass {
                 if (data.get(base + 17) != 0) GL46C.glDisable(GL46C.GL_CULL_FACE);
                 else { GL46C.glEnable(GL46C.GL_CULL_FACE); GL46C.glCullFace(GL46C.GL_BACK); }
             }
-            float alpha = alphaResolver.resolve(data.getInt(base), data.getFloat(base + 12));
+            int materialId = data.getInt(base);
+            float alpha = alphaResolver.resolve(materialId, data.getFloat(base + 12));
             var runtime = EffectPackRuntime.active();
             var coverage = coverage(alpha, runtime == null ? null
-                    : runtime.materialEffect(data.getInt(base), materialNames.apply(data.getInt(base))));
+                    : runtime.materialEffect(materialId, materialNames.apply(materialId)));
             alpha = coverage.alpha();
             if (alpha < 0.001f) continue;
-            float cutoff = hairResolver.test(data.getInt(base)) ? config.getHairAlphaCutoff() : config.getAlphaCutoff();
+            float cutoff = hairResolver.test(materialId) ? config.getHairAlphaCutoff() : config.getAlphaCutoff();
             // 主体裁掉的像素不留下描边；保留原贴图遮罩的 0.1 下限。
             shader.setOutlineAlphaCutoff(occlusion ? Math.max(0.001f, cutoff) / alpha
                     : Math.max(0.1f, cutoff / alpha));
             // 无纹理材质沿用实心遮罩，不采样上一材质的残留绑定。
-            int texture = coverage.textureAlpha() ? textureResolver.resolve(data.getInt(base)) : 0;
+            int texture = coverage.textureAlpha() ? textureResolver.resolve(materialId) : 0;
             shader.setOutlineUseTextureAlpha(texture > 0);
             if (texture > 0) GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
+            if (autoColor) {
+                float[] diff = diffuseResolver != null ? diffuseResolver.apply(materialId) : null;
+                if (diff != null && diff.length >= 3) {
+                    shader.setOutlineMaterialDiffuse(diff[0], diff[1], diff[2]);
+                } else {
+                    shader.setOutlineMaterialDiffuse(1.0f, 1.0f, 1.0f);
+                }
+            }
             shader.setOutlineAlpha(alpha);
             try (var capture = sharedWorld ? WorldTransparencyPipeline.capture() : null) {
                 GL46C.glDrawElements(GL46C.GL_TRIANGLES, data.getInt(base + 8), inputs.indexType(),

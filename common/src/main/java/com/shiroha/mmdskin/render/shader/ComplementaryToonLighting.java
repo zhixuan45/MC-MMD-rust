@@ -11,7 +11,9 @@ final class ComplementaryToonLighting {
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*\\)\\s*\\{");
     private static final Pattern INITIALIZER = Pattern.compile("(?s)\\s*(float|vec[234]|int|mat[234])\\s+(.+);\\s*");
     private static final Pattern MODERN_DIFFUSE = Pattern.compile("shadowMult\\s*\\*=\\s*max\\(\\s*NdotLM\\s*\\*\\s*shadowTime\\s*,");
+    private static final Pattern MODERN_SHADOW_GATE = Pattern.compile("if\\s*\\(\\s*NdotLM\\s*>\\s*0\\.0001\\s*\\)");
     private static final Pattern DIFFUSE = Pattern.compile("fullShadow\\s*=\\s*shadow\\s*\\*\\s*max\\(\\s*NdotL\\s*,");
+    private static final Pattern SHADOW_GATE = Pattern.compile("\\bNdotL\\s*>\\s*0\\.0\\b");
 
     private ComplementaryToonLighting() {}
 
@@ -42,20 +44,28 @@ final class ComplementaryToonLighting {
         String head = moveInitializers(source.substring(0, inputs), before);
         String tail = moveInitializers(source.substring(inputs), after);
         // 保留阴影采样偏移的连续法线，仅对采样后的直射光权重分档。
-        tail = MODERN_DIFFUSE.matcher(tail).replaceAll("shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
+        boolean sunlight = MODERN_DIFFUSE.matcher(tail).find() && MODERN_SHADOW_GATE.matcher(tail).find()
+                && Pattern.compile("shadowMult\\s*\\*=\\s*GetShadow\\s*\\(").matcher(tail).find();
+        if (sunlight) tail = MODERN_SHADOW_GATE.matcher(tail)
+                .replaceAll("if (toonSunlightStrength > 0.0 || NdotLM > 0.0001)");
+        tail = MODERN_DIFFUSE.matcher(tail).replaceAll(sunlight
+                ? "shadowMult *= max(toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime,"
+                : "shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
         return shadowSamplerWrapper() + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + "\nupVec = normalize(gbufferModelView[1].xyz);\n"
                 + "northVec = normalize(gbufferModelView[2].xyz); eastVec = normalize(gbufferModelView[0].xyz);\n"
                 + "sunVec = " + sun.group(1) + ";\n"
                 + "normal = n; texCoord = texCoord0; lmCoord = ToonLightmap; glColor = vec4(1.0);\n"
                 + after + "\nfloat ndl = max(dot(n, lightVec), 0.0);\n"
+                + (sunlight ? "toonPrepareSunlight(sunVec, lightVec, upVec);\n" : "")
                 + "float band = toonDiffuseRamp(ndl);\n"
                 + "vec4 lit = vec4(1.0);\n"
                 + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
                 + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * n);\n"
                 + "DoLighting(lit, shadow, player, p, length(p), n, n, 0.5, worldNormal, lmCoord,\n"
                 + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
-                + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), band);\n}\n";
+                + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), "
+                + (sunlight ? "toonSunlitRamp(band)" : "band") + ");\n}\n";
     }
 
     static String create(String fragment, String vertex) {
@@ -87,9 +97,16 @@ final class ComplementaryToonLighting {
         String tail = moveInitializers(source.substring(varyingStart).replaceAll("\\bvarying\\s+", ""), after);
         // 阴影偏移保留连续 NdotL，仅对采样后的漫反射权重分档。
         Matcher diffuse = DIFFUSE.matcher(tail);
+        boolean sunlight = false;
         if (diffuse.find()) {
             if (diffuse.find()) return "";
-            tail = DIFFUSE.matcher(tail).replaceFirst("fullShadow = shadow * max(toonDiffuseRamp(NdotL),");
+            sunlight = SHADOW_GATE.matcher(tail).find()
+                    && Pattern.compile("\\bshadow\\s*=\\s*GetShadow\\s*\\(").matcher(tail).find();
+            if (sunlight) tail = SHADOW_GATE.matcher(tail)
+                    .replaceAll("(toonSunlightStrength > 0.0 || NdotL > 0.0)");
+            tail = DIFFUSE.matcher(tail).replaceFirst(sunlight
+                    ? "fullShadow = shadow * max(toonSunDiffuseRamp(NdotL, shadow),"
+                    : "fullShadow = shadow * max(toonDiffuseRamp(NdotL),");
         } else if (!tail.contains("vec3 sceneLighting = normalize(sqrt(max(fogColor,")) {
             // Nether 只有环境光；其它未知漫反射形式不套用此适配。
             return "";
@@ -97,6 +114,7 @@ final class ComplementaryToonLighting {
         return shadowSamplerWrapper() + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + sunSetup + "\nnormal = n; texCoord = texCoord0; lmCoord = ToonLightmap; color = vec4(1.0);\n"
                 + after + "\nlmCoord.x -= max(lmCoord.x - 0.825, 0.0) * 0.75;\n"
+                + (sunlight ? "toonPrepareSunlight(sunVec, lightVec, upVec);\n" : "")
                 + "float ndl = clamp(dot(n, lightVec) * 1.01 - 0.01, 0.0, 1.0);\n"
                 + "float band = toonDiffuseRamp(ndl);\n"
                 + "vec3 lit = vec3(1.0);\n"
@@ -105,7 +123,8 @@ final class ComplementaryToonLighting {
                 // 固定上方向遮蔽，避免色阶之外再叠一层连续的方块式面明暗。
                 + "GetLighting(lit, shadow, lightAlbedo, p, length(p), world, lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
                 + "vec3 illumination = pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2));\n"
-                + "return shadeToonSurface(raw, n, lightVec, p, illumination, band);\n}\n";
+                + "return shadeToonSurface(raw, n, lightVec, p, illumination, "
+                + (sunlight ? "toonSunlitRamp(band)" : "band") + ");\n}\n";
     }
 
     private static String adaptShadowSampler(String source) {

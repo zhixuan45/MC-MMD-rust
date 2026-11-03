@@ -122,6 +122,10 @@ public class ConfigManager {
         return provider != null ? provider.isToonOutlineFollowLighting() : true;
     }
 
+    public static boolean isToonOutlineMaterialColor() {
+        return provider != null ? provider.isToonOutlineMaterialColor() : false;
+    }
+
     public static float getToonOutlineWidth() {
         return provider != null ? provider.getToonOutlineWidth() : 0.0022f;
     }

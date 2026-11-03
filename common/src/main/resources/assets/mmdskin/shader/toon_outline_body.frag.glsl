@@ -16,14 +16,25 @@ uniform bool Premultiplied;
 uniform bool OcclusionPass;
 uniform bool FollowLighting;
 uniform bool DisableTransparency;
+uniform bool AutoMaterialColor;
+uniform vec3 MaterialDiffuse;
 
 /* TOON_OUTPUT_DECLARATIONS */
 /* TOON_OUTPUT_WRITER */
 /* TOON_SURFACE_LIGHTING */
 
+vec3 calculateAutoEdgeColor(vec3 surfaceColor) {
+    float luma = dot(surfaceColor, vec3(0.299, 0.587, 0.114));
+    vec3 saturated = mix(vec3(luma), surfaceColor, 1.25);
+    vec3 darkened = saturated * 0.65;
+    float whiteWeight = smoothstep(0.75, 0.98, luma);
+    darkened = mix(darkened, OutlineColor, whiteWeight * 0.45);
+    return clamp(darkened, 0.0, 1.0);
+}
+
 void main() {
-    // 纹理只提供遮罩，描边颜色仍然独立。
-    float coverage = UseTextureAlpha ? texture(Sampler0, texCoord0).a : 1.0;
+    vec4 texSample = UseTextureAlpha ? texture(Sampler0, texCoord0) : vec4(1.0);
+    float coverage = UseTextureAlpha ? texSample.a : 1.0;
     if (coverage < AlphaCutoff) discard;
     if (OcclusionPass) {
         float alpha = DisableTransparency ? 1.0 : clamp(coverage * OutlineAlpha, 0.0, 1.0);
@@ -48,16 +59,22 @@ void main() {
         discard;
     }
 
-    vec3 finalOutline = OutlineColor;
+    vec3 baseColor = OutlineColor;
+    if (AutoMaterialColor) {
+        vec3 surfaceRgb = MaterialDiffuse * texSample.rgb;
+        baseColor = calculateAutoEdgeColor(surfaceRgb);
+    }
+
+    vec3 finalOutline = baseColor;
     if (FollowLighting) {
         // 使用原表面的位置采样阴影，避免外扩外壳造成光照漏边。
         vec3 lightDir = normalize(viewLightDir);
         if (UsePackLighting) {
-            finalOutline = applyPackLighting(OutlineColor, normal, surfaceViewPos);
+            finalOutline = applyPackLighting(baseColor, normal, surfaceViewPos);
         } else if (ToonGenericEnvironment) {
-            finalOutline = applyGenericEnvironment(OutlineColor, normal, surfaceViewPos, lightDir);
+            finalOutline = applyGenericEnvironment(baseColor, normal, surfaceViewPos, lightDir);
         } else {
-            finalOutline = shadeToonSurface(OutlineColor, normal, lightDir, surfaceViewPos,
+            finalOutline = shadeToonSurface(baseColor, normal, lightDir, surfaceViewPos,
                     vec3(max(LightIntensity, 0.0)), toonDiffuseRamp(saturate(dot(normal, lightDir))));
         }
     }

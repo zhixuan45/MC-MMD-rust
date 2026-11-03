@@ -395,6 +395,15 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_material_color"),
+                data.toonOutlineMaterialColor)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline_material_color.tooltip"))
+            .setSaveConsumer(value -> data.toonOutlineMaterialColor = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_outline_width"),
                 (int) (data.toonOutlineWidth * 1000), 1, 100)

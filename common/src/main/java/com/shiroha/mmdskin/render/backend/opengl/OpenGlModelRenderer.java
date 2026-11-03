@@ -737,7 +737,8 @@ final class OpenGlModelRenderer {
                 (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
                 materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex,
                 materialId -> target.mats[materialId] != null && target.mats[materialId].isHair(),
-                materialId -> target.mats[materialId] == null ? "" : target.mats[materialId].name);
+                materialId -> target.mats[materialId] == null ? "" : target.mats[materialId].name,
+                materialId -> target.mats[materialId] == null ? null : target.mats[materialId].diffuse);
         } finally {
             RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
         }

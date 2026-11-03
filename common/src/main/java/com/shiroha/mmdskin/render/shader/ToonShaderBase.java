@@ -77,6 +77,8 @@ public abstract class ToonShaderBase {
     protected int outlineSamplerLocation = -1;
     protected int outlineAlphaCutoffLocation = -1;
     protected int outlineUseTextureAlphaLocation = -1;
+    protected int outlineAutoMaterialColorLocation = -1;
+    protected int outlineMaterialDiffuseLocation = -1;
 
     protected int positionLocation = -1;
     protected int normalLocation = -1;
@@ -265,6 +267,8 @@ public abstract class ToonShaderBase {
         outlineSamplerLocation = GL46C.glGetUniformLocation(outlineProgram, "Sampler0");
         outlineAlphaCutoffLocation = GL46C.glGetUniformLocation(outlineProgram, "AlphaCutoff");
         outlineUseTextureAlphaLocation = GL46C.glGetUniformLocation(outlineProgram, "UseTextureAlpha");
+        outlineAutoMaterialColorLocation = GL46C.glGetUniformLocation(outlineProgram, "AutoMaterialColor");
+        outlineMaterialDiffuseLocation = GL46C.glGetUniformLocation(outlineProgram, "MaterialDiffuse");
     }
 
     private void initCommonAttributes() {
@@ -491,6 +495,18 @@ public abstract class ToonShaderBase {
 
     public void setOutlineUseTextureAlpha(boolean enabled) {
         if (outlineUseTextureAlphaLocation >= 0) GL46C.glUniform1i(outlineUseTextureAlphaLocation, enabled ? 1 : 0);
+    }
+
+    public void setOutlineAutoMaterialColor(boolean enabled) {
+        if (outlineAutoMaterialColorLocation >= 0) {
+            GL46C.glUniform1i(outlineAutoMaterialColorLocation, enabled ? 1 : 0);
+        }
+    }
+
+    public void setOutlineMaterialDiffuse(float r, float g, float b) {
+        if (outlineMaterialDiffuseLocation >= 0) {
+            GL46C.glUniform3f(outlineMaterialDiffuseLocation, r, g, b);
+        }
     }
 
     public void setDisableTransparency(boolean disabled) {

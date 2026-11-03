@@ -274,6 +274,26 @@ class ConfigDataTest {
     }
 
     @Test
+    void toonOutlineMaterialColorDefaultsAndPersistsTrue(@TempDir Path configDir) throws Exception {
+        Files.createDirectories(configDir);
+        Files.writeString(configDir.resolve("config.json"), "{\"toonOutlineEnabled\":true}");
+        ConfigData loaded = ConfigData.load(configDir);
+        assertFalse(loaded.toonOutlineMaterialColor);
+        assertFalse(new TestConfig(loaded).isToonOutlineMaterialColor());
+
+        loaded.toonOutlineMaterialColor = true;
+        loaded.save(configDir);
+        ConfigData roundTrip = ConfigData.load(configDir);
+        assertTrue(roundTrip.toonOutlineMaterialColor);
+        ConfigManager.init(new TestConfig(roundTrip));
+        try {
+            assertTrue(ConfigManager.isToonOutlineMaterialColor());
+        } finally {
+            ConfigManager.init(null);
+        }
+    }
+
+    @Test
     void transparencyControlsMigratePersistAndClamp(@TempDir Path configDir) throws Exception {
         Files.writeString(configDir.resolve("config.json"), "{}");
         ConfigData loaded = ConfigData.load(configDir);
