@@ -15,6 +15,19 @@ uniform bool ToonHasEnvironmentDirection;
 uniform vec3 ToonEnvironmentDirection;
 uniform vec3 ToonEnvironmentSkyTint;
 uniform float ToonEnvironmentWeather;
+uniform vec4 ToonModelShadowBounds;
+
+bool toonModelShadowEnabled() {
+    return ToonModelShadowBounds.w > 0.0;
+}
+
+vec3 toonModelShadowPosition(vec3 fallback, vec3 light, mat4 viewToWorld) {
+    if (!toonModelShadowEnabled()) return fallback;
+    vec3 center = (viewToWorld * vec4(ToonModelShadowBounds.xyz, 1.0)).xyz;
+    // The common receiver is in front of the whole model along the light ray.
+    vec3 worldLight = normalize(mat3(viewToWorld) * light);
+    return center + worldLight * (ToonModelShadowBounds.w + 0.01);
+}
 
 #ifdef TOON_MATERIAL_LIGHTING
 // 复用本片段照明，供 SPA 加色衰减，避免重复阴影采样。
@@ -42,8 +55,9 @@ void toonPrepareSunlight(vec3 sun, vec3 light, vec3 up) {
 }
 
 float toonShadowSampleNdotL(float ndl) {
-    // Tangent faces still need a real occlusion sample before receiving fill.
-    return toonSunlightStrength > 0.0 && ndl <= 0.0 ? 0.2 : ndl;
+    if (toonModelShadowEnabled()) return 1.0;
+    // A continuous floor bounds BSL's 1/NdotL bias on both sides of the terminator.
+    return toonSunlightStrength > 0.0 ? max(ndl, 0.2) : ndl;
 }
 
 float toonSunlitRamp(float ramp) {

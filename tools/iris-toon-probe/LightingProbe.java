@@ -140,6 +140,12 @@ public final class LightingProbe {
         double angle = Math.toRadians(Double.parseDouble(rotation.group(1)));
         checkSunlightFill(shader, source, sourceIdentity, normals, shadowTexture, opaqueShadowTexture,
                 new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
+        if (profile.id().startsWith("bsl:")) {
+            checkWholeModelShadowReceiver(shader, source, sourceIdentity, normals, shadowTexture,
+                    opaqueShadowTexture, new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
+            checkGrazingShadowContinuity(shader, source, sourceIdentity, normals, shadowTexture,
+                    opaqueShadowTexture, new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
+        }
         if (profile.id().startsWith("complementary:")) ToonControlsProbe.run(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
         else ToonControlsProbe.runShaderStyle(shader, source, sourceIdentity, new float[]{0,(float)Math.cos(angle),-(float)Math.sin(angle)});
         shader.useMain();
@@ -227,6 +233,97 @@ public final class LightingProbe {
 
     private static float[] normalWithDot(float[] light, float dot) {
         return new float[]{(float) Math.sqrt(1 - dot * dot), light[1] * dot, light[2] * dot};
+    }
+
+    private static void checkGrazingShadowContinuity(ToonShaderCpu shader, int source, Object identity,
+            int normals, int shadowTexture, int opaqueShadowTexture, float[] light) {
+        prepareScene(source, new LightingCase("grazing-self-shadow", .25f, 0, 0, 15, 1));
+        shader.useMain();
+        check(shader.setEnvironmentLighting(source, identity, 0, 15), "Grazing shadow pack inputs");
+        shader.setSpecular(96, 0);
+        shader.setRimLight(5, 0);
+        for (float strength : new float[]{.2f, 1}) {
+            shader.setShaderStyle(strength, 0);
+            float maximumJump = 0, worstDepth = 0;
+            for (int step = 0; step <= 200; step++) {
+                float depth = .4f + step * .0005f;
+                if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, depth);
+                if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, depth);
+                shader.useMain();
+                float[] tangent = sampleNormal(shader, normals, normalWithDot(light, 0));
+                float[] nearTangent = sampleNormal(shader, normals, normalWithDot(light, .00001f));
+                float[] backTangent = sampleNormal(shader, normals, normalWithDot(light, -.00001f));
+                float jump = Math.max(distance(tangent, nearTangent), distance(tangent, backTangent));
+                if (jump > maximumJump) {
+                    maximumJump = jump;
+                    worstDepth = depth;
+                }
+            }
+            System.out.printf("Grazing shadow continuity: strength=%.2f, normal delta=0.00001, max RGB jump=%.6f, shadow depth=%.6f%n",
+                    strength, maximumJump, worstDepth);
+            check(maximumJump < .001f, "Near-identical grazing normals must not switch between shadowed and lit");
+        }
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 1);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
+        shader.useMain();
+        shader.setShaderStyle(0, 0);
+    }
+
+    private static void checkWholeModelShadowReceiver(ToonShaderCpu shader, int source, Object identity,
+            int normals, int shadowTexture, int opaqueShadowTexture, float[] light) {
+        prepareScene(source, new LightingCase("whole-model-shadow", .25f, 0, 0, 15, 1));
+        var shadowView = new org.joml.Matrix4f().lookAlong(-light[0], -light[1], -light[2], 1, 0, 0);
+        var shadowProjection = new org.joml.Matrix4f().ortho(-4, 4, -4, 4, -4, 4);
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowModelView"), false, shadowView.get(new float[16]));
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowProjection"), false, shadowProjection.get(new float[16]));
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, .5f);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, .5f);
+        shader.useMain();
+        check(shader.setEnvironmentLighting(source, identity, 0, 15), "Whole-model shadow inputs");
+        shader.setShaderStyle(.2f, 0);
+        shader.setSpecular(96, 0); shader.setRimLight(5, 0);
+        float[] normal = normalWithDot(light, .8f);
+        shader.setModelShadowBounds(0, 0, 0, 0);
+        float[] selfShadow = sampleNormal(shader, normals, normal);
+        shader.setModelShadowBounds(.0625f, .0625f, -.5f, .6f);
+        float[] wholeModel = sampleNormal(shader, normals, normal);
+        check(luminance(wholeModel) > luminance(selfShadow) * 1.2f, "Own geometry must not shadow the common receiver");
+        float maximumDifference = 0;
+        for (float[] angle : new float[][]{{.3f,0}, {-.3f,.22f}, {.15f,-.3f}, {0, .3f}}) {
+            var view = new org.joml.Matrix4f().rotateY(angle[0]).rotateX(angle[1]);
+            GL46C.glUseProgram(source);
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelView"), false, view.get(new float[16]));
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelViewInverse"), false,
+                    new org.joml.Matrix4f(view).invert().get(new float[16]));
+            shader.useMain();
+            check(shader.setEnvironmentLighting(source, identity, 0, 15), "Camera rotation shadow inputs");
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(shader.getMainProgram(), "ModelViewMat"), false, view.get(new float[16]));
+            var center = view.transform(new org.joml.Vector4f(.0625f, .0625f, -.5f, 1));
+            shader.setModelShadowBounds(center.x, center.y, center.z, .6f);
+            maximumDifference = Math.max(maximumDifference, distance(wholeModel, sampleNormal(shader, normals, normal)));
+        }
+        check(maximumDifference < .001f, "Common model shadow must remain stable under camera rotation");
+        GL46C.glUseProgram(source);
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelView"), false, identity());
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelViewInverse"), false, identity());
+        shader.useMain(); shader.setEnvironmentLighting(source, identity, 0, 15);
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(shader.getMainProgram(), "ModelViewMat"), false, identity());
+        shader.setModelShadowBounds(.0625f, .0625f, -.5f, .6f);
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, .45f);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, .45f);
+        shader.useMain();
+        float[] externalShadow = sampleNormal(shader, normals, normal);
+        check(luminance(externalShadow) < luminance(wholeModel) * .8f, "Buildings must still shadow the whole model");
+        shader.setModelShadowBounds(0, 0, 0, 0);
+        check(distance(externalShadow, sampleNormal(shader, normals, normal)) < .001f, "Deep external shadow must retain its color");
+        GL46C.glUseProgram(source);
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowModelView"), false, identity());
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowProjection"), false, identity());
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 1);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
+        shader.useMain(); shader.setEnvironmentLighting(source, identity, 0, 15); shader.setShaderStyle(0, 0);
+        System.out.printf("PASS whole-model shadows: self=%.6f, common=%.6f, building=%.6f, camera delta=%.6f%n",
+                luminance(selfShadow), luminance(wholeModel), luminance(externalShadow), maximumDifference);
     }
 
     private static float[] sampleNormal(ToonShaderCpu shader, int buffer, float[] n) {

@@ -48,8 +48,8 @@ final class BslToonLighting {
         boolean sunlight = !nether && DIFFUSE.matcher(source).find() && SHADOW_GATE.matcher(source).find()
                 && SHADOW_SAMPLE.matcher(source).find();
         if (sunlight) {
-            source = SHADOW_GATE.matcher(source).replaceAll("(toonSunlightStrength > 0.0 || NoL > 0.0)");
-            source = SHADOW_SAMPLE.matcher(source).replaceAll("GetShadow(worldPos, normal, toonShadowSampleNdotL(NoL),");
+            source = SHADOW_GATE.matcher(source).replaceAll("(toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NoL > 0.0)");
+            source = SHADOW_SAMPLE.matcher(source).replaceAll("GetShadow(toonModelShadowPosition(worldPos, lightVec, gbufferModelViewInverse), normal, toonShadowSampleNdotL(NoL),");
         }
         source = DIFFUSE.matcher(source).replaceAll(sunlight
                 ? "fullShadow = max(shadow * toonSunDiffuseRamp(NoL, shadow),"

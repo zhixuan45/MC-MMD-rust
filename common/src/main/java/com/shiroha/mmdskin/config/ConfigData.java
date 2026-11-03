@@ -52,6 +52,8 @@ public class ConfigData {
     public float toonTransitionSoftness = 1.2f;
     public float toonShaderFlatness = 0.0f;
     public float toonShaderSphereSuppression = 0.0f;
+    /** Shared model shadow receiver; off preserves classic per-fragment shadows. */
+    public boolean toonWholeModelLighting = false;
     public float toonRimPower = 5.6f;
     public float toonRimIntensity = 0.02f;
     public float toonEyeEmission = 0.0f;

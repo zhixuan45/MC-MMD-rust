@@ -48,6 +48,8 @@
   "gui.mmdskin.mod_settings.toon_levels.tooltip": "ライティングレベル数（2-5）、高いほど滑らかなグラデーション",
   "gui.mmdskin.mod_settings.toon_transition_softness": "明暗の境界の柔らかさ",
   "gui.mmdskin.mod_settings.toon_transition_softness.tooltip": "モデル自身の明暗の遷移幅を調節します。投影された影には影響しません。0% は硬い境界、100% を超えると平坦な領域が減ります。2D強度とは独立です（0-200%）。",
+  "gui.mmdskin.mod_settings.toon_whole_model_lighting": "モデル全体の受光",
+  "gui.mmdskin.mod_settings.toon_whole_model_lighting.tooltip": "実験的：対応シェーダーでモデルごとに共通の影サンプル点を使い、内部の相互遮蔽を減らします。モデルの影と外部遮蔽は維持しますが、建物の影の境界ではモデル全体が切り替わる場合があります。オフで従来のフラグメント単位の受光と自己影に戻ります。保存後に反映。初期値はオフ。",
   "gui.mmdskin.mod_settings.toon_shader_flatness": "シェーダーの2D表現強度",
   "gui.mmdskin.mod_settings.toon_shader_flatness.tooltip": "対応シェーダーの直射日光下で、面の向きによる明暗差を減らします。100% は均一な照明に近づきます。建物などの影、月光、汎用照明では補光しません。ハイライトとリムライトも弱めます。0%で元の表現。",
   "gui.mmdskin.mod_settings.toon_shader_sphere_suppression": "シェーダーのスフィア反射抑制",

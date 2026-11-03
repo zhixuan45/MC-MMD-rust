@@ -70,6 +70,8 @@
   "gui.mmdskin.mod_settings.toon_levels.tooltip": "Number of lighting levels (2-5), higher values create smoother transitions",
   "gui.mmdskin.mod_settings.toon_transition_softness": "Shade Transition Softness",
   "gui.mmdskin.mod_settings.toon_transition_softness.tooltip": "Adjust model shade-band transitions, independently of 2D strength. Does not soften cast shadows. 0% is hard; above 100%, flat areas shrink (0-200%).",
+  "gui.mmdskin.mod_settings.toon_whole_model_lighting": "Whole-Model Lighting",
+  "gui.mmdskin.mod_settings.toon_whole_model_lighting.tooltip": "Experimental: use a shared shadow receiver per model with supported shaders to reduce internal self-occlusion. Keeps model shadow casting and external occlusion; building shadow boundaries may switch the whole model. Off restores classic per-fragment lighting and self-shadows. Applies on save; off by default.",
   "gui.mmdskin.mod_settings.toon_shader_flatness": "Shader 2D Style Strength",
   "gui.mmdskin.mod_settings.toon_shader_flatness.tooltip": "With supported shader lighting, reduce orientation shading in direct sunlight; 100% approaches uniform lighting. No fill inside cast shadows, in moonlight, or with generic lighting fallback. Also reduces material highlights and rim light. 0% preserves the original style.",
   "gui.mmdskin.mod_settings.toon_shader_sphere_suppression": "Shader Sphere Reflection Suppression",

@@ -538,6 +538,7 @@ final class GpuSkinningModelRenderer {
             GpuSkinningModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
             GpuSkinningModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
             ToonRenderHelper.setupToonUniforms(GpuSkinningModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
+            target.setupToonModelShadow(GpuSkinningModelInstance.toonShaderCpu, target.modelViewMatBuff, context, target.posBuffer);
             GpuSkinningModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
                     irisShader, light.blockLight(), light.skyLight());
 

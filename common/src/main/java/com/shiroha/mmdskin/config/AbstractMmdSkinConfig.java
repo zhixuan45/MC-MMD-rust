@@ -37,6 +37,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonTransitionSoftness() { return data.toonTransitionSoftness; }
     @Override public float getToonShaderFlatness() { return data.toonShaderFlatness; }
     @Override public float getToonShaderSphereSuppression() { return data.toonShaderSphereSuppression; }
+    @Override public boolean isToonWholeModelLightingEnabled() { return data.toonWholeModelLighting; }
     @Override public float getToonRimPower() { return data.toonRimPower; }
     @Override public float getToonRimIntensity() { return data.toonRimIntensity; }
     @Override public float getToonEyeEmission() { return data.toonEyeEmission; }

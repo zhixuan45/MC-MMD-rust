@@ -59,6 +59,7 @@ public abstract class ToonShaderBase {
     protected int toonTransitionSoftnessLocation = -1;
     private int shaderFlatnessLocation = -1;
     private int shaderSphereSuppressionLocation = -1;
+    private int modelShadowBoundsLocation = -1;
     protected int rimPowerLocation = -1;
     protected int rimIntensityLocation = -1;
     protected int shadowColorLocation = -1;
@@ -238,6 +239,7 @@ public abstract class ToonShaderBase {
         toonTransitionSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonTransitionSoftness");
         shaderFlatnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderFlatness");
         shaderSphereSuppressionLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderSphereSuppression");
+        modelShadowBoundsLocation = GL46C.glGetUniformLocation(mainProgram, "ToonModelShadowBounds");
         rimPowerLocation = GL46C.glGetUniformLocation(mainProgram, "RimPower");
         rimIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "RimIntensity");
         shadowColorLocation = GL46C.glGetUniformLocation(mainProgram, "ShadowColor");
@@ -409,6 +411,11 @@ public abstract class ToonShaderBase {
         outlineLighting.flatness = finiteUnit(flatness);
         GL46C.glUniform1f(shaderFlatnessLocation, outlineLighting.flatness);
         GL46C.glUniform1f(shaderSphereSuppressionLocation, finiteUnit(sphereSuppression));
+    }
+
+    public void setModelShadowBounds(float x, float y, float z, float radius) {
+        if (modelShadowBoundsLocation >= 0) GL46C.glUniform4f(modelShadowBoundsLocation, x, y, z, radius);
+        outlineLighting.setModelShadowBounds(x, y, z, radius);
     }
 
     private static float finiteUnit(float value) {

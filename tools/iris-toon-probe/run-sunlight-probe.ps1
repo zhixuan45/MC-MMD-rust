@@ -6,6 +6,18 @@ $ErrorActionPreference = 'Stop'
 $probeRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $probeOutput = Join-Path $probeRoot 'build/sunlight-probe'
 New-Item -ItemType Directory -Force -Path $probeOutput | Out-Null
+$probeOldJavaHome = $env:JAVA_HOME
+$probeOldPath = $env:PATH
+try {
+    $env:JAVA_HOME = $Jdk
+    $env:PATH = "$Jdk\bin;$probeOldPath"
+    & (Join-Path $probeRoot 'gradlew.bat') -p $probeRoot -I (Join-Path $probeRoot 'tools/translucent-performance/validation.gradle') `
+        :common:compileJava :common:processResources :common:writeTranslucentProbeClasspath -x :prepareNativeResources --console=plain
+    if ($LASTEXITCODE -ne 0) { throw 'Production classes/resources preparation failed' }
+} finally {
+    $env:JAVA_HOME = $probeOldJavaHome
+    $env:PATH = $probeOldPath
+}
 $probeClasspathFile = Join-Path $probeRoot 'build/translucent-performance/classpath.txt'
 if (!(Test-Path -LiteralPath $probeClasspathFile)) {
     throw 'Run :common:writeTranslucentProbeClasspath with tools/translucent-performance/validation.gradle first'

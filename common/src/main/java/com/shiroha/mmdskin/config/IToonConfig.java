@@ -30,6 +30,8 @@ public interface IToonConfig {
 
     default float getToonShaderSphereSuppression() { return 0.0f; }
 
+    default boolean isToonWholeModelLightingEnabled() { return false; }
+
     default boolean isToonOutlineEnabled() { return true; }
 
     default boolean isToonOutlineFollowLighting() { return true; }

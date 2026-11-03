@@ -142,6 +142,10 @@ public class ConfigManager {
         return provider != null ? provider.getToonShaderSphereSuppression() : 0.0f;
     }
 
+    public static boolean isToonWholeModelLightingEnabled() {
+        return provider != null && provider.isToonWholeModelLightingEnabled();
+    }
+
     public static float getToonRimPower() {
         return provider != null ? provider.getToonRimPower() : 5.6f;
     }

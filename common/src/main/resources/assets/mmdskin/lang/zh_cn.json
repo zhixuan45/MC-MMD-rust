@@ -70,6 +70,8 @@
   "gui.mmdskin.mod_settings.toon_levels.tooltip": "光照色阶数量（2-5），数值越大过渡越平滑",
   "gui.mmdskin.mod_settings.toon_transition_softness": "明暗过渡柔和度",
   "gui.mmdskin.mod_settings.toon_transition_softness.tooltip": "调节模型自身明暗色阶的过渡宽度，不改变建筑等投射阴影。0% 为硬边，超过 100% 会减少平坦色块；与二维化强度独立（0-200%）。",
+  "gui.mmdskin.mod_settings.toon_whole_model_lighting": "模型整体受光",
+  "gui.mmdskin.mod_settings.toon_whole_model_lighting.tooltip": "实验性：在支持的光影下使用每个模型共享的阴影采样点，减少模型内部互相遮挡。保留模型投影和外部遮挡；建筑阴影边界可能变为整模型切换。关闭恢复经典逐片元受光与自阴影。保存后生效，默认关闭。",
   "gui.mmdskin.mod_settings.toon_shader_flatness": "光影二维化强度",
   "gui.mmdskin.mod_settings.toon_shader_flatness.tooltip": "已适配光影下，减少阳光直射处因表面朝向产生的明暗分割；100% 趋向均匀照亮。建筑等投射阴影内不提亮，月光和通用照明回退不补光。另会减弱材质高光与边缘光。0% 保持原效果。",
   "gui.mmdskin.mod_settings.toon_shader_sphere_suppression": "光影球面反光抑制",

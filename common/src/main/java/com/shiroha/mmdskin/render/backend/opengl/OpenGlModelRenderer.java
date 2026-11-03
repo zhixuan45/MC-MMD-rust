@@ -699,7 +699,7 @@ final class OpenGlModelRenderer {
             RenderSystem.getProjectionMatrix().get(target.projMatBuff);
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
 
-            renderToonMainPass(target, minecraft, lightIntensity, light, irisShader);
+            renderToonMainPass(target, minecraft, lightIntensity, light, irisShader, context);
 
             if (OpenGlModelInstance.toonConfig.isOutlineEnabled() && (context == null || context.allowsOutline())) {
                 renderOutlinePass(target);
@@ -745,7 +745,7 @@ final class OpenGlModelRenderer {
     }
 
     private static void renderToonMainPass(OpenGlModelInstance target, Minecraft minecraft, float lightIntensity,
-                                          LightingHelper.LightData light, ShaderInstance irisShader) {
+                                          LightingHelper.LightData light, ShaderInstance irisShader, RenderScene context) {
         OpenGlModelInstance.toonShaderCpu.useMain();
         int posLoc = OpenGlModelInstance.toonShaderCpu.getPositionLocation();
         int norLoc = OpenGlModelInstance.toonShaderCpu.getNormalLocation();
@@ -770,6 +770,7 @@ final class OpenGlModelRenderer {
         OpenGlModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
         OpenGlModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
         ToonRenderHelper.setupToonUniforms(OpenGlModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
+        target.setupToonModelShadow(OpenGlModelInstance.toonShaderCpu, target.modelViewMatBuff, context, target.posBuffer);
         OpenGlModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
                 irisShader, light.blockLight(), light.skyLight());
 

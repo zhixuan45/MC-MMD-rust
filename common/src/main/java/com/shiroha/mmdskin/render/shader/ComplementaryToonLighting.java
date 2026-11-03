@@ -47,7 +47,7 @@ final class ComplementaryToonLighting {
         boolean sunlight = MODERN_DIFFUSE.matcher(tail).find() && MODERN_SHADOW_GATE.matcher(tail).find()
                 && Pattern.compile("shadowMult\\s*\\*=\\s*GetShadow\\s*\\(").matcher(tail).find();
         if (sunlight) tail = MODERN_SHADOW_GATE.matcher(tail)
-                .replaceAll("if (toonSunlightStrength > 0.0 || NdotLM > 0.0001)");
+                .replaceAll("if (toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NdotLM > 0.0001)");
         tail = MODERN_DIFFUSE.matcher(tail).replaceAll(sunlight
                 ? "shadowMult *= max(toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime,"
                 : "shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
@@ -61,8 +61,10 @@ final class ComplementaryToonLighting {
                 + "float band = toonDiffuseRamp(ndl);\n"
                 + "vec4 lit = vec4(1.0);\n"
                 + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
-                + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * n);\n"
-                + "DoLighting(lit, shadow, player, p, length(p), n, n, 0.5, worldNormal, lmCoord,\n"
+                + (sunlight ? "player = toonModelShadowPosition(player, lightVec, gbufferModelViewInverse);\n" : "")
+                + "vec3 sampleNormal = " + (sunlight ? "toonModelShadowEnabled() ? lightVec : n" : "n") + ";\n"
+                + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * sampleNormal);\n"
+                + "DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal, 0.5, worldNormal, lmCoord,\n"
                 + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
                 + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), "
                 + (sunlight ? "toonSunlitRamp(band)" : "band") + ");\n}\n";
@@ -103,7 +105,7 @@ final class ComplementaryToonLighting {
             sunlight = SHADOW_GATE.matcher(tail).find()
                     && Pattern.compile("\\bshadow\\s*=\\s*GetShadow\\s*\\(").matcher(tail).find();
             if (sunlight) tail = SHADOW_GATE.matcher(tail)
-                    .replaceAll("(toonSunlightStrength > 0.0 || NdotL > 0.0)");
+                    .replaceAll("(toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NdotL > 0.0)");
             tail = DIFFUSE.matcher(tail).replaceFirst(sunlight
                     ? "fullShadow = shadow * max(toonSunDiffuseRamp(NdotL, shadow),"
                     : "fullShadow = shadow * max(toonDiffuseRamp(NdotL),");
@@ -120,8 +122,11 @@ final class ComplementaryToonLighting {
                 + "vec3 lit = vec3(1.0);\n"
                 + "vec3 shadow = vec3(1.0), lightAlbedo = vec3(0.0);\n"
                 + "vec3 world = (gbufferModelViewInverse * vec4(p, 1.0)).xyz;\n"
+                + (sunlight ? "world = toonModelShadowPosition(world, lightVec, gbufferModelViewInverse);\n"
+                    + "if (toonModelShadowEnabled()) normal = lightVec;\n" : "")
                 // 固定上方向遮蔽，避免色阶之外再叠一层连续的方块式面明暗。
                 + "GetLighting(lit, shadow, lightAlbedo, p, length(p), world, lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
+                + "normal = n;\n"
                 + "vec3 illumination = pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2));\n"
                 + "return shadeToonSurface(raw, n, lightVec, p, illumination, "
                 + (sunlight ? "toonSunlitRamp(band)" : "band") + ");\n}\n";

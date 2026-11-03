@@ -39,7 +39,7 @@ class SunlightToonLightingTest {
         String lighting = BslToonLighting.create(BSL, VERTEX, false);
         assertTrue(lighting.contains("toonPrepareSunlight(sunVec, toonLight, upVec)"));
         assertTrue(lighting.contains("toonSunlightStrength > 0.0 || NoL > 0.0"));
-        assertTrue(lighting.contains("GetShadow(worldPos, normal, toonShadowSampleNdotL(NoL),"));
+        assertTrue(lighting.contains("GetShadow(toonModelShadowPosition(worldPos, lightVec, gbufferModelViewInverse), normal, toonShadowSampleNdotL(NoL),"));
         assertTrue(lighting.contains("NoL = clamp(NoL * 1.01 - 0.01, 0.0, 1.0)"));
         assertTrue(lighting.contains("shadow * toonSunDiffuseRamp(NoL, shadow)"));
         assertTrue(lighting.contains("lmCoord, 1.0, ndl,"));
@@ -103,7 +103,7 @@ class SunlightToonLightingTest {
                 void main() {}
                 """;
         String lighting = ComplementaryToonLighting.createModern(fragment, VERTEX);
-        assertTrue(lighting.contains("if (toonSunlightStrength > 0.0 || NdotLM > 0.0001)"));
+        assertTrue(lighting.contains("if (toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NdotLM > 0.0001)"));
         assertTrue(lighting.contains("toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime"));
         assertTrue(lighting.contains("max(lit.rgb, vec3(0.0)), toonSunlitRamp(band)"));
         assertFalse(ComplementaryToonLighting.createModern(
