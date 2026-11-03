@@ -83,6 +83,7 @@ public final class SubMeshDrawHelper {
             // Keep the old sorting path available when exact per-triangle ordering matters.
             boolean allowReadback = !Boolean.getBoolean("mmdskin.fastPlainShaderTransparency");
             boolean sorted=!sharedWorld && !forceOpaque && !shadowPass && order!=null && geometry!=null
+                    && !com.shiroha.mmdskin.render.pipeline.toon.ToonOffscreenRenderer.isOpaqueSubmission()
                     && TransparencyPassPolicy.useSortedSubmission(toon, geometry.positions() != null, allowReadback)
                     && order.prepare(geometry,subMeshDataBuf,subMeshCount,indexElementSize,materials,materialMorphs,
                     alphaResolver,textureResolver,materialCache);

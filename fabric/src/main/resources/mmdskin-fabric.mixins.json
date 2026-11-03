@@ -26,9 +26,13 @@
     "compat.IrisShadowEvaluationMixin",
     "compat.IrisWaterShaderMixin",
     "compat.IrisWaterStateMixin",
-    "FabricScreenMixin"
+    "FabricScreenMixin",
+    "compat.IrisToonLifecycleMixin",
+    "compat.IrisToonShaderObserverMixin",
+    "compat.IrisToonTerrainObserverMixin"
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "plugin": "com.shiroha.mmdskin.compat.iris.ToonIrisMixinPlugin"
 }

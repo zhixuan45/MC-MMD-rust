@@ -11,12 +11,13 @@ import java.util.Arrays;
 import java.util.Deque;
 
 /** Render-thread diagnostics. Timestamp pairs can coexist with the model's TIME_ELAPSED query. */
-final class WorldTransparencyProfiler {
-    enum Stage {
+public final class WorldTransparencyProfiler {
+    public enum Stage {
         STORAGE_CLEAR, DEPTH_INITIAL, DEPTH_ENTITIES, DEPTH_OPAQUE, DEPTH_PRE_TRANSLUCENT,
         DEPTH_RESOLVE, CAPTURE_STATE, WATER_READBACK, OVERFLOW_SYNC_READBACK,
         OVERFLOW_ASYNC_ISSUE, OVERFLOW_ASYNC_POLL, RESOLVE, RESOLVE_DRAW,
-        WATER_RESOLVE, WATER_RESOLVE_DRAW, WATER_GPU_CLEAR
+        WATER_RESOLVE, WATER_RESOLVE_DRAW, WATER_GPU_CLEAR,
+        TOON_RENDER, TOON_OUTLINE, TOON_COMPOSITE, TOON_DEPTH_CAPTURE, TOON_NATIVE_UNDERPAINT
     }
 
     private static final int MAX_PENDING = 64;
@@ -80,7 +81,7 @@ final class WorldTransparencyProfiler {
 
     private boolean previousFocused;
 
-    static Scope measure(Stage stage, boolean gpu) {
+    public static Scope measure(Stage stage, boolean gpu) {
         var p = INSTANCE;
         if (!p.enabled) return DISABLED;
         Pair pair = null;
@@ -97,7 +98,7 @@ final class WorldTransparencyProfiler {
         return new Scope(p, stage, System.nanoTime(), pair);
     }
 
-    static final class Scope implements AutoCloseable {
+    public static final class Scope implements AutoCloseable {
         private final WorldTransparencyProfiler owner;
         private final Stage stage;
         private final long start;

@@ -502,5 +502,10 @@
   "message.mmdskin.vpd.missing_file": "找不到对应的 VPD 文件，请刷新动作列表。",
   "message.mmdskin.vpd.load_failed": "VPD %s 读取或解析失败，详细原因已记录在客户端日志中。",
   "message.mmdskin.vpd.model_missing": "角色模型尚未加载，暂时无法应用 VPD 姿势。",
-  "message.mmdskin.vpd.no_match": "VPD %s 没有匹配到当前模型的骨骼或表情，请核对模型及骨骼名称。"
+  "message.mmdskin.vpd.no_match": "VPD %s 没有匹配到当前模型的骨骼或表情，请核对模型及骨骼名称。",
+  "gui.mmdskin.mod_settings.toon_render_strategy": "光影下三渲二渲染策略",
+  "gui.mmdskin.mod_settings.toon_render_strategy.auto": "自动",
+  "gui.mmdskin.mod_settings.toon_render_strategy.toon_priority": "Toon 优先（不透明原型）",
+  "gui.mmdskin.mod_settings.toon_render_strategy.shader_integrated": "光影集成",
+  "gui.mmdskin.mod_settings.toon_render_strategy.tooltip": "自动优先已验证的集成协议；未知协议尝试 final 后独立 Toon。当前独立原型只接受完全不透明材质，遇到世界透明混合、无可靠深度或阶段时保留原生/集成渲染。独立模式不参与已完成的雾、泛光、景深和 TAA，会增加一次模型绘制。"
 }

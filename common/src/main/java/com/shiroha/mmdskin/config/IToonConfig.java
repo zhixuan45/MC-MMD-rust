@@ -8,6 +8,10 @@ public interface IToonConfig {
 
     default boolean isToonRenderingEnabled() { return false; }
 
+    default com.shiroha.mmdskin.render.shader.ToonRenderStrategy getToonRenderStrategy() {
+        return com.shiroha.mmdskin.render.shader.ToonRenderStrategy.AUTO;
+    }
+
     default boolean isToonDisableTransparency() { return false; }
 
     default boolean isShadowOpaque() { return false; }

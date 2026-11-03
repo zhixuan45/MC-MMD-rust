@@ -65,3 +65,7 @@ bash tools/iris-toon-probe/run.sh --environment /absolute/path/iris.jar /absolut
 ```
 
 该探针验证可选输入和错误类型、缺失参数、照明编译失败、变体缓存、GUI 与发光控制。设置 `PROBE_BSL_SOURCES` 为上述 BSL 源码探针生成的 `sources` 目录，还会验证生产 BSL 照明的白天、夜晚、洞穴、火把、雨天及不透明遮挡；遮挡时同步设置两张阴影深度图，避免把不透明方块误模拟成透光材质。`PROBE_NATIVE_DIR` 可指定未放入 Gradle 缓存的 LWJGL Linux 原生 JAR 目录。
+
+## 1.21.1 独立 Toon 不透明原型
+
+新增 AUTO / TOON_PRIORITY / SHADER_INTEGRATED。默认保留上述已验证集成；未知输出只能在实际 Iris final 生命周期、颜色、深度、顶点变换和实心材质准入通过时尝试独立重放。世界透明混合会取消该帧独立合成并保留 native 底图，不猜测透明关系。实现、源码调查、测试分层和未完成的游戏/性能验收见 [INDEPENDENT_TOON_1_21.md](INDEPENDENT_TOON_1_21.md)。这不是任意光影包或透明 PMX 的完整兼容声明。

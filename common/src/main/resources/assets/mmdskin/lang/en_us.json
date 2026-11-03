@@ -502,5 +502,10 @@
   "message.mmdskin.vpd.missing_file": "VPD file not found. Refresh the action list.",
   "message.mmdskin.vpd.load_failed": "Could not read or parse VPD %s. See the client log for details.",
   "message.mmdskin.vpd.model_missing": "The player model is not loaded yet. VPD pose could not be applied.",
-  "message.mmdskin.vpd.no_match": "VPD %s matches no bones or morphs in this model. Check the model and bone names."
+  "message.mmdskin.vpd.no_match": "VPD %s matches no bones or morphs in this model. Check the model and bone names.",
+  "gui.mmdskin.mod_settings.toon_render_strategy": "Toon rendering strategy with shader packs",
+  "gui.mmdskin.mod_settings.toon_render_strategy.auto": "Auto",
+  "gui.mmdskin.mod_settings.toon_render_strategy.toon_priority": "Toon priority (opaque prototype)",
+  "gui.mmdskin.mod_settings.toon_render_strategy.shader_integrated": "Shader integrated",
+  "gui.mmdskin.mod_settings.toon_render_strategy.tooltip": "Auto prefers verified integration, then attempts independent Toon after Iris final. The prototype accepts fully opaque materials only. World blending, unverified depth or missing hooks retain native/integrated rendering. Independent Toon misses prior fog, bloom, DOF and TAA and adds a model draw."
 }

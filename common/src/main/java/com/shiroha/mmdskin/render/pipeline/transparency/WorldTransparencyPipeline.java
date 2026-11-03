@@ -969,6 +969,7 @@ public final class WorldTransparencyPipeline {
     }
 
     public static void release() {
+        com.shiroha.mmdskin.render.pipeline.toon.ToonOffscreenRenderer.release();
         endFrame();
         WorldWaterCapture.release();
         INSTANCE.overflowReadback.close();

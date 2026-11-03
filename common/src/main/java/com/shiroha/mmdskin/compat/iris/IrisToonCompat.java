@@ -21,6 +21,7 @@ public final class IrisToonCompat {
     private static final Set<String> NOTIFIED = new HashSet<>();
     private static boolean primaryColorOutput;
     private static boolean stablePrimaryColorOutput;
+    private static boolean integratedCompileFailed;
     private static ShaderInstance preparedEntityShader;
     private static java.util.function.BooleanSupplier preparedWorldColorTarget;
     private static String targetDiagnostic = "not prepared";
@@ -33,6 +34,10 @@ public final class IrisToonCompat {
     }
 
     public static boolean prepare(ToonShaderBase shader, boolean worldScene) {
+        return prepare(shader, worldScene, true);
+    }
+
+    public static boolean prepare(ToonShaderBase shader, boolean worldScene, boolean reportFallback) {
         ShaderInstance current = RenderSystem.getShader();
         boolean shaderPack = IrisCompat.isIrisShaderActive() && !IrisCompat.isRenderingShadows();
         var selection = shaderPack && worldScene ? IrisWorldTransparencyTarget.entityShader(current)
@@ -41,6 +46,8 @@ public final class IrisToonCompat {
         preparedEntityShader = IrisCompat.isIrisProgram(source) ? source : null;
         IrisToonMetadata.Result result = IrisToonMetadata.read(source);
         ToonOutputProfile profile = result.profile();
+        if (shaderPack && worldScene && preparedEntityShader == null)
+            profile = ToonOutputProfile.unsupported("无法确认当前 Iris 世界实体程序");
         primaryColorOutput = false;
         stablePrimaryColorOutput = false;
         preparedWorldColorTarget = null;
@@ -51,11 +58,12 @@ public final class IrisToonCompat {
         if (!profile.isSupported()) {
             targetDiagnostic += ", outputVerified=false, reason=" + profile.reason();
             reportTarget(shaderPack, current);
-            notifyOnce(result, profile.reason());
+            if (reportFallback) notifyOnce(result, profile.reason());
             return false;
         }
         boolean selected = selectCurrentPassProfile(profile, shader::selectOutputProfile);
-        if (!selected) notifyOnce(result, "Toon 兼容程序编译失败");
+        if (shaderPack && worldScene) integratedCompileFailed = !selected;
+        if (!selected && reportFallback) notifyOnce(result, "Toon 兼容程序编译失败");
         primaryColorOutput = selected && profile.colorOutputSlot() == 0
                 && (!shaderPack || preparedEntityShader != null);
         stablePrimaryColorOutput = primaryColorOutput
@@ -92,6 +100,11 @@ public final class IrisToonCompat {
         }
     }
 
+    public static void notifyStandardFallback() {
+        var result = IrisToonMetadata.read(preparedEntityShader);
+        notifyOnce(result, result.profile().isSupported() ? "Toon 兼容程序或独立目标不可用" : result.profile().reason());
+    }
+
     /** True only when the verified Iris program writes colortex0 as GLSL output 0. */
     public static boolean hasPrimaryColorOutput() { return primaryColorOutput; }
 
@@ -99,6 +112,8 @@ public final class IrisToonCompat {
     public static boolean hasStablePrimaryColorOutput() { return stablePrimaryColorOutput; }
 
     public static ShaderInstance preparedEntityShader() { return preparedEntityShader; }
+
+    public static boolean integratedCompileFailed() { return integratedCompileFailed; }
 
     /** Binds Iris's stage-dependent scene color before composite/final; caller restores GL FBOs. */
     public static java.util.function.BooleanSupplier worldColorTarget() { return preparedWorldColorTarget; }
@@ -119,6 +134,7 @@ public final class IrisToonCompat {
         primaryColorOutput = false;
         stablePrimaryColorOutput = false;
         preparedEntityShader = null;
+        integratedCompileFailed = false;
         preparedWorldColorTarget = null;
         targetDiagnostic = "not prepared";
         TARGET_DIAGNOSTICS.clear();

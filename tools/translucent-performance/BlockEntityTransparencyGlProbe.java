@@ -48,54 +48,59 @@ public final class BlockEntityTransparencyGlProbe {
             GLFW.glfwMakeContextCurrent(window);
             GL.createCapabilities();
             RenderSystem.initRenderThread();
-            setup();
-            // Model the result of Iris's public output/flip verification, without loading Minecraft.
-            fixture("primaryColorOutput", true);
-            fixture("stablePrimaryColorOutput", true);
-            if (java.util.Arrays.asList(args).contains("--water-performance")) {
-                waterPerformance();
-                return;
-            }
-            if (java.util.Arrays.asList(args).contains("--water-order")) {
-                boolean reference = java.util.Arrays.asList(args).contains("--shared-water-reference");
-                for (float alpha : new float[]{0, .002f, .5f, 1}) {
-                    testWaterAlpha = alpha;
-                    waterOrder(false, reference);
-                    waterOrder(true, reference);
-                }
-                testWaterAlpha = .5f;
-                if (!reference) { waterEmptyPass(); waterCrossing(); waterOverflow(); }
-                check(GL46C.glGetError()==GL46C.GL_NO_ERROR,"water-order final GL error");
-                return;
-            }
-            productionToonTextureAlpha(true);
-            fixture("stablePrimaryColorOutput", false);
-            productionToonTextureAlpha(false);
-            fixture("stablePrimaryColorOutput", true);
-            for (float alpha : new float[]{.002f, .01f, .12f, .5f}) scenario(alpha, false);
-            scenario(.12f, true); // both stage callbacks bind a different wrapper of the same gbuffer
-            replacedAttachmentIsNotWritten();
-            fixture("stablePrimaryColorOutput", false);
-            unverifiedTargetFallsBack();
-            for (boolean flipped : new boolean[]{false, true}) {
-                irisFinalOverwrite(flipped, false);
-                irisFinalOverwrite(flipped, true);
-            }
-            for (boolean shaderPack : new boolean[]{true, false})
-                for (boolean reverse : new boolean[]{false, true})
-                    for (boolean opaquePmx : new boolean[]{true, false})
-                        multiModelLateOpaque(reverse, shaderPack, opaquePmx);
-            check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "final GL error");
-            System.out.println("PASS BlockEntityTransparencyGlProbe: late chest front/behind, alpha .002/.01/.12/.5, "
-                    + "holes, unrelated stage FBO, shared-storage wrapper, pre-water depth, MRT/state restoration, "
-                    + "subsequent color sampling, replaced attachment protection, unverified-target fallback, "
-                    + "Iris final overwrite with stable/flipped colortex0 and production outlines, "
-                    + "two PMX layers in both orders and late-flushed opaque occluder, shader/no-shader");
+            runInCurrentContext(args);
         } finally {
             WorldTransparencyPipeline.release();
             GLFW.glfwDestroyWindow(window);
             GLFW.glfwTerminate();
         }
+    }
+
+    /** Same assertions as main; permits an EGL entry when no display server is installed. */
+    public static void runInCurrentContext(String[] args) throws Exception {
+        setup();
+        // Model the result of Iris's public output/flip verification, without loading Minecraft.
+        fixture("primaryColorOutput", true);
+        fixture("stablePrimaryColorOutput", true);
+        if (java.util.Arrays.asList(args).contains("--water-performance")) {
+            waterPerformance();
+            return;
+        }
+        if (java.util.Arrays.asList(args).contains("--water-order")) {
+            boolean reference = java.util.Arrays.asList(args).contains("--shared-water-reference");
+            for (float alpha : new float[]{0, .002f, .5f, 1}) {
+                testWaterAlpha = alpha;
+                waterOrder(false, reference);
+                waterOrder(true, reference);
+            }
+            testWaterAlpha = .5f;
+            if (!reference) { waterEmptyPass(); waterCrossing(); waterOverflow(); }
+            check(GL46C.glGetError()==GL46C.GL_NO_ERROR,"water-order final GL error");
+            return;
+        }
+        productionToonTextureAlpha(true);
+        fixture("stablePrimaryColorOutput", false);
+        productionToonTextureAlpha(false);
+        fixture("stablePrimaryColorOutput", true);
+        for (float alpha : new float[]{.002f, .01f, .12f, .5f}) scenario(alpha, false);
+        scenario(.12f, true); // both stage callbacks bind a different wrapper of the same gbuffer
+        replacedAttachmentIsNotWritten();
+        fixture("stablePrimaryColorOutput", false);
+        unverifiedTargetFallsBack();
+        for (boolean flipped : new boolean[]{false, true}) {
+            irisFinalOverwrite(flipped, false);
+            irisFinalOverwrite(flipped, true);
+        }
+        for (boolean shaderPack : new boolean[]{true, false})
+            for (boolean reverse : new boolean[]{false, true})
+                for (boolean opaquePmx : new boolean[]{true, false})
+                    multiModelLateOpaque(reverse, shaderPack, opaquePmx);
+        check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "final GL error");
+        System.out.println("PASS BlockEntityTransparencyGlProbe: late chest front/behind, alpha .002/.01/.12/.5, "
+                + "holes, unrelated stage FBO, shared-storage wrapper, pre-water depth, MRT/state restoration, "
+                + "subsequent color sampling, replaced attachment protection, unverified-target fallback, "
+                + "Iris final overwrite with stable/flipped colortex0 and production outlines, "
+                + "two PMX layers in both orders and late-flushed opaque occluder, shader/no-shader");
     }
 
     private static void productionToonTextureAlpha(boolean captureExpected) {

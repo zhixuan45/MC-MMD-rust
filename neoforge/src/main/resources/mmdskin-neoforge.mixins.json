@@ -24,9 +24,13 @@
     "compat.tacz.TaczLeftHandRenderMixin",
     "compat.IrisShadowEvaluationMixin",
     "compat.IrisWaterShaderMixin",
-    "compat.IrisWaterStateMixin"
+    "compat.IrisWaterStateMixin",
+    "compat.IrisToonLifecycleMixin",
+    "compat.IrisToonShaderObserverMixin",
+    "compat.IrisToonTerrainObserverMixin"
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "plugin": "com.shiroha.mmdskin.compat.iris.ToonIrisMixinPlugin"
 }

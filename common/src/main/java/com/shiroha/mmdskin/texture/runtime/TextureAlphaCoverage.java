@@ -105,4 +105,6 @@ public final class TextureAlphaCoverage {
         return (long) minimum.length + maximum.length
                 + ((long) positivePixels.length + nonOpaquePixels.length) * Long.BYTES;
     }
+
+    public boolean isFullyOpaque() { return fullyOpaque; }
 }

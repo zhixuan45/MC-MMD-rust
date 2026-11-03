@@ -82,6 +82,11 @@ public class ConfigManager {
         return provider != null ? provider.isToonRenderingEnabled() : false;
     }
 
+    public static com.shiroha.mmdskin.render.shader.ToonRenderStrategy getToonRenderStrategy() {
+        var strategy = provider == null ? null : provider.getToonRenderStrategy();
+        return strategy == null ? com.shiroha.mmdskin.render.shader.ToonRenderStrategy.AUTO : strategy;
+    }
+
     public static boolean isToonDisableTransparency() {
         return provider != null ? provider.isToonDisableTransparency() : false;
     }

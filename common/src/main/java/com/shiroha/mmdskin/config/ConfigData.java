@@ -36,6 +36,8 @@ public class ConfigData {
     public int animationLodFarUpdateInterval = 4;
 
     public boolean toonRenderingEnabled = false;
+    public com.shiroha.mmdskin.render.shader.ToonRenderStrategy toonRenderStrategy =
+            com.shiroha.mmdskin.render.shader.ToonRenderStrategy.AUTO;
     /** Toon 下将半透明像素按不透明绘制。 */
     public boolean toonDisableTransparency = false;
     public boolean shadowOpaque = false;
@@ -194,6 +196,7 @@ public class ConfigData {
         animationLodFarDistance = Math.max(animationLodMediumDistance, animationLodFarDistance);
         animationLodMediumUpdateInterval = Math.max(1, animationLodMediumUpdateInterval);
         animationLodFarUpdateInterval = Math.max(animationLodMediumUpdateInterval, animationLodFarUpdateInterval);
+        if (toonRenderStrategy == null) toonRenderStrategy = com.shiroha.mmdskin.render.shader.ToonRenderStrategy.AUTO;
         toonTransparencyLayerCount = Math.max(0, Math.min(16, toonTransparencyLayerCount));
         toonLevels = Math.max(2, Math.min(5, toonLevels));
         toonAlphaCutoff = Float.isFinite(toonAlphaCutoff) ? clamp(toonAlphaCutoff, 0.001f, 1.0f) : 0.001f;

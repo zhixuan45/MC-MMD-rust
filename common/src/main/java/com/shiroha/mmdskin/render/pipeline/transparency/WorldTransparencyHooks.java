@@ -11,6 +11,7 @@ public final class WorldTransparencyHooks {
 
     public static void beginFrame(boolean fabulous) {
         boolean shaderPack = IrisCompat.isIrisShaderActive();
+        com.shiroha.mmdskin.render.pipeline.toon.ToonOffscreenRenderer.worldFrame(shaderPack);
         boolean supported = !IrisCompat.isRenderingShadows();
         if (shaderPack && !warned) {
             warned = true;

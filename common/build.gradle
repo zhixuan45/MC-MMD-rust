@@ -18,6 +18,9 @@ dependencies {
 	mappings loom.officialMojangMappings()
 
 	compileOnly "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+	// Optional Iris hook verification; supplied by both loaders at runtime.
+	compileOnly("net.fabricmc:sponge-mixin:0.15.2+mixin.0.8.7") { transitive = false }
+	compileOnly "org.ow2.asm:asm-tree:9.7.1"
 
 	// MP3 解码依赖
 	compileOnly("javazoom:jlayer:1.0.1") { transitive = false }
@@ -26,6 +29,8 @@ dependencies {
 	testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:5.10.2"
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 	testCompileOnly "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+	testImplementation "org.ow2.asm:asm-tree:9.7.1"
+	testImplementation("net.fabricmc:sponge-mixin:0.15.2+mixin.0.8.7") { transitive = false }
 }
 
 tasks.named("processResources").configure {

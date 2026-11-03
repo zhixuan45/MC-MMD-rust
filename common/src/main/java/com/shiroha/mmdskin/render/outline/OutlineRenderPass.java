@@ -64,7 +64,10 @@ public final class OutlineRenderPass {
         boolean orthographic = Math.abs(projection.get(projectionStart + 11)) < 0.000001f
                 && Math.abs(projection.get(projectionStart + 15) - 1.0f) < 0.000001f;
         boolean sharedWorld = WorldTransparencyPipeline.hasWorldQueue();
-        try (OutlineCoverage pass = OutlineCoverage.begin(shader.getOutlineColorSlot(), sharedWorld)) {
+        try (var timing = com.shiroha.mmdskin.render.pipeline.toon.ToonOffscreenRenderer.isDrawing()
+                ? com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyProfiler.measure(
+                    com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyProfiler.Stage.TOON_OUTLINE, true) : null;
+             OutlineCoverage pass = OutlineCoverage.begin(shader.getOutlineColorSlot(), sharedWorld)) {
             shader.useOutline();
             shader.setOutlinePremultiplied(pass.isSampled());
             shader.setOutlineAlphaCutoff(0.1f);

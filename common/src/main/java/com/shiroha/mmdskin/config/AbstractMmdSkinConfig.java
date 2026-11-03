@@ -26,6 +26,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public int getAnimationLodFarUpdateInterval() { return data.animationLodFarUpdateInterval; }
 
     @Override public boolean isToonRenderingEnabled() { return data.toonRenderingEnabled; }
+    @Override public com.shiroha.mmdskin.render.shader.ToonRenderStrategy getToonRenderStrategy() { return data.toonRenderStrategy; }
     @Override public boolean isToonDisableTransparency() { return data.toonDisableTransparency; }
     @Override public boolean isShadowOpaque() { return data.shadowOpaque; }
     @Override public boolean isToonDisableDepthSeal() { return data.toonDisableDepthSeal; }

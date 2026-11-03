@@ -9,6 +9,11 @@ import com.shiroha.mmdskin.compat.iris.IrisCompat;
 import com.shiroha.mmdskin.compat.iris.IrisEntityDiagnostics;
 import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.render.pipeline.toon.ToonOffscreenRenderer;
+import com.shiroha.mmdskin.render.pipeline.toon.ToonOpaqueEligibility;
+import com.shiroha.mmdskin.render.pipeline.toon.ToonDrawSnapshot;
+import com.shiroha.mmdskin.render.shader.ToonOutputProfile;
+import com.shiroha.mmdskin.render.shader.ToonRenderStrategy;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
 import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
@@ -115,6 +120,21 @@ final class OpenGlModelRenderer {
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_SUB_MESH_FETCH, subMeshTimer);
 
         boolean useToon = initializeToonShaderIfNeeded(!isGuiScene, context != null && context.isWorldScene());
+        if (ToonOffscreenRenderer.attemptsIndependent(context, useToon)) {
+            String reason = ConfigManager.isAntiPeekModeEnabled() || ConfigManager.isVREnabled()
+                    ? "SPECIAL_VIEW_OR_COVERAGE_REQUIRES_NATIVE_RENDERER"
+                    : com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled()
+                    ? "EFFECT_PACK_REQUIRES_INTEGRATED_MATERIALS"
+                    : ToonOpaqueEligibility.rejection(target.subMeshDataBuf, target.subMeshCount,
+                        target.mats, target.materialMorphData(), target::effectiveMaterialAlpha);
+            if (reason != null) ToonOffscreenRenderer.reject(reason);
+            else if (OpenGlModelInstance.toonShaderCpu != null && ToonOffscreenRenderer.available()
+                    && ToonOffscreenRenderer.canReplayShader(IrisToonCompat.preparedEntityShader())) {
+                renderIndependent(target, minecraft, light, deliverStack, context);
+                return;
+            }
+            if (!useToon) IrisToonCompat.notifyStandardFallback();
+        }
         if (!useToon && com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled()) {
             com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().problem("surface-route",
                     "当前光影输出协议或程序编译未通过，模型效果未应用；可在效果包诊断和客户端日志中检查。");
@@ -207,6 +227,47 @@ final class OpenGlModelRenderer {
                 String.format(java.util.Locale.ROOT, "%.4f", ratio));
     }
 
+    private static void renderIndependent(OpenGlModelInstance target, Minecraft minecraft,
+            LightingHelper.LightData light, PoseStack stack, RenderScene scene) {
+        // Native material/depth is always present if the optional late pass fails or is rejected.
+        target.modelViewMatBuff.clear();
+        target.projMatBuff.clear();
+        target.composeModelViewMatrix(stack).get(target.modelViewMatBuff);
+        RenderSystem.getProjectionMatrix().get(target.projMatBuff);
+        ToonOffscreenRenderer.NativeScope nativeDraw;
+        try (var timing = com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyProfiler.measure(
+                com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyProfiler.Stage.TOON_NATIVE_UNDERPAINT, true);
+             var scope = ToonOffscreenRenderer.nativeOpaqueDraw(target.modelViewMatBuff)) {
+            nativeDraw = scope;
+            renderStandard(target, minecraft, light, stack, false);
+        }
+        long revision = target.nativeUpdateRevisionValue();
+        long model = target.nativeModelHandle();
+        float alpha = target.getGlobalAlpha();
+        int indices = target.activeIndexBufferObject;
+        var snapshot = ToonDrawSnapshot.capture(target.projMatBuff, target.modelViewMatBuff, target.light0Direction);
+        var submeshesUnchanged = ToonDrawSnapshot.unchangedSubmeshes(target.subMeshDataBuf, target.subMeshCount);
+        ToonOffscreenRenderer.enqueue(nativeDraw,
+                () -> model != 0 && target.nativeModelHandle() == model
+                        && target.vertexArrayObject > 0 && GL46C.glIsVertexArray(target.vertexArrayObject)
+                        && target.nativeUpdateRevisionValue() == revision
+                        && target.lastPositionRevision == revision && target.getGlobalAlpha() == alpha && submeshesUnchanged.getAsBoolean(),
+                () -> {
+                    if (!OpenGlModelInstance.toonShaderCpu.selectOutputProfile(ToonOutputProfile.vanilla()))
+                        throw new IllegalStateException("INDEPENDENT_TOON_COMPILE_FAILED");
+                    var previous = ToonDrawSnapshot.capture(target.projMatBuff, target.modelViewMatBuff, target.light0Direction);
+                    int oldIndices = target.activeIndexBufferObject;
+                    try {
+                        snapshot.restore(target.projMatBuff, target.modelViewMatBuff, target.light0Direction);
+                        target.activeIndexBufferObject = indices;
+                        renderToon(target, minecraft, light, light.intensity(), null, false, scene);
+                    } finally {
+                        previous.restore(target.projMatBuff, target.modelViewMatBuff, target.light0Direction);
+                        target.activeIndexBufferObject = oldIndices;
+                    }
+                });
+    }
+
     private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene, boolean worldScene) {
         // 阴影通道必须保留 Iris 的深度输出程序，跳过 Toon 与描边。
         if (IrisCompat.isRenderingShadows() || (!ConfigManager.isToonRenderingEnabled()
@@ -228,7 +289,8 @@ final class OpenGlModelRenderer {
         }
 
         return irisEntityScene
-                ? IrisToonCompat.prepare(OpenGlModelInstance.toonShaderCpu, worldScene)
+                ? IrisToonCompat.prepare(OpenGlModelInstance.toonShaderCpu, worldScene,
+                    !worldScene || ConfigManager.getToonRenderStrategy() == ToonRenderStrategy.SHADER_INTEGRATED)
                 : OpenGlModelInstance.toonShaderCpu.selectOutputProfile(
                         com.shiroha.mmdskin.render.shader.ToonOutputProfile.vanilla());
     }
@@ -627,7 +689,7 @@ final class OpenGlModelRenderer {
         // 先解绑 VAO，再解绑缓冲区，避免污染 VAO 内部的 EBO 绑定
         GL46C.glBindVertexArray(0);
         GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
-        GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
+        if (!ToonOffscreenRenderer.isDrawing()) GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
         RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
 
         // 严格恢复 Blaze3D 的默认面剔除与混合状态，避免方块实体以双面无剔除或 Alpha 混合模式渲染
@@ -652,8 +714,9 @@ final class OpenGlModelRenderer {
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
         // Iris 全局开启不代表 GUI 当前 shader 是 Iris 实体程序。
-        ShaderInstance irisShader = irisEntityScene ? IrisToonCompat.preparedEntityShader() : null;
-        ShaderInstance hostShader = irisShader != null ? irisShader : RenderSystem.getShader();
+        ShaderInstance irisShader = irisEntityScene && !ToonOffscreenRenderer.isDrawing() ? IrisToonCompat.preparedEntityShader() : null;
+        ShaderInstance hostShader = ToonOffscreenRenderer.isDrawing() ? null
+                : irisShader != null ? irisShader : RenderSystem.getShader();
         try {
             if (irisShader != null) {
                 target.setUniforms(irisShader, deliverStack);
@@ -693,10 +756,12 @@ final class OpenGlModelRenderer {
                 RenderPerformanceProfiler.get().recordAvoidedUpload(TransferKind.CPU_VERTEX, avoidedBytes);
             }
 
-            target.modelViewMatBuff.clear();
-            target.projMatBuff.clear();
-            target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
-            RenderSystem.getProjectionMatrix().get(target.projMatBuff);
+            if (!ToonOffscreenRenderer.isDrawing()) {
+                target.modelViewMatBuff.clear();
+                target.projMatBuff.clear();
+                target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
+                RenderSystem.getProjectionMatrix().get(target.projMatBuff);
+            }
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
 
             renderToonMainPass(target, minecraft, lightIntensity, light, irisShader);
@@ -711,7 +776,7 @@ final class OpenGlModelRenderer {
             } finally {
                 GL46C.glBindVertexArray(0);
                 GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);
-                GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
+                if (!ToonOffscreenRenderer.isDrawing()) GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, 0);
                 GL46C.glUseProgram(0);
                 RenderSystem.activeTexture(GL46C.GL_TEXTURE0);
 

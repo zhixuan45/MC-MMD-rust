@@ -206,6 +206,17 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.toon_render_strategy"),
+                com.shiroha.mmdskin.render.shader.ToonRenderStrategy.class,
+                data.toonRenderStrategy)
+            .setDefaultValue(com.shiroha.mmdskin.render.shader.ToonRenderStrategy.AUTO)
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.toon_render_strategy." + e.name().toLowerCase(java.util.Locale.ROOT)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_render_strategy.tooltip"))
+            .setSaveConsumer(value -> data.toonRenderStrategy = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startBooleanToggle(
                 Component.translatable("gui.mmdskin.mod_settings.toon_disable_transparency"),
                 data.toonDisableTransparency)
