@@ -14,6 +14,11 @@ public record FxProgram(List<FxEffect> effects) {
     }
     public boolean enabled() { return !effects.isEmpty(); }
     public boolean hasRay() { return effects.stream().anyMatch(e -> e.kind() == FxEffect.Kind.RAY_MATERIAL); }
+    public boolean hasGlass() { return effects.stream().anyMatch(FxProgram::isGlass); }
+    static boolean isGlass(FxEffect effect) {
+        var model = effect == null ? null : effect.channels().get("CUSTOM_A");
+        return effect != null && effect.kind() == FxEffect.Kind.RAY_MATERIAL && model != null && model.type() == 4;
+    }
     public int selection(FxEffect effect) { return effect == null ? 0 : effects.indexOf(effect) + 1; }
 
     public String colorFunction() {
@@ -33,6 +38,6 @@ public record FxProgram(List<FxEffect> effects) {
     }
 
     public String key() {
-        return !enabled() ? "" : ":fx2:" + FxSource.sha256((hasRay() ? "ray\n" : "") + colorFunction()).substring(0, 16);
+        return !enabled() ? "" : ":fx2:" + FxSource.sha256((hasRay() ? "ray\n" : "") + (hasGlass() ? "glass\n" : "") + colorFunction()).substring(0, 16);
     }
 }

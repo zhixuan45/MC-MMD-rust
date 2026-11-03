@@ -3,6 +3,11 @@ MMD Engine (mmd_engine)
 
 本产品包含第三方开发的软件。
 
+Ray-MMD cloth shading adaptation and parser test source fixtures
+Copyright (C) 2016-2018 Rui. All rights reserved.
+https://github.com/ray-cast/ray-mmd (1.5.2)
+MIT license; see LICENSE-Ray-MMD.
+
 ================================================================================
 Rapier 物理引擎
 ================================================================================

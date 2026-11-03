@@ -128,6 +128,7 @@ void main() {
         discard;
     }
 
+    finalColor = mmdFxGlass(finalColor, albedo, normal, viewPos, texCoord0, finalAlpha);
     finalColor = mmdFxColor(vec4(finalColor, finalAlpha)).rgb;
     writeToonOutputs(finalColor, albedo, normal, finalAlpha);
 }

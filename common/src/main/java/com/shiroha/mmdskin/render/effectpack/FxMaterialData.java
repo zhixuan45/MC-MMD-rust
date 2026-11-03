@@ -5,7 +5,7 @@ import java.util.Arrays;
 
 /** 一行批量材质的效果快照；每个通道占三个 vec4。 */
 public record FxMaterialData(FxEffect effect, int selection, int[] textures) {
-    public static final String[] CHANNELS = {"ALBEDO", "NORMAL", "SMOOTHNESS", "METALNESS", "SPECULAR", "OCCLUSION", "EMISSIVE", "ALBEDO_SUB", "NORMAL_SUB", "ALPHA"};
+    public static final String[] CHANNELS = {"ALBEDO", "NORMAL", "SMOOTHNESS", "METALNESS", "SPECULAR", "OCCLUSION", "EMISSIVE", "ALBEDO_SUB", "NORMAL_SUB", "ALPHA", "CUSTOM_A", "CUSTOM_B"};
     public static final int CHANNEL_BYTES = CHANNELS.length * 48;
     public static final FxMaterialData NONE = new FxMaterialData(null, 0, new int[CHANNELS.length]);
 
@@ -36,11 +36,20 @@ public record FxMaterialData(FxEffect effect, int selection, int[] textures) {
     }
 
     public void writeChannels(ByteBuffer target, int[] textureSlots, float fxSpecularPower) {
+        writeChannels(target, textureSlots, fxSpecularPower, new float[3], new float[3]);
+    }
+
+    public void writeChannels(ByteBuffer target, int[] textureSlots, float fxSpecularPower, float[] ambient, float[] specular) {
         for (int i = 0; i < CHANNELS.length; i++) {
             var channel = effect == null ? null : effect.channels().get(CHANNELS[i]);
             float[] value = channel == null ? new float[]{0} : channel.value();
             float x = value[0];
-            target.putFloat(x).putFloat(value.length > 1 ? value[1] : x).putFloat(value.length > 2 ? value[2] : x).putFloat(i == 2 ? fxSpecularPower : 1);
+            float extra = channel == null ? 0 : i == 6 ? (value.length > 3 ? value[3] : 1) : channel.flags();
+            // Scalar-only normal/metalness channels have three spare components for evaluated PMX inputs.
+            float[] pmx = i == 1 ? ambient : i == 3 ? specular : null;
+            target.putFloat(x).putFloat(pmx != null ? pmx[0] : value.length > 1 ? value[1] : x)
+                    .putFloat(pmx != null ? pmx[1] : value.length > 2 ? value[2] : x)
+                    .putFloat(pmx != null ? pmx[2] : i == 2 ? fxSpecularPower : extra);
             target.putFloat(channel == null ? 0 : channel.uvFlip()).putFloat(channel == null ? 0 : channel.type())
                     .putFloat(channel == null ? 0 : channel.component()).putFloat(channel == null ? 0 : channel.scaleMode());
             target.putFloat(channel == null ? 1 : channel.repeat()[0]).putFloat(channel == null ? 1 : channel.repeat()[1])
