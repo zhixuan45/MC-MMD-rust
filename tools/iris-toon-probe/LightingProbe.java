@@ -405,8 +405,15 @@ public final class LightingProbe {
                     sampleNormal(mask, normals, normalWithDot(light, ndl));
                     float[] pixels = new float[16 * 16 * 4];
                     GL46C.glReadPixels(0, 0, 16, 16, GL46C.GL_RGBA, GL46C.GL_FLOAT, pixels);
-                    if (reference == null) reference = pixels;
-                    else for (int i = 0; i < pixels.length; i++)
+                    if (reference == null) {
+                        reference = pixels;
+                        float minimum = 1, highest = 0;
+                        for (int i = 0; i < pixels.length; i += 4) {
+                            minimum = Math.min(minimum, pixels[i]);
+                            highest = Math.max(highest, pixels[i]);
+                        }
+                        check(highest - minimum > .1f, "Mesh seam scene must actually contain a world shadow boundary");
+                    } else for (int i = 0; i < pixels.length; i++)
                         maximum = Math.max(maximum, Math.abs(reference[i] - pixels[i]));
                 }
             }

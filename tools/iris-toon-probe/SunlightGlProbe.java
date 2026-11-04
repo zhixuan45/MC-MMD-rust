@@ -16,6 +16,7 @@ import java.util.zip.ZipFile;
 /** Real pack GLSL and production body/outline shaders; does not launch Minecraft. */
 public final class SunlightGlProbe {
     public static void main(String[] args) throws Exception {
+        boolean normalBias = args.length > 1 && args[1].equals("normal-bias");
         if (!GLFW.glfwInit()) throw new IllegalStateException("GLFW initialization");
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -31,8 +32,10 @@ public final class SunlightGlProbe {
             int checked = 0;
             for (String pack : List.of("BSL_v10.1.8.zip", "BSL_v8.4.02.2.zip", "ComplementaryShaders_v4.7.1.zip",
                     "ComplementaryReimagined_r5.9.3.zip", "ComplementaryUnbound_r5.9.3.zip")) {
+                if (normalBias && !pack.startsWith("BSL")) continue;
                 Path path = Path.of(args[0], pack);
-                var options = Probe.options(Path.of(path + ".txt"));
+                var options = new java.util.HashMap<>(Probe.options(Path.of(path + ".txt")));
+                if (normalBias) options.put("SHADOW_BIAS", "1");
                 var defines = List.of(new StringPair("MC_VERSION", "12101"), new StringPair("IS_IRIS", "1"),
                         new StringPair("IRIS_VERSION", "10814"));
                 try (var zip = new ZipFile(path.toFile())) {
@@ -56,7 +59,8 @@ public final class SunlightGlProbe {
                                 if (!shader.selectOutputProfile(profile)) throw new AssertionError("Shader compilation: " + profile.id());
                                 Probe.checkSelectedProfile(shader, profile);
                                 if (dimension.equals("world0") && program.equals("gbuffers_entities")) {
-                                    java.nio.file.Files.writeString(Path.of("build/sunlight-probe", pack + ".lighting.glsl"), profile.lightingSource());
+                                    java.nio.file.Files.writeString(Path.of("build/sunlight-probe",
+                                            pack + (normalBias ? ".bias1" : "") + ".lighting.glsl"), profile.lightingSource());
                                     if (!profile.lightingSource().contains("toonPrepareSunlight("))
                                         throw new AssertionError("Missing verified sunlight path: " + pack);
                                     System.out.println("PIXELS " + pack);
@@ -70,7 +74,8 @@ public final class SunlightGlProbe {
                 }
             }
             if (GL46C.glGetError() != GL46C.GL_NO_ERROR) throw new AssertionError("Final GL error");
-            System.out.println("PASS sunlight validation: " + checked + " real pack main/outline variants");
+            System.out.println("PASS sunlight validation: " + checked + " real pack main/outline variants"
+                    + (normalBias ? " (BSL SHADOW_BIAS=1)" : ""));
         } finally {
             GLFW.glfwDestroyWindow(window);
             GLFW.glfwTerminate();
