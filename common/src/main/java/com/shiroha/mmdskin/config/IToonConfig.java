@@ -32,6 +32,8 @@ public interface IToonConfig {
 
     default boolean isToonWholeModelLightingEnabled() { return false; }
 
+    default float getToonWorldShadowSoftness() { return 1.5f; }
+
     default boolean isToonOutlineEnabled() { return true; }
 
     default boolean isToonOutlineFollowLighting() { return true; }

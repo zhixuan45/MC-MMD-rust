@@ -13,7 +13,6 @@ import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.policy.WorldRenderPolicy;
 import com.shiroha.mmdskin.render.shader.EyeEmissionBuffer;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
-import com.shiroha.mmdskin.render.shader.ToonModelShadowBounds;
 import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import com.shiroha.mmdskin.texture.runtime.TextureRepository;
 import com.mojang.blaze3d.platform.Window;
@@ -28,12 +27,9 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
-import java.nio.ByteOrder;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -79,28 +75,10 @@ public abstract class BaseModelInstance implements ModelInstance {
     private SwimmingVeilRenderer swimmingVeilRenderer;
     private boolean swimmingVeil;
     private float swimmingVeilSeconds;
-    private ToonModelShadowBounds toonShadowBounds;
-    private final Matrix4f toonShadowMatrix = new Matrix4f();
-    private final Vector4f toonShadowViewBounds = new Vector4f();
-
-    public final void setupToonModelShadow(ToonShaderBase shader, FloatBuffer modelView,
-                                          RenderScene scene, ByteBuffer positions) {
-        toonShadowViewBounds.zero();
-        if (ConfigManager.isToonWholeModelLightingEnabled()
-                && scene != null && scene.isWorldScene() && IrisCompat.isIrisShaderActive()) {
-            if (toonShadowBounds == null) {
-                toonShadowBounds = ToonModelShadowBounds.EMPTY;
-                long count = backendPort().getVertexCount(model);
-                if (positions != null && count > 0 && count <= Integer.MAX_VALUE / 12) {
-                    // CPU models do not initialize native GPU rest-position storage.
-                    toonShadowBounds = ToonModelShadowBounds.read(
-                            positions.duplicate().order(ByteOrder.nativeOrder()), (int) count);
-                }
-            }
-            toonShadowBounds.transform(toonShadowMatrix.set(modelView.duplicate().position(0)), toonShadowViewBounds);
-        }
-        shader.setModelShadowBounds(toonShadowViewBounds.x, toonShadowViewBounds.y,
-                toonShadowViewBounds.z, toonShadowViewBounds.w);
+    public final void setupToonTerrainShadow(ToonShaderBase shader, RenderScene scene) {
+        shader.setTerrainShadowReceiver(ConfigManager.isToonWholeModelLightingEnabled()
+                && scene != null && scene.isWorldScene() && !IrisCompat.isRenderingShadows()
+                && IrisCompat.isIrisShaderActive());
     }
 
     public final void setSwimmingVeil(boolean enabled, float seconds) {

@@ -15,18 +15,21 @@ uniform bool ToonHasEnvironmentDirection;
 uniform vec3 ToonEnvironmentDirection;
 uniform vec3 ToonEnvironmentSkyTint;
 uniform float ToonEnvironmentWeather;
-uniform vec4 ToonModelShadowBounds;
+uniform bool ToonTerrainShadowEnabled;
+uniform sampler2DShadow ToonTerrainShadowDepth;
+uniform float ToonWorldShadowSoftness;
 
-bool toonModelShadowEnabled() {
-    return ToonModelShadowBounds.w > 0.0;
-}
-
-vec3 toonModelShadowPosition(vec3 fallback, vec3 light, mat4 viewToWorld) {
-    if (!toonModelShadowEnabled()) return fallback;
-    vec3 center = (viewToWorld * vec4(ToonModelShadowBounds.xyz, 1.0)).xyz;
-    // The common receiver is in front of the whole model along the light ray.
-    vec3 worldLight = normalize(mat3(viewToWorld) * light);
-    return center + worldLight * (ToonModelShadowBounds.w + 0.01);
+float toonFilteredTerrainShadow(vec3 p) {
+    vec2 radius = clamp(ToonWorldShadowSoftness, 0.0, 4.0)
+            / vec2(textureSize(ToonTerrainShadowDepth, 0));
+    float shadow = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0);
+            shadow += texture(ToonTerrainShadowDepth, vec3(p.xy + vec2(x, y) * radius, p.z)) * weight;
+        }
+    }
+    return shadow * 0.0625;
 }
 
 #ifdef TOON_MATERIAL_LIGHTING
@@ -55,9 +58,14 @@ void toonPrepareSunlight(vec3 sun, vec3 light, vec3 up) {
 }
 
 float toonShadowSampleNdotL(float ndl) {
-    if (toonModelShadowEnabled()) return 1.0;
+    if (ToonTerrainShadowEnabled) return 1.0;
     // A continuous floor bounds BSL's 1/NdotL bias on both sides of the terminator.
     return toonSunlightStrength > 0.0 ? max(ndl, 0.2) : ndl;
+}
+
+vec3 toonShadowSampleNormal(vec3 normal) {
+    // The terrain map contains no model surfaces, so mesh-normal acne offsets are unnecessary.
+    return ToonTerrainShadowEnabled ? vec3(0.0) : normal;
 }
 
 float toonSunlitRamp(float ramp) {

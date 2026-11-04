@@ -43,6 +43,8 @@ public class ToonConfig {
 
     public float getShaderSphereSuppression() { return ConfigManager.getToonShaderSphereSuppression(); }
 
+    public float getWorldShadowSoftness() { return ConfigManager.getToonWorldShadowSoftness(); }
+
     public float getRimPower() {
         return ConfigManager.getToonRimPower();
     }

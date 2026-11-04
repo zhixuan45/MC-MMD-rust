@@ -1,6 +1,8 @@
 package com.shiroha.mmdskin.mixin.neoforge.compat;
 
 import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.compat.iris.IrisTerrainShadow;
+import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.neoforge.YsmCompat;
 import com.shiroha.mmdskin.render.pipeline.WorldEntityEvaluationPrepass;
 import net.minecraft.client.Minecraft;
@@ -13,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -21,6 +24,27 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Mixin(targets = "net.irisshaders.iris.shadows.ShadowRenderer", remap = false)
 public abstract class IrisShadowEvaluationMixin {
     private static final AtomicBoolean HIT_LOGGED = new AtomicBoolean();
+
+    @Inject(method = "renderShadows", at = @At("HEAD"), require = 0, remap = false)
+    private void mmdskin$beginTerrainShadow(CallbackInfo ci) {
+        IrisTerrainShadow.beginFrame(this, ConfigManager.isToonRenderingEnabled()
+                && ConfigManager.isToonWholeModelLightingEnabled());
+    }
+
+    @Inject(method = "renderShadows", at = {
+            @At(value = "INVOKE", target = "Lnet/irisshaders/iris/mixin/LevelRendererAccessor;invokeRenderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
+                    ordinal = 2, shift = At.Shift.AFTER),
+            @At(value = "INVOKE", target = "Lnet/irisshaders/iris/mixin/LevelRendererAccessor;invokeRenderSectionLayer(Lnet/minecraft/class_1921;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
+                    ordinal = 2, shift = At.Shift.AFTER)
+    }, require = 0, remap = false)
+    private void mmdskin$captureTerrainShadow(CallbackInfo ci) {
+        IrisTerrainShadow.capture(this);
+    }
+
+    @Inject(method = "destroy", at = @At("HEAD"), require = 0, remap = false)
+    private void mmdskin$releaseTerrainShadow(CallbackInfo ci) {
+        IrisTerrainShadow.destroy(this);
+    }
 
     @Inject(method = "renderEntities(Lnet/irisshaders/iris/mixin/LevelRendererAccessor;Lnet/minecraft/client/renderer/entity/EntityRenderDispatcher;Lnet/minecraft/client/renderer/MultiBufferSource$BufferSource;Lcom/mojang/blaze3d/vertex/PoseStack;FLnet/minecraft/client/renderer/culling/Frustum;DDD)I",
             at = @At("HEAD"), require = 0, remap = false)

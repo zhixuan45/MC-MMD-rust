@@ -6,6 +6,7 @@ import org.lwjgl.opengl.GL46C;
 final class ToonOutlineLighting {
     float intensity = 1, softness = 1.2f;
     float flatness;
+    float worldShadowSoftness = 1.5f;
     int levels = 4;
     float shadowR = .78f, shadowG = .84f, shadowB = .94f;
     float lightX = .35f, lightY = .85f, lightZ = -.4f;
@@ -13,8 +14,7 @@ final class ToonOutlineLighting {
     private int enabled, lightIntensity, toonLevels, transition, shadow, direction, usePack, lightmap;
     private int specPower, specIntensity, rimPower, rimIntensity;
     private int shaderFlatness;
-    private int modelBoundsLocation;
-    private final float[] modelBounds = new float[4];
+    private int worldShadowSoftnessLocation;
     private final GenericToonLighting generic = new GenericToonLighting();
     private ToonUniformBridge bridge;
 
@@ -25,7 +25,7 @@ final class ToonOutlineLighting {
         toonLevels = location("ToonLevels");
         transition = location("ToonTransitionSoftness");
         shaderFlatness = location("ToonShaderFlatness");
-        modelBoundsLocation = location("ToonModelShadowBounds");
+        worldShadowSoftnessLocation = location("ToonWorldShadowSoftness");
         shadow = location("ShadowColor");
         direction = location("LightDir");
         usePack = location("UsePackLighting");
@@ -57,8 +57,7 @@ final class ToonOutlineLighting {
         GL46C.glUniform1i(toonLevels, levels);
         GL46C.glUniform1f(transition, softness);
         GL46C.glUniform1f(shaderFlatness, flatness);
-        if (modelBoundsLocation >= 0) GL46C.glUniform4f(modelBoundsLocation,
-                modelBounds[0], modelBounds[1], modelBounds[2], modelBounds[3]);
+        GL46C.glUniform1f(worldShadowSoftnessLocation, worldShadowSoftness);
         GL46C.glUniform3f(shadow, shadowR, shadowG, shadowB);
         GL46C.glUniform3f(direction, lightX, lightY, lightZ);
         // 描边只受照明与色阶调制，不增加白色高光或边缘光。
@@ -66,10 +65,6 @@ final class ToonOutlineLighting {
         GL46C.glUniform1f(specIntensity, 0);
         GL46C.glUniform1f(rimPower, 1);
         GL46C.glUniform1f(rimIntensity, 0);
-    }
-
-    void setModelShadowBounds(float x, float y, float z, float radius) {
-        modelBounds[0] = x; modelBounds[1] = y; modelBounds[2] = z; modelBounds[3] = radius;
     }
 
     void setEnabled(boolean value) {

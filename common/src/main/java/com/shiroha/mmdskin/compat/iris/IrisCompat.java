@@ -127,6 +127,7 @@ public class IrisCompat {
     }
 
     public static void reset() {
+        IrisTerrainShadow.release();
         IrisToonCompat.reset();
         IrisEntityDiagnostics.reset();
         irisPresent = null;

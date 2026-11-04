@@ -299,6 +299,16 @@ public class ModConfigScreen {
 
         toonCategory.addEntry(entryBuilder
             .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_world_shadow_softness"),
+                (int) Math.round(data.toonWorldShadowSoftness * 100), 0, 400)
+            .setDefaultValue(150)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.2f", value / 100.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_world_shadow_softness.tooltip"))
+            .setSaveConsumer(value -> data.toonWorldShadowSoftness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_shader_flatness"),
                 (int) Math.round(data.toonShaderFlatness * 100), 0, 100)
             .setDefaultValue(0)

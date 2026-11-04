@@ -28,6 +28,10 @@ public abstract class ToonShaderBase {
     private ToonUniformBridge lightingBridge;
     private final GenericToonLighting genericLighting = new GenericToonLighting();
     private final ToonOutlineLighting outlineLighting = new ToonOutlineLighting();
+    private final TerrainShadowBinding terrainShadow = new TerrainShadowBinding();
+    private boolean terrainReceiver, packLightingReady;
+    private float worldShadowSoftness = 1.5f;
+    private int worldShadowSoftnessLocation = -1;
     private int packLightingLocation = -1;
     private int lightmapLocation = -1;
     private boolean lightingSyncWarned;
@@ -59,7 +63,6 @@ public abstract class ToonShaderBase {
     protected int toonTransitionSoftnessLocation = -1;
     private int shaderFlatnessLocation = -1;
     private int shaderSphereSuppressionLocation = -1;
-    private int modelShadowBoundsLocation = -1;
     protected int rimPowerLocation = -1;
     protected int rimIntensityLocation = -1;
     protected int shadowColorLocation = -1;
@@ -144,6 +147,8 @@ public abstract class ToonShaderBase {
                 programs = new Programs(main, outline);
                 variants.put(key, programs);
             }
+            terrainShadow.close();
+            packLightingReady = false;
             mainProgram = programs.main();
             outlineProgram = programs.outline();
             activeProfile = key;
@@ -226,6 +231,7 @@ public abstract class ToonShaderBase {
 
     private static void deletePrograms(Programs programs) {
         TranslucentBatchShader.forget(programs.main());
+        com.shiroha.mmdskin.render.material.ProgramSamplerLayout.forget(programs.outline());
         GL46C.glDeleteProgram(programs.main());
         GL46C.glDeleteProgram(programs.outline());
     }
@@ -239,7 +245,7 @@ public abstract class ToonShaderBase {
         toonTransitionSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonTransitionSoftness");
         shaderFlatnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderFlatness");
         shaderSphereSuppressionLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderSphereSuppression");
-        modelShadowBoundsLocation = GL46C.glGetUniformLocation(mainProgram, "ToonModelShadowBounds");
+        worldShadowSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonWorldShadowSoftness");
         rimPowerLocation = GL46C.glGetUniformLocation(mainProgram, "RimPower");
         rimIntensityLocation = GL46C.glGetUniformLocation(mainProgram, "RimIntensity");
         shadowColorLocation = GL46C.glGetUniformLocation(mainProgram, "ShadowColor");
@@ -291,6 +297,8 @@ public abstract class ToonShaderBase {
     public void useMain() {
         if (mainProgram > 0) {
             GL46C.glUseProgram(mainProgram);
+            GL46C.glUniform1f(worldShadowSoftnessLocation, worldShadowSoftness);
+            terrainShadow.bind(mainProgram, terrainReceiver && packLightingReady, worldShadowSoftness);
             ToonConfig config = ToonConfig.getInstance();
             setAlphaCutoff(config.getAlphaCutoff());
             setHairAlphaCutoff(config.getHairAlphaCutoff());
@@ -302,6 +310,7 @@ public abstract class ToonShaderBase {
     public void useOutline() {
         if (outlineProgram > 0) {
             GL46C.glUseProgram(outlineProgram);
+            terrainShadow.bind(outlineProgram, terrainReceiver && packLightingReady, worldShadowSoftness);
             if (outlineDisableTransparencyLocation >= 0) GL46C.glUniform1i(outlineDisableTransparencyLocation,
                     ToonConfig.getInstance().isTransparencyDisabled() ? 1 : 0);
             outlineLighting.upload();
@@ -321,6 +330,7 @@ public abstract class ToonShaderBase {
             uploadOutputUniforms(mainOutputMatrixLocation, mainOutputFarLocation);
         }
         boolean copied = lightingBridge != null && lightingBridge.copy(originalProgram, mainProgram, shaderIdentity);
+        packLightingReady = copied;
         genericLighting.upload(copied ? 0 : originalProgram, shaderIdentity);
         if (!copied && lightingBridge != null && originalProgram > 0 && packLightingLocation >= 0 && !lightingSyncWarned) {
             lightingSyncWarned = true;
@@ -332,6 +342,7 @@ public abstract class ToonShaderBase {
         if (lightmapLocation >= 0) GL46C.glUniform2f(lightmapLocation,
                 (blockLight * 16 + 8) / 256.0f, (skyLight * 16 + 8) / 256.0f);
         outlineLighting.syncEnvironment(originalProgram, shaderIdentity, blockLight, skyLight, copied, mainProgram);
+        terrainShadow.bind(mainProgram, terrainReceiver && copied, worldShadowSoftness);
         return copied;
     }
 
@@ -413,9 +424,19 @@ public abstract class ToonShaderBase {
         GL46C.glUniform1f(shaderSphereSuppressionLocation, finiteUnit(sphereSuppression));
     }
 
-    public void setModelShadowBounds(float x, float y, float z, float radius) {
-        if (modelShadowBoundsLocation >= 0) GL46C.glUniform4f(modelShadowBoundsLocation, x, y, z, radius);
-        outlineLighting.setModelShadowBounds(x, y, z, radius);
+    public void setTerrainShadowReceiver(boolean enabled) {
+        terrainReceiver = enabled;
+        packLightingReady = false;
+    }
+
+    public void setWorldShadowSoftness(float softness) {
+        worldShadowSoftness = Float.isFinite(softness) ? Math.max(0, Math.min(4, softness)) : 1.5f;
+        outlineLighting.worldShadowSoftness = worldShadowSoftness;
+        GL46C.glUniform1f(worldShadowSoftnessLocation, worldShadowSoftness);
+    }
+
+    public void releaseTerrainShadowBinding() {
+        terrainShadow.close();
     }
 
     private static float finiteUnit(float value) {
@@ -540,6 +561,7 @@ public abstract class ToonShaderBase {
     public boolean isInitialized() { return initialized; }
 
     public void cleanup() {
+        terrainShadow.release();
         com.shiroha.mmdskin.render.material.ToonTransparencyLayers.cleanup();
         com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
         com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.releaseCache();

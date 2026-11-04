@@ -46,8 +46,10 @@ final class ComplementaryToonLighting {
         // 保留阴影采样偏移的连续法线，仅对采样后的直射光权重分档。
         boolean sunlight = MODERN_DIFFUSE.matcher(tail).find() && MODERN_SHADOW_GATE.matcher(tail).find()
                 && Pattern.compile("shadowMult\\s*\\*=\\s*GetShadow\\s*\\(").matcher(tail).find();
+        tail = tail.replaceAll("\\bGetShadowPos\\(\\s*playerPosM\\s*\\)",
+                "GetShadowPos(ToonTerrainShadowEnabled ? playerPos : playerPosM)");
         if (sunlight) tail = MODERN_SHADOW_GATE.matcher(tail)
-                .replaceAll("if (toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NdotLM > 0.0001)");
+                .replaceAll("if (ToonTerrainShadowEnabled || toonSunlightStrength > 0.0 || NdotLM > 0.0001)");
         tail = MODERN_DIFFUSE.matcher(tail).replaceAll(sunlight
                 ? "shadowMult *= max(toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime,"
                 : "shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
@@ -61,8 +63,7 @@ final class ComplementaryToonLighting {
                 + "float band = toonDiffuseRamp(ndl);\n"
                 + "vec4 lit = vec4(1.0);\n"
                 + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
-                + (sunlight ? "player = toonModelShadowPosition(player, lightVec, gbufferModelViewInverse);\n" : "")
-                + "vec3 sampleNormal = " + (sunlight ? "toonModelShadowEnabled() ? lightVec : n" : "n") + ";\n"
+                + "vec3 sampleNormal = n;\n"
                 + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * sampleNormal);\n"
                 + "DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal, 0.5, worldNormal, lmCoord,\n"
                 + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
@@ -97,6 +98,8 @@ final class ComplementaryToonLighting {
         StringBuilder before = new StringBuilder(), after = new StringBuilder();
         String head = moveInitializers(source.substring(0, varyingStart), before);
         String tail = moveInitializers(source.substring(varyingStart).replaceAll("\\bvarying\\s+", ""), after);
+        tail = tail.replaceAll("(\\bfloat\\s+NdotLm\\s*=\\s*)([^;]+);",
+                "$1(ToonTerrainShadowEnabled ? 1.0 : ($2));");
         // 阴影偏移保留连续 NdotL，仅对采样后的漫反射权重分档。
         Matcher diffuse = DIFFUSE.matcher(tail);
         boolean sunlight = false;
@@ -105,7 +108,7 @@ final class ComplementaryToonLighting {
             sunlight = SHADOW_GATE.matcher(tail).find()
                     && Pattern.compile("\\bshadow\\s*=\\s*GetShadow\\s*\\(").matcher(tail).find();
             if (sunlight) tail = SHADOW_GATE.matcher(tail)
-                    .replaceAll("(toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NdotL > 0.0)");
+                    .replaceAll("(ToonTerrainShadowEnabled || toonSunlightStrength > 0.0 || NdotL > 0.0)");
             tail = DIFFUSE.matcher(tail).replaceFirst(sunlight
                     ? "fullShadow = shadow * max(toonSunDiffuseRamp(NdotL, shadow),"
                     : "fullShadow = shadow * max(toonDiffuseRamp(NdotL),");
@@ -122,22 +125,37 @@ final class ComplementaryToonLighting {
                 + "vec3 lit = vec3(1.0);\n"
                 + "vec3 shadow = vec3(1.0), lightAlbedo = vec3(0.0);\n"
                 + "vec3 world = (gbufferModelViewInverse * vec4(p, 1.0)).xyz;\n"
-                + (sunlight ? "world = toonModelShadowPosition(world, lightVec, gbufferModelViewInverse);\n"
-                    + "if (toonModelShadowEnabled()) normal = lightVec;\n" : "")
                 // 固定上方向遮蔽，避免色阶之外再叠一层连续的方块式面明暗。
                 + "GetLighting(lit, shadow, lightAlbedo, p, length(p), world, lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
-                + "normal = n;\n"
                 + "vec3 illumination = pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2));\n"
                 + "return shadeToonSurface(raw, n, lightVec, p, illumination, "
                 + (sunlight ? "toonSunlitRamp(band)" : "band") + ");\n}\n";
     }
 
-    private static String adaptShadowSampler(String source) {
-        return source.replaceAll("\\bshadow2D\\b", "toonShadow2D");
+    static String adaptShadowSampler(String source) {
+        source = source.replaceAll("\\bshadow2D\\b", "toonShadow2D");
+        Matcher samplers = Pattern.compile("\\buniform\\s+sampler2DShadow\\s+(\\w+)\\s*;").matcher(source);
+        String adapted = source;
+        while (samplers.find()) {
+            adapted = adapted.replaceAll("\\btexture\\s*\\(\\s*" + Pattern.quote(samplers.group(1)) + "\\s*,",
+                    "toonTerrainShadow(" + samplers.group(1) + ",");
+        }
+        // Opaque terrain has no transmission color; host colors can contain later entity casters.
+        adapted = adapted.replaceAll("\\btexture\\s*\\(\\s*(shadowcolor\\d+)\\s*,", "toonShadowColor($1,");
+        // Filter once at the pack's final biased shadow coordinate, rather than nesting PCF per tap.
+        return adapted.replaceAll(
+                "(\\bvec3\\s+(?:GetShadow|SampleBasicShadow|SampleFilteredShadow)\\s*\\(\\s*vec3\\s+shadowPos\\b[^)]*\\)\\s*\\{)",
+                "$1\nif (ToonTerrainShadowEnabled && ToonWorldShadowSoftness > 0.0) return vec3(toonFilteredTerrainShadow(shadowPos));\n");
     }
 
-    private static String shadowSamplerWrapper() {
-        return "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(texture(s, p)); }\n";
+    static String shadowSamplerWrapper() {
+        return "float toonTerrainShadow(sampler2DShadow s, vec3 p) {\n"
+                + "    return ToonTerrainShadowEnabled ? texture(ToonTerrainShadowDepth, p) : texture(s, p);\n"
+                + "}\n"
+                + "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(toonTerrainShadow(s, p)); }\n"
+                + "vec4 toonShadowColor(sampler2D s, vec2 p) {\n"
+                + "    return ToonTerrainShadowEnabled ? vec4(0.0) : texture(s, p);\n"
+                + "}\n";
     }
 
     static String clean(String source) {

@@ -119,3 +119,10 @@ buffer rather than uninitialized native GPU rest-position storage.
 This revision is committed without running further tests, builds or in-game
 validation, at the user's request. The validation results above belong to the
 earlier revisions and do not validate this toggle or the final bounds changes.
+
+## November 5: terrain receiver replaces the shared point
+
+The shared bounds receiver above is superseded by per-fragment terrain shadow
+reception. The saved toggle key is retained. See
+[TERRAIN_SHADOW_RECEIVER.md](TERRAIN_SHADOW_RECEIVER.md) for capture timing,
+fallback behavior, coverage and validation.

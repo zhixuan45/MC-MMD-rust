@@ -538,7 +538,7 @@ final class GpuSkinningModelRenderer {
             GpuSkinningModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
             GpuSkinningModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
             ToonRenderHelper.setupToonUniforms(GpuSkinningModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
-            target.setupToonModelShadow(GpuSkinningModelInstance.toonShaderCpu, target.modelViewMatBuff, context, target.posBuffer);
+            target.setupToonTerrainShadow(GpuSkinningModelInstance.toonShaderCpu, context);
             GpuSkinningModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
                     irisShader, light.blockLight(), light.skyLight());
 
@@ -563,6 +563,7 @@ final class GpuSkinningModelRenderer {
         } finally {
             try {
                 // 与 CPU 路径一致，清理原版/Iris 宿主的程序缓存。
+                GpuSkinningModelInstance.toonShaderCpu.releaseTerrainShadowBinding();
                 IrisCompat.clearProgram(hostShader, -1, -1);
             } finally {
                 GL46C.glUseProgram(0);

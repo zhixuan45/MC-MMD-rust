@@ -36,8 +36,8 @@ final class BslToonLighting {
                 .replaceAll("\\btexture\\b", "ToonPackTexture")
                 .replaceAll("\\btexture2DGradARB\\b", "textureGrad")
                 .replaceAll("\\btexture2DLod\\b", "textureLod")
-                .replaceAll("\\btexture2D\\b", "texture")
-                .replaceAll("\\bshadow2D\\b", "toonShadow2D");
+                .replaceAll("\\btexture2D\\b", "texture");
+        source = ComplementaryToonLighting.adaptShadowSampler(source);
         if (source.contains("gl_Fog.")) {
             source = "uniform float iris_FogStart;\nuniform float iris_FogEnd;\n" + source
                     .replace("gl_Fog.start", "iris_FogStart")
@@ -48,8 +48,8 @@ final class BslToonLighting {
         boolean sunlight = !nether && DIFFUSE.matcher(source).find() && SHADOW_GATE.matcher(source).find()
                 && SHADOW_SAMPLE.matcher(source).find();
         if (sunlight) {
-            source = SHADOW_GATE.matcher(source).replaceAll("(toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NoL > 0.0)");
-            source = SHADOW_SAMPLE.matcher(source).replaceAll("GetShadow(toonModelShadowPosition(worldPos, lightVec, gbufferModelViewInverse), normal, toonShadowSampleNdotL(NoL),");
+            source = SHADOW_GATE.matcher(source).replaceAll("(ToonTerrainShadowEnabled || toonSunlightStrength > 0.0 || NoL > 0.0)");
+            source = SHADOW_SAMPLE.matcher(source).replaceAll("GetShadow(worldPos, toonShadowSampleNormal(normal), toonShadowSampleNdotL(NoL),");
         }
         source = DIFFUSE.matcher(source).replaceAll(sunlight
                 ? "fullShadow = max(shadow * toonSunDiffuseRamp(NoL, shadow),"
@@ -74,7 +74,7 @@ final class BslToonLighting {
                     + ", " + (hand ? "vec3(0.0)" : "world") + ", n, " + (hand ? "1.0" : "0.0") + ");\n";
             else return "";
         }
-        return "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(texture(s, p)); }\n"
+        return ComplementaryToonLighting.shadowSamplerWrapper()
                 + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + (nether ? "sunVec = viewLightDir; upVec = vec3(0.0, 1.0, 0.0); eastVec = vec3(1.0, 0.0, 0.0);" : sunSetup)
                 + "\nnormal = n; texCoord = texCoord0; color = vec4(1.0);\n"

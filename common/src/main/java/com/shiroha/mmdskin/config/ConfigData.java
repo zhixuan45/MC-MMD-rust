@@ -52,8 +52,10 @@ public class ConfigData {
     public float toonTransitionSoftness = 1.2f;
     public float toonShaderFlatness = 0.0f;
     public float toonShaderSphereSuppression = 0.0f;
-    /** Shared model shadow receiver; off preserves classic per-fragment shadows. */
+    /** Terrain-only per-fragment receiver; keep the saved key for existing configurations. */
     public boolean toonWholeModelLighting = false;
+    /** Radius in shadow-map texels; zero keeps the shader pack's original filtering. */
+    public float toonWorldShadowSoftness = 1.5f;
     public float toonRimPower = 5.6f;
     public float toonRimIntensity = 0.02f;
     public float toonEyeEmission = 0.0f;
@@ -208,6 +210,8 @@ public class ConfigData {
                 ? clamp(toonShaderFlatness, 0.0f, 1.0f) : 0.0f;
         toonShaderSphereSuppression = Float.isFinite(toonShaderSphereSuppression)
                 ? clamp(toonShaderSphereSuppression, 0.0f, 1.0f) : 0.0f;
+        toonWorldShadowSoftness = Float.isFinite(toonWorldShadowSoftness)
+                ? clamp(toonWorldShadowSoftness, 0.0f, 4.0f) : 1.5f;
         toonRimPower = clamp(toonRimPower, 0.1f, 10.0f);
         toonRimIntensity = clamp(toonRimIntensity, 0.0f, 1.0f);
         toonEyeEmission = Float.isFinite(toonEyeEmission) ? clamp(toonEyeEmission, 0.0f, 3.0f) : 0.0f;

@@ -140,9 +140,9 @@ public final class LightingProbe {
         double angle = Math.toRadians(Double.parseDouble(rotation.group(1)));
         checkSunlightFill(shader, source, sourceIdentity, normals, shadowTexture, opaqueShadowTexture,
                 new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
+        checkTerrainShadowReceiver(shader, profile, source, sourceIdentity, normals, shadowTexture,
+                opaqueShadowTexture, new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
         if (profile.id().startsWith("bsl:")) {
-            checkWholeModelShadowReceiver(shader, source, sourceIdentity, normals, shadowTexture,
-                    opaqueShadowTexture, new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
             checkGrazingShadowContinuity(shader, source, sourceIdentity, normals, shadowTexture,
                     opaqueShadowTexture, new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
         }
@@ -269,61 +269,262 @@ public final class LightingProbe {
         shader.setShaderStyle(0, 0);
     }
 
-    private static void checkWholeModelShadowReceiver(ToonShaderCpu shader, int source, Object identity,
+    private static void checkTerrainShadowReceiver(ToonShaderCpu shader, ToonOutputProfile profile, int source, Object identity,
             int normals, int shadowTexture, int opaqueShadowTexture, float[] light) {
-        prepareScene(source, new LightingCase("whole-model-shadow", .25f, 0, 0, 15, 1));
-        var shadowView = new org.joml.Matrix4f().lookAlong(-light[0], -light[1], -light[2], 1, 0, 0);
-        var shadowProjection = new org.joml.Matrix4f().ortho(-4, 4, -4, 4, -4, 4);
-        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowModelView"), false, shadowView.get(new float[16]));
-        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowProjection"), false, shadowProjection.get(new float[16]));
-        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, .5f);
-        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, .5f);
+        prepareScene(source, new LightingCase("terrain-shadow", .25f, 0, 0, 15, 1));
+        int outputFbo = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
+        int previousTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
+        int terrainTexture = GL46C.glGenTextures();
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, terrainTexture);
+        GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_DEPTH_COMPONENT, 16, 16, 0,
+                GL46C.GL_DEPTH_COMPONENT, GL46C.GL_UNSIGNED_INT, 0L);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER, GL46C.GL_NEAREST);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, GL46C.GL_NEAREST);
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTexture);
+        int terrainFbo = GL46C.glGenFramebuffers();
+        ShadowSourceFixture.Renderer renderer = new ShadowSourceFixture.Renderer(terrainFbo, terrainTexture, 16);
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, terrainFbo);
+        GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_TEXTURE_2D, terrainTexture, 0);
+        GL46C.glDrawBuffer(GL46C.GL_NONE);
+        GL46C.glReadBuffer(GL46C.GL_NONE);
+        check(GL46C.glCheckFramebufferStatus(GL46C.GL_FRAMEBUFFER) == GL46C.GL_FRAMEBUFFER_COMPLETE, "Terrain shadow FBO");
+        GL46C.glDepthMask(true);
+        GL46C.glClearDepth(1);
+        GL46C.glClear(GL46C.GL_DEPTH_BUFFER_BIT);
+        GL46C.glEnable(GL46C.GL_SCISSOR_TEST);
+        GL46C.glScissor(0, 0, 8, 16);
+        GL46C.glClearDepth(0);
+        GL46C.glClear(GL46C.GL_DEPTH_BUFFER_BIT);
+        // A deliberately narrow scissor must not crop the copy.
+        GL46C.glScissor(0, 0, 1, 1);
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, outputFbo);
+        com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.beginFrame(renderer, true);
+        com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.capture(renderer);
+        check(com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.texture() != 0, "Terrain snapshot");
+        check(GL46C.glIsEnabled(GL46C.GL_SCISSOR_TEST), "Snapshot scissor restoration");
+        check(GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING) == outputFbo, "Snapshot framebuffer restoration");
+        GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
+        // Later entity submissions may darken the full host map without changing the snapshot.
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, terrainFbo);
+        GL46C.glClear(GL46C.GL_DEPTH_BUFFER_BIT);
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, outputFbo);
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 0);
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 0);
+        shader.setTerrainShadowReceiver(false);
         shader.useMain();
-        check(shader.setEnvironmentLighting(source, identity, 0, 15), "Whole-model shadow inputs");
+        check(shader.setEnvironmentLighting(source, identity, 0, 15), "Terrain shadow inputs");
         shader.setShaderStyle(.2f, 0);
         shader.setSpecular(96, 0); shader.setRimLight(5, 0);
         float[] normal = normalWithDot(light, .8f);
-        shader.setModelShadowBounds(0, 0, 0, 0);
         float[] selfShadow = sampleNormal(shader, normals, normal);
-        shader.setModelShadowBounds(.0625f, .0625f, -.5f, .6f);
-        float[] wholeModel = sampleNormal(shader, normals, normal);
-        check(luminance(wholeModel) > luminance(selfShadow) * 1.2f, "Own geometry must not shadow the common receiver");
+        int[] originalBindings = textureBindings();
+        shader.setTerrainShadowReceiver(true);
+        check(shader.setEnvironmentLighting(source, identity, 0, 15), "Terrain receiver sync");
+        sampleNormal(shader, normals, normal);
+        float[] left = readPixel(3, 8), right = readPixel(12, 8);
+        check(luminance(right) > luminance(selfShadow) * 1.2f, "Terrain receiver must ignore later entity self-occlusion");
+        check(luminance(left) < luminance(right) * .8f, "One draw must contain both shadowed and lit terrain regions");
         float maximumDifference = 0;
         for (float[] angle : new float[][]{{.3f,0}, {-.3f,.22f}, {.15f,-.3f}, {0, .3f}}) {
             var view = new org.joml.Matrix4f().rotateY(angle[0]).rotateX(angle[1]);
+            var inverse = new org.joml.Matrix4f(view).invert();
             GL46C.glUseProgram(source);
             GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelView"), false, view.get(new float[16]));
             GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelViewInverse"), false,
-                    new org.joml.Matrix4f(view).invert().get(new float[16]));
+                    inverse.get(new float[16]));
             shader.useMain();
             check(shader.setEnvironmentLighting(source, identity, 0, 15), "Camera rotation shadow inputs");
             GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(shader.getMainProgram(), "ModelViewMat"), false, view.get(new float[16]));
-            var center = view.transform(new org.joml.Vector4f(.0625f, .0625f, -.5f, 1));
-            shader.setModelShadowBounds(center.x, center.y, center.z, .6f);
-            maximumDifference = Math.max(maximumDifference, distance(wholeModel, sampleNormal(shader, normals, normal)));
+            // Hold rasterized world points fixed while changing the view-space representation.
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(shader.getMainProgram(), "ProjMat"), false, inverse.get(new float[16]));
+            sampleNormal(shader, normals, normal);
+            maximumDifference = Math.max(maximumDifference,
+                    Math.max(distance(left, readPixel(3, 8)), distance(right, readPixel(12, 8))));
         }
-        check(maximumDifference < .001f, "Common model shadow must remain stable under camera rotation");
+        check(maximumDifference < .001f, "Terrain shadow must remain stable under camera rotation");
         GL46C.glUseProgram(source);
         GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelView"), false, identity());
         GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "gbufferModelViewInverse"), false, identity());
         shader.useMain(); shader.setEnvironmentLighting(source, identity, 0, 15);
         GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(shader.getMainProgram(), "ModelViewMat"), false, identity());
-        shader.setModelShadowBounds(.0625f, .0625f, -.5f, .6f);
-        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, .45f);
-        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, .45f);
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(shader.getMainProgram(), "ProjMat"), false, identity());
+        sampleOutline(shader, source, identity, new LightingCase("terrain-outline", .25f, 0, 0, 15, 0));
+        check(luminance(readPixel(3, 8)) < luminance(readPixel(12, 8)) * .8f, "Outline must follow the same terrain split");
+        checkTerrainMaskIgnoresMeshNormals(shader, profile, source, identity, normals, normal, light);
+        checkWorldShadowSoftness(shader, source, identity, left, right);
+        checkTerrainColorIsolation(shader, source, identity, shadowTexture, opaqueShadowTexture);
         shader.useMain();
-        float[] externalShadow = sampleNormal(shader, normals, normal);
-        check(luminance(externalShadow) < luminance(wholeModel) * .8f, "Buildings must still shadow the whole model");
-        shader.setModelShadowBounds(0, 0, 0, 0);
-        check(distance(externalShadow, sampleNormal(shader, normals, normal)) < .001f, "Deep external shadow must retain its color");
-        GL46C.glUseProgram(source);
-        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowModelView"), false, identity());
-        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowProjection"), false, identity());
+        com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.beginFrame(renderer, true);
+        check(com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.texture() == 0, "New frame must invalidate a missing capture");
+        shader.setEnvironmentLighting(source, identity, 0, 15);
+        check(distance(selfShadow, sampleNormal(shader, normals, normal)) < .001f, "Missing snapshot must restore classic self-shadow");
+        shader.setTerrainShadowReceiver(false);
+        shader.releaseTerrainShadowBinding();
+        check(Arrays.equals(originalBindings, textureBindings()), "Body/outline terrain samplers must restore all texture and sampler bindings");
+        com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.destroy(renderer);
+        GL46C.glDeleteFramebuffers(terrainFbo);
+        GL46C.glDeleteTextures(terrainTexture);
+        GL46C.glClearDepth(1);
         if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 1);
         if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
         shader.useMain(); shader.setEnvironmentLighting(source, identity, 0, 15); shader.setShaderStyle(0, 0);
-        System.out.printf("PASS whole-model shadows: self=%.6f, common=%.6f, building=%.6f, camera delta=%.6f%n",
-                luminance(selfShadow), luminance(wholeModel), luminance(externalShadow), maximumDifference);
+        System.out.printf("PASS terrain shadows: classic=%.6f, shadow=%.6f, lit=%.6f, camera delta=%.6f%n",
+                luminance(selfShadow), luminance(left), luminance(right), maximumDifference);
+    }
+
+    private static void checkTerrainMaskIgnoresMeshNormals(ToonShaderCpu original, ToonOutputProfile profile,
+            int source, Object identity, int normals, float[] originalNormal, float[] light) {
+        original.releaseTerrainShadowBinding();
+        float[] depth = new float[16 * 16];
+        for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) depth[y * 16 + x] = x < 8 ? .447f : 1;
+        uploadTerrainDepth(depth);
+        var mask = new ToonShaderCpu() {
+            @Override protected int compileProgram(String vertex, String fragment, String name) {
+                return super.compileProgram(vertex, fragment.replace(
+                        "writeToonOutputs(finalColor, albedo, normal, finalAlpha);",
+                        "toonOutput0 = vec4(vec3(toonSunVisibility), finalAlpha);"), name);
+            }
+        };
+        check(mask.selectOutputProfile(profile), "Terrain visibility diagnostic shader");
+        try {
+            mask.useMain();
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(mask.getMainProgram(), "ProjMat"), false, identity());
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(mask.getMainProgram(), "ModelViewMat"), false, identity());
+            GL46C.glUniform4f(GL46C.glGetUniformLocation(mask.getMainProgram(), "MaterialColor"), 1, 1, 1, 1);
+            mask.setSampler0(0);
+            mask.setAlphaCutoff(.001f);
+            mask.setShaderStyle(1, 0);
+            mask.setTerrainShadowReceiver(true);
+            float maximum = 0;
+            for (float softness : new float[]{0, 1.5f, 4}) {
+                mask.useMain();
+                mask.setWorldShadowSoftness(softness);
+                check(mask.setEnvironmentLighting(source, identity, 0, 15), "Terrain diagnostic environment");
+                float[] reference = null;
+                for (float ndl : new float[]{1, .8f, .2f, .05f, .00001f, 0, -.00001f}) {
+                    sampleNormal(mask, normals, normalWithDot(light, ndl));
+                    float[] pixels = new float[16 * 16 * 4];
+                    GL46C.glReadPixels(0, 0, 16, 16, GL46C.GL_RGBA, GL46C.GL_FLOAT, pixels);
+                    if (reference == null) reference = pixels;
+                    else for (int i = 0; i < pixels.length; i++)
+                        maximum = Math.max(maximum, Math.abs(reference[i] - pixels[i]));
+                }
+            }
+            check(maximum < .0001f, "World shadow mask must not split along mesh normals: " + maximum);
+            System.out.printf("PASS terrain mesh seam: visibility delta=%.6f across grazing/front/back normals and softness 0/1.5/4%n", maximum);
+        } finally {
+            mask.cleanup();
+            for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) depth[y * 16 + x] = x < 8 ? 0 : 1;
+            uploadTerrainDepth(depth);
+            original.useMain();
+            original.setEnvironmentLighting(source, identity, 0, 15);
+            sampleNormal(original, normals, originalNormal);
+        }
+    }
+
+    private static void uploadTerrainDepth(float[] depth) {
+        int previous = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.texture());
+        GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 16, 16,
+                GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, depth);
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previous);
+    }
+
+    private static void checkWorldShadowSoftness(ToonShaderCpu shader, int source, Object identity,
+                                                float[] dark, float[] light) {
+        int projectionLocation = GL46C.glGetUniformLocation(source, "shadowProjection");
+        float[] projection = new float[16];
+        GL46C.glGetUniformfv(source, projectionLocation, projection);
+        GL46C.glUseProgram(source);
+        GL46C.glUniformMatrix4fv(projectionLocation, false, new org.joml.Matrix4f().scaling(.08f, 1, 1).get(new float[16]));
+        int[] widths = new int[3];
+        float[] original = null;
+        float minimum = luminance(dark), range = luminance(light) - minimum;
+        float[] radii = {0, 1.5f, 4, 0};
+        for (int step = 0; step < radii.length; step++) {
+            shader.useMain();
+            shader.setWorldShadowSoftness(radii[step]);
+            shader.setEnvironmentLighting(source, identity, 0, 15);
+            draw(shader.getMainProgram());
+            float[] row = new float[16 * 4];
+            GL46C.glReadPixels(0, 8, 16, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT, row);
+            if (step == 0) original = row;
+            if (step == 3) {
+                for (int i = 0; i < row.length; i++)
+                    check(Math.abs(row[i] - original[i]) < .0001f, "Zero softness must restore original pack filtering");
+                continue;
+            }
+            for (int pixel = 0; pixel < 16; pixel++) {
+                float value = luminance(Arrays.copyOfRange(row, pixel * 4, pixel * 4 + 4));
+                if (value > minimum + range * .08f && value < minimum + range * .92f) widths[step]++;
+            }
+        }
+        check(widths[2] > widths[0], "Softness slider must widen the transition instead of merely changing brightness");
+        check(widths[1] >= widths[0] && widths[2] >= widths[1], "Increasing softness must not narrow the transition");
+        shader.setWorldShadowSoftness(2.75f);
+        shader.setEnvironmentLighting(source, identity, 0, 15);
+        shader.useOutline();
+        check(Math.abs(GL46C.glGetUniformf(shader.getOutlineProgram(),
+                GL46C.glGetUniformLocation(shader.getOutlineProgram(), "ToonWorldShadowSoftness")) - 2.75f) < .0001f,
+                "Outline must receive the same live softness value");
+        GL46C.glUseProgram(source);
+        GL46C.glUniformMatrix4fv(projectionLocation, false, projection);
+        shader.useMain();
+        shader.setWorldShadowSoftness(1.5f);
+        shader.setEnvironmentLighting(source, identity, 0, 15);
+        System.out.printf("PASS world shadow softness: intermediate pixels at 0/1.5/4 = %s; zero restores, outline updates%n",
+                Arrays.toString(widths));
+    }
+
+    private static void checkTerrainColorIsolation(ToonShaderCpu shader, int source, Object identity,
+                                                   int shadowTexture, int opaqueShadowTexture) {
+        int colorLocation = GL46C.glGetUniformLocation(source, "shadowcolor0");
+        if (colorLocation < 0 || opaqueShadowTexture <= 0) return;
+        int colorUnit = GL46C.glGetUniformi(source, colorLocation);
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + colorUnit);
+        int colorTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
+        if (shadowTexture > 0) setShadowDepth(source, "shadowtex0", shadowTexture, 0);
+        setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 1);
+        GL46C.glUseProgram(source);
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowModelView"), false,
+                new org.joml.Matrix4f().translation(-.0625f, 0, 0).get(new float[16]));
+        int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.texture());
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER, GL46C.GL_LINEAR);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, GL46C.GL_LINEAR);
+        // Restore the host unit before inspecting the complete binding restoration later.
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, opaqueShadowTexture);
+        float terrainDifference = 0, classicDifference = 0;
+        for (boolean terrain : new boolean[]{false, true}) {
+            shader.setTerrainShadowReceiver(terrain);
+            shader.useMain();
+            shader.setEnvironmentLighting(source, identity, 0, 15);
+            float[][] frames = new float[2][16 * 16 * 4];
+            for (int tint = 0; tint < 2; tint++) {
+                GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + colorUnit);
+                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, colorTexture);
+                GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT,
+                        tint == 0 ? new float[]{1, 0, 0, 1} : new float[]{0, 0, 1, 1});
+                draw(shader.getMainProgram());
+                GL46C.glReadPixels(0, 0, 16, 16, GL46C.GL_RGBA, GL46C.GL_FLOAT, frames[tint]);
+            }
+            float maximum = 0;
+            for (int i = 0; i < frames[0].length; i++) maximum = Math.max(maximum, Math.abs(frames[0][i] - frames[1][i]));
+            if (terrain) terrainDifference = maximum;
+            else classicDifference = maximum;
+        }
+        check(terrainDifference < .0001f, "Opaque terrain shadow edges must not inherit host/entity shadow colors");
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + colorUnit);
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, colorTexture);
+        GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT, new float[]{1, 1, 1, 1});
+        GL46C.glActiveTexture(active);
+        GL46C.glUseProgram(source);
+        GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowModelView"), false, identity());
+        if (opaqueShadowTexture > 0) setShadowDepth(source, "shadowtex1", opaqueShadowTexture, 0);
+        shader.useMain();
+        shader.setEnvironmentLighting(source, identity, 0, 15);
+        System.out.printf("PASS terrain shadow color isolation: classic tint delta=%.6f, terrain tint delta=%.6f%n",
+                classicDifference, terrainDifference);
     }
 
     private static float[] sampleNormal(ToonShaderCpu shader, int buffer, float[] n) {
@@ -382,10 +583,26 @@ public final class LightingProbe {
     }
 
     private static float[] readPixel() {
+        return readPixel(8, 8);
+    }
+
+    private static float[] readPixel(int x, int y) {
         float[] pixel = new float[4];
-        GL46C.glReadPixels(8, 8, 1, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT, pixel);
+        GL46C.glReadPixels(x, y, 1, 1, GL46C.GL_RGBA, GL46C.GL_FLOAT, pixel);
         for (float value : pixel) check(Float.isFinite(value), "光照不能产生 NaN/Inf");
         return pixel;
+    }
+
+    private static int[] textureBindings() {
+        int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
+        int[] result = new int[GL46C.glGetInteger(GL46C.GL_MAX_TEXTURE_IMAGE_UNITS) * 2];
+        for (int unit = 0; unit < result.length / 2; unit++) {
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + unit);
+            result[unit * 2] = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
+            result[unit * 2 + 1] = GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, unit);
+        }
+        GL46C.glActiveTexture(active);
+        return result;
     }
 
     private static void setShadowDepth(int source, String name, int texture, float depth) {

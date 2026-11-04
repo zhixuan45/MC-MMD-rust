@@ -39,7 +39,10 @@ class SunlightToonLightingTest {
         String lighting = BslToonLighting.create(BSL, VERTEX, false);
         assertTrue(lighting.contains("toonPrepareSunlight(sunVec, toonLight, upVec)"));
         assertTrue(lighting.contains("toonSunlightStrength > 0.0 || NoL > 0.0"));
-        assertTrue(lighting.contains("GetShadow(toonModelShadowPosition(worldPos, lightVec, gbufferModelViewInverse), normal, toonShadowSampleNdotL(NoL),"));
+        assertTrue(lighting.contains("GetShadow(worldPos, toonShadowSampleNormal(normal), toonShadowSampleNdotL(NoL),"));
+        assertTrue(lighting.contains("ToonTerrainShadowEnabled || toonSunlightStrength"));
+        assertTrue(lighting.contains("vec3 world = ToWorld(p)"));
+        assertFalse(lighting.contains("toonModelShadow"));
         assertTrue(lighting.contains("NoL = clamp(NoL * 1.01 - 0.01, 0.0, 1.0)"));
         assertTrue(lighting.contains("shadow * toonSunDiffuseRamp(NoL, shadow)"));
         assertTrue(lighting.contains("lmCoord, 1.0, ndl,"));
@@ -84,9 +87,12 @@ class SunlightToonLightingTest {
         String lighting = ComplementaryToonLighting.create(fragment, VERTEX);
         assertTrue(lighting.contains("toonPrepareSunlight(sunVec, lightVec, upVec)"));
         assertTrue(lighting.contains("toonSunlightStrength > 0.0 || NdotL > 0.0"));
-        assertTrue(lighting.contains("float NdotLm = clamp(dot(normal, lightVec), 0.0, 1.0)"));
+        assertTrue(lighting.contains("float NdotLm = (ToonTerrainShadowEnabled ? 1.0 : (clamp(dot(normal, lightVec), 0.0, 1.0)))"));
         assertTrue(lighting.contains("shadow * max(toonSunDiffuseRamp(NdotL, shadow),"));
         assertTrue(lighting.contains("illumination, toonSunlitRamp(band)"));
+        assertTrue(lighting.contains("vec3 world = (gbufferModelViewInverse * vec4(p, 1.0)).xyz"));
+        assertFalse(lighting.contains("normal = lightVec"));
+        assertFalse(lighting.contains("toonModelShadow"));
     }
 
     @Test
@@ -103,11 +109,42 @@ class SunlightToonLightingTest {
                 void main() {}
                 """;
         String lighting = ComplementaryToonLighting.createModern(fragment, VERTEX);
-        assertTrue(lighting.contains("if (toonModelShadowEnabled() || toonSunlightStrength > 0.0 || NdotLM > 0.0001)"));
+        assertTrue(lighting.contains("if (ToonTerrainShadowEnabled || toonSunlightStrength > 0.0 || NdotLM > 0.0001)"));
+        assertTrue(lighting.contains("vec3 player = ViewToPlayer(p)"));
+        assertTrue(lighting.contains("vec3 sampleNormal = n"));
+        assertFalse(lighting.contains("toonModelShadow"));
         assertTrue(lighting.contains("toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime"));
         assertTrue(lighting.contains("max(lit.rgb, vec3(0.0)), toonSunlitRamp(band)"));
         assertFalse(ComplementaryToonLighting.createModern(
                 fragment.replace("shadowMult *= GetShadow(", "shadowMult *= UnknownShadow("), VERTEX)
                 .contains("toonPrepareSunlight("));
+    }
+
+    @Test
+    void legacyAndCoreComparisonCallsAreRoutedWithoutChangingCoordinatesOrColorInputs() {
+        String adapted = ComplementaryToonLighting.adaptShadowSampler("""
+                uniform sampler2DShadow shadowtex0;
+                uniform sampler2D shadowcolor0;
+                uniform sampler2D albedo;
+                float a = shadow2D(shadowtex0, shadowPos).x;
+                float b = texture(shadowtex0, shadowPos);
+                vec3 c = texture(shadowcolor0, shadowPos.xy + offset).rgb;
+                vec3 d = texture(albedo, uv).rgb;
+                """);
+        assertTrue(adapted.contains("toonShadow2D(shadowtex0, shadowPos).x"));
+        assertTrue(adapted.contains("toonTerrainShadow(shadowtex0, shadowPos)"));
+        assertTrue(adapted.contains("toonShadowColor(shadowcolor0, shadowPos.xy + offset).rgb"));
+        assertTrue(adapted.contains("texture(albedo, uv).rgb"));
+    }
+
+    @Test
+    void rawDepthHelpersAreNotMistakenForComparisonSamplersWithSimilarNames() {
+        String source = """
+                uniform sampler2DShadow shadowtex0;
+                uniform sampler2D shadowtex1;
+                float raw(sampler2D shadowtex, vec2 uv) { return texture(shadowtex, uv).r; }
+                float other = texture(shadowtex1, coord).r;
+                """;
+        assertEquals(source, ComplementaryToonLighting.adaptShadowSampler(source));
     }
 }

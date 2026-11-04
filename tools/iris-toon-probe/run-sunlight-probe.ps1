@@ -41,7 +41,7 @@ foreach ($probeModule in @('lwjgl', 'lwjgl-glfw', 'lwjgl-opengl')) {
     $probeClasspath += ';' + $probeNative.FullName
 }
 $probeSources = @('Probe.java', 'ModernPackProbe.java', 'OverlayProbe.java', 'LightingProbe.java',
-    'ToonControlsProbe.java', 'UniformBridgeProbe.java', 'OutlineCoverageProbe.java', 'SunlightGlProbe.java') |
+    'ToonControlsProbe.java', 'UniformBridgeProbe.java', 'OutlineCoverageProbe.java', 'ShadowSourceFixture.java', 'TerrainShadowGlProbe.java', 'SunlightGlProbe.java') |
     ForEach-Object { Join-Path $PSScriptRoot $_ }
 Push-Location $probeRoot
 try {

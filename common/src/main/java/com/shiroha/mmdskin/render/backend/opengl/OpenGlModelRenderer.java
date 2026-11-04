@@ -707,6 +707,7 @@ final class OpenGlModelRenderer {
         } finally {
             try {
                 // 原版宿主也须清理程序缓存，保证 Toon 之后的 apply 会重新绑定。
+                OpenGlModelInstance.toonShaderCpu.releaseTerrainShadowBinding();
                 IrisCompat.clearProgram(hostShader, -1, -1);
             } finally {
                 GL46C.glBindVertexArray(0);
@@ -770,7 +771,7 @@ final class OpenGlModelRenderer {
         OpenGlModelInstance.toonShaderCpu.setProjectionMatrix(target.projMatBuff);
         OpenGlModelInstance.toonShaderCpu.setModelViewMatrix(target.modelViewMatBuff);
         ToonRenderHelper.setupToonUniforms(OpenGlModelInstance.toonShaderCpu, lightIntensity, target.light0Direction, target.getGlobalAlpha());
-        target.setupToonModelShadow(OpenGlModelInstance.toonShaderCpu, target.modelViewMatBuff, context, target.posBuffer);
+        target.setupToonTerrainShadow(OpenGlModelInstance.toonShaderCpu, context);
         OpenGlModelInstance.toonShaderCpu.setEnvironmentLighting(irisShader == null ? 0 : irisShader.getId(),
                 irisShader, light.blockLight(), light.skyLight());
 
