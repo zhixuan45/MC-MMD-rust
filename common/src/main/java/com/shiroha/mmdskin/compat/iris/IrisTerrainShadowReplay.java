@@ -26,7 +26,7 @@ final class IrisTerrainShadowReplay {
         return code.contains("albedo.rgb=mix(vec3(1.0),albedo.rgb,1.0-pow(1.0-albedo.a,1.5))")
                 && code.contains("albedo.rgb*=1.0-pow(albedo.a,96.0)")
                 && code.contains("gl_FragData[0]=albedo;")
-                && !Pattern.compile("gl_FragData\\[[1-9]").matcher(code).find()
+                && !Pattern.compile("gl_FragData\\[[1-9]").matcher(code + vertex.replaceAll("\\s+", "")).find()
                 && !UNSAFE.matcher(fragment + "\n" + vertex).find();
     }
 
