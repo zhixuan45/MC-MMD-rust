@@ -22,6 +22,8 @@ public final class ShadowHookProbe {
             checkMethod(zip, "net/irisshaders/iris/shadows/ShadowRenderTargets", "getDepthTexture",
                     "()Lnet/irisshaders/iris/targets/DepthTexture;");
             checkMethod(zip, "net/irisshaders/iris/shadows/ShadowRenderTargets", "getResolution", "()I");
+            checkMethod(zip, "net/irisshaders/iris/shadows/ShadowRenderTargets", "getColorTextureId", "(I)I");
+            checkMethod(zip, "net/irisshaders/iris/shadows/ShadowRenderTargets", "isFlipped", "(I)Z");
             checkMethod(zip, "net/irisshaders/iris/gl/framebuffer/GlFramebuffer", "getId", "()I");
             checkMethod(zip, "net/irisshaders/iris/targets/DepthTexture", "getTextureId", "()I");
         }
@@ -40,6 +42,11 @@ public final class ShadowHookProbe {
             index++;
         }
         check(capture >= 0 && capture < firstEntity, "third terrain draw must precede all entity submission");
+        check(iris.fields.stream().anyMatch(field -> field.name.equals("shouldRenderTranslucent") && field.desc.equals("Z")),
+                "native translucent shadow option");
+        check(iris.fields.stream().anyMatch(field -> field.name.equals("packHasVoxelization") && field.desc.equals("Z")),
+                "image/voxelization replay rejection");
+        check(count == 4, "original translucent terrain draw must remain after entities");
         check(iris.methods.stream().anyMatch(method -> method.name.equals("destroy")), "renderer destroy hook");
         for (String path : List.of(
                 "fabric/build/classes/java/main/com/shiroha/mmdskin/mixin/fabric/compat/IrisShadowEvaluationMixin.class",
@@ -47,6 +54,12 @@ public final class ShadowHookProbe {
             ClassNode mixin = new ClassNode();
             new ClassReader(Files.readAllBytes(Path.of(path))).accept(mixin, 0);
             MethodNode method = mixin.methods.stream().filter(entry -> entry.name.equals("mmdskin$captureTerrainShadow")).findFirst().orElseThrow();
+            check(method.desc.startsWith("(Ljava/lang/Object;Lnet/minecraft/client/Camera;"),
+                    "replay hook receives the actual shadow camera and level accessor");
+            boolean replay = false;
+            for (var instruction : method.instructions)
+                if (instruction instanceof MethodInsnNode call && call.name.equals("captureTransmission")) replay = true;
+            check(replay, "compiled hook must actually invoke terrain transmission capture");
             AnnotationNode injection = method.visibleAnnotations.stream().filter(annotation -> annotation.desc.endsWith("/Inject;")).findFirst().orElseThrow();
             @SuppressWarnings("unchecked")
             List<String> targets = (List<String>) value(injection, "method");

@@ -1,6 +1,7 @@
 param(
     [string]$Instance = 'D:\minecraft\.minecraft\versions\1.21.1-NeoForge_21.1.252',
-    [string]$Jdk = 'C:\Program Files\Zulu\zulu-21'
+    [string]$Jdk = 'C:\Program Files\Zulu\zulu-21',
+    [string]$Mode = ''
 )
 $ErrorActionPreference = 'Stop'
 $probeRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -41,12 +42,12 @@ foreach ($probeModule in @('lwjgl', 'lwjgl-glfw', 'lwjgl-opengl')) {
     $probeClasspath += ';' + $probeNative.FullName
 }
 $probeSources = @('Probe.java', 'ModernPackProbe.java', 'OverlayProbe.java', 'LightingProbe.java',
-    'ToonControlsProbe.java', 'UniformBridgeProbe.java', 'OutlineCoverageProbe.java', 'ShadowSourceFixture.java', 'TerrainShadowGlProbe.java', 'SunlightGlProbe.java') |
+    'ToonControlsProbe.java', 'UniformBridgeProbe.java', 'OutlineCoverageProbe.java', 'ShadowSourceFixture.java', 'TerrainShadowGlProbe.java', 'TransmissionGlProbe.java', 'SunlightGlProbe.java') |
     ForEach-Object { Join-Path $PSScriptRoot $_ }
 Push-Location $probeRoot
 try {
     & (Join-Path $Jdk 'bin/javac.exe') -proc:none -encoding UTF-8 -cp $probeClasspath -d $probeOutput $probeSources
     if ($LASTEXITCODE -ne 0) { throw 'Sunlight probe compilation failed' }
-    & (Join-Path $Jdk 'bin/java.exe') -cp "$probeClasspath;$probeOutput" SunlightGlProbe (Join-Path $Instance 'shaderpacks')
+    & (Join-Path $Jdk 'bin/java.exe') -cp "$probeClasspath;$probeOutput" SunlightGlProbe (Join-Path $Instance 'shaderpacks') $Mode
     if ($LASTEXITCODE -ne 0) { throw 'Sunlight GL validation failed' }
 } finally { Pop-Location }

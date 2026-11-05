@@ -12,6 +12,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigDataTest {
     @Test
+    void baseBrightnessDefaultsPersistsAndUpdatesLive(@TempDir Path configDir) throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");
+        ConfigData data = ConfigData.load(configDir);
+        assertEquals(0, data.toonBaseBrightness);
+        data.toonBaseBrightness = .15f;
+        data.save(configDir);
+        ConfigData loaded = ConfigData.load(configDir);
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            assertEquals(.15f, ConfigManager.getToonBaseBrightness());
+            loaded.toonBaseBrightness = .4f;
+            assertEquals(.4f, ConfigManager.getToonBaseBrightness());
+        } finally {
+            ConfigManager.init(null);
+        }
+    }
+
+    @Test
+    void baseBrightnessClampsAndRejectsNonFiniteInput() throws Exception {
+        ConfigData data = new ConfigData();
+        var normalize = ConfigData.class.getDeclaredMethod("normalize");
+        normalize.setAccessible(true);
+        for (float[] pair : new float[][]{{-1, 0}, {0, 0}, {.15f, .15f}, {1, 1}, {2, 1},
+                {Float.NaN, 0}, {Float.POSITIVE_INFINITY, 0}, {Float.NEGATIVE_INFINITY, 0}}) {
+            data.toonBaseBrightness = pair[0];
+            normalize.invoke(data);
+            assertEquals(pair[1], data.toonBaseBrightness);
+        }
+    }
+
+    @Test
     void worldShadowSoftnessDefaultsPersistsAndUpdatesLive(@TempDir Path configDir) throws Exception {
         Files.writeString(configDir.resolve("config.json"), "{\"toonWholeModelLighting\":true}");
         ConfigData data = ConfigData.load(configDir);

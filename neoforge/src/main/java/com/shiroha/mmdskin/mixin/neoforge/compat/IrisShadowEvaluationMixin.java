@@ -37,8 +37,9 @@ public abstract class IrisShadowEvaluationMixin {
             @At(value = "INVOKE", target = "Lnet/irisshaders/iris/mixin/LevelRendererAccessor;invokeRenderSectionLayer(Lnet/minecraft/class_1921;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
                     ordinal = 2, shift = At.Shift.AFTER)
     }, require = 0, remap = false)
-    private void mmdskin$captureTerrainShadow(CallbackInfo ci) {
+    private void mmdskin$captureTerrainShadow(@Coerce Object level, net.minecraft.client.Camera camera, CallbackInfo ci) {
         IrisTerrainShadow.capture(this);
+        IrisTerrainShadow.captureTransmission(this, level, camera);
     }
 
     @Inject(method = "destroy", at = @At("HEAD"), require = 0, remap = false)

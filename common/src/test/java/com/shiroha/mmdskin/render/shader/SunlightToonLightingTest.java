@@ -76,7 +76,7 @@ class SunlightToonLightingTest {
 
     @Test
     void diagnosticCodeIsDisabledByDefaultAndLeavesOutputAndDepthPassesInPlace() {
-        String body = AssetsUtil.getAssetsAsString("shader/toon_main_body.frag.glsl");
+        String body = AssetsUtil.getAssetsAsString("shader/toon_main_body.frag.glsl").replace("\r\n", "\n");
         String source = ToonShaderBase.outputSource(body, ToonOutputProfile.vanilla());
         assertFalse(source.contains("#define TOON_LIGHTING_DEBUG"));
         assertTrue(source.contains("#ifdef TOON_LIGHTING_DEBUG"));

@@ -63,6 +63,7 @@ public abstract class ToonShaderBase {
     protected int toonLevelsLocation = -1;
     protected int toonTransitionSoftnessLocation = -1;
     private int shaderFlatnessLocation = -1;
+    private int baseBrightnessLocation = -1;
     private int shaderSphereSuppressionLocation = -1;
     protected int rimPowerLocation = -1;
     protected int rimIntensityLocation = -1;
@@ -248,6 +249,7 @@ public abstract class ToonShaderBase {
         toonLevelsLocation = GL46C.glGetUniformLocation(mainProgram, "ToonLevels");
         toonTransitionSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonTransitionSoftness");
         shaderFlatnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderFlatness");
+        baseBrightnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonBaseBrightness");
         shaderSphereSuppressionLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderSphereSuppression");
         worldShadowSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonWorldShadowSoftness");
         rimPowerLocation = GL46C.glGetUniformLocation(mainProgram, "RimPower");
@@ -302,6 +304,7 @@ public abstract class ToonShaderBase {
         if (mainProgram > 0) {
             GL46C.glUseProgram(mainProgram);
             GL46C.glUniform1f(worldShadowSoftnessLocation, worldShadowSoftness);
+            GL46C.glUniform1f(baseBrightnessLocation, outlineLighting.baseBrightness);
             terrainShadow.bind(mainProgram, terrainReceiver && packLightingReady, worldShadowSoftness);
             ToonConfig config = ToonConfig.getInstance();
             setAlphaCutoff(config.getAlphaCutoff());
@@ -426,6 +429,11 @@ public abstract class ToonShaderBase {
         outlineLighting.flatness = finiteUnit(flatness);
         GL46C.glUniform1f(shaderFlatnessLocation, outlineLighting.flatness);
         GL46C.glUniform1f(shaderSphereSuppressionLocation, finiteUnit(sphereSuppression));
+    }
+
+    public void setBaseBrightness(float brightness) {
+        outlineLighting.baseBrightness = finiteUnit(brightness);
+        GL46C.glUniform1f(baseBrightnessLocation, outlineLighting.baseBrightness);
     }
 
     public void setTerrainShadowReceiver(boolean enabled) {

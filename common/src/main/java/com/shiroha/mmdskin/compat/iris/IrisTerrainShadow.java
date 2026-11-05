@@ -12,6 +12,8 @@ public final class IrisTerrainShadow {
     private static int texture, framebuffer, width, height, format;
     private static String status = "not captured", warnedStatus;
     private static IrisShadowSource sourceAccess;
+    private static boolean transmissionReported;
+    private static String transmissionFailure;
 
     private IrisTerrainShadow() {}
 
@@ -22,6 +24,7 @@ public final class IrisTerrainShadow {
         }
         requested = enabled;
         valid = false;
+        IrisTerrainTransmission.beginFrame();
         status = enabled ? "terrain capture not reached" : "disabled";
     }
 
@@ -144,6 +147,24 @@ public final class IrisTerrainShadow {
 
     public static int texture() { return valid ? texture : 0; }
 
+    public static void captureTransmission(Object owner, Object level, net.minecraft.client.Camera camera) {
+        if (renderer != owner || !requested || !valid) return;
+        try {
+            if (IrisTerrainShadowReplay.capture(owner, level, camera, sourceAccess.read(owner), framebuffer, format)
+                    && !transmissionReported) {
+                transmissionReported = true;
+                LOGGER.info("[MMD terrain shadow] captured terrain transmission before entities: {}x{}", width, height);
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
+            IrisTerrainTransmission.beginFrame();
+            String detail = failure.getClass().getSimpleName() + ": " + failure.getMessage();
+            if (!detail.equals(transmissionFailure)) {
+                transmissionFailure = detail;
+                LOGGER.warn("[MMD terrain shadow] terrain transmission unavailable; opaque terrain remains active: {}", detail);
+            }
+        }
+    }
+
     public static void warnUnavailable() {
         if (requested && !valid && !status.equals(warnedStatus)) {
             warnedStatus = status;
@@ -163,6 +184,10 @@ public final class IrisTerrainShadow {
         status = "not captured";
         warnedStatus = null;
         sourceAccess = null;
+        transmissionReported = false;
+        transmissionFailure = null;
+        IrisTerrainTransmission.release();
+        IrisTerrainShadowReplay.reset();
         releaseStorage();
     }
 

@@ -289,6 +289,16 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_base_brightness"),
+                (int) Math.round(data.toonBaseBrightness * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTextGetter(value -> Component.literal(value + "%"))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_base_brightness.tooltip"))
+            .setSaveConsumer(value -> data.toonBaseBrightness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startBooleanToggle(
                 Component.translatable("gui.mmdskin.mod_settings.toon_whole_model_lighting"),
                 data.toonWholeModelLighting)

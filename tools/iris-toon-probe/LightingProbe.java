@@ -142,6 +142,7 @@ public final class LightingProbe {
                 new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
         checkTerrainShadowReceiver(shader, profile, source, sourceIdentity, normals, shadowTexture,
                 opaqueShadowTexture, new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
+        checkBaseBrightness(shader, profile, source, sourceIdentity);
         if (profile.id().startsWith("bsl:")) {
             checkGrazingShadowContinuity(shader, source, sourceIdentity, normals, shadowTexture,
                     opaqueShadowTexture, new float[]{0, (float) Math.cos(angle), -(float) Math.sin(angle)});
@@ -235,6 +236,68 @@ public final class LightingProbe {
 
     private static float[] normalWithDot(float[] light, float dot) {
         return new float[]{(float) Math.sqrt(1 - dot * dot), light[1] * dot, light[2] * dot};
+    }
+
+    private static void checkBaseBrightness(ToonShaderCpu shader, ToonOutputProfile profile, int source,
+                                           Object identity) {
+        var cave = new LightingCase("base-brightness-cave", .25f, 0, 0, 0, 0);
+        shader.useMain();
+        shader.setSpecular(96, 0);
+        shader.setRimLight(5, 0);
+        shader.setBaseBrightness(0);
+        float[] original = sample(shader, source, identity, cave), previous = original;
+        float[] originalOutline = sampleOutline(shader, source, identity, cave);
+        float exponent = profile.id().contains(":gamma:") ? 1
+                : profile.id().contains(":sqrt-linear:") ? 1.1f : 2.2f;
+        try {
+            for (float floor : new float[]{.15f, .35f, .6f}) {
+                shader.useMain();
+                shader.setBaseBrightness(floor);
+                float[] body = sample(shader, source, identity, cave);
+                for (int c = 0; c < 3; c++) {
+                    check(body[c] >= previous[c] - .00001f, "Base brightness must increase monotonically");
+                    check(Math.abs(body[c] - Math.max(original[c], Math.pow(floor, exponent))) < .0001f,
+                            "Material base floor must match the profile's color encoding");
+                }
+                check(body[3] == original[3], "Base brightness must preserve alpha");
+                float[] outline = sampleOutline(shader, source, identity, cave);
+                for (int c = 0; c < 3; c++)
+                    check(Math.abs(outline[c] - Math.max(originalOutline[c],
+                            Math.pow(new float[]{.8f,.7f,.6f}[c] * floor, exponent))) < .0001f,
+                            "Outline must use the same material-colored floor");
+                shader.useOutline();
+                shader.setOutlineColor(0, 0, 0);
+                draw(shader.getOutlineProgram());
+                check(luminance(readPixel()) == 0, "Base brightness must not turn black outlines white");
+                previous = body;
+            }
+            shader.useMain();
+            shader.setBaseBrightness(0);
+            check(distance(original, sample(shader, source, identity, cave)) < .0001f,
+                    "Zero base brightness must restore the original dark output");
+            var day = new LightingCase("base-brightness-day", .25f, 0, 0, 15, 1);
+            float[] lit = sample(shader, source, identity, day);
+            shader.setBaseBrightness(.15f);
+            check(distance(lit, sample(shader, source, identity, day)) < .0001f,
+                    "Base floor must not add exposure to existing bright pixels");
+            // The same uniform must remain available without an Iris lighting bridge.
+            shader.useMain();
+            shader.setEnvironmentLighting(0, identity, 0, 0);
+            shader.setLightIntensity(0);
+            shader.setBaseBrightness(.35f);
+            draw(shader.getMainProgram());
+            float[] fallback = readPixel();
+            for (int c = 0; c < 3; c++)
+                check(Math.abs(fallback[c] - Math.pow(.35, exponent)) < .0001f, "Base floor in lighting fallback");
+            System.out.println("PASS base brightness: 0/15/35/60%, body/outline, encoding, alpha, bright pixels, black outline, fallback, zero restore");
+        } finally {
+            shader.useMain();
+            shader.setBaseBrightness(0);
+            shader.setLightIntensity(.7f);
+            prepareScene(source, new LightingCase("restore-day", .25f, 0, 0, 15, 1));
+            shader.useMain();
+            shader.setEnvironmentLighting(source, identity, 0, 15);
+        }
     }
 
     private static void checkGrazingShadowContinuity(ToonShaderCpu shader, int source, Object identity,
@@ -353,8 +416,11 @@ public final class LightingProbe {
         sampleOutline(shader, source, identity, new LightingCase("terrain-outline", .25f, 0, 0, 15, 0));
         check(luminance(readPixel(3, 8)) < luminance(readPixel(12, 8)) * .8f, "Outline must follow the same terrain split");
         checkTerrainMaskIgnoresMeshNormals(shader, profile, source, identity, normals, normal, light);
+        checkMixedLightSurface(shader, source, identity, light);
         checkWorldShadowSoftness(shader, source, identity, left, right);
         checkTerrainColorIsolation(shader, source, identity, shadowTexture, opaqueShadowTexture);
+        if (profile.lightingSource().contains("toonBslFilteredTransmission"))
+            checkGlassReception(shader, source, identity, normals, normal, terrainFbo, terrainTexture);
         shader.useMain();
         com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.beginFrame(renderer, true);
         check(com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.texture() == 0, "New frame must invalidate a missing capture");
@@ -437,6 +503,200 @@ public final class LightingProbe {
         GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 16, 16,
                 GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, depth);
         GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previous);
+    }
+
+    private static void checkGlassReception(ToonShaderCpu shader, int source, Object identity, int normals,
+                                           float[] normal, int terrainFbo, int terrainDepth) {
+        shader.releaseTerrainShadowBinding();
+        int draw = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
+        int read = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
+        int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
+        int[] bindings = textureBindings();
+        int color = colorTexture(3);
+        GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_RGBA32F, 16, 16, 0, GL46C.GL_RGBA, GL46C.GL_FLOAT, 0L);
+        int opaque = GL46C.glGenFramebuffers(), glass = GL46C.glGenFramebuffers();
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, opaque);
+        GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_TEXTURE_2D,
+                com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.texture(), 0);
+        GL46C.glDrawBuffer(GL46C.GL_NONE); GL46C.glReadBuffer(GL46C.GL_NONE);
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, glass);
+        GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_TEXTURE_2D, terrainDepth, 0);
+        GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, GL46C.GL_COLOR_ATTACHMENT0, GL46C.GL_TEXTURE_2D, color, 0);
+        GL46C.glDrawBuffer(GL46C.GL_COLOR_ATTACHMENT0); GL46C.glReadBuffer(GL46C.GL_COLOR_ATTACHMENT0);
+        int caster = ShaderCompiler.compileRenderProgram("""
+                #version 330 core
+                void main() {
+                    vec2 p=vec2((gl_VertexID << 1)&2,gl_VertexID&2);
+                    gl_Position=vec4(p*2.0-1.0,-0.4,1.0);
+                }
+                """, """
+                #version 330 core
+                uniform vec3 Transmission;
+                layout(location=0) out vec4 Color;
+                void main() { Color=vec4(Transmission,1.0); }
+                """, "glass caster for production BSL lighting");
+        try {
+            // Start with terrain only; the original host map can subsequently contain every PMX caster.
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, opaque);
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, terrainFbo);
+            GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
+            GL46C.glBlitFramebuffer(0,0,16,16,0,0,16,16,GL46C.GL_DEPTH_BUFFER_BIT,GL46C.GL_NEAREST);
+            for (float[] transmission : new float[][]{{.65f,.65f,.65f}, {.85f,.15f,.1f}}) {
+                GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, draw);
+                GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, read);
+                check(com.shiroha.mmdskin.compat.iris.IrisTerrainTransmission.capture(
+                        terrainFbo, color, opaque, 16, GL46C.GL_DEPTH_COMPONENT24, () -> {
+                            GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, glass);
+                            GL46C.glUseProgram(caster);
+                            GL46C.glUniform3fv(GL46C.glGetUniformLocation(caster, "Transmission"), transmission);
+                            GL46C.glEnable(GL46C.GL_DEPTH_TEST);
+                            GL46C.glDepthFunc(GL46C.GL_LESS);
+                            GL46C.glDepthMask(true);
+                            GL46C.glDisable(GL46C.GL_BLEND);
+                            GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 3);
+                        }), "Production glass snapshot");
+                check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "Production glass replay GL state");
+                float[] original = null;
+                for (float softness : new float[]{0, 1.5f, 4}) {
+                    shader.useMain();
+                    shader.setBaseBrightness(0);
+                    shader.setWorldShadowSoftness(softness);
+                    check(shader.setEnvironmentLighting(source, identity, 0, 15), "Glass BSL environment");
+                    GL46C.glValidateProgram(shader.getMainProgram());
+                    check(GL46C.glGetProgrami(shader.getMainProgram(), GL46C.GL_VALIDATE_STATUS) != 0,
+                            "Glass sampler validation: " + GL46C.glGetProgramInfoLog(shader.getMainProgram()));
+                    sampleNormal(shader, normals, normal);
+                    float[] behind = readPixel(12, 8), blocked = readPixel(3, 8);
+                    if (original == null) original = behind;
+                    check(luminance(behind) > luminance(blocked), "Glass transmits light; opaque terrain still occludes");
+                    // Hold the receiver in front of the same glass while leaving XY and all mesh normals unchanged.
+                    GL46C.glUseProgram(source);
+                    GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowProjection"), false,
+                            new org.joml.Matrix4f().translate(0, 0, -2.5f).get(new float[16]));
+                    shader.useMain(); shader.setEnvironmentLighting(source, identity, 0, 15);
+                    sampleNormal(shader, normals, normal);
+                    float[] front = readPixel(12, 8);
+                    check(luminance(front) > luminance(behind) + .05f, "Only receivers behind glass may be attenuated");
+                    GL46C.glUseProgram(source);
+                    GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(source, "shadowProjection"), false, identity());
+                    shader.useMain(); shader.setEnvironmentLighting(source, identity, 0, 15);
+                    sampleNormal(shader, normals, normal);
+                    if (transmission[0] > transmission[2])
+                        check(behind[0] / behind[2] > front[0] / front[2] * 1.3f, "Colored glass must tint sunlight");
+                    GL46C.glUniform1i(GL46C.glGetUniformLocation(shader.getMainProgram(), "ToonTerrainShadowTransmissionEnabled"), 0);
+                    sampleNormal(shader, normals, normal);
+                    check(luminance(readPixel(12, 8)) > luminance(behind) + .05f,
+                            "Control without the new transmission input must reproduce the missing-glass light");
+                    shader.setEnvironmentLighting(source, identity, 0, 15);
+                    int hostUnit = GL46C.glGetUniformi(source, GL46C.glGetUniformLocation(source, "shadowtex0"));
+                    GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + hostUnit);
+                    int hostDepth = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
+                    setShadowDepth(source, "shadowtex0", hostDepth, 1);
+                    sampleNormal(shader, normals, normal);
+                    check(distance(behind, readPixel(12, 8)) < .0001f,
+                            "Later PMX depth in the host shadow map must not change glass reception");
+                    setShadowDepth(source, "shadowtex0", hostDepth, 0);
+                    shader.setBaseBrightness(.3f);
+                    sampleNormal(shader, normals, normal);
+                    float[] floor = readPixel(12, 8);
+                    for (int c = 0; c < 3; c++) check(floor[c] >= behind[c] - .0001f, "Glass and base brightness compose");
+                    check(floor[3] == behind[3], "Glass/base brightness preserve alpha");
+                    shader.setBaseBrightness(0);
+                    sampleOutline(shader, source, identity, new LightingCase("glass-outline", .25f, 0, 0, 15, 0));
+                    check(luminance(readPixel(12, 8)) > luminance(readPixel(3, 8)), "Outline receives the same glass light");
+                    shader.useMain();
+                }
+                System.out.printf("PASS glass reception: transmission=%s, behind RGB=%s, softness 0/1.5/4, front/behind, opaque precedence, outline%n",
+                        Arrays.toString(transmission), Arrays.toString(original));
+            }
+        } finally {
+            shader.releaseTerrainShadowBinding();
+            com.shiroha.mmdskin.compat.iris.IrisTerrainTransmission.release();
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, draw);
+            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, read);
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE3);
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, bindings[6]);
+            GL46C.glBindSampler(3, bindings[7]);
+            GL46C.glActiveTexture(active);
+            GL46C.glDeleteProgram(caster);
+            GL46C.glDeleteFramebuffers(glass);
+            GL46C.glDeleteFramebuffers(opaque);
+            GL46C.glDeleteTextures(color);
+            shader.useMain(); shader.setWorldShadowSoftness(1.5f);
+            shader.setEnvironmentLighting(source, identity, 0, 15);
+        }
+    }
+
+    /** Four normal bands on one surface, all crossing the same terrain shadow in one draw. */
+    private static void checkMixedLightSurface(ToonShaderCpu shader, int source, Object identity, float[] light) {
+        int previousVao = GL46C.glGetInteger(GL46C.GL_VERTEX_ARRAY_BINDING);
+        int vao = GL46C.glGenVertexArrays();
+        GL46C.glBindVertexArray(vao);
+        float[] positions = new float[4 * 6 * 3], normals = new float[positions.length];
+        for (int band = 0; band < 4; band++) {
+            float bottom = -1 + band * .5f, top = bottom + .5f;
+            float[] quad = {-1,bottom,-.5f, 1,bottom,-.5f, 1,top,-.5f,
+                    -1,bottom,-.5f, 1,top,-.5f, -1,top,-.5f};
+            System.arraycopy(quad, 0, positions, band * 18, 18);
+            float[] n = normalWithDot(light, new float[]{.05f,.95f,.2f,.8f}[band]);
+            for (int v = 0; v < 6; v++) System.arraycopy(n, 0, normals, band * 18 + v * 3, 3);
+        }
+        int p = buffer(0, 3, positions), n = buffer(1, 3, normals), uv = buffer(2, 2, new float[4 * 6 * 2]);
+        try {
+            shader.useMain();
+            shader.setShaderStyle(.7f, 0);
+            shader.setSpecular(96, 0);
+            shader.setRimLight(5, 0);
+            shader.setWorldShadowSoftness(0);
+            check(shader.setEnvironmentLighting(source, identity, 0, 15), "Mixed-light environment");
+            GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT);
+            GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 24);
+            float[] dark = readPixel(3, 2), lit = readPixel(12, 2);
+            float darkSpread = 0, litSpread = 0;
+            for (int band = 1; band < 4; band++) {
+                darkSpread = Math.max(darkSpread, distance(dark, readPixel(3, 2 + band * 4)));
+                litSpread = Math.max(litSpread, distance(lit, readPixel(12, 2 + band * 4)));
+            }
+            System.out.printf("Mixed-light surface: full-shadow normal spread=%.6f, sunlit Toon spread=%.6f%n",
+                    darkSpread, litSpread);
+            check(darkSpread < .0001f, "Ambient-only terrain shadow must not acquire sun-facing mesh bands");
+            check(litSpread > .01f, "Sunlit surface must retain Toon bands");
+            check(luminance(lit) > luminance(dark) * 1.2f, "One surface must still receive the world shadow");
+            for (float softness : new float[]{0, 1.5f, 4}) {
+                shader.setWorldShadowSoftness(softness);
+                shader.setEnvironmentLighting(source, identity, 0, 15);
+                for (float floor : new float[]{0, .15f, .35f}) {
+                    shader.setBaseBrightness(floor);
+                    GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT);
+                    GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 24);
+                    for (int band = 0; band < 4; band++) {
+                        float previous = -1;
+                        for (int x = 0; x < 16; x++) {
+                            float[] pixel = readPixel(x, band * 4 + 2);
+                            float value = luminance(pixel);
+                            check(value >= previous - .0001f,
+                                    "Shadow edge dark seam: softness=" + softness + ", floor=" + floor
+                                            + ", band=" + band + ", x=" + x + ", " + previous + " -> " + value);
+                            check(pixel[3] == 1, "Mixed-light floor and filtering must preserve coverage");
+                            previous = value;
+                        }
+                        check(luminance(readPixel(15, band * 4 + 2)) > luminance(readPixel(0, band * 4 + 2)) + .05f,
+                                "Moderate base brightness must preserve terrain shadow contrast");
+                    }
+                }
+            }
+            System.out.println("PASS mixed-light composition: one draw, four normal bands, softness 0/1.5/4, floor 0/15/35%, monotone shadow edges and retained contrast");
+        } finally {
+            shader.useMain();
+            shader.setBaseBrightness(0);
+            shader.setShaderStyle(.2f, 0);
+            shader.setWorldShadowSoftness(1.5f);
+            GL46C.glBindVertexArray(previousVao);
+            GL46C.glDeleteBuffers(p);
+            GL46C.glDeleteBuffers(n);
+            GL46C.glDeleteBuffers(uv);
+            GL46C.glDeleteVertexArrays(vao);
+        }
     }
 
     private static void checkWorldShadowSoftness(ToonShaderCpu shader, int source, Object identity,

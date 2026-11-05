@@ -41,6 +41,8 @@ public class ToonConfig {
 
     public float getShaderFlatness() { return ConfigManager.getToonShaderFlatness(); }
 
+    public float getBaseBrightness() { return ConfigManager.getToonBaseBrightness(); }
+
     public float getShaderSphereSuppression() { return ConfigManager.getToonShaderSphereSuppression(); }
 
     public float getWorldShadowSoftness() { return ConfigManager.getToonWorldShadowSoftness(); }

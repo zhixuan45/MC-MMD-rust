@@ -40,6 +40,7 @@ public class ToonRenderHelper {
         shader.setLightIntensity(lightIntensity);
         shader.setToonLevels(toonConfig.getToonLevels());
         shader.setTransitionSoftness(toonConfig.getTransitionSoftness());
+        shader.setBaseBrightness(toonConfig.getBaseBrightness());
         shader.setShaderStyle(toonConfig.getShaderFlatness(), toonConfig.getShaderSphereSuppression());
         shader.setWorldShadowSoftness(toonConfig.getWorldShadowSoftness());
         shader.setRimLight(toonConfig.getRimPower(), toonConfig.getRimIntensity());

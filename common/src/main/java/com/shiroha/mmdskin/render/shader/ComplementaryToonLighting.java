@@ -149,12 +149,23 @@ final class ComplementaryToonLighting {
     }
 
     static String shadowSamplerWrapper() {
+        return shadowSamplerWrapper(false);
+    }
+
+    static String shadowSamplerWrapper(boolean transmission) {
         return "float toonTerrainShadow(sampler2DShadow s, vec3 p) {\n"
+                + "    return ToonTerrainShadowEnabled ? "
+                + (transmission ? "(ToonTerrainShadowTransmissionEnabled ? texture(ToonTerrainShadowTranslucentDepth, p)"
+                        + " : texture(ToonTerrainShadowDepth, p))" : "texture(ToonTerrainShadowDepth, p)")
+                + " : texture(s, p);\n"
+                + "}\n"
+                + "float toonTerrainOpaqueShadow(sampler2DShadow s, vec3 p) {\n"
                 + "    return ToonTerrainShadowEnabled ? texture(ToonTerrainShadowDepth, p) : texture(s, p);\n"
                 + "}\n"
                 + "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(toonTerrainShadow(s, p)); }\n"
                 + "vec4 toonShadowColor(sampler2D s, vec2 p) {\n"
-                + "    return ToonTerrainShadowEnabled ? vec4(0.0) : texture(s, p);\n"
+                + "    return ToonTerrainShadowEnabled ? (ToonTerrainShadowTransmissionEnabled"
+                + " ? texture(ToonTerrainShadowColor, p) : vec4(0.0)) : texture(s, p);\n"
                 + "}\n";
     }
 

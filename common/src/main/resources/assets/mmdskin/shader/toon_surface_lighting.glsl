@@ -3,6 +3,7 @@ uniform float LightIntensity;
 uniform int ToonLevels;
 uniform float ToonTransitionSoftness;
 uniform float ToonShaderFlatness;
+uniform float ToonBaseBrightness;
 uniform float RimPower;
 uniform float RimIntensity;
 uniform vec3 ShadowColor;
@@ -17,6 +18,9 @@ uniform vec3 ToonEnvironmentSkyTint;
 uniform float ToonEnvironmentWeather;
 uniform bool ToonTerrainShadowEnabled;
 uniform sampler2DShadow ToonTerrainShadowDepth;
+uniform bool ToonTerrainShadowTransmissionEnabled;
+uniform sampler2DShadow ToonTerrainShadowTranslucentDepth;
+uniform sampler2D ToonTerrainShadowColor;
 uniform float ToonWorldShadowSoftness;
 
 float toonFilteredTerrainShadow(vec3 p) {
@@ -47,6 +51,8 @@ float toonShaderFlatnessAmount() {
 
 float toonSunlightStrength = 0.0;
 float toonSunVisibility = 0.0;
+float toonDirectLightWeight = 0.0;
+bool toonHasShadowVisibility = false;
 
 #ifdef TOON_LIGHTING_DEBUG
 float toonDebugNdotL = 0.0;
@@ -62,6 +68,8 @@ void toonPrepareSunlight(vec3 sun, vec3 light, vec3 up) {
     float skylight = saturate((ToonLightmap.y * 256.0 - 8.0) / 240.0);
     toonSunlightStrength = toonShaderFlatnessAmount() * daylight * elevation * smoothstep(0.75, 0.95, skylight);
     toonSunVisibility = 0.0;
+    toonDirectLightWeight = 0.0;
+    toonHasShadowVisibility = false;
 }
 
 float toonShadowSampleNdotL(float ndl) {
@@ -107,14 +115,27 @@ float toonDiffuseRamp(float ndl) {
 float toonSunDiffuseRamp(float ndl, vec3 shadow) {
     // Dark and colored cast shadows keep their original diffuse response.
     toonSunVisibility = saturate(min(shadow.r, min(shadow.g, shadow.b)));
+    toonHasShadowVisibility = true;
     float direct = toonSunDiffuseFill(toonDiffuseRamp(ndl));
+    toonDirectLightWeight = saturate(toonSunVisibility * direct);
 #ifdef TOON_LIGHTING_DEBUG
     toonDebugDirect = direct;
 #endif
     return direct;
 }
 
+vec3 toonApplyBaseBrightness(vec3 shaded, vec3 albedo) {
+    // A material-colored floor, not white emission; zero preserves the original output.
+    return max(shaded, max(albedo, vec3(0.0)) * clamp(ToonBaseBrightness, 0.0, 1.0));
+}
+
 vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination, float ramp) {
+    if (ToonTerrainShadowEnabled && toonHasShadowVisibility) {
+        // The sun-facing band must not darken ambient-only surfaces along PMX normal seams.
+        // Weight by available direct light: visibility alone would darken ambient in the
+        // penumbra before a grazing surface receives any direct light, creating a dark halo.
+        ramp = mix(1.0, ramp, toonDirectLightWeight);
+    }
 #ifdef TOON_LIGHTING_DEBUG
     toonDebugNdotL = dot(n, light);
     toonDebugBand = ramp;
@@ -123,7 +144,8 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
 #ifdef MMD_FX_RAY
     if (mmdFxRayEnabled()) {
         toonSurfaceIllumination = max(illumination, vec3(0.0));
-        return albedo * mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp) * toonSurfaceIllumination;
+        return toonApplyBaseBrightness(
+                albedo * mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp) * toonSurfaceIllumination, albedo);
     }
 #endif
     vec3 tint = mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp);
@@ -160,7 +182,7 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
 #ifdef TOON_MATERIAL_LIGHTING
     toonSurfaceIllumination = surfaceIllumination;
 #endif
-    return surface * surfaceIllumination;
+    return toonApplyBaseBrightness(surface * surfaceIllumination, albedo);
 }
 
 #ifdef TOON_LIGHTING_DEBUG

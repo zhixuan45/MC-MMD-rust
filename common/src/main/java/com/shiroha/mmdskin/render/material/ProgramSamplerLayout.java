@@ -70,13 +70,14 @@ public final class ProgramSamplerLayout {
     public static void forget(int program) { CACHE.remove(program); }
 
     /** Use the host comparison sampler's filtering for an additional depth receiver. */
-    public static int comparisonShadowUnit(int program, int ownLocation) {
+    public static int comparisonShadowUnit(int program, int... ownLocations) {
         Metadata metadata = metadata(program, true);
         if (metadata == null) return -1;
         for (Sampler sampler : metadata.samplers) {
             if (sampler.type != GL46C.GL_SAMPLER_2D_SHADOW) continue;
             for (int location : sampler.locations) {
-                if (location >= 0 && location != ownLocation) return GL46C.glGetUniformi(program, location);
+                if (location >= 0 && java.util.Arrays.stream(ownLocations).noneMatch(own -> own == location))
+                    return GL46C.glGetUniformi(program, location);
             }
         }
         return -1;

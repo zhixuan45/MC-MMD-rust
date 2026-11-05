@@ -50,6 +50,8 @@ public class ConfigData {
     public float toonHairAlphaCutoff = 0.001f;
     public int toonLevels = 4;
     public float toonTransitionSoftness = 1.2f;
+    /** Minimum visible material base color, independent of directional lighting. */
+    public float toonBaseBrightness = 0.0f;
     public float toonShaderFlatness = 0.0f;
     public float toonShaderSphereSuppression = 0.0f;
     /** Terrain-only per-fragment receiver; keep the saved key for existing configurations. */
@@ -206,6 +208,8 @@ public class ConfigData {
         toonHairAlphaCutoff = Float.isFinite(toonHairAlphaCutoff) ? clamp(toonHairAlphaCutoff, 0.001f, 1.0f) : 0.001f;
         toonTransitionSoftness = Float.isFinite(toonTransitionSoftness)
                 ? clamp(toonTransitionSoftness, 0.0f, 2.0f) : 1.2f;
+        toonBaseBrightness = Float.isFinite(toonBaseBrightness)
+                ? clamp(toonBaseBrightness, 0.0f, 1.0f) : 0.0f;
         toonShaderFlatness = Float.isFinite(toonShaderFlatness)
                 ? clamp(toonShaderFlatness, 0.0f, 1.0f) : 0.0f;
         toonShaderSphereSuppression = Float.isFinite(toonShaderSphereSuppression)

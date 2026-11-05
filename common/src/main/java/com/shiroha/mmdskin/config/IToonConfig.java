@@ -26,6 +26,8 @@ public interface IToonConfig {
 
     default float getToonTransitionSoftness() { return 1.2f; }
 
+    default float getToonBaseBrightness() { return 0.0f; }
+
     default float getToonShaderFlatness() { return 0.0f; }
 
     default float getToonShaderSphereSuppression() { return 0.0f; }

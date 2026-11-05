@@ -38,6 +38,18 @@ final class BslToonLighting {
                 .replaceAll("\\btexture2DLod\\b", "textureLod")
                 .replaceAll("\\btexture2D\\b", "texture");
         source = ComplementaryToonLighting.adaptShadowSampler(source);
+        // BSL compares the full map and the opaque-only map separately for colored transmission.
+        source = source.replaceAll("\\btexture2DShadow\\(\\s*shadowtex1\\s*,", "toonTerrainOpaqueShadow(shadowtex1,");
+        String transmission = "";
+        if (source.contains("shadowcolor0") && source.contains("shadowCol *= shadowCol")) {
+            float scale = Pattern.compile("shadowCol\\s*\\*=\\s*4\\.0?\\s*;").matcher(source).find() ? 4 : 1;
+            transmission = terrainTransmissionFilter(scale);
+            source = source.replace(
+                    "if (ToonTerrainShadowEnabled && ToonWorldShadowSoftness > 0.0)",
+                    "if (ToonTerrainShadowEnabled && ToonTerrainShadowTransmissionEnabled && ToonWorldShadowSoftness > 0.0)"
+                            + " return toonBslFilteredTransmission(shadowPos);\n"
+                            + "if (ToonTerrainShadowEnabled && ToonWorldShadowSoftness > 0.0)");
+        }
         if (source.contains("gl_Fog.")) {
             source = "uniform float iris_FogStart;\nuniform float iris_FogEnd;\n" + source
                     .replace("gl_Fog.start", "iris_FogStart")
@@ -74,7 +86,7 @@ final class BslToonLighting {
                     + ", " + (hand ? "vec3(0.0)" : "world") + ", n, " + (hand ? "1.0" : "0.0") + ");\n";
             else return "";
         }
-        return ComplementaryToonLighting.shadowSamplerWrapper()
+        return ComplementaryToonLighting.shadowSamplerWrapper(true) + transmission
                 + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + (nether ? "sunVec = viewLightDir; upVec = vec3(0.0, 1.0, 0.0); eastVec = vec3(1.0, 0.0, 0.0);" : sunSetup)
                 + "\nnormal = n; texCoord = texCoord0; color = vec4(1.0);\n"
@@ -89,5 +101,25 @@ final class BslToonLighting {
                 + "return shadeToonSurface(raw, n, toonLight, p, pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2)), "
                 // Sunlight fill belongs to pack illumination; surface bands must retain their contrast.
                 + "toonDiffuseRamp(ndl));\n}\n";
+    }
+
+    private static String terrainTransmissionFilter(float scale) {
+        return """
+                vec3 toonBslFilteredTransmission(vec3 p) {
+                    vec2 radius = clamp(ToonWorldShadowSoftness, 0.0, 4.0)
+                            / vec2(textureSize(ToonTerrainShadowDepth, 0));
+                    vec3 shadow = vec3(0.0);
+                    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+                        vec2 uv = p.xy + vec2(x, y) * radius;
+                        float full = texture(ToonTerrainShadowTranslucentDepth, vec3(uv, p.z));
+                        float opaque = texture(ToonTerrainShadowDepth, vec3(uv, p.z));
+                        vec3 transmission = texture(ToonTerrainShadowColor, uv).rgb * TRANSMISSION_SCALE * opaque;
+                        vec3 tap = clamp(transmission * transmission * (1.0 - full) + full, 0.0, 16.0);
+                        float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0);
+                        shadow += tap * weight;
+                    }
+                    return shadow * 0.0625;
+                }
+                """.replace("TRANSMISSION_SCALE", Float.toString(scale));
     }
 }

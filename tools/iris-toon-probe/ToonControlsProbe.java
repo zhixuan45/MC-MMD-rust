@@ -218,7 +218,14 @@ public final class ToonControlsProbe {
         float smoothDifference = distance(sample(normals, low), sample(normals, high));
         shader.setShaderStyle(1, 0);
         float flatDifference = distance(sample(normals, low), sample(normals, high));
-        if (shaderLighting) check(flatDifference < smoothDifference * .1f, "二维化须恢复平坦色块");
+        if (shaderLighting) {
+            check(flatDifference < smoothDifference, "二维化须减弱照度差");
+            check(flatDifference > .0001f, "二维化不得抹去柔和的 Toon 色阶");
+            shader.setTransitionSoftness(0);
+            check(distance(sample(normals, low), sample(normals, high)) < .0002f,
+                    "关闭色阶柔化后同一档位须保持平坦");
+            shader.setTransitionSoftness(1.2f);
+        }
         else check(Math.abs(flatDifference - smoothDifference) < .00001f, "无光影时二维化不得改变像素");
 
         shader.setShaderStyle(0, 0);

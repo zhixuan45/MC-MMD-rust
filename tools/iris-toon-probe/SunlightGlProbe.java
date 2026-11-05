@@ -17,11 +17,12 @@ import java.util.zip.ZipFile;
 public final class SunlightGlProbe {
     public static void main(String[] args) throws Exception {
         boolean normalBias = args.length > 1 && args[1].equals("normal-bias");
+        boolean core = args.length > 1 && args[1].equals("core");
         if (!GLFW.glfwInit()) throw new IllegalStateException("GLFW initialization");
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
-        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, core ? 4 : 3);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
-        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_COMPAT_PROFILE);
+        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, core ? GLFW.GLFW_OPENGL_CORE_PROFILE : GLFW.GLFW_OPENGL_COMPAT_PROFILE);
         long window = GLFW.glfwCreateWindow(16, 16, "Sunlight validation", 0, 0);
         if (window == 0) throw new IllegalStateException("Hidden GL context");
         try {
@@ -29,6 +30,7 @@ public final class SunlightGlProbe {
             GL.createCapabilities();
             System.out.println("GL: " + GL46C.glGetString(GL46C.GL_VERSION) + " / " + GL46C.glGetString(GL46C.GL_RENDERER));
             TerrainShadowGlProbe.run();
+            com.shiroha.mmdskin.compat.iris.TransmissionGlProbe.run();
             int checked = 0;
             for (String pack : List.of("BSL_v10.1.8.zip", "BSL_v8.4.02.2.zip", "ComplementaryShaders_v4.7.1.zip",
                     "ComplementaryReimagined_r5.9.3.zip", "ComplementaryUnbound_r5.9.3.zip")) {
@@ -39,6 +41,15 @@ public final class SunlightGlProbe {
                 var defines = List.of(new StringPair("MC_VERSION", "12101"), new StringPair("IS_IRIS", "1"),
                         new StringPair("IRIS_VERSION", "10814"));
                 try (var zip = new ZipFile(path.toFile())) {
+                    if (pack.startsWith("BSL")) {
+                        String shadow = zip.getEntry("shaders/world0/shadow.fsh") == null ? "shaders/shadow" : "shaders/world0/shadow";
+                        String fragment = JcppProcessor.glslPreprocessSource(Probe.include(zip, shadow + ".fsh", options), defines);
+                        String vertex = JcppProcessor.glslPreprocessSource(Probe.include(zip, shadow + ".vsh", options), defines);
+                        boolean colored = fragment.replaceAll("\\s+", "").contains("albedo.rgb*=1.0-pow(albedo.a,96.0)");
+                        if (pack.equals("BSL_v10.1.8.zip") && !colored) throw new AssertionError("Missing BSL glass color protocol");
+                        com.shiroha.mmdskin.compat.iris.TransmissionGlProbe.checkProtocol(fragment, vertex, colored);
+                        System.out.println("PASS shadow replay contract " + pack + ": colored=" + colored);
+                    }
                     for (String dimension : List.of("world0", "world-1", "world1")) {
                         for (String program : List.of("gbuffers_entities", "gbuffers_hand")) {
                             String wrapper = "shaders/" + dimension + "/" + program;

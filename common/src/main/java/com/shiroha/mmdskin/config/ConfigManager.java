@@ -134,6 +134,10 @@ public class ConfigManager {
         return provider != null ? provider.getToonTransitionSoftness() : 1.2f;
     }
 
+    public static float getToonBaseBrightness() {
+        return provider != null ? provider.getToonBaseBrightness() : 0.0f;
+    }
+
     public static float getToonShaderFlatness() {
         return provider != null ? provider.getToonShaderFlatness() : 0.0f;
     }
