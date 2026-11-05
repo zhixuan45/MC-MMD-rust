@@ -68,7 +68,7 @@ final class ComplementaryToonLighting {
                 + "DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal, 0.5, worldNormal, lmCoord,\n"
                 + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
                 + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), "
-                + (sunlight ? "toonSunlitRamp(band)" : "band") + ");\n}\n";
+                + "band);\n}\n";
     }
 
     static String create(String fragment, String vertex) {
@@ -129,7 +129,7 @@ final class ComplementaryToonLighting {
                 + "GetLighting(lit, shadow, lightAlbedo, p, length(p), world, lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
                 + "vec3 illumination = pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2));\n"
                 + "return shadeToonSurface(raw, n, lightVec, p, illumination, "
-                + (sunlight ? "toonSunlitRamp(band)" : "band") + ");\n}\n";
+                + "band);\n}\n";
     }
 
     static String adaptShadowSampler(String source) {

@@ -17,10 +17,12 @@ out float eyeMask;
 
 void main() {
     vec4 viewPosition = ModelViewMat * vec4(Position, 1.0);
-    mat3 normalMatrix = mat3(ModelViewMat);
+    mat3 directionMatrix = mat3(ModelViewMat);
+    mat3 normalMatrix = transpose(inverse(directionMatrix));
 
     viewNormal = normalize(normalMatrix * Normal);
-    viewLightDir = normalize(normalMatrix * normalize(LightDir));
+    // LightDir is model-space (the renderers already undo entity yaw); directions are not normals.
+    viewLightDir = normalize(directionMatrix * normalize(LightDir));
     viewPos = viewPosition.xyz;
     texCoord0 = UV0;
     eyeMask = EyeMask;

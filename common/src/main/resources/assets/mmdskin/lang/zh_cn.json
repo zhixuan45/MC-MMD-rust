@@ -75,7 +75,7 @@
   "gui.mmdskin.mod_settings.toon_world_shadow_softness.tooltip": "调节模型接收的地形阴影边缘。范围 0–4，默认 1.50；0 沿用光影包原始过滤，数值越高边缘越柔和。需要开启“接收地形阴影”，保存后生效。人物投在地面上的阴影仍由光影包控制。",
   "gui.mmdskin.mod_settings.toon_whole_model_lighting.tooltip": "实验性：在支持的光影下逐像素接收建筑、地面和树叶的阴影，减弱模型内部自阴影，并保留人物向世界投影。暂不接收箱子、生物、玻璃和水的阴影。关闭或无法获取地形阴影时使用经典受光与自阴影。保存后生效，默认关闭。",
   "gui.mmdskin.mod_settings.toon_shader_flatness": "光影二维化强度",
-  "gui.mmdskin.mod_settings.toon_shader_flatness.tooltip": "已适配光影下，减少阳光直射处因表面朝向产生的明暗分割；100% 趋向均匀照亮。建筑等投射阴影内不提亮，月光和通用照明回退不补光。另会减弱材质高光与边缘光。0% 保持原效果。",
+  "gui.mmdskin.mod_settings.toon_shader_flatness.tooltip": "已适配光影下，补足阳光直射处的照度，同时保留 Toon 明暗色阶；100% 仍保留卡通阴影色块。建筑等投射阴影内不提亮，月光和通用照明回退不补光。另会减弱材质高光与边缘光。0% 保持原效果。",
   "gui.mmdskin.mod_settings.toon_shader_sphere_suppression": "光影球面反光抑制",
   "gui.mmdskin.mod_settings.toon_shader_sphere_suppression.tooltip": "仅削弱光影照明下材质自带的 SPA/SPH 球面纹理，不改变太阳明暗或投射阴影。没有球面纹理的材质不受影响。0% 保留，100% 去除。",
   "gui.mmdskin.mod_settings.shadow_opaque": "阴影忽略透明度",

@@ -18,6 +18,7 @@ import java.util.Set;
  */
 public abstract class ToonShaderBase {
     protected static final Logger logger = LogManager.getLogger();
+    private static final int LIGHTING_DEBUG_MODE = Math.clamp(Integer.getInteger("mmdskin.toonDebug", 0), 0, 9);
 
     protected int mainProgram = 0;
     protected int outlineProgram = 0;
@@ -152,6 +153,7 @@ public abstract class ToonShaderBase {
             mainProgram = programs.main();
             outlineProgram = programs.outline();
             activeProfile = key;
+            if (LIGHTING_DEBUG_MODE > 0) logger.info("Toon lighting debug={} ToonOutputProfile={}", LIGHTING_DEBUG_MODE, key);
             outlineColorSlot = profile.colorOutputSlot();
             lightingBridge = profile.lightingSource().isEmpty() ? null : new ToonUniformBridge(profile.lightingSource());
             lightingSyncWarned = false;
@@ -171,7 +173,9 @@ public abstract class ToonShaderBase {
     }
 
     static String outputSource(String body, ToonOutputProfile profile) {
-        return body.replace("/* MMD_FX_MATERIAL */", com.shiroha.mmdskin.render.effectpack.FxShaderSource.DISABLED)
+        return body.replace("#version 330 core", "#version 330 core"
+                        + (LIGHTING_DEBUG_MODE == 0 ? "" : "\n#define TOON_LIGHTING_DEBUG " + LIGHTING_DEBUG_MODE))
+                .replace("/* MMD_FX_MATERIAL */", com.shiroha.mmdskin.render.effectpack.FxShaderSource.DISABLED)
                 .replace("/* MMD_FX_COLOR */", com.shiroha.mmdskin.render.effectpack.FxEffect.IDENTITY)
                 .replace("/* TOON_SURFACE_LIGHTING */", SURFACE_LIGHTING)
                 .replace("/* TOON_OUTPUT_DECLARATIONS */", profile.fragmentDeclarations())

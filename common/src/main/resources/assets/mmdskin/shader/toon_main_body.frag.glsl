@@ -130,5 +130,8 @@ void main() {
 
     finalColor = mmdFxGlass(finalColor, albedo, normal, viewPos, texCoord0, finalAlpha);
     finalColor = mmdFxColor(vec4(finalColor, finalAlpha)).rgb;
+#ifdef TOON_LIGHTING_DEBUG
+    finalColor = toonLightingDebugColor(finalColor, normal);
+#endif
     writeToonOutputs(finalColor, albedo, normal, finalAlpha);
 }

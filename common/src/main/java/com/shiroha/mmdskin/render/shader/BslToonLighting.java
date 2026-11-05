@@ -87,6 +87,7 @@ final class BslToonLighting {
                 + "GetLighting(lit, shadow, p, world, " + (hand ? "vec3(0.0)" : "n")
                 + ", lmCoord, 1.0, ndl, 1.0, 1.0, 0.0, 0.0, 0.0);\n"
                 + "return shadeToonSurface(raw, n, toonLight, p, pow(max(lit, vec3(0.0)), vec3(1.0 / 2.2)), "
-                + (sunlight ? "toonSunlitRamp(toonDiffuseRamp(ndl))" : "toonDiffuseRamp(ndl)") + ");\n}\n";
+                // Sunlight fill belongs to pack illumination; surface bands must retain their contrast.
+                + "toonDiffuseRamp(ndl));\n}\n";
     }
 }

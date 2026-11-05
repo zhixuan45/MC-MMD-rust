@@ -53,7 +53,7 @@
   "gui.mmdskin.mod_settings.toon_world_shadow_softness.tooltip": "モデルが受ける地形の影の境界を柔らかくします。範囲 0–4、初期値 1.50。0 はシェーダーパック本来のフィルターを使用します。「地形の影を受ける」が必要です。保存後に反映。地面へ落とすモデルの影はシェーダーパック側で調整してください。",
   "gui.mmdskin.mod_settings.toon_whole_model_lighting.tooltip": "実験的：対応シェーダーで建物・地形・葉の影をピクセル単位で受け、モデル内部の自己影を軽減します。ワールドへ落とすモデルの影は維持します。チェスト・生物・ガラス・水の影は未対応です。オフまたは地形の影を取得できない場合は従来の受光と自己影に戻ります。保存後に反映。初期値はオフ。",
   "gui.mmdskin.mod_settings.toon_shader_flatness": "シェーダーの2D表現強度",
-  "gui.mmdskin.mod_settings.toon_shader_flatness.tooltip": "対応シェーダーの直射日光下で、面の向きによる明暗差を減らします。100% は均一な照明に近づきます。建物などの影、月光、汎用照明では補光しません。ハイライトとリムライトも弱めます。0%で元の表現。",
+  "gui.mmdskin.mod_settings.toon_shader_flatness.tooltip": "対応シェーダーの直射日光下で照度を補い、100%でもToonの明暗段階を保ちます。建物などの影、月光、汎用照明では補光しません。ハイライトとリムライトも弱めます。0%で元の表現。",
   "gui.mmdskin.mod_settings.toon_shader_sphere_suppression": "シェーダーのスフィア反射抑制",
   "gui.mmdskin.mod_settings.toon_shader_sphere_suppression.tooltip": "シェーダー照明時の材質のSPA/SPHテクスチャだけを弱めます。日光の明暗や投影された影は変わりません。スフィアテクスチャのない材質には影響しません。0%で維持、100%で除去。",
   "gui.mmdskin.mod_settings.shadow_opaque": "影の透明度を無視",

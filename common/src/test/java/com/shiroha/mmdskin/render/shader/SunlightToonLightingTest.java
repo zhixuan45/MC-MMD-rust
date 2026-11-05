@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.shader;
 
 import org.junit.jupiter.api.Test;
+import com.shiroha.mmdskin.util.AssetsUtil;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -46,7 +47,8 @@ class SunlightToonLightingTest {
         assertTrue(lighting.contains("NoL = clamp(NoL * 1.01 - 0.01, 0.0, 1.0)"));
         assertTrue(lighting.contains("shadow * toonSunDiffuseRamp(NoL, shadow)"));
         assertTrue(lighting.contains("lmCoord, 1.0, ndl,"));
-        assertTrue(lighting.contains("toonSunlitRamp(toonDiffuseRamp(ndl))"));
+        assertTrue(lighting.contains("vec3(1.0 / 2.2)), toonDiffuseRamp(ndl))"));
+        assertFalse(lighting.contains("toonSunlitRamp("));
     }
 
     @Test
@@ -58,6 +60,29 @@ class SunlightToonLightingTest {
             String lighting = BslToonLighting.create(fragment, VERTEX, false);
             assertFalse(lighting.contains("toonPrepareSunlight("));
         }
+    }
+
+    @Test
+    void bslBodyAndHandKeepSurfaceBandsWhenDirectLightCanBeFilled() {
+        for (boolean hand : new boolean[]{false, true}) {
+            String lighting = BslToonLighting.create(BSL, VERTEX, hand);
+            assertTrue(lighting.contains("shadow * toonSunDiffuseRamp(NoL, shadow)"));
+            String surface = lighting.substring(lighting.lastIndexOf("return shadeToonSurface("));
+            assertTrue(surface.contains("toonDiffuseRamp(ndl)"));
+            assertFalse(surface.contains("toonSun"), "Filled light energy must not select surface bands");
+            assertTrue(lighting.contains(hand ? "p, world, vec3(0.0)," : "p, world, n,"));
+        }
+    }
+
+    @Test
+    void diagnosticCodeIsDisabledByDefaultAndLeavesOutputAndDepthPassesInPlace() {
+        String body = AssetsUtil.getAssetsAsString("shader/toon_main_body.frag.glsl");
+        String source = ToonShaderBase.outputSource(body, ToonOutputProfile.vanilla());
+        assertFalse(source.contains("#define TOON_LIGHTING_DEBUG"));
+        assertTrue(source.contains("#ifdef TOON_LIGHTING_DEBUG"));
+        assertTrue(source.contains("toonOutput0 = vec4(gl_FragCoord.z);\n            return;"));
+        assertTrue(source.indexOf("toonLightingDebugColor(finalColor, normal)") > source.indexOf("mmdFxGlass(finalColor"));
+        assertTrue(source.contains("writeToonOutputs(finalColor, albedo, normal, finalAlpha)"));
     }
 
     @Test
@@ -89,7 +114,8 @@ class SunlightToonLightingTest {
         assertTrue(lighting.contains("toonSunlightStrength > 0.0 || NdotL > 0.0"));
         assertTrue(lighting.contains("float NdotLm = (ToonTerrainShadowEnabled ? 1.0 : (clamp(dot(normal, lightVec), 0.0, 1.0)))"));
         assertTrue(lighting.contains("shadow * max(toonSunDiffuseRamp(NdotL, shadow),"));
-        assertTrue(lighting.contains("illumination, toonSunlitRamp(band)"));
+        assertTrue(lighting.contains("illumination, band)"));
+        assertFalse(lighting.contains("toonSunlitRamp("));
         assertTrue(lighting.contains("vec3 world = (gbufferModelViewInverse * vec4(p, 1.0)).xyz"));
         assertFalse(lighting.contains("normal = lightVec"));
         assertFalse(lighting.contains("toonModelShadow"));
@@ -114,7 +140,8 @@ class SunlightToonLightingTest {
         assertTrue(lighting.contains("vec3 sampleNormal = n"));
         assertFalse(lighting.contains("toonModelShadow"));
         assertTrue(lighting.contains("toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime"));
-        assertTrue(lighting.contains("max(lit.rgb, vec3(0.0)), toonSunlitRamp(band)"));
+        assertTrue(lighting.contains("max(lit.rgb, vec3(0.0)), band)"));
+        assertFalse(lighting.contains("toonSunlitRamp("));
         assertFalse(ComplementaryToonLighting.createModern(
                 fragment.replace("shadowMult *= GetShadow(", "shadowMult *= UnknownShadow("), VERTEX)
                 .contains("toonPrepareSunlight("));

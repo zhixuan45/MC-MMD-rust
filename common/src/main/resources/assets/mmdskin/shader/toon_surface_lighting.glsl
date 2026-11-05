@@ -48,6 +48,13 @@ float toonShaderFlatnessAmount() {
 float toonSunlightStrength = 0.0;
 float toonSunVisibility = 0.0;
 
+#ifdef TOON_LIGHTING_DEBUG
+float toonDebugNdotL = 0.0;
+float toonDebugBand = 0.0;
+float toonDebugDirect = -1.0;
+vec3 toonDebugIllumination = vec3(0.0);
+#endif
+
 void toonPrepareSunlight(vec3 sun, vec3 light, vec3 up) {
     // Only a verified pack shadow path may enable sunlight fill.
     float daylight = step(0.5, dot(normalize(sun), normalize(light)));
@@ -68,7 +75,9 @@ vec3 toonShadowSampleNormal(vec3 normal) {
     return ToonTerrainShadowEnabled ? vec3(0.0) : normal;
 }
 
-float toonSunlitRamp(float ramp) {
+// Fill changes available direct-light energy, never the surface's Toon band selector.
+// Keep this inside the pack diffuse term so cast shadow, weather and time still attenuate it.
+float toonSunDiffuseFill(float ramp) {
     float exposed = smoothstep(0.8, 1.0, toonSunVisibility);
     return mix(ramp, 1.0, toonSunlightStrength * exposed);
 }
@@ -98,10 +107,19 @@ float toonDiffuseRamp(float ndl) {
 float toonSunDiffuseRamp(float ndl, vec3 shadow) {
     // Dark and colored cast shadows keep their original diffuse response.
     toonSunVisibility = saturate(min(shadow.r, min(shadow.g, shadow.b)));
-    return toonSunlitRamp(toonDiffuseRamp(ndl));
+    float direct = toonSunDiffuseFill(toonDiffuseRamp(ndl));
+#ifdef TOON_LIGHTING_DEBUG
+    toonDebugDirect = direct;
+#endif
+    return direct;
 }
 
 vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination, float ramp) {
+#ifdef TOON_LIGHTING_DEBUG
+    toonDebugNdotL = dot(n, light);
+    toonDebugBand = ramp;
+    toonDebugIllumination = max(illumination, vec3(0.0));
+#endif
 #ifdef MMD_FX_RAY
     if (mmdFxRayEnabled()) {
         toonSurfaceIllumination = max(illumination, vec3(0.0));
@@ -144,6 +162,31 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
 #endif
     return surface * surfaceIllumination;
 }
+
+#ifdef TOON_LIGHTING_DEBUG
+// Compiled out unless explicitly requested; the normal output writer still owns alpha/G-buffer.
+vec3 toonLightingDebugColor(vec3 color, vec3 normal) {
+#if TOON_LIGHTING_DEBUG == 1
+    return normal * 0.5 + 0.5;
+#elif TOON_LIGHTING_DEBUG == 2
+    return vec3(toonDebugNdotL * 0.5 + 0.5);
+#elif TOON_LIGHTING_DEBUG == 3
+    return vec3(toonDebugBand);
+#elif TOON_LIGHTING_DEBUG == 4
+    return vec3(toonSunlightStrength);
+#elif TOON_LIGHTING_DEBUG == 5
+    return vec3(toonSunVisibility);
+#elif TOON_LIGHTING_DEBUG == 6
+    return vec3(toonDebugDirect < 0.0 ? toonDebugBand : toonDebugDirect);
+#elif TOON_LIGHTING_DEBUG == 7
+    return toonDebugIllumination;
+#elif TOON_LIGHTING_DEBUG == 9
+    return vec3(UsePackLighting ? 1.0 : 0.0, ToonGenericEnvironment ? 1.0 : 0.0, 0.0);
+#else
+    return color;
+#endif
+}
+#endif
 
 /* TOON_LIGHTING */
 

@@ -16,7 +16,8 @@ out vec3 viewLightDir;
 out vec2 texCoord0;
 
 void main() {
-    mat3 normalMatrix = mat3(ModelViewMat);
+    mat3 directionMatrix = mat3(ModelViewMat);
+    mat3 normalMatrix = transpose(inverse(directionMatrix));
     vec3 transformedNormal = normalize(normalMatrix * Normal);
     vec4 vPos = ModelViewMat * vec4(Position, 1.0);
 
@@ -35,7 +36,7 @@ void main() {
     vPos.xyz += transformedNormal * expansion;
     gl_Position = ProjMat * vPos;
     viewNormal = transformedNormal;
-    viewLightDir = normalize(normalMatrix * normalize(LightDir));
+    viewLightDir = normalize(directionMatrix * normalize(LightDir));
     viewPos = vPos.xyz;
     texCoord0 = UV0;
 }
