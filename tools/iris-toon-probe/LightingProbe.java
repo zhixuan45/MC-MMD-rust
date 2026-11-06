@@ -420,7 +420,7 @@ public final class LightingProbe {
         checkWorldShadowSoftness(shader, source, identity, left, right);
         checkTerrainColorIsolation(shader, source, identity, shadowTexture, opaqueShadowTexture);
         if (profile.lightingSource().contains("toonBslFilteredTransmission"))
-            checkGlassReception(shader, source, identity, normals, normal, terrainFbo, terrainTexture);
+            checkGlassReception(shader, profile, source, identity, normals, normal, light, terrainFbo, terrainTexture);
         shader.useMain();
         com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.beginFrame(renderer, true);
         check(com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.texture() == 0, "New frame must invalidate a missing capture");
@@ -505,8 +505,8 @@ public final class LightingProbe {
         GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previous);
     }
 
-    private static void checkGlassReception(ToonShaderCpu shader, int source, Object identity, int normals,
-                                           float[] normal, int terrainFbo, int terrainDepth) {
+    private static void checkGlassReception(ToonShaderCpu shader, ToonOutputProfile profile, int source, Object identity, int normals,
+                                           float[] normal, float[] light, int terrainFbo, int terrainDepth) {
         shader.releaseTerrainShadowBinding();
         int draw = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
         int read = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
@@ -556,6 +556,7 @@ public final class LightingProbe {
                             GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 3);
                         }), "Production glass snapshot");
                 check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "Production glass replay GL state");
+                checkGlassSunCoverage(shader, profile, source, identity, normals, light);
                 float[] original = null;
                 for (float softness : new float[]{0, 1.5f, 4}) {
                     shader.useMain();
@@ -565,6 +566,20 @@ public final class LightingProbe {
                     GL46C.glValidateProgram(shader.getMainProgram());
                     check(GL46C.glGetProgrami(shader.getMainProgram(), GL46C.GL_VALIDATE_STATUS) != 0,
                             "Glass sampler validation: " + GL46C.glGetProgramInfoLog(shader.getMainProgram()));
+                    float[] lowNormal = normalWithDot(light, .08f);
+                    shader.setShaderStyle(0, 0);
+                    sampleNormal(shader, normals, lowNormal);
+                    float[] unfilledGlass = readPixel(12, 8), unfilledBlocked = readPixel(3, 8);
+                    shader.setShaderStyle(.7f, 0);
+                    sampleNormal(shader, normals, lowNormal);
+                    float[] filledGlass = readPixel(12, 8), filledBlocked = readPixel(3, 8);
+                    System.out.printf("Glass Toon fill: transmission=%s, softness=%.1f, baseline=%.6f, filled=%.6f%n",
+                            Arrays.toString(transmission), softness, luminance(unfilledGlass), luminance(filledGlass));
+                    check(luminance(filledGlass) > luminance(unfilledGlass) + .005f,
+                            "Glass absorption must not disable sunlight Toon fill on a grazing surface");
+                    check(distance(unfilledBlocked, filledBlocked) < .0001f,
+                            "Opaque terrain must still suppress sunlight fill beside the glass");
+                    check(filledGlass[3] == unfilledGlass[3], "Glass Toon fill preserves alpha");
                     sampleNormal(shader, normals, normal);
                     float[] behind = readPixel(12, 8), blocked = readPixel(3, 8);
                     if (original == null) original = behind;
@@ -625,6 +640,104 @@ public final class LightingProbe {
             shader.useMain(); shader.setWorldShadowSoftness(1.5f);
             shader.setEnvironmentLighting(source, identity, 0, 15);
         }
+    }
+
+    private static void checkGlassSunCoverage(ToonShaderCpu original, ToonOutputProfile profile, int source,
+                                              Object identity, int normals, float[] light) {
+        original.releaseTerrainShadowBinding();
+        var diagnostic = new ToonShaderCpu() {
+            @Override protected int compileProgram(String vertex, String fragment, String name) {
+                String traced = fragment.replaceFirst("(?m)^(#version[^\\r\\n]*)",
+                        "$1\n#define TOON_LIGHTING_DEBUG 6");
+                return super.compileProgram(vertex, traced.replace(
+                        "writeToonOutputs(finalColor, albedo, normal, finalAlpha);",
+                        "toonOutput0 = vec4(toonSunVisibility, toonDebugDirect, toonSunlightStrength, finalAlpha);"), name);
+            }
+        };
+        check(diagnostic.selectOutputProfile(profile), "Glass sunlight coverage diagnostic shader");
+        try {
+            diagnostic.useMain();
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(diagnostic.getMainProgram(), "ProjMat"), false, identity());
+            GL46C.glUniformMatrix4fv(GL46C.glGetUniformLocation(diagnostic.getMainProgram(), "ModelViewMat"), false, identity());
+            GL46C.glUniform4f(GL46C.glGetUniformLocation(diagnostic.getMainProgram(), "MaterialColor"), 1, 1, 1, 1);
+            diagnostic.setSampler0(0);
+            diagnostic.setAlphaCutoff(.001f);
+            diagnostic.setTerrainShadowReceiver(true);
+            diagnostic.setTransitionSoftness(1.2f);
+            diagnostic.setToonLevels(4);
+            float[] normal = normalWithDot(light, .08f);
+            float maximumError = 0;
+            int penumbraSamples = 0;
+            for (float softness : new float[]{0, 1.5f, 4}) {
+                diagnostic.useMain();
+                diagnostic.setWorldShadowSoftness(softness);
+                for (int sky : new int[]{1, 4, 8, 12, 15}) {
+                    diagnostic.useMain();
+                    diagnostic.setShaderStyle(0, 0);
+                    check(diagnostic.setEnvironmentLighting(source, identity, 0, sky), "Glass coverage environment");
+                    sampleNormal(diagnostic, normals, normal);
+                    float[] baseline = readPixel(12, 8);
+                    diagnostic.setShaderStyle(.7f, 0);
+                    sampleNormal(diagnostic, normals, normal);
+                    float[] lit = readPixel(12, 8), blocked = readPixel(3, 8);
+                    System.out.printf("Glass coverage: sky=%d, softness=%.1f, visibility=%.6f, direct=%.6f, strength=%.6f%n",
+                            sky, softness, lit[0], lit[1], lit[2]);
+                    check(lit[1] > baseline[1] + .6f,
+                            "Verified sun coverage behind glass must enable fill even with low block skylight");
+                    check(Math.abs(blocked[1] - baseline[1]) < .0001f, "Wall-covered fragments receive no fill");
+                    for (int x = 1; x < 15; x++) {
+                        float[] pixel = readPixel(x, 8);
+                        if (pixel[0] > .0001f && pixel[0] < .9999f) penumbraSamples++;
+                        float expected = baseline[1] + (1 - baseline[1]) * .7f * pixel[0];
+                        maximumError = Math.max(maximumError, Math.abs(pixel[1] - expected));
+                    }
+                }
+            }
+            check(penumbraSamples > 0, "Glass coverage fixture must include actual penumbra fragments");
+            check(maximumError < .0001f, "Sunlight fill must follow fragment coverage continuously: " + maximumError);
+            diagnostic.useMain();
+            diagnostic.setWorldShadowSoftness(0);
+            diagnostic.setEnvironmentLighting(source, identity, 0, 0);
+            diagnostic.setShaderStyle(0, 0);
+            sampleNormal(diagnostic, normals, normal);
+            float noSampleDirect = readPixel(12, 8)[1];
+            diagnostic.setShaderStyle(.7f, 0);
+            sampleNormal(diagnostic, normals, normal);
+            check(readPixel(12, 8)[2] == 0 && Math.abs(readPixel(12, 8)[1] - noSampleDirect) < .0001f,
+                    "An early-return shadow fallback cannot claim verified sunlight coverage");
+            prepareScene(source, new LightingCase("glass-coverage-night", .75f, 0, 0, 15, 1));
+            diagnostic.useMain();
+            diagnostic.setWorldShadowSoftness(0);
+            diagnostic.setEnvironmentLighting(source, identity, 0, 15);
+            sampleNormal(diagnostic, normals, normal);
+            check(readPixel(12, 8)[2] == 0, "Moonlight behind glass cannot enable sunlight fill");
+            System.out.printf("PASS glass sunlight coverage: sky 1/4/8/12/15, softness 0/1.5/4, wall split, continuous coverage, missing sample, moonlight; penumbra=%d, error=%.6f%n",
+                    penumbraSamples, maximumError);
+        } finally {
+            diagnostic.cleanup();
+            prepareScene(source, new LightingCase("restore-glass-day", .25f, 0, 0, 15, 1));
+            original.useMain();
+            original.setEnvironmentLighting(source, identity, 0, 15);
+        }
+        for (int sky : new int[]{8, 12}) {
+            original.useMain();
+            original.setBaseBrightness(0);
+            original.setWorldShadowSoftness(0);
+            original.setEnvironmentLighting(source, identity, 0, sky);
+            original.setShaderStyle(0, 0);
+            sampleNormal(original, normals, normalWithDot(light, .08f));
+            float[] baseline = readPixel(12, 8), blocked = readPixel(3, 8);
+            original.setShaderStyle(.7f, 0);
+            sampleNormal(original, normals, normalWithDot(light, .08f));
+            float[] filled = readPixel(12, 8);
+            System.out.printf("Glass final RGB at low skylight: sky=%d, baseline=%.6f, filled=%.6f%n",
+                    sky, luminance(baseline), luminance(filled));
+            check(luminance(filled) > luminance(baseline) + .001f,
+                    "Fragment coverage must affect final glass-lit color at low skylight");
+            check(distance(blocked, readPixel(3, 8)) < .0001f,
+                    "Low-skylight wall shadow must remain unchanged");
+        }
+        original.setEnvironmentLighting(source, identity, 0, 15);
     }
 
     /** Four normal bands on one surface, all crossing the same terrain shadow in one draw. */

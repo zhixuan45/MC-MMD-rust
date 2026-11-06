@@ -11,6 +11,11 @@ public final class TransmissionGlProbe {
     }
 
     public static void run() {
+        for (int sourceFormat : new int[]{GL46C.GL_RGBA, GL46C.GL_RGBA8, GL46C.GL_RGBA16F, GL46C.GL_RGBA32F})
+            run(sourceFormat);
+    }
+
+    private static void run(int sourceFormat) {
         if (!org.lwjgl.opengl.GL.getCapabilities().OpenGL43)
             throw new IllegalStateException("Transmission probe requires OpenGL 4.3");
         var initialState = new ShadowReplayGlState();
@@ -18,7 +23,9 @@ public final class TransmissionGlProbe {
         int oldRead = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
         int sourceDepth = texture(GL46C.GL_DEPTH_COMPONENT24, GL46C.GL_DEPTH_COMPONENT);
         int opaqueDepth = texture(GL46C.GL_DEPTH_COMPONENT24, GL46C.GL_DEPTH_COMPONENT);
-        int sourceColor = texture(GL46C.GL_RGBA8, GL46C.GL_RGBA);
+        int sourceColor = texture(sourceFormat, GL46C.GL_RGBA);
+        int reportedFormat = GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_INTERNAL_FORMAT);
+        System.out.println("Glass replay source format: requested=" + sourceFormat + ", reported=" + reportedFormat);
         int source = framebuffer(sourceDepth, sourceColor), opaque = framebuffer(opaqueDepth, 0);
         int vao = GL46C.glGenVertexArrays();
         int program = ShaderCompiler.compileRenderProgram("""
@@ -118,7 +125,7 @@ public final class TransmissionGlProbe {
             check(IrisTerrainTransmission.depthTexture() == 0 && IrisTerrainTransmission.colorTexture() == 0,
                     "Missing replay must not reuse the previous frame");
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "Transmission replay GL error");
-            System.out.println("PASS glass replay: real caster draw, opaque precedence, alpha hole, exact depth/color restoration, exceptional exit, viewport/scissor, later caster isolation, missing frame");
+            System.out.println("PASS glass replay format=" + reportedFormat + ": real caster draw, opaque precedence, alpha hole, exact depth/color restoration, exceptional exit, viewport/scissor, later caster isolation, missing frame");
         } finally {
             IrisTerrainTransmission.release();
             GL46C.glDisable(GL46C.GL_SCISSOR_TEST);

@@ -154,13 +154,18 @@ final class ComplementaryToonLighting {
 
     static String shadowSamplerWrapper(boolean transmission) {
         return "float toonTerrainShadow(sampler2DShadow s, vec3 p) {\n"
+                + "    if (ToonTerrainShadowEnabled) toonHasTerrainShadowSample = true;\n"
                 + "    return ToonTerrainShadowEnabled ? "
                 + (transmission ? "(ToonTerrainShadowTransmissionEnabled ? texture(ToonTerrainShadowTranslucentDepth, p)"
                         + " : texture(ToonTerrainShadowDepth, p))" : "texture(ToonTerrainShadowDepth, p)")
                 + " : texture(s, p);\n"
                 + "}\n"
                 + "float toonTerrainOpaqueShadow(sampler2DShadow s, vec3 p) {\n"
-                + "    return ToonTerrainShadowEnabled ? texture(ToonTerrainShadowDepth, p) : texture(s, p);\n"
+                + "    if (ToonTerrainShadowEnabled) toonHasTerrainShadowSample = true;\n"
+                + "    float visibility = ToonTerrainShadowEnabled ? texture(ToonTerrainShadowDepth, p) : texture(s, p);\n"
+                + (transmission ? "    if (ToonTerrainShadowEnabled && ToonTerrainShadowTransmissionEnabled)"
+                        + " toonRecordOpaqueSunVisibility(visibility, 1.0);\n" : "")
+                + "    return visibility;\n"
                 + "}\n"
                 + "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(toonTerrainShadow(s, p)); }\n"
                 + "vec4 toonShadowColor(sampler2D s, vec2 p) {\n"

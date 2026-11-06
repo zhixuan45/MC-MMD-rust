@@ -22,8 +22,10 @@ uniform bool ToonTerrainShadowTransmissionEnabled;
 uniform sampler2DShadow ToonTerrainShadowTranslucentDepth;
 uniform sampler2D ToonTerrainShadowColor;
 uniform float ToonWorldShadowSoftness;
+bool toonHasTerrainShadowSample = false;
 
 float toonFilteredTerrainShadow(vec3 p) {
+    toonHasTerrainShadowSample = true;
     vec2 radius = clamp(ToonWorldShadowSoftness, 0.0, 4.0)
             / vec2(textureSize(ToonTerrainShadowDepth, 0));
     float shadow = 0.0;
@@ -50,9 +52,12 @@ float toonShaderFlatnessAmount() {
 }
 
 float toonSunlightStrength = 0.0;
+float toonSunlightCoverageStrength = 0.0;
 float toonSunVisibility = 0.0;
 float toonDirectLightWeight = 0.0;
 bool toonHasShadowVisibility = false;
+float toonOpaqueSunVisibilitySum = 0.0;
+float toonOpaqueSunVisibilityWeight = 0.0;
 
 #ifdef TOON_LIGHTING_DEBUG
 float toonDebugNdotL = 0.0;
@@ -66,10 +71,22 @@ void toonPrepareSunlight(vec3 sun, vec3 light, vec3 up) {
     float daylight = step(0.5, dot(normalize(sun), normalize(light)));
     float elevation = smoothstep(0.05, 0.35, dot(normalize(light), normalize(up)));
     float skylight = saturate((ToonLightmap.y * 256.0 - 8.0) / 240.0);
-    toonSunlightStrength = toonShaderFlatnessAmount() * daylight * elevation * smoothstep(0.75, 0.95, skylight);
+    toonSunlightCoverageStrength = toonShaderFlatnessAmount() * daylight * elevation;
+    // Keep the lightmap guard for an unverified/fallback shadow path. A real fragment
+    // terrain sample below replaces this model-level estimate with geometric coverage.
+    toonSunlightStrength = toonSunlightCoverageStrength * smoothstep(0.75, 0.95, skylight);
     toonSunVisibility = 0.0;
     toonDirectLightWeight = 0.0;
     toonHasShadowVisibility = false;
+    toonOpaqueSunVisibilitySum = 0.0;
+    toonOpaqueSunVisibilityWeight = 0.0;
+    toonHasTerrainShadowSample = false;
+}
+
+void toonRecordOpaqueSunVisibility(float visibility, float weight) {
+    toonHasTerrainShadowSample = true;
+    toonOpaqueSunVisibilitySum += visibility * weight;
+    toonOpaqueSunVisibilityWeight += weight;
 }
 
 float toonShadowSampleNdotL(float ndl) {
@@ -86,7 +103,8 @@ vec3 toonShadowSampleNormal(vec3 normal) {
 // Fill changes available direct-light energy, never the surface's Toon band selector.
 // Keep this inside the pack diffuse term so cast shadow, weather and time still attenuate it.
 float toonSunDiffuseFill(float ramp) {
-    float exposed = smoothstep(0.8, 1.0, toonSunVisibility);
+    float exposed = ToonTerrainShadowEnabled && toonHasTerrainShadowSample
+            ? saturate(toonSunVisibility) : smoothstep(0.8, 1.0, toonSunVisibility);
     return mix(ramp, 1.0, toonSunlightStrength * exposed);
 }
 
@@ -113,11 +131,16 @@ float toonDiffuseRamp(float ndl) {
 }
 
 float toonSunDiffuseRamp(float ndl, vec3 shadow) {
-    // Dark and colored cast shadows keep their original diffuse response.
-    toonSunVisibility = saturate(min(shadow.r, min(shadow.g, shadow.b)));
+    float transmittedLight = saturate(min(shadow.r, min(shadow.g, shadow.b)));
+    // Glass absorption changes light energy, while opaque terrain determines exposure.
+    // Use the same PCF samples as the pack; do not treat colored transmission as occlusion.
+    toonSunVisibility = toonOpaqueSunVisibilityWeight > 0.0
+            ? saturate(toonOpaqueSunVisibilitySum / toonOpaqueSunVisibilityWeight) : transmittedLight;
+    if (ToonTerrainShadowEnabled && toonHasTerrainShadowSample)
+        toonSunlightStrength = toonSunlightCoverageStrength;
     toonHasShadowVisibility = true;
     float direct = toonSunDiffuseFill(toonDiffuseRamp(ndl));
-    toonDirectLightWeight = saturate(toonSunVisibility * direct);
+    toonDirectLightWeight = saturate(transmittedLight * direct);
 #ifdef TOON_LIGHTING_DEBUG
     toonDebugDirect = direct;
 #endif

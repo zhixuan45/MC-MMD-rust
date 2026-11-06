@@ -150,18 +150,27 @@ public final class IrisTerrainShadow {
     public static void captureTransmission(Object owner, Object level, net.minecraft.client.Camera camera) {
         if (renderer != owner || !requested || !valid) return;
         try {
-            if (IrisTerrainShadowReplay.capture(owner, level, camera, sourceAccess.read(owner), framebuffer, format)
-                    && !transmissionReported) {
-                transmissionReported = true;
-                LOGGER.info("[MMD terrain shadow] captured terrain transmission before entities: {}x{}", width, height);
+            if (IrisTerrainShadowReplay.capture(owner, level, camera, sourceAccess.read(owner), framebuffer, format)) {
+                transmissionFailure = null;
+                if (!transmissionReported) {
+                    transmissionReported = true;
+                    LOGGER.info("[MMD terrain shadow] captured terrain transmission before entities: {}x{}, {}",
+                            width, height, IrisTerrainShadowReplay.status());
+                }
+            } else {
+                warnTransmissionUnavailable(IrisTerrainShadowReplay.status());
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
             IrisTerrainTransmission.beginFrame();
             String detail = failure.getClass().getSimpleName() + ": " + failure.getMessage();
-            if (!detail.equals(transmissionFailure)) {
-                transmissionFailure = detail;
-                LOGGER.warn("[MMD terrain shadow] terrain transmission unavailable; opaque terrain remains active: {}", detail);
-            }
+            warnTransmissionUnavailable(detail);
+        }
+    }
+
+    private static void warnTransmissionUnavailable(String detail) {
+        if (!detail.equals(transmissionFailure)) {
+            transmissionFailure = detail;
+            LOGGER.warn("[MMD terrain shadow] terrain transmission unavailable; opaque terrain remains active: {}", detail);
         }
     }
 

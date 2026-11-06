@@ -116,6 +116,7 @@ final class BslToonLighting {
                         vec3 transmission = texture(ToonTerrainShadowColor, uv).rgb * TRANSMISSION_SCALE * opaque;
                         vec3 tap = clamp(transmission * transmission * (1.0 - full) + full, 0.0, 16.0);
                         float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0);
+                        toonRecordOpaqueSunVisibility(opaque, weight);
                         shadow += tap * weight;
                     }
                     return shadow * 0.0625;

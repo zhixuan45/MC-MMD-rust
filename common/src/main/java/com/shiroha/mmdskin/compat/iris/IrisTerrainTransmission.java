@@ -7,12 +7,14 @@ import org.lwjgl.opengl.GL46C;
 public final class IrisTerrainTransmission {
     private static int depth, color, backupColor, framebuffer, size, depthFormat, colorFormat;
     private static boolean valid;
+    private static String status = "not captured";
 
     private IrisTerrainTransmission() {}
 
     public static void beginFrame() { valid = false; }
     public static int depthTexture() { return valid ? depth : 0; }
     public static int colorTexture() { return valid ? color : 0; }
+    static String status() { return status; }
 
     /** The caller has already verified that replay writes only sourceColor and source depth. */
     public static boolean capture(int sourceDepthFbo, int sourceColor, int opaqueFbo,
@@ -20,19 +22,32 @@ public final class IrisTerrainTransmission {
         valid = false;
         if (!GL.getCapabilities().OpenGL43 || sourceDepthFbo <= 0 || sourceColor <= 0
                 || opaqueFbo <= 0 || resolution <= 0
-                || (long) resolution * resolution * 12 > 256L * 1024 * 1024) return false;
+                || (long) resolution * resolution * 12 > 256L * 1024 * 1024)
+            return unavailable("unsupported context, invalid transmission target, or allocation budget exceeded");
         try (var state = new ShadowReplayGlState()) {
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, sourceColor);
-            int format = GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_INTERNAL_FORMAT);
+            int sourceFormat = GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_INTERNAL_FORMAT);
+            int format = sourceFormat;
+            // Iris defaults to unsized RGBA; NVIDIA reports that enum for its actual RGBA8 storage.
+            if (sourceFormat == GL46C.GL_RGBA) {
+                for (int channel : new int[]{GL46C.GL_TEXTURE_RED_SIZE, GL46C.GL_TEXTURE_GREEN_SIZE,
+                        GL46C.GL_TEXTURE_BLUE_SIZE, GL46C.GL_TEXTURE_ALPHA_SIZE}) {
+                    if (GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, channel) != 8)
+                        return unavailable("unsupported unsized RGBA channel precision");
+                }
+                format = GL46C.GL_RGBA8;
+            }
             int minFilter = GL46C.glGetTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER);
             int magFilter = GL46C.glGetTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER);
             if (GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_WIDTH) != resolution
                     || GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_HEIGHT) != resolution
                     || (format != GL46C.GL_RGBA8 && format != GL46C.GL_RGBA16F
-                    && format != GL46C.GL_RGBA32F)) return false;
+                    && format != GL46C.GL_RGBA32F))
+                return unavailable("unsupported transmission color format " + sourceFormat + " or extent mismatch");
             // Account for the two color copies as well as the depth snapshot.
             int colorBytes = format == GL46C.GL_RGBA32F ? 16 : format == GL46C.GL_RGBA16F ? 8 : 4;
-            if ((long) resolution * resolution * (4 + colorBytes * 2) > 256L * 1024 * 1024) return false;
+            if ((long) resolution * resolution * (4 + colorBytes * 2) > 256L * 1024 * 1024)
+                return unavailable("terrain transmission allocation budget exceeded");
             allocate(resolution, opaqueFormat, format);
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, color);
             GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER,
@@ -53,8 +68,14 @@ public final class IrisTerrainTransmission {
                 copyColor(backupColor, sourceColor);
             }
             valid = true;
+            status = "ready: sourceFormat=" + sourceFormat + ", storedFormat=" + format;
             return true;
         }
+    }
+
+    private static boolean unavailable(String reason) {
+        status = reason;
+        return false;
     }
 
     private static void allocate(int resolution, int opaqueFormat, int format) {
