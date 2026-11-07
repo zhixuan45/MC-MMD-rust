@@ -18,4 +18,7 @@ public interface NativeMatrixPort {
 
     /** Prop-to-owner matrix, including both render scales; not a camera matrix. */
     default boolean setPropPhysicsAttachment(long propHandle, long ownerHandle, ByteBuffer transform) { return false; }
+    default boolean setPropBoneParents(long model, int[] indices, float[] matrices) { return indices.length == 0; }
+    default boolean getPropBonePose(long model, int index, ByteBuffer matrices) { return false; }
+    default boolean evaluatePropPose(long model) { return false; }
 }

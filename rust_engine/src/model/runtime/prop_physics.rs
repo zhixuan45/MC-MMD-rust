@@ -8,6 +8,22 @@ pub(super) struct PropPhysicsFrame {
 }
 
 impl MmdModel {
+    /// External parenting controls animation anchors, never a physics-owned dynamic bone.
+    pub fn set_prop_bone_parents(&mut self, parents: &[(usize, Mat4)]) -> bool {
+        if parents.iter().any(|(index, _)| self.rigid_bodies.iter().any(|body| {
+            body.bone_index == *index as i32
+                && body.mode != mmd::pmx::rigid_body::RigidBodyMode::Static
+        })) {
+            return false;
+        }
+        self.bone_manager.replace_external_parents(parents)
+    }
+
+    pub fn prop_bone_pose(&self, index: usize) -> Option<(Mat4, Mat4)> {
+        let bone = self.bone_manager.get_bone(index)?;
+        Some((bone.local_to_world, bone.local_to_parent))
+    }
+
     /// PMX units stay local, while this reference frame follows the character attachment.
     pub fn set_prop_attachment_transform(&mut self, world: Mat4) -> bool {
         let scale = world.x_axis.truncate().length();

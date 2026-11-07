@@ -1211,6 +1211,61 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPropPhysicsAttachm
     model.set_prop_attachment_transform(owner_world * glam::Mat4::from_cols_array(&values)) as jboolean
 }
 
+/// Replaces the complete prop external-parent input before its regular animation/physics update.
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPropBoneParents(
+    env: JNIEnv, _class: JClass, handle: jlong, indices: JIntArray, matrices: JFloatArray,
+) -> jboolean {
+    let Ok(count) = env.get_array_length(&indices) else { return 0; };
+    if !(0..=4096).contains(&count) || env.get_array_length(&matrices).ok() != Some(count * 16) {
+        return 0;
+    }
+    let mut names = vec![0; count as usize];
+    let mut values = vec![0.0; count as usize * 16];
+    if env.get_int_array_region(&indices, 0, &mut names).is_err()
+        || env.get_float_array_region(&matrices, 0, &mut values).is_err() { return 0; }
+    let mut parents = Vec::with_capacity(names.len());
+    for (index, data) in names.into_iter().zip(values.chunks_exact(16)) {
+        let Ok(index) = usize::try_from(index) else { return 0; };
+        let columns: [f32; 16] = data.try_into().unwrap();
+        parents.push((index, glam::Mat4::from_cols_array(&columns)));
+    }
+    let models = MODELS.read().unwrap();
+    let Some(model) = models.get(&handle) else { return 0; };
+    let result = model.lock().unwrap().set_prop_bone_parents(&parents);
+    result as jboolean
+}
+
+/// Two column-major matrices: evaluated global followed by evaluated animation-local.
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetPropBonePose(
+    env: JNIEnv, _class: JClass, handle: jlong, index: jint, buffer: JByteBuffer,
+) -> jboolean {
+    let Ok(index) = usize::try_from(index) else { return 0; };
+    let Ok(address) = env.get_direct_buffer_address(&buffer) else { return 0; };
+    if env.get_direct_buffer_capacity(&buffer).unwrap_or(0) < 128 { return 0; }
+    let models = MODELS.read().unwrap();
+    let Some(model) = models.get(&handle) else { return 0; };
+    let model = model.lock().unwrap();
+    let Some((global, local)) = model.prop_bone_pose(index) else { return 0; };
+    let bytes = unsafe { std::slice::from_raw_parts_mut(address, 128) };
+    for (i, value) in global.to_cols_array().into_iter().chain(local.to_cols_array()).enumerate() {
+        bytes[i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    1
+}
+
+/// Preview-only zero-time pose evaluation. No Bullet step or CPU/GPU skinning is performed.
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_EvaluatePropPose(
+    _env: JNIEnv, _class: JClass, handle: jlong,
+) -> jboolean {
+    let models = MODELS.read().unwrap();
+    let Some(model) = models.get(&handle) else { return 0; };
+    model.lock().unwrap().tick_animation_no_skinning(0.0);
+    1
+}
+
 /// 设置模型位置和朝向（简化版，用于惯性计算）
 /// pos_x, pos_y, pos_z: 模型位置（已缩放）
 /// yaw: 人物朝向角度（弧度）

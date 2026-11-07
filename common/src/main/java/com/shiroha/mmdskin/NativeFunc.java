@@ -206,6 +206,9 @@ public class NativeFunc {
     public native void SetModelPositionAndYaw(long model, float posX, float posY, float posZ, float yaw);
 
     public native boolean SetPropPhysicsAttachment(long prop, long owner, ByteBuffer transform);
+    public native boolean SetPropBoneParents(long model, int[] indices, float[] matrices);
+    public native boolean GetPropBonePose(long model, int boneIndex, ByteBuffer matrices);
+    public native boolean EvaluatePropPose(long model);
 
     public native void SetEyeAngle(long model, float eyeX, float eyeY);
 

@@ -12,6 +12,7 @@ import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
 import com.shiroha.mmdskin.model.runtime.ModelSubjectKind;
 import com.shiroha.mmdskin.player.render.ItemRenderHelper;
 import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
+import com.shiroha.mmdskin.player.render.PropBoneParenting;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
@@ -20,6 +21,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
 import org.joml.Quaternionf;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL46C;
 
@@ -42,6 +44,7 @@ public final class PropTimelinePreview implements AutoCloseable {
     private List<String> bones = List.of();
     private String missingBone = "";
     private boolean closed;
+    private final PropBoneParenting parenting=new PropBoneParenting(NativeRuntimeBridgeHolder.get(),NativeRuntimeBridgeHolder.get());
 
     public PropTimelinePreview(String modelName,ModelConfigData config,Path propMotion,Path actorMotion) {
         this.config = config.normalizedCopy();
@@ -79,6 +82,41 @@ public final class PropTimelinePreview implements AutoCloseable {
 
     public List<String> bones() { return bones; }
     public String missingBone() { return missingBone; }
+    public List<String> propBones() { return prop==null?List.of():parenting.bones(prop.modelInstance().getModelHandle()); }
+
+    private Matrix4f propToActor(PropTimeline.State state) {
+        var binding=state.attachment();
+        var matrix=binding==null?ItemRenderHelper.getPropAttachment(actor,config.heldPmxBone)
+                :ItemRenderHelper.getTimelinePropAttachment(actor,binding.bone());
+        if(matrix==null) throw new IllegalArgumentException("Missing outer attachment bone");
+        float propScale=prop.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
+                ?base.getModelScale():.09f*config.modelScale;
+        return ItemRenderHelper.propLocalTransform(matrix,config,binding==null?PropTimeline.Offset.IDENTITY:binding.offset())
+                .scale(10*config.heldItemScale*config.heldPmxScale*propScale);
+    }
+
+    public PropTimeline.BoneBinding register(int frame,PropTimeline baseline,String child,String target,
+                                           PropTimeline.Offset offset,boolean keepWorld) {
+        if(!prepare(frame)) throw new IllegalStateException("Preview is still loading");
+        var runtime=NativeRuntimeBridgeHolder.get();
+        long actorHandle=actor.modelInstance().getModelHandle(),propHandle=prop.modelInstance().getModelHandle();
+        runtime.setPhysicsEnabled(actorHandle,false);
+        runtime.setPhysicsEnabled(propHandle,false);
+        if(!runtime.evaluatePropPose(actorHandle)) throw new IllegalStateException("Cannot evaluate character pose");
+        var state=baseline.evaluate(frame);
+        Matrix4f base=propToActor(state);
+        parenting.apply(actorHandle,propHandle,base,state);
+        if(!runtime.evaluatePropPose(propHandle)) throw new IllegalStateException("Cannot evaluate prop pose");
+        Matrix4f[] pose=parenting.pose(propHandle,child);
+        Matrix4f targetMatrix=PropBoneParenting.targetInProp(base,parenting.pose(actorHandle,target)[0]);
+        var binding=new PropTimeline.BoneBinding(child,target,offset,
+                PropBoneParenting.compensation(targetMatrix,pose[0],pose[1],keepWorld),keepWorld,false);
+        var bindings=new java.util.LinkedHashMap<>(state.boneBindings());
+        bindings.put(child,binding);
+        parenting.apply(actorHandle,propHandle,base,new PropTimeline.State(state.visible(),state.attachment(),bindings));
+        image.invalidate();
+        return binding;
+    }
 
     public void render(GuiGraphics graphics,int x,int y,int width,int height,int frame,long revision,
                        PropTimeline.State state,float yaw,float pitch,float zoom) {
@@ -118,6 +156,7 @@ public final class PropTimelinePreview implements AutoCloseable {
                     .rotateX((float)Math.toRadians(pitch)));
             // The renderer applies the actor model scale to this stack, exactly as in the held-prop path.
             actor.modelInstance().render(null,0,0,new Vector3f(),0,stack,0xF000F0,SCENE);
+            parenting.apply(actor.modelInstance().getModelHandle(),prop.modelInstance().getModelHandle(),propToActor(state),state);
             missingBone = "";
             if (!state.visible()) return;
             var attachment = state.attachment();

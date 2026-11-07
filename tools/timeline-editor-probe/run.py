@@ -214,6 +214,15 @@ public final class ModelSelectorServices {
     public java.util.List<String> listBoneNames(String model){return java.util.List.of("右ダミー","左ダミー","頭");}
 }
 ''',
+    "com/shiroha/mmdskin/asset/catalog/HeldPmxAssets.java": r'''
+package com.shiroha.mmdskin.asset.catalog;
+public final class HeldPmxAssets {
+    public static java.nio.file.Path motionDirectory(String owner,String reference) {
+        return com.shiroha.mmdskin.config.PathConstants.getModelDir(owner).toPath();
+    }
+    public static String fileName(String reference){return reference.substring(reference.indexOf('/')+1);}
+}
+''',
     "com/shiroha/mmdskin/ui/selector/timeline/PropTimelinePreview.java": r'''
 package com.shiroha.mmdskin.ui.selector.timeline;
 import com.shiroha.mmdskin.config.ModelConfigData;
@@ -226,6 +235,12 @@ public final class PropTimelinePreview implements AutoCloseable {
     public boolean prepare(int frame){return true;}
     public float endFrame(){return 900;}
     public java.util.List<String> bones(){return java.util.List.of("右ダミー","左ダミー","頭");}
+    public java.util.List<String> propBones(){return java.util.List.of("Root","Center","FingerPivot");}
+    public static PropTimeline lastBaseline;
+    public PropTimeline.BoneBinding register(int frame,PropTimeline baseline,String child,String target,PropTimeline.Offset offset,boolean keepWorld){
+        lastBaseline=baseline;
+        return new PropTimeline.BoneBinding(child,target,offset,PropTimeline.identityCompensation(),keepWorld,false);
+    }
     public String missingBone(){return "";}
     public void render(GuiGraphics g,int x,int y,int w,int h,int frame,long revision,PropTimeline.State state,float yaw,float pitch,float zoom){
         var font=new Font();

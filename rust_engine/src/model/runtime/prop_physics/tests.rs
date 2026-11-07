@@ -100,3 +100,75 @@ fn teleports_and_size_edits_resync_and_invalid_reference_frames_are_rejected() {
     ] { assert!(!model.set_prop_attachment_transform(invalid)); }
     assert!(model.prop_physics_frame.unwrap().current.abs_diff_eq(resized, 0.0));
 }
+
+fn two_controls() -> MmdModel {
+    let mut model = MmdModel::new();
+    for (index, name) in ["Root", "Center", "Tip", "Tassel"].into_iter().enumerate() {
+        let mut bone = BoneLink::new(name.into());
+        bone.parent_index = index as i32 - 1;
+        bone.initial_position = Vec3::Y * index as f32;
+        model.bone_manager.add_bone(bone);
+    }
+    model.bone_manager.build_hierarchy();
+    model.update_node_animation(false);
+    model.rigid_bodies = vec![RigidBody {
+        local_name: "Tassel".into(), universal_name: String::new(), bone_index: 3,
+        group: 0, un_collision_group_flag: 0, shape: RigidBodyShape::Sphere,
+        size: [0.1, 0.0, 0.0], position: [0.0, 3.0, 0.0], rotation: [0.0; 3],
+        mass: 1.0, move_attenuation: 0.0, rotation_attenuation: 0.0,
+        repulsion: 0.0, friction: 0.0, mode: RigidBodyMode::Dynamic,
+    }];
+    assert!(model.init_physics());
+    let mut motion = Motion::new();
+    motion.insert_bone_keyframe("Root", BoneKeyframe::with_transform(0, Vec3::ZERO, Quat::IDENTITY));
+    motion.insert_bone_keyframe("Root", BoneKeyframe::with_transform(60, Vec3::X * 6.0, Quat::IDENTITY));
+    motion.insert_bone_keyframe("Center", BoneKeyframe::with_transform(0, Vec3::ZERO, Quat::IDENTITY));
+    motion.insert_bone_keyframe("Center", BoneKeyframe::with_transform(60, Vec3::ZERO, Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)));
+    model.set_layer_animation(0, Some(Arc::new(VmdAnimation::from_motion(motion))));
+    model.play_layer(0);
+    model.set_layer_speed(0, 0.0);
+    model
+}
+
+#[test]
+fn prop_multiple_bone_parents_preserve_vmd_descendants_and_dynamic_physics_cpu_gpu() {
+    for cpu in [false, true] {
+        let mut model = two_controls();
+        let root = Mat4::from_translation(Vec3::X * 10.0);
+        let center = Mat4::from_translation(Vec3::new(-5.0, 3.0, 0.0));
+        assert!(model.set_prop_bone_parents(&[(0, root), (1, center)]));
+        model.seek_layer(0, 30.0);
+        if cpu { model.tick_animation(1.0 / 60.0); } else { model.tick_animation_no_skinning(1.0 / 60.0); }
+        let (root_global, root_local) = model.prop_bone_pose(0).unwrap();
+        let (center_global, center_local) = model.prop_bone_pose(1).unwrap();
+        assert!((root * root_local).abs_diff_eq(root_global, 1e-4));
+        assert!((root_global.w_axis.x - 13.0).abs() < 1e-3, "Root VMD translation must remain active");
+        assert!((center * center_local).abs_diff_eq(center_global, 1e-4), "Child external parent must not inherit root twice");
+        assert!(center_local.x_axis.y.abs() > 0.6, "Center VMD rotation must remain active");
+        let tip_local = model.prop_bone_pose(2).unwrap().1;
+        assert!((center_global * tip_local).abs_diff_eq(model.bone_manager.get_global_transform(2), 1e-4),
+                "Physics writeback must preserve the external-parented control subtree");
+        let start = body(&model).w_axis.y;
+        for _ in 0..20 {
+            if cpu { model.tick_animation(1.0 / 60.0); } else { model.tick_animation_no_skinning(1.0 / 60.0); }
+        }
+        assert!(body(&model).w_axis.y < start - 0.1, "Dynamic tassel must keep simulating");
+        assert!(model.set_prop_bone_parents(&[]));
+        model.tick_animation_no_skinning(0.0);
+        let (global, local) = model.prop_bone_pose(1).unwrap();
+        assert!((model.bone_manager.get_global_transform(0) * local).abs_diff_eq(global, 1e-4));
+    }
+}
+
+#[test]
+fn prop_bone_parent_validation_is_atomic_and_never_overrides_physics_owned_bones() {
+    let mut model = two_controls();
+    let parent = Mat4::from_translation(Vec3::X * 10.0);
+    assert!(model.set_prop_bone_parents(&[(0, parent)]));
+    assert!(!model.set_prop_bone_parents(&[(3, Mat4::IDENTITY)]));
+    assert!(!model.set_prop_bone_parents(&[(0, Mat4::ZERO)]));
+    assert!(!model.set_prop_bone_parents(&[(0, parent), (0, parent)]));
+    assert!(!model.set_prop_bone_parents(&[(9999, parent)]));
+    model.tick_animation_no_skinning(0.0);
+    assert!(model.prop_bone_pose(0).unwrap().0.abs_diff_eq(parent, 1e-5));
+}

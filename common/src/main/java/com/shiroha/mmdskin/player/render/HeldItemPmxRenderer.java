@@ -1,7 +1,7 @@
 package com.shiroha.mmdskin.player.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
+import com.shiroha.mmdskin.asset.catalog.HeldPmxAssets;
 import com.shiroha.mmdskin.config.ModelConfigData;
 import com.shiroha.mmdskin.config.ModelConfigManager;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
@@ -38,8 +38,7 @@ final class HeldItemPmxRenderer {
         String pmx = assignment != null ? assignment.pmxFile() : config.heldPmxFile;
         if (pmx == null || pmx.isEmpty()) return false;
 
-        // Restrict the separately loaded prop to an existing PMX in this character folder.
-        if (!ModelCatalogEntry.listPmxFiles(modelName).contains(pmx)) return false;
+        if (HeldPmxAssets.resolve(modelName, pmx) == null) return false;
 
         ModelRequestKey propKey = ModelRequestKey.heldItem(player, modelName, pmx);
         ManagedModel prop = ClientRenderRuntime.get().modelRepository().acquire(propKey);
@@ -71,6 +70,8 @@ final class HeldItemPmxRenderer {
                     ? base.getModelScale() : 0.09f * config.modelScale;
             float propScale = prop.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
                     ? base.getModelScale() : 0.09f * config.modelScale;
+            if(assignment!=null && !propAnimations.applyBoneParents(player.getUUID(),character.modelInstance().getModelHandle(),
+                    prop.modelInstance().getModelHandle(),new org.joml.Matrix4f(local).scale(scale*propScale))) return true;
             ItemRenderHelper.syncPropPhysics(character, prop,
                     ItemRenderHelper.propPhysicsTransform(local, scale, ownerScale, propScale));
 

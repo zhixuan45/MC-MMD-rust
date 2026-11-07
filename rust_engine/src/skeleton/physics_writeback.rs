@@ -46,12 +46,14 @@ impl BoneSet {
         for order in 0..self.physics_writeback_order.len() {
             let index = self.physics_writeback_order[order];
             let bone = &self.links[index];
-            let inherited = match usize::try_from(bone.parent_index) {
+            let inherited = if let Some(parent) = self.external_parents.get(&index) {
+                *parent * bone.local_to_parent
+            } else { match usize::try_from(bone.parent_index) {
                 Ok(parent) if parent < self.links.len() => {
                     self.links[parent].local_to_world * bone.local_to_parent
                 }
                 _ => bone.local_to_parent,
-            };
+            }};
             if let Some(mut transform) = self.physics_transform_buf[index] {
                 if position_aligned_bones.contains(&index) {
                     // 保留本帧层级传播得到的位置，旋转仍来自 Bullet。

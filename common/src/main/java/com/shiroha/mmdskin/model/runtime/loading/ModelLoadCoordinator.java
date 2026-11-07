@@ -130,6 +130,8 @@ public final class ModelLoadCoordinator {
         // Scene folders belong to SceneModel, even when a character has the same folder name.
         ModelCatalogEntry modelInfo = requestKey.subjectKind() == ModelSubjectKind.SCENE
                 ? SceneModelCatalog.getInstance().findByFolderName(modelName).orElse(null)
+                : requestKey.isHeldItem()
+                ? com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.resolve(modelName, requestKey.pmxVariant())
                 : ModelCatalogEntry.resolveModelFile(modelName, requestKey.pmxVariant());
         if (modelInfo == null) {
             if (missingModels.add(fullCacheKey)) {

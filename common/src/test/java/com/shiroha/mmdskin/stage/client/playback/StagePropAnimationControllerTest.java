@@ -15,6 +15,25 @@ import static org.junit.jupiter.api.Assertions.*;
 class StagePropAnimationControllerTest {
     @TempDir Path dir;
 
+    @Test void crossFolderReferenceLoadsThePropsLocalMotionAndTimeline() throws Exception {
+        fixture("prop.vmd");
+        Files.writeString(dir.resolve("prop.timeline.json"), """
+                {"version":1,"motion":"prop.vmd","objects":[{"id":"fan","asset":"fan.pmx",
+                "tracks":{"visibility":[{"frame":10,"value":false}]}}]}
+                """);
+        Port port = new Port();
+        var controller = new StagePropAnimationController(port);
+        var owner = UUID.randomUUID();
+        var model = new Model(201);
+        var assignment = new StagePropAssignment("扇子B/fan.pmx", "prop.vmd");
+        assertTrue(assignment.isValid());
+        controller.begin(owner, assignment);
+        assertTrue(controller.bind(owner, model.proxy, dir, "扇子B/fan.pmx"));
+        controller.seek(owner, 10);
+        assertFalse(controller.state(owner).visible());
+        controller.stop(owner);
+    }
+
     @Test void lateModelJoinsCurrentFrameAndShortMotionHoldsItsLastFrame() throws Exception {
         fixture("prop.vmd");
         Port port=new Port(); var controller=new StagePropAnimationController(port);

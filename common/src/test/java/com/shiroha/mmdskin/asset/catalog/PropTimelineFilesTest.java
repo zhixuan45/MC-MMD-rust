@@ -64,7 +64,7 @@ class PropTimelineFilesTest {
 
     @Test void rejectsMalformedOrUnsupportedTracksInsteadOfPartiallyApplyingThem() {
         for (String json : new String[]{
-                "{", FAN.replace("\"version\": 1", "\"version\": 2"),
+                "{", FAN.replace("\"version\": 1", "\"version\": 3"),
                 FAN.replace("\"frame\": 120", "\"frame\": 120.5"),
                 FAN.replace("\"frame\": 120", "\"frame\": -1"),
                 FAN.replace("\"frame\": 900", "\"frame\": 120"),
@@ -153,5 +153,21 @@ class PropTimelineFilesTest {
         assertEquals(timeline.initial(),reopened.initial());
         assertEquals(timeline.visibility(),reopened.visibility());
         assertEquals(timeline.attachments(),reopened.attachments());
+    }
+
+    @Test void versionTwoRoundTripsSameFrameBoneBindingsCompensationAndUnbind() throws Exception {
+        Path motion=dir.resolve("prop.vmd");
+        var right=new PropTimeline.BoneBinding("全ての親","右ダミー",PropTimeline.Offset.IDENTITY,PropTimeline.identityCompensation(),true,false);
+        var left=new PropTimeline.BoneBinding("センター","左ダミー",new PropTimeline.Offset(1,2,3,0,0,90),PropTimeline.identityCompensation(),false,false);
+        var timeline=new PropTimeline(PropTimeline.State.DEFAULT,java.util.List.of(),java.util.List.of(),
+                java.util.List.of(new PropTimeline.Key<>(3099,right),new PropTimeline.Key<>(3099,left),
+                        new PropTimeline.Key<>(3370,PropTimeline.BoneBinding.detached("センター"))));
+        var saved=PropTimelineFiles.save(PropTimelineFiles.open(motion,"fan.pmx"),timeline,"StageAnim/dance/actor.vmd");
+        assertTrue(saved.originalJson().contains("\"version\": 2"));
+        assertEquals("StageAnim/dance/actor.vmd",PropTimelineFiles.referenceMotion(saved));
+        var loaded=PropTimelineFiles.load(motion,"fan.pmx");
+        assertEquals(timeline.boneKeys(),loaded.boneKeys());
+        assertEquals(2,loaded.evaluate(3099).boneBindings().size());
+        assertEquals(1,loaded.evaluate(3370).boneBindings().size());
     }
 }

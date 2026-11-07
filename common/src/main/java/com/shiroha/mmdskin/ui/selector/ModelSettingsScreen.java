@@ -134,7 +134,7 @@ public class ModelSettingsScreen extends Screen {
                     Component.translatable("gui.mmdskin.model_settings.prop_motion_title"),
                     Component.translatable("gui.mmdskin.model_settings.prop_motion_hint"),
                     Component.translatable("gui.mmdskin.model_settings.prop_motion_disabled"),
-                    SERVICE.listPropMotions(modelName),config.heldPmxStageMotion,false,
+                    SERVICE.listPropMotions(modelName,config.heldPmxFile),config.heldPmxStageMotion,false,
                     value -> config.heldPmxStageMotion=value));
             return true;
         }
@@ -185,8 +185,15 @@ public class ModelSettingsScreen extends Screen {
             cyclePmx(true, -1);
             return true;
         }
-        if (layout.contentHit(layout.heldPmxNext, mouseX, mouseY)
-                || layout.contentHit(layout.heldPmxValue, mouseX, mouseY)) {
+        if (layout.contentHit(layout.heldPmxValue, mouseX, mouseY)) {
+            minecraft.setScreen(new HeldPmxSelectionScreen(this,
+                    Component.translatable("gui.mmdskin.model_settings.held_pmx"),
+                    Component.translatable("gui.mmdskin.model_settings.prop_asset_hint"),
+                    Component.translatable("gui.mmdskin.model_settings.pmx_disabled"),
+                    SERVICE.listHeldPmxFiles(modelName), config.heldPmxFile, false, this::selectHeldPmx));
+            return true;
+        }
+        if (layout.contentHit(layout.heldPmxNext, mouseX, mouseY)) {
             cyclePmx(true, 1);
             return true;
         }
@@ -408,17 +415,26 @@ public class ModelSettingsScreen extends Screen {
     }
 
     private void cyclePmx(boolean held, int direction) {
-        List<String> options = new ArrayList<>(pmxFiles.size() + 1);
+        List<String> files = held ? SERVICE.listHeldPmxFiles(modelName) : pmxFiles;
+        List<String> options = new ArrayList<>(files.size() + 1);
         options.add("");
-        options.addAll(pmxFiles);
+        options.addAll(files);
         String current = held ? config.heldPmxFile : config.mainPmxFile;
         int index = Math.max(0, options.indexOf(current));
         String next = options.get(Math.floorMod(index + direction, options.size()));
         if (held) {
-            config.heldPmxFile = next;
+            selectHeldPmx(next);
         } else {
             config.mainPmxFile = next;
         }
+    }
+
+    private void selectHeldPmx(String value) {
+        if (!com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.modelName(modelName, config.heldPmxFile)
+                .equals(com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.modelName(modelName, value))) {
+            config.heldPmxStageMotion = "";
+        }
+        config.heldPmxFile = value;
     }
 
     private void updateSliderValue(ActiveSlider slider, double mouseX) {

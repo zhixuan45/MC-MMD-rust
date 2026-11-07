@@ -68,10 +68,27 @@ public final class Probe {
         check(saved.bone().equals("左ダミー") && saved.offset().x()==2.5f,"Attachment editor must save its bone and offset");
         render(screen,output.resolve("attachment-854.png"));
 
+        click(screen,widget(screen,"childButton"));
+        client.screen.mouseClicked(client.width/2,72+20+8,0);
+        check(editor.selectedBone().equals("Root"),"Prop bone picker must select an independent child track");
+        ((EditBox)field(screen,"boneBox")).setValue("右ダミー");
+        click(screen,widget(screen,"writeButton"));
+        click(screen,widget(screen,"childButton"));
+        client.screen.mouseClicked(client.width/2,72+2*20+8,0);
+        ((EditBox)field(screen,"boneBox")).setValue("左ダミー");
+        click(screen,widget(screen,"writeButton"));
+        check(editor.state().boneBindings().size()==2,"Two child bone registrations must coexist at one frame");
+        check(PropTimelinePreview.lastBaseline.evaluate(editor.frame()).boneBindings().containsKey("Root"),
+                "Second registration must sample a baseline containing the earlier same-frame registration");
+        click(screen,widget(screen,"saveButton"));
+        check(PropTimelineFiles.load(motion,config.heldPmxFile).boneKeys().size()==2,"Save must retain both bone tracks");
+        render(screen,output.resolve("multi-bone-854.png"));
+
         client.width=320; client.height=240;
         screen.initialize(320,240);
         layout=(PropTimelineLayout)field(screen,"layout");
-        screen.mouseScrolled(layout.inspector.x()+10,layout.inspector.y()+30,0,-20);
+        int neededScroll=184+18-layout.properties.h();
+        screen.mouseScrolled(layout.inspector.x()+10,layout.inspector.y()+30,0,-neededScroll/18.0);
         render(screen,output.resolve("attachment-320-scrolled.png"));
         var write = widget(screen,"writeButton");
         check(write.visible && write.getY()>=layout.properties.y() && write.getY()+write.getHeight()<=layout.properties.bottom(),
@@ -86,7 +103,8 @@ public final class Probe {
         ((ConfirmScreen)client.screen).callback.accept(true);
         check(client.screen==parent && PropTimelinePreview.active==0,"Discarding must close preview resources");
         check(PropTimelineFiles.load(motion,config.heldPmxFile).attachments().size()==2,"Discarding must retain the saved file");
-        System.out.println("PASS production timeline UI: scrub, visibility edit/save, bone picker return, attachment offset/save, small-window scroll/delete, discard/return, preview lifecycle");
+        check(PropTimelineFiles.load(motion,config.heldPmxFile).boneKeys().size()==2,"Discarding must retain both saved child-bone keys");
+        System.out.println("PASS production timeline UI: scrub, visibility, bone picker return, same-frame child registrations, compensation baseline order, v2 save, small-window delete, discard, preview lifecycle");
         System.out.println("PNG layout evidence: "+output+" (Minecraft widgets and native 3D preview are shimmed)");
     }
 

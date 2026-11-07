@@ -10,6 +10,7 @@ import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Attachment;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State;
+import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -62,13 +63,24 @@ public final class PropTimelineFiles {
 
     /** Write beside the selected VMD, replacing the destination only after a complete valid file exists. */
     public static Document save(Document document, PropTimeline timeline) throws IOException {
+        return save(document,timeline,null);
+    }
+
+    public static String referenceMotion(Document document) {
+        if (document.originalJson()==null) return "";
+        var root=JsonParser.parseString(document.originalJson()).getAsJsonObject();
+        return root.has("referenceMotion")?string(root.get("referenceMotion")):"";
+    }
+
+    public static Document save(Document document, PropTimeline timeline,String referenceMotion) throws IOException {
         Path path = sidecar(document.motion()).toAbsolutePath().normalize();
         if (!Objects.equals(document.originalJson(),read(path))) {
             throw new IOException("Timeline changed on disk; reopen the editor before saving: " + path);
         }
         JsonObject root = document.originalJson() == null ? new JsonObject()
                 : JsonParser.parseString(document.originalJson()).getAsJsonObject();
-        root.addProperty("version",1);
+        root.addProperty("version",timeline.boneKeys().isEmpty()?1:2);
+        if (referenceMotion!=null) root.addProperty("referenceMotion",referenceMotion);
         root.addProperty("motion",document.motion().getFileName().toString());
         JsonObject object;
         if (root.has("objects")) object = root.getAsJsonArray("objects").get(0).getAsJsonObject();
@@ -100,6 +112,22 @@ public final class PropTimelineFiles {
         JsonObject tracks = new JsonObject();
         tracks.add("visibility",visibility);
         tracks.add("attachment",attachments);
+        if (!timeline.boneKeys().isEmpty()) {
+            JsonArray bones = new JsonArray();
+            for (Key<BoneBinding> key : timeline.boneKeys()) {
+                BoneBinding binding = key.value();
+                JsonObject value = binding.unbind()?new JsonObject():attachmentJson(new Attachment(binding.bone(),binding.offset()));
+                value.addProperty("frame",key.frame());
+                value.addProperty("childBone",binding.childBone());
+                value.addProperty("unbind",binding.unbind());
+                value.addProperty("mode",binding.keepWorld()?"keepWorld":"snap");
+                JsonArray compensation = new JsonArray();
+                binding.compensation().forEach(compensation::add);
+                value.add("compensation",compensation);
+                bones.add(value);
+            }
+            tracks.add("boneAttachment",bones);
+        }
         object.add("tracks",tracks);
         String json = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root) + "\n";
         if (json.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) throw new IOException("Timeline is too large");
@@ -139,7 +167,8 @@ public final class PropTimelineFiles {
 
     static PropTimeline parse(String json, String motionFile, String pmxFile) {
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-        if (integer(root.get("version")) != 1) throw new IllegalArgumentException("Expected timeline version 1");
+        int version = integer(root.get("version"));
+        if (version!=1 && version!=2) throw new IllegalArgumentException("Expected timeline version 1 or 2");
         if (root.has("motion") && !motionFile.equals(string(root.get("motion")))) {
             throw new IllegalArgumentException("Timeline motion does not match " + motionFile);
         }
@@ -159,11 +188,38 @@ public final class PropTimelineFiles {
         }
         List<Key<Boolean>> visibility = new ArrayList<>();
         List<Key<Attachment>> attachments = new ArrayList<>();
+        List<Key<BoneBinding>> boneKeys = new ArrayList<>();
         if (object.has("tracks")) {
             JsonObject tracks = object.getAsJsonObject("tracks");
             for (String name : tracks.keySet()) {
-                if (!name.equals("visibility") && !name.equals("attachment")) {
+                if (!name.equals("visibility") && !name.equals("attachment")
+                        && !(version==2 && name.equals("boneAttachment"))) {
                     throw new IllegalArgumentException("Unsupported prop track: " + name);
+                }
+            }
+            if (tracks.has("boneAttachment")) {
+                for (JsonElement element : keys(tracks.getAsJsonArray("boneAttachment"))) {
+                    JsonObject key=element.getAsJsonObject();
+                    String child=string(key.get("childBone"));
+                    boolean unbind=key.has("unbind") && bool(key.get("unbind"));
+                    if (unbind) {
+                        boneKeys.add(new Key<>(integer(key.get("frame")),BoneBinding.detached(child)));
+                        continue;
+                    }
+                    String mode=key.has("mode")?string(key.get("mode")):"keepWorld";
+                    if (!mode.equals("keepWorld") && !mode.equals("snap")) throw new IllegalArgumentException("Invalid bone parent mode");
+                    JsonObject parent=key.getAsJsonObject("parent");
+                    if (!string(parent.get("object")).equals("actor")) throw new IllegalArgumentException("Bone parent must be actor");
+                    var compensation=new ArrayList<Float>();
+                    for (JsonElement number : key.getAsJsonArray("compensation")) {
+                        if (!number.isJsonPrimitive() || !number.getAsJsonPrimitive().isNumber()) throw new IllegalArgumentException("Invalid compensation");
+                        compensation.add(number.getAsFloat());
+                    }
+                    float[] offset=vector(key,"offset"), rotation=vector(key,"rotation");
+                    BoneBinding binding=new BoneBinding(child,string(parent.get("bone")),
+                            new Offset(offset[0],offset[1],offset[2],rotation[0],rotation[1],rotation[2]),
+                            compensation,mode.equals("keepWorld"),false);
+                    boneKeys.add(new Key<>(integer(key.get("frame")),binding));
                 }
             }
             if (tracks.has("visibility")) {
@@ -179,7 +235,7 @@ public final class PropTimelineFiles {
                 }
             }
         }
-        return new PropTimeline(initial, visibility, attachments);
+        return new PropTimeline(initial, visibility, attachments,boneKeys);
     }
 
     private static JsonArray keys(JsonArray keys) {

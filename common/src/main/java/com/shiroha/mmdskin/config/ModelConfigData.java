@@ -46,12 +46,12 @@ public class ModelConfigData {
     /** Selected PMX in this model folder, or empty for automatic selection. */
     public String mainPmxFile = "";
 
-    /** Independent main-hand prop PMX; empty disables replacement. */
+    /** Prop PMX basename or folder/basename under EntityPlayer; empty disables replacement. */
     public String heldPmxFile = "";
     public boolean heldPmxPhysicsEnabled = true;
     /** Empty uses the existing main-hand attachment; otherwise an exact character bone name. */
     public String heldPmxBone = "";
-    /** Optional prop-only VMD in the character's model folder or anims subfolder. */
+    /** Optional prop-only VMD in the prop's model folder or anims subfolder. */
     public String heldPmxStageMotion = "";
 
     /** Extra PMX prop transformation in the selected attachment bone coordinates. */
@@ -119,7 +119,7 @@ public class ModelConfigData {
                 MAX_HELD_ITEM_SCALE,
                 DEFAULT_HELD_ITEM_SCALE);
         mainPmxFile = normalizePmxFileName(mainPmxFile);
-        heldPmxFile = normalizePmxFileName(heldPmxFile);
+        heldPmxFile = normalizeHeldPmxReference(heldPmxFile);
         heldPmxBone = normalizeBoneName(heldPmxBone);
         heldPmxStageMotion = normalizeVmdFileName(heldPmxStageMotion);
         heldPmxScale = clampOrDefault(heldPmxScale, 0.01f, 20.0f, 1.0f);
@@ -152,6 +152,20 @@ public class ModelConfigData {
                 || fileName.indexOf(':') >= 0 || fileName.chars().anyMatch(Character::isISOControl)
                 || !fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".pmx")) return "";
         return fileName;
+    }
+
+    /** A prop may reference one sibling model folder, never an arbitrary filesystem path. */
+    public static String normalizeHeldPmxReference(String value) {
+        if (value == null || value.length() > 512) return "";
+        int separator = value.indexOf('/');
+        if (separator < 0) return normalizePmxFileName(value);
+        String folder = value.substring(0, separator);
+        String file = value.substring(separator + 1);
+        if (folder.isBlank() || !folder.equals(folder.trim()) || folder.equals(".") || folder.equals("..")
+                || folder.contains("\\") || folder.contains(":")
+                || folder.chars().anyMatch(Character::isISOControl)
+                || normalizePmxFileName(file).isEmpty()) return "";
+        return value;
     }
 
     private static float clampOrDefault(float value, float min, float max, float fallback) {

@@ -44,6 +44,8 @@ pub struct BoneSet {
 
     /// VRM 标志（VMD 旋转/平移需要额外坐标系转换）
     is_vrm: bool,
+    /// Model-space parent frames supplied by prop external parenting; animation locals stay intact.
+    external_parents: HashMap<usize, Mat4>,
 }
 
 impl BoneSet {
@@ -61,6 +63,7 @@ impl BoneSet {
             children_cache: Vec::new(),
             needs_hierarchy_update: true,
             is_vrm: false,
+            external_parents: HashMap::new(),
         }
     }
 
@@ -402,7 +405,10 @@ impl BoneSet {
 
         // 计算全局变换：local_to_world = parent.local_to_world * local_to_parent
         let parent_idx = self.links[index].parent_index;
-        if parent_idx >= 0 && (parent_idx as usize) < self.links.len() {
+        if let Some(parent) = self.external_parents.get(&index).copied() {
+            self.links[index].parent_to_world = parent;
+            self.links[index].local_to_world = parent * self.links[index].local_to_parent;
+        } else if parent_idx >= 0 && (parent_idx as usize) < self.links.len() {
             let parent_global = self.links[parent_idx as usize].local_to_world;
             self.links[index].parent_to_world = parent_global;
             self.links[index].local_to_world = parent_global * self.links[index].local_to_parent;
@@ -416,6 +422,29 @@ impl BoneSet {
             let child_idx = self.children_cache[index][child_order];
             self.update_global_transform_recursive(child_idx);
         }
+    }
+
+    pub fn replace_external_parents(&mut self, parents: &[(usize, Mat4)]) -> bool {
+        let mut next = HashMap::with_capacity(parents.len());
+        for &(index, matrix) in parents {
+            if index >= self.links.len() || !matrix.is_finite() || matrix.determinant() <= 1e-8
+                || matrix.x_axis.w.abs() > 1e-5 || matrix.y_axis.w.abs() > 1e-5
+                || matrix.z_axis.w.abs() > 1e-5 || (matrix.w_axis.w - 1.0).abs() > 1e-5
+                || next.insert(index, matrix).is_some()
+            {
+                return false;
+            }
+        }
+        self.external_parents = next;
+        true
+    }
+
+    fn parent_frame(&self, index: usize) -> Mat4 {
+        self.external_parents.get(&index).copied().unwrap_or_else(|| {
+            usize::try_from(self.links[index].parent_index).ok()
+                .and_then(|parent| self.links.get(parent))
+                .map_or(Mat4::IDENTITY, |parent| parent.local_to_world)
+        })
     }
 
     /// 应用附加变换
@@ -479,7 +508,7 @@ impl BoneSet {
             .iter()
             .position(|s| s.bone_index == bone_index);
         if let Some(idx) = solver_idx {
-            self.ik_solvers[idx].solve(&mut self.links, &self.children_cache);
+            self.ik_solvers[idx].solve(&mut self.links, &self.children_cache, &self.external_parents);
             self.update_global_transform_recursive(bone_index);
         }
     }
@@ -552,13 +581,7 @@ impl BoneSet {
 
         self.links[index].local_to_world = transform;
 
-        let parent_idx = self.links[index].parent_index;
-        let local_transform = if parent_idx >= 0 && (parent_idx as usize) < self.links.len() {
-            let parent_global = self.links[parent_idx as usize].local_to_world;
-            parent_global.inverse() * transform
-        } else {
-            transform
-        };
+        let local_transform = self.parent_frame(index).inverse() * transform;
         self.links[index].local_to_parent = local_transform;
 
         let (_, rotation, translation) = local_transform.to_scale_rotation_translation();
@@ -578,13 +601,7 @@ impl BoneSet {
 
         self.links[index].local_to_world = transform;
 
-        let parent_idx = self.links[index].parent_index;
-        let local_transform = if parent_idx >= 0 && (parent_idx as usize) < self.links.len() {
-            let parent_global = self.links[parent_idx as usize].local_to_world;
-            parent_global.inverse() * transform
-        } else {
-            transform
-        };
+        let local_transform = self.parent_frame(index).inverse() * transform;
         self.links[index].local_to_parent = local_transform;
 
         let (_, rotation, translation) = local_transform.to_scale_rotation_translation();
@@ -600,23 +617,16 @@ impl BoneSet {
             return;
         }
         self.links[index].compute_local_transform();
-        let parent_idx = self.links[index].parent_index;
-        if parent_idx >= 0 && (parent_idx as usize) < self.links.len() {
-            self.links[index].local_to_world =
-                self.links[parent_idx as usize].local_to_world * self.links[index].local_to_parent;
-        } else {
-            self.links[index].local_to_world = self.links[index].local_to_parent;
-        }
+        self.links[index].local_to_world = self.parent_frame(index) * self.links[index].local_to_parent;
         self.update_children_global_transform(index);
     }
 
     /// 递归更新子骨骼全局变换
     fn update_children_global_transform(&mut self, parent_index: usize) {
-        let parent_global = self.links[parent_index].local_to_world;
         for child_order in 0..self.children_cache[parent_index].len() {
             let child_idx = self.children_cache[parent_index][child_order];
             self.links[child_idx].local_to_world =
-                parent_global * self.links[child_idx].local_to_parent;
+                self.parent_frame(child_idx) * self.links[child_idx].local_to_parent;
             self.update_children_global_transform(child_idx);
         }
     }
@@ -644,11 +654,7 @@ impl BoneSet {
                 continue;
             }
 
-            let parent_idx = self.links[idx].parent_index;
-            if parent_idx >= 0 {
-                let parent_global = self.links[parent_idx as usize].local_to_world;
-                self.links[idx].local_to_world = parent_global * self.links[idx].local_to_parent;
-            }
+            self.links[idx].local_to_world = self.parent_frame(idx) * self.links[idx].local_to_parent;
         }
     }
 

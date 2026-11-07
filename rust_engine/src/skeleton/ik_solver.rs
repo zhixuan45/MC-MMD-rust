@@ -1,6 +1,7 @@
 //! IK 求解器 - 参考 nphysics 约束求解思想重新实现
 
-use glam::{Mat3, Quat, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec3};
+use std::collections::HashMap;
 use std::f32::consts::PI;
 
 use super::bone_link::{BoneFlags, BoneLink, IkConfig, IkLink};
@@ -46,7 +47,8 @@ impl IkSolver {
     }
 
     /// 求解 IK
-    pub fn solve(&self, bones: &mut [BoneLink], children_cache: &[Vec<usize>]) {
+    pub fn solve(&self, bones: &mut [BoneLink], children_cache: &[Vec<usize>],
+                 external_parents: &HashMap<usize, Mat4>) {
         if !self.enabled {
             return;
         }
@@ -71,7 +73,7 @@ impl IkSolver {
                 bones[link_idx].ik_rotate = Quat::IDENTITY;
                 bones[link_idx].flags |= BoneFlags::IK_ENABLED;
                 bones[link_idx].compute_local_transform();
-                Self::update_global_transform_recursive(bones, children_cache, link_idx);
+                Self::update_global_transform_recursive(bones, children_cache, external_parents, link_idx);
             }
         }
 
@@ -82,6 +84,7 @@ impl IkSolver {
             self.solve_iteration(
                 bones,
                 children_cache,
+                external_parents,
                 target_idx,
                 iteration,
                 &mut chain_states,
@@ -108,7 +111,7 @@ impl IkSolver {
                     if link_idx < bones.len() {
                         bones[link_idx].ik_rotate = chain_states[i].best_ik_rotate;
                         bones[link_idx].compute_local_transform();
-                        Self::update_global_transform_recursive(bones, children_cache, link_idx);
+                        Self::update_global_transform_recursive(bones, children_cache, external_parents, link_idx);
                     }
                 }
                 break;
@@ -121,6 +124,7 @@ impl IkSolver {
         &self,
         bones: &mut [BoneLink],
         children_cache: &[Vec<usize>],
+        external_parents: &HashMap<usize, Mat4>,
         target_idx: usize,
         iteration: u32,
         chain_states: &mut [IkChainState],
@@ -141,6 +145,7 @@ impl IkSolver {
                     self.solve_plane(
                         bones,
                         children_cache,
+                        external_parents,
                         target_idx,
                         iteration,
                         chain_idx,
@@ -219,7 +224,7 @@ impl IkSolver {
                 * bones[link_idx].animation_rotate.inverse()
                 * p;
             bones[link_idx].compute_local_transform();
-            Self::update_global_transform_recursive(bones, children_cache, link_idx);
+            Self::update_global_transform_recursive(bones, children_cache, external_parents, link_idx);
         }
     }
 
@@ -228,6 +233,7 @@ impl IkSolver {
         &self,
         bones: &mut [BoneLink],
         children_cache: &[Vec<usize>],
+        external_parents: &HashMap<usize, Mat4>,
         target_idx: usize,
         iteration: u32,
         chain_idx: usize,
@@ -316,7 +322,7 @@ impl IkSolver {
             * bones[link_idx].animation_rotate.inverse()
             * p;
         bones[link_idx].compute_local_transform();
-        Self::update_global_transform_recursive(bones, children_cache, link_idx);
+        Self::update_global_transform_recursive(bones, children_cache, external_parents, link_idx);
     }
 
     /// 检测是否应使用单轴模式
@@ -437,6 +443,7 @@ impl IkSolver {
     pub(crate) fn update_global_transform_recursive(
         bones: &mut [BoneLink],
         children_cache: &[Vec<usize>],
+        external_parents: &HashMap<usize, Mat4>,
         idx: usize,
     ) {
         if idx >= bones.len() {
@@ -444,7 +451,10 @@ impl IkSolver {
         }
 
         let parent_idx = bones[idx].parent_index;
-        if parent_idx >= 0 && (parent_idx as usize) < bones.len() {
+        if let Some(parent) = external_parents.get(&idx) {
+            bones[idx].parent_to_world = *parent;
+            bones[idx].local_to_world = *parent * bones[idx].local_to_parent;
+        } else if parent_idx >= 0 && (parent_idx as usize) < bones.len() {
             let parent_global = bones[parent_idx as usize].local_to_world;
             bones[idx].parent_to_world = parent_global;
             bones[idx].local_to_world = parent_global * bones[idx].local_to_parent;
@@ -456,8 +466,30 @@ impl IkSolver {
         // 递归更新子骨骼
         if idx < children_cache.len() {
             for &child_idx in &children_cache[idx] {
-                Self::update_global_transform_recursive(bones, children_cache, child_idx);
+                Self::update_global_transform_recursive(bones, children_cache, external_parents, child_idx);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ik_chain_refresh_preserves_independently_parented_descendants() {
+        let mut bones: Vec<_> = ["Root", "Center", "Tip"].iter()
+            .map(|name| BoneLink::new((*name).into())).collect();
+        bones[0].local_to_parent = Mat4::from_translation(Vec3::X * 10.0);
+        bones[1].parent_index = 0;
+        bones[1].local_to_parent = Mat4::from_translation(Vec3::Y);
+        bones[2].parent_index = 1;
+        bones[2].local_to_parent = Mat4::from_translation(Vec3::X);
+        let parent = Mat4::from_rotation_translation(Quat::from_rotation_z(0.6), Vec3::Y * 5.0);
+        let external = HashMap::from([(1, parent)]);
+        IkSolver::update_global_transform_recursive(&mut bones, &[vec![1], vec![2], vec![]], &external, 0);
+        assert!(bones[1].local_to_world.abs_diff_eq(parent * bones[1].local_to_parent, 1e-5));
+        assert!(bones[2].local_to_world.abs_diff_eq(bones[1].local_to_world * bones[2].local_to_parent, 1e-5));
+        assert!(bones[1].parent_to_world.abs_diff_eq(parent, 1e-5));
     }
 }

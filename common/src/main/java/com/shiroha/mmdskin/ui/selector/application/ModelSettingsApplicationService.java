@@ -28,11 +28,12 @@ public class ModelSettingsApplicationService {
         ModelConfigData previous = gateway.loadConfig(modelName);
         ModelConfigData normalized = config.normalizedCopy();
         List<String> available = ModelCatalogEntry.listPmxFiles(modelName);
-        // Never persist a filename that does not exist in this model folder.
+        // The character stays in its folder; a prop can come from a sibling folder.
         if (!normalized.mainPmxFile.isEmpty() && !available.contains(normalized.mainPmxFile)) {
             normalized.mainPmxFile = "";
         }
-        if (!normalized.heldPmxFile.isEmpty() && !available.contains(normalized.heldPmxFile)) {
+        if (!normalized.heldPmxFile.isEmpty()
+                && com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.resolve(modelName, normalized.heldPmxFile) == null) {
             normalized.heldPmxFile = "";
         }
         gateway.saveConfig(modelName, normalized);
@@ -47,11 +48,19 @@ public class ModelSettingsApplicationService {
         return ModelCatalogEntry.listPmxFiles(modelName);
     }
 
+    public List<String> listHeldPmxFiles(String modelName) {
+        return com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.list(modelName);
+    }
+
     public List<String> listBoneNames(String modelName) { return runtimeGateway.listBoneNames(modelName); }
 
     public List<String> listPropMotions(String modelName) {
+        return listPropMotions(modelName, "");
+    }
+
+    public List<String> listPropMotions(String modelName, String propReference) {
         return com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles.list(
-                com.shiroha.mmdskin.config.PathConstants.getModelDir(modelName).toPath());
+                com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.motionDirectory(modelName, propReference));
     }
 
     public ModelConfigData resetToDefaults() {

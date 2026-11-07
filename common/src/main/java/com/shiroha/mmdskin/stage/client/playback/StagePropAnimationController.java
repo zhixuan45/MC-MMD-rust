@@ -30,6 +30,7 @@ public final class StagePropAnimationController {
         PropTimeline timeline=PropTimeline.EMPTY;
         PropTimeline.State state=PropTimeline.State.DEFAULT;
         final java.util.Set<String> missingBones=new java.util.HashSet<>();
+        com.shiroha.mmdskin.player.render.PropBoneParenting parenting;
         Session(StagePropAssignment assignment) { this.assignment=assignment; }
     }
 
@@ -49,6 +50,24 @@ public final class StagePropAnimationController {
     public synchronized PropTimeline.State state(UUID owner) {
         Session session=sessions.get(owner);
         return session==null?PropTimeline.State.DEFAULT:session.state;
+    }
+
+    public synchronized boolean applyBoneParents(UUID owner,long actor,long prop,org.joml.Matrix4f propToActor) {
+        Session session=sessions.get(owner);
+        if(session==null) return true;
+        if(session.parenting==null && session.state.boneBindings().isEmpty()) return true;
+        if(session.parenting==null) {
+            var runtime=com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.get();
+            session.parenting=new com.shiroha.mmdskin.player.render.PropBoneParenting(runtime,runtime);
+        }
+        try {
+            return session.parenting.apply(actor,prop,propToActor,session.state);
+        } catch (IllegalArgumentException invalid) {
+            if(session.missingBones.add("bone-parent:"+invalid.getMessage())) {
+                LOGGER.warn("[StageProp] Bone parenting failed for {}; prop hidden at this binding: {}",owner,invalid.getMessage());
+            }
+            return false;
+        }
     }
 
     public synchronized void warnMissingBone(UUID owner,String bone) {
@@ -74,7 +93,7 @@ public final class StagePropAnimationController {
             return false;
         }
         try {
-            session.timeline=PropTimelineFiles.load(file,pmxFile);
+            session.timeline=PropTimelineFiles.load(file,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile));
             session.state=session.timeline.evaluate(session.frame);
         } catch (java.io.IOException failure) {
             LOGGER.warn("[StageProp] {}",failure.getMessage());
@@ -111,7 +130,8 @@ public final class StagePropAnimationController {
         boolean rewind=frame<session.frame;
         session.frame=frame;
         PropTimeline.State state=session.timeline.evaluate(frame);
-        boolean attachmentChanged=!Objects.equals(session.state.attachment(),state.attachment());
+        boolean attachmentChanged=!Objects.equals(session.state.attachment(),state.attachment())
+                || !session.state.boneBindings().equals(state.boneBindings());
         session.state=state;
         if (session.model!=null && session.model.getModelHandle()!=session.modelHandle) closeBinding(session);
         if ((rewind || attachmentChanged) && session.model!=null) session.model.resetPhysics();
@@ -141,6 +161,7 @@ public final class StagePropAnimationController {
         session.model=null; session.animation=0; session.modelHandle=0; session.appliedFrame=Float.NaN;
         try {
             if (model!=null && model.getModelHandle()==handle) {
+                if(session.parenting!=null) session.parenting.clear(handle);
                 model.changeAnim(0,0);
                 model.setLayerSpeed(0,1);
                 model.setLayerLoop(0,true);

@@ -211,6 +211,17 @@ public final class NativeRuntimeBridge implements
         return nativeFunc().SetPropPhysicsAttachment(propHandle, ownerHandle, transform);
     }
 
+    @Override public boolean setPropBoneParents(long model, int[] indices, float[] matrices) {
+        NativePoseInputs.externalPose(model);
+        return nativeFunc().SetPropBoneParents(model,indices,matrices);
+    }
+    @Override public boolean getPropBonePose(long model, int index, ByteBuffer matrices) {
+        return nativeFunc().GetPropBonePose(model,index,matrices);
+    }
+    @Override public boolean evaluatePropPose(long model) {
+        return nativeFunc().EvaluatePropPose(model);
+    }
+
     @Override
     public boolean setTaczArmTargets(long modelHandle, float[] columnMajorMatrices, int validMask) {
         NativePoseInputs.externalPose(modelHandle);
