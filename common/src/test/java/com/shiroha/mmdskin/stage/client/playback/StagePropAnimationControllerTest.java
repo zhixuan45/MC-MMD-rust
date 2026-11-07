@@ -15,6 +15,102 @@ import static org.junit.jupiter.api.Assertions.*;
 class StagePropAnimationControllerTest {
     @TempDir Path dir;
 
+    @Test void failedMotionCannotInstallBoneParentsOrLeakThemIntoTheLegacyAttachment() throws Exception {
+        fixture("prop.vmd");
+        boneTimeline();
+        var previous=com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.get();
+        var nativeParents=new ArrayList<Integer>();
+        com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.set(parentRuntime(nativeParents));
+        var port=new Port(); port.tracks=false;
+        var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID();
+        try {
+            controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+            assertFalse(controller.bind(owner,new Model(22).proxy,dir,"fan.pmx"));
+            controller.applyBoneParents(owner,11,22,new org.joml.Matrix4f());
+            controller.stop(owner);
+            assertTrue(nativeParents.isEmpty(),"Rejected VMD must not install unowned native parents; no owner exists to clear them");
+            assertEquals(com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,controller.state(owner));
+        } finally {
+            controller.clear();
+            com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.set(previous);
+        }
+    }
+
+    @Test void validBoneTimelineClearsBeforeTheSamePropReturnsToLegacyAttachment() throws Exception {
+        fixture("prop.vmd"); fixture("plain.vmd");
+        boneTimeline();
+        var previous=com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.get();
+        var nativeParents=new ArrayList<Integer>();
+        com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.set(parentRuntime(nativeParents));
+        var controller=new StagePropAnimationController(new Port());
+        UUID owner=UUID.randomUUID(); var model=new Model(22);
+        try {
+            controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+            assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+            controller.applyBoneParents(owner,11,33,new org.joml.Matrix4f());
+            assertTrue(nativeParents.isEmpty(),"A session must not mutate a different cached prop instance");
+            controller.applyBoneParents(owner,11,22,new org.joml.Matrix4f());
+            assertEquals(List.of(1),nativeParents);
+            controller.begin(owner,new StagePropAssignment("fan.pmx","plain.vmd"));
+            assertEquals(List.of(1,0),nativeParents,"Previous bone parents must clear before the same native prop is reused");
+            assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+            controller.applyBoneParents(owner,11,22,new org.joml.Matrix4f());
+            assertEquals(List.of(1,0),nativeParents,"Legacy whole-model attachment must not install bone parents");
+        } finally {
+            controller.clear();
+            com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.set(previous);
+        }
+    }
+
+    @Test void failedBindingKeepsControlsInactiveAfterSeekAndRepeatedDraws() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        for(String failure:List.of("zero","empty","mutation")) {
+            var port=new Port(); var model=new Model(22);
+            port.zero=failure.equals("zero");
+            port.tracks=!failure.equals("empty");
+            model.fail=failure.equals("mutation");
+            var controller=new StagePropAnimationController(port);
+            UUID owner=UUID.randomUUID();
+            try {
+                controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+                assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+                controller.seek(owner,30);
+                assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+                assertEquals(com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,controller.state(owner),failure);
+                assertEquals(1,port.loadModels.size(),"Failed binding retries on a new session rather than each draw");
+            } finally { controller.clear(); }
+        }
+    }
+
+    private void boneTimeline() throws Exception {
+        var binding=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding("Center","Hand",
+                com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset.IDENTITY,
+                com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.identityCompensation(),true,false);
+        var timeline=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline(
+                com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,List.of(),List.of(),
+                List.of(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(0,binding)));
+        com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.save(
+                com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.open(dir.resolve("prop.vmd"),"fan.pmx"),timeline);
+    }
+
+    private static com.shiroha.mmdskin.bridge.runtime.NativeRuntimePort parentRuntime(List<Integer> calls) {
+        return (com.shiroha.mmdskin.bridge.runtime.NativeRuntimePort)Proxy.newProxyInstance(
+                StagePropAnimationControllerTest.class.getClassLoader(),
+                new Class<?>[]{com.shiroha.mmdskin.bridge.runtime.NativeRuntimePort.class},(p,m,args) -> {
+                    return switch(m.getName()) {
+                        case "getBoneNames" -> "[\"Center\",\"Hand\"]";
+                        case "getPropBonePose" -> {
+                            var buffer=(ByteBuffer)args[2];
+                            new org.joml.Matrix4f().get(0,buffer); new org.joml.Matrix4f().get(64,buffer);
+                            yield true;
+                        }
+                        case "setPropBoneParents" -> { calls.add(((int[])args[1]).length); yield true; }
+                        default -> throw new AssertionError(m.getName());
+                    };
+                });
+    }
+
     @Test void crossFolderReferenceLoadsThePropsLocalMotionAndTimeline() throws Exception {
         fixture("prop.vmd");
         Files.writeString(dir.resolve("prop.timeline.json"), """

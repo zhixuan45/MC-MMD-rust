@@ -55,6 +55,7 @@ public final class StagePropAnimationController {
     public synchronized boolean applyBoneParents(UUID owner,long actor,long prop,org.joml.Matrix4f propToActor) {
         Session session=sessions.get(owner);
         if(session==null) return true;
+        if(session.model==null || session.modelHandle!=prop || session.model.getModelHandle()!=prop) return true;
         if(session.parenting==null && session.state.boneBindings().isEmpty()) return true;
         if(session.parenting==null) {
             var runtime=com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.get();
@@ -92,9 +93,9 @@ public final class StagePropAnimationController {
             LOGGER.warn("[StageProp] Missing local prop motion: {} / {}",modelDir,session.assignment.motionFile());
             return false;
         }
+        PropTimeline timeline=PropTimeline.EMPTY;
         try {
-            session.timeline=PropTimelineFiles.load(file,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile));
-            session.state=session.timeline.evaluate(session.frame);
+            timeline=PropTimelineFiles.load(file,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile));
         } catch (java.io.IOException failure) {
             LOGGER.warn("[StageProp] {}",failure.getMessage());
         }
@@ -114,6 +115,10 @@ public final class StagePropAnimationController {
             model.setLayerLoop(0,false);
             model.setLayerSpeed(0,0);
             model.resetPhysics();
+            // Publish controls only after the model owns a usable motion. Otherwise
+            // failed loads could install native parents with no binding to clear them.
+            session.timeline=timeline;
+            session.state=timeline.evaluate(session.frame);
             applyFrame(session);
             return true;
         } catch (RuntimeException failure) {
@@ -159,6 +164,8 @@ public final class StagePropAnimationController {
         ModelInstance model=session.model;
         long handle=session.modelHandle, animation=session.animation;
         session.model=null; session.animation=0; session.modelHandle=0; session.appliedFrame=Float.NaN;
+        session.timeline=PropTimeline.EMPTY;
+        session.state=PropTimeline.State.DEFAULT;
         try {
             if (model!=null && model.getModelHandle()==handle) {
                 if(session.parenting!=null) session.parenting.clear(handle);
@@ -169,6 +176,7 @@ public final class StagePropAnimationController {
             }
         } catch (RuntimeException failure) { LOGGER.warn("[StageProp] Could not restore prop animation state",failure); }
         finally {
+            session.parenting=null;
             if (animation!=0) {
                 try { animations.deleteAnimation(animation); }
                 catch (RuntimeException failure) { LOGGER.warn("[StageProp] Could not release prop animation {}",animation,failure); }
