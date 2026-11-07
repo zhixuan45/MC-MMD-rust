@@ -24,6 +24,8 @@ public final class Probe {
         System.setProperty("probe.assets",assets.toString());
         Path motion = assets.resolve("扇子动作.vmd");
         Files.write(motion,new byte[]{1});
+        Files.writeString(assets.resolve("actor.pmx"),"synthetic actor");
+        Files.writeString(assets.resolve("团扇.pmx"),"synthetic prop");
         Files.copy(Path.of("doc/examples/fan.timeline.json"),PropTimelineFiles.sidecar(motion));
         var config = new ModelConfigData();
         config.heldPmxFile="团扇.pmx"; config.heldPmxStageMotion="扇子动作.vmd";
@@ -82,6 +84,8 @@ public final class Probe {
                 "Second registration must sample a baseline containing the earlier same-frame registration");
         click(screen,widget(screen,"saveButton"));
         check(PropTimelineFiles.load(motion,config.heldPmxFile).boneKeys().size()==2,"Save must retain both bone tracks");
+        check(com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.read(PropTimelineFiles.open(motion,config.heldPmxFile))!=null,
+                "Bone compensation must save its actual asset calibration");
         render(screen,output.resolve("multi-bone-854.png"));
 
         client.width=320; client.height=240;
@@ -104,7 +108,19 @@ public final class Probe {
         check(client.screen==parent && PropTimelinePreview.active==0,"Discarding must close preview resources");
         check(PropTimelineFiles.load(motion,config.heldPmxFile).attachments().size()==2,"Discarding must retain the saved file");
         check(PropTimelineFiles.load(motion,config.heldPmxFile).boneKeys().size()==2,"Discarding must retain both saved child-bone keys");
-        System.out.println("PASS production timeline UI: scrub, visibility, bone picker return, same-frame child registrations, compensation baseline order, v2 save, small-window delete, discard, preview lifecycle");
+        Files.writeString(assets.resolve("actor.pmx"),"changed actor");
+        client.width=854; client.height=480;
+        var reopened=new PropTimelineScreen(parent,"probe",config);
+        client.setScreen(reopened);
+        var reopenedEditor=(PropTimelineEditor)field(reopened,"editor");
+        check(reopenedEditor.compensationStale(),"Changed actor asset must invalidate saved compensation on reopen");
+        click(reopened,widget(reopened,"saveButton"));
+        check(!reopenedEditor.dirty(),"Save must recalculate stale compensation and update calibration");
+        var calibration=com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.read(PropTimelineFiles.open(motion,config.heldPmxFile));
+        check(calibration.actor().equals(com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.hash(assets.resolve("actor.pmx"))),
+                "Recalibration must describe the new actor asset");
+        reopened.onClose();
+        System.out.println("PASS production timeline UI: scrub, visibility, bone picker return, same-frame child registrations, compensation baseline order, scoped v2 save, changed-asset recalibration, small-window delete, discard, preview lifecycle");
         System.out.println("PNG layout evidence: "+output+" (Minecraft widgets and native 3D preview are shimmed)");
     }
 

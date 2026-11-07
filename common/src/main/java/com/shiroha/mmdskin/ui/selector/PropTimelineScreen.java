@@ -2,6 +2,7 @@ package com.shiroha.mmdskin.ui.selector;
 
 import com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles;
 import com.shiroha.mmdskin.asset.catalog.PropTimelineFiles;
+import com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration;
 import com.shiroha.mmdskin.config.ModelConfigData;
 import com.shiroha.mmdskin.config.PathConstants;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Attachment;
@@ -86,6 +87,10 @@ public final class PropTimelineScreen extends Screen {
                 motionChoices = TimelineMotionChoices.list(modelDir,PathConstants.getStageAnimDir().toPath());
                 referenceLabel=PropTimelineFiles.referenceMotion(document);
                 referenceMotion=motionChoices.get(referenceLabel);
+                if(!editor.snapshot().boneKeys().isEmpty()) {
+                    if(missingReference() || !java.util.Objects.equals(PropTimelineCalibration.read(document),
+                            PropTimelineCalibration.capture(modelName,config,motion,referenceMotion))) editor.invalidateCompensation();
+                }
                 boneChoices = ModelSelectorServices.modelSettings().listBoneNames(modelName);
             } catch (Exception failure) {
                 failedOpen = true;
@@ -344,8 +349,14 @@ public final class PropTimelineScreen extends Screen {
 
     private void save() {
         try {
+            PropTimelineCalibration.Signature calibration=null;
+            if(!editor.snapshot().boneKeys().isEmpty()) {
+                requireRegistrationPreview();
+                calibration=PropTimelineCalibration.capture(modelName,config,motion,referenceMotion);
+                if(!calibration.equals(PropTimelineCalibration.read(document))) editor.invalidateCompensation();
+            }
             if(editor.compensationStale()) recalculate();
-            document = PropTimelineFiles.save(document,editor.snapshot(),referenceLabel);
+            document = PropTimelineFiles.save(document,editor.snapshot(),referenceLabel,calibration);
             editor.markSaved();
             status = text("saved").getString();
         } catch (Exception failure) { report(failure); }

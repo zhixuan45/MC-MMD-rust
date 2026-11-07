@@ -29,6 +29,11 @@ public record ModelRequestKey(ModelSubjectKind subjectKind, String subjectId, St
                 modelName, pmxFile);
     }
 
+    /** A stage may mutate animation, bone parents and physics without touching the ordinary held prop. */
+    public static ModelRequestKey stageProp(UUID player, String session, String modelName, String pmxFile) {
+        return new ModelRequestKey(ModelSubjectKind.OTHER,"held-item/stage/"+player+"/"+session,modelName,pmxFile);
+    }
+
     public boolean isHeldItem() {
         return subjectKind == ModelSubjectKind.OTHER && subjectId.startsWith("held-item/");
     }

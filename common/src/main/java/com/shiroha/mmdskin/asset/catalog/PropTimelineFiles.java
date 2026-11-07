@@ -73,6 +73,11 @@ public final class PropTimelineFiles {
     }
 
     public static Document save(Document document, PropTimeline timeline,String referenceMotion) throws IOException {
+        return save(document,timeline,referenceMotion,null);
+    }
+
+    public static Document save(Document document, PropTimeline timeline,String referenceMotion,
+                                PropTimelineCalibration.Signature calibration) throws IOException {
         Path path = sidecar(document.motion()).toAbsolutePath().normalize();
         if (!Objects.equals(document.originalJson(),read(path))) {
             throw new IOException("Timeline changed on disk; reopen the editor before saving: " + path);
@@ -81,6 +86,8 @@ public final class PropTimelineFiles {
                 : JsonParser.parseString(document.originalJson()).getAsJsonObject();
         root.addProperty("version",timeline.boneKeys().isEmpty()?1:2);
         if (referenceMotion!=null) root.addProperty("referenceMotion",referenceMotion);
+        if(timeline.boneKeys().isEmpty()) root.remove("calibration");
+        else if(calibration!=null) root.add("calibration",PropTimelineCalibration.json(calibration));
         root.addProperty("motion",document.motion().getFileName().toString());
         JsonObject object;
         if (root.has("objects")) object = root.getAsJsonArray("objects").get(0).getAsJsonObject();

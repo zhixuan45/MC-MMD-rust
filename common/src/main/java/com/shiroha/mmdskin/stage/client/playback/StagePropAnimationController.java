@@ -2,8 +2,10 @@ package com.shiroha.mmdskin.stage.client.playback;
 
 import com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles;
 import com.shiroha.mmdskin.asset.catalog.PropTimelineFiles;
+import com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration;
 import com.shiroha.mmdskin.bridge.runtime.NativeAnimationPort;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
+import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
 import com.shiroha.mmdskin.stage.domain.model.StagePropAssignment;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
 import org.apache.logging.log4j.LogManager;
@@ -19,9 +21,13 @@ public final class StagePropAnimationController {
     private static final Logger LOGGER=LogManager.getLogger();
     private final NativeAnimationPort animations;
     private final Map<UUID,Session> sessions=new HashMap<>();
+    private final java.util.function.Consumer<ModelRequestKey> releaseModel;
 
     private static final class Session {
         final StagePropAssignment assignment;
+        final String id=UUID.randomUUID().toString();
+        final java.util.List<Path> actorMotions;
+        ModelRequestKey requestedKey;
         float frame;
         ModelInstance attempted, model;
         Path attemptedDir;
@@ -31,15 +37,41 @@ public final class StagePropAnimationController {
         PropTimeline.State state=PropTimeline.State.DEFAULT;
         final java.util.Set<String> missingBones=new java.util.HashSet<>();
         com.shiroha.mmdskin.player.render.PropBoneParenting parenting;
-        Session(StagePropAssignment assignment) { this.assignment=assignment; }
+        Session(StagePropAssignment assignment,java.util.List<Path> actorMotions) {
+            this.assignment=assignment; this.actorMotions=java.util.List.copyOf(actorMotions);
+        }
     }
 
-    public StagePropAnimationController(NativeAnimationPort animations) { this.animations=Objects.requireNonNull(animations); }
+    public StagePropAnimationController(NativeAnimationPort animations) { this(animations,key -> {}); }
+    public StagePropAnimationController(NativeAnimationPort animations,java.util.function.Consumer<ModelRequestKey> releaseModel) {
+        this.animations=Objects.requireNonNull(animations); this.releaseModel=Objects.requireNonNull(releaseModel);
+    }
 
     public synchronized void begin(UUID owner,StagePropAssignment assignment) {
+        begin(owner,assignment,java.util.List.of());
+    }
+
+    public synchronized void begin(UUID owner,StagePropAssignment assignment,java.util.List<Path> actorMotions) {
         if (owner==null) return;
         stop(owner);
-        if (assignment!=null && assignment.isValid()) sessions.put(owner,new Session(assignment));
+        if (assignment!=null && assignment.isValid()) sessions.put(owner,new Session(assignment,actorMotions));
+    }
+
+    public synchronized ModelRequestKey requestKey(UUID owner,String modelName) {
+        Session session=sessions.get(owner);
+        if(session==null) return null;
+        var key=ModelRequestKey.stageProp(owner,session.id,modelName,session.assignment.pmxFile());
+        if(session.requestedKey!=null && !session.requestedKey.equals(key)) {
+            closeBinding(session);
+            releaseModel.accept(session.requestedKey);
+            session.attempted=null;
+        }
+        session.requestedKey=key;
+        return key;
+    }
+
+    @FunctionalInterface public interface CalibrationSource {
+        PropTimelineCalibration.Signature capture(Path motion) throws java.io.IOException;
     }
 
     public synchronized StagePropAssignment assignment(UUID owner) {
@@ -80,6 +112,10 @@ public final class StagePropAnimationController {
 
     /** A model that finished loading late is immediately evaluated at the current stage frame. */
     public synchronized boolean bind(UUID owner,ModelInstance model,Path modelDir,String pmxFile) {
+        return bind(owner,model,modelDir,pmxFile,null);
+    }
+
+    public synchronized boolean bind(UUID owner,ModelInstance model,Path modelDir,String pmxFile,CalibrationSource calibration) {
         Session session=sessions.get(owner);
         if (session==null || model==null || model.getModelHandle()==0 || !session.assignment.pmxFile().equals(pmxFile)) return false;
         long handle=model.getModelHandle();
@@ -95,9 +131,22 @@ public final class StagePropAnimationController {
         }
         PropTimeline timeline=PropTimeline.EMPTY;
         try {
-            timeline=PropTimelineFiles.load(file,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile));
+            var document=PropTimelineFiles.open(file,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile));
+            timeline=document.timeline();
+            if(!timeline.boneKeys().isEmpty()) {
+                String mismatch=PropTimelineCalibration.mismatch(PropTimelineCalibration.read(document),
+                        calibration==null?null:calibration.capture(file),session.actorMotions);
+                if(mismatch!=null) {
+                    LOGGER.warn("[StageProp] {}; using simple attachment without stage motion/timeline for {}",mismatch,owner);
+                    return false;
+                }
+            }
         } catch (java.io.IOException failure) {
             LOGGER.warn("[StageProp] {}",failure.getMessage());
+            if(!timeline.boneKeys().isEmpty()) return false;
+        } catch (RuntimeException failure) {
+            LOGGER.warn("[StageProp] Invalid calibration; using simple attachment for {}: {}",owner,failure.getMessage());
+            return false;
         }
         try {
             long animation=animations.loadAnimation(handle,file.toString());
@@ -153,7 +202,10 @@ public final class StagePropAnimationController {
 
     public synchronized void stop(UUID owner) {
         Session session=sessions.remove(owner);
-        if (session!=null) closeBinding(session);
+        if (session!=null) {
+            try { closeBinding(session); }
+            finally { if(session.requestedKey!=null) releaseModel.accept(session.requestedKey); }
+        }
     }
 
     public synchronized void clear() {

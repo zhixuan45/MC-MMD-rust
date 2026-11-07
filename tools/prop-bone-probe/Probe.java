@@ -39,12 +39,16 @@ public final class Probe {
                     throw new UnsupportedOperationException(method.getName());
                 });
         for (boolean cpu : new boolean[]{false, true}) {
-            long actor = 0, prop = 0, animation = 0;
+            long actor = 0, prop = 0, ordinary = 0, animation = 0;
             var parenting = new PropBoneParenting(matrices, queries);
             try {
                 actor = API.LoadModelPMX(fixture.resolve("fixture.pmx").toString(), fixture.toString(), 1);
                 prop = API.LoadModelPMX(fixture.resolve("fixture.pmx").toString(), fixture.toString(), 1);
-                check(actor != 0 && prop != 0, "load PMX");
+                ordinary = API.LoadModelPMX(fixture.resolve("fixture.pmx").toString(), fixture.toString(), 1);
+                check(actor != 0 && prop != 0 && ordinary != 0, "load independent PMX instances");
+                API.SetPhysicsEnabled(ordinary, false);
+                API.EvaluatePropPose(ordinary);
+                Matrix4f ordinaryCenter = parenting.pose(ordinary, "Center")[0];
                 check(API.GetVertexCount(prop) == 3, "fixture mesh retained");
                 API.SetPhysicsEnabled(actor, false);
                 API.SetPhysicsEnabled(prop, false);
@@ -100,11 +104,20 @@ public final class Probe {
                 Matrix4f[] center = parenting.pose(prop, "Center");
                 near(new Matrix4f(parenting.pose(prop, "Root")[0]).mul(center[1]), center[0],
                         "clear restores original hierarchy");
+                // The stage and ordinary paths load identical assets under separate model identities.
+                // Exercise the ordinary instance again after stage VMD, parenting, physics and cleanup.
+                if (cpu) API.UpdateModel(ordinary, 0);
+                else API.UpdateAnimationOnly(ordinary, 0);
+                near(ordinaryCenter, parenting.pose(ordinary, "Center")[0], "stage must never alter the ordinary prop pose");
+                API.DeleteModel(prop); prop = 0;
+                API.EvaluatePropPose(ordinary);
+                near(ordinaryCenter, parenting.pose(ordinary, "Center")[0], "stage disposal must preserve the ordinary prop");
                 System.out.println("PASS real JNI " + (cpu ? "CPU" : "GPU pose")
-                        + ": same-frame Root/Center, keep-world, VMD, atomic rejection, physics/joint, clear");
+                        + ": same-frame Root/Center, keep-world, VMD, atomic rejection, physics/joint, clear, ordinary-prop isolation");
             } finally {
                 if (prop != 0) API.DeleteModel(prop);
                 if (actor != 0) API.DeleteModel(actor);
+                if (ordinary != 0) API.DeleteModel(ordinary);
                 if (animation != 0) API.DeleteAnimation(animation);
             }
         }

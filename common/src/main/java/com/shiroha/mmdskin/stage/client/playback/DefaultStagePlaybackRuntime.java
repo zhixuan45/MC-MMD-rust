@@ -157,7 +157,8 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
             LOGGER.warn("[舞台模式] 相机控制器启动失败，已释放动画句柄");
             return HostStartResult.failed();
         }
-        cameraController.setLocalPropAssignment(localModelBinding.propAssignment());
+        cameraController.setLocalPropAssignment(localModelBinding.propAssignment(),
+                motionFiles.stream().map(info -> java.nio.file.Path.of(info.path)).toList());
         sessionDescriptor.setPropAssignment(localModelBinding.propAssignment());
         sessionDescriptor.setEndFrame(cameraController.getMaxFrame());
         StageDescriptor remoteDescriptor = buildRemoteStageDescriptor(sessionDescriptor, null);
@@ -243,7 +244,8 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                 }
                 cameraController.setWatchMotion(mergedAnim, localModelBinding.modelHandle(), localModelBinding.modelName());
                 cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
-                cameraController.setLocalPropAssignment(localModelBinding.propAssignment());
+                cameraController.setLocalPropAssignment(localModelBinding.propAssignment(),
+                        effectiveDescriptor.getMotionFiles().stream().map(name -> new File(motionStageDir,name).toPath()).toList());
                 if (audioPath != null && !audioPath.isEmpty()) {
                     cameraController.loadWatchAudio(audioPath);
                 }
@@ -268,7 +270,8 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                 return GuestStartResult.failed();
             }
             cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
-            cameraController.setLocalPropAssignment(localModelBinding.propAssignment());
+            cameraController.setLocalPropAssignment(localModelBinding.propAssignment(),
+                    effectiveDescriptor.getMotionFiles().stream().map(name -> new File(motionStageDir,name).toPath()).toList());
             return GuestStartResult.success(
                     effectiveDescriptor,
                     buildRemoteStageDescriptor(effectiveDescriptor, motionPackName, localModelBinding.propAssignment())

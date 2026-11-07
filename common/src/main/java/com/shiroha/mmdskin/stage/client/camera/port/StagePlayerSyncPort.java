@@ -7,5 +7,7 @@ public interface StagePlayerSyncPort {
     void stopLocalStageAnimation();
 
     default void beginLocalProp(com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment) { }
+    default void beginLocalProp(com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment,
+                                java.util.List<java.nio.file.Path> actorMotions) { beginLocalProp(assignment); }
     default void stopLocalProp() { }
 }

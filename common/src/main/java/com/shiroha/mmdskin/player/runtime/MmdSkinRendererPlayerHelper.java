@@ -69,13 +69,22 @@ public final class MmdSkinRendererPlayerHelper {
             reportVpdResult(player, pose == null ? id : pose.getFileName(), result);
             return result.applied();
         }
+        long animation=managedModel.animationLibrary().animation(id);
+        if(animation==0) return false;
+        PlayerMotionHandoff.leaveStage(model,managedModel.entityState(),() -> {
+            var stage=com.shiroha.mmdskin.stage.client.StageClientRuntime.peek();
+            if(stage!=null) {
+                if(player==Minecraft.getInstance().player && stage.cameraController().isActive()) stage.cameraController().exitStageMode();
+                stage.animSyncHelper().end(player.getUUID());
+            }
+        });
         com.shiroha.mmdskin.expression.ExpressionApplicationService.apply(model.getModelHandle(),
                 com.shiroha.mmdskin.expression.ExpressionSelection.resetPose(), resolved.playerName());
         managedModel.entityState().playVpdPose = false;
         managedModel.entityState().playCustomAnim = true;
 
         managedModel.entityState().invalidateStateLayers();
-        model.changeAnim(managedModel.animationLibrary().animation(id), 0);
+        model.changeAnim(animation, 0);
         model.setLayerLoop(1, true);
         model.changeAnim(0, 1);
         model.changeAnim(0, 2);

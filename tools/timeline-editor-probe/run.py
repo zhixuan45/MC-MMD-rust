@@ -217,10 +217,29 @@ public final class ModelSelectorServices {
     "com/shiroha/mmdskin/asset/catalog/HeldPmxAssets.java": r'''
 package com.shiroha.mmdskin.asset.catalog;
 public final class HeldPmxAssets {
+    public static ModelCatalogEntry resolve(String owner,String reference) {
+        return new ModelCatalogEntry(owner,motionDirectory(owner,reference).resolve(fileName(reference)).toString());
+    }
     public static java.nio.file.Path motionDirectory(String owner,String reference) {
         return com.shiroha.mmdskin.config.PathConstants.getModelDir(owner).toPath();
     }
     public static String fileName(String reference){return reference.substring(reference.indexOf('/')+1);}
+}
+''',
+    "com/shiroha/mmdskin/asset/catalog/ModelCatalogEntry.java": r'''
+package com.shiroha.mmdskin.asset.catalog;
+public record ModelCatalogEntry(String folder,String path) {
+    public String getFolderName(){return folder;}
+    public String getModelFilePath(){return path;}
+    public static ModelCatalogEntry resolveModelFile(String owner,String variant) {
+        return new ModelCatalogEntry(owner,com.shiroha.mmdskin.config.PathConstants.getModelDir(owner).toPath().resolve("actor.pmx").toString());
+    }
+}
+''',
+    "com/shiroha/mmdskin/config/ModelConfigManager.java": r'''
+package com.shiroha.mmdskin.config;
+public final class ModelConfigManager {
+    public static ModelConfigData getConfig(String name){return new ModelConfigData();}
 }
 ''',
     "com/shiroha/mmdskin/ui/selector/timeline/PropTimelinePreview.java": r'''
@@ -256,6 +275,7 @@ SOURCES = [
     "config/ModelConfigData.java",
     "asset/catalog/HeldPmxMotionFiles.java",
     "asset/catalog/PropTimelineFiles.java",
+    "asset/catalog/PropTimelineCalibration.java",
     "stage/domain/timeline/PropTimeline.java",
     "ui/chrome/TranslucentTrayChrome.java",
     "ui/selector/HeldPmxSelectionScreen.java",

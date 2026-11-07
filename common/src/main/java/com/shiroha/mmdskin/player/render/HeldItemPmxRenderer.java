@@ -40,11 +40,14 @@ final class HeldItemPmxRenderer {
 
         if (HeldPmxAssets.resolve(modelName, pmx) == null) return false;
 
-        ModelRequestKey propKey = ModelRequestKey.heldItem(player, modelName, pmx);
+        ModelRequestKey propKey = assignment==null?ModelRequestKey.heldItem(player, modelName, pmx)
+                :propAnimations.requestKey(player.getUUID(),modelName);
         ManagedModel prop = ClientRenderRuntime.get().modelRepository().acquire(propKey);
         if (prop == null || prop.modelInstance().getModelHandle() == 0L) return false;
 
-        if (assignment != null) propAnimations.bind(player.getUUID(), prop.modelInstance(), java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx);
+        if (assignment != null) propAnimations.bind(player.getUUID(), prop.modelInstance(),
+                java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx,
+                motion -> com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.capture(modelName,config,motion,null));
         var state = assignment != null ? propAnimations.state(player.getUUID()) : PropTimeline.State.DEFAULT;
         var binding = state.attachment();
 

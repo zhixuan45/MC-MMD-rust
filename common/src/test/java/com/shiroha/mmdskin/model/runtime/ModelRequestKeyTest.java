@@ -5,6 +5,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ModelRequestKeyTest {
+    @Test void stagePropNeverSharesTheOrdinaryPropOrAnotherSessionsCacheIdentity() {
+        var owner=java.util.UUID.randomUUID();
+        var ordinary=new ModelRequestKey(ModelSubjectKind.OTHER,"held-item/"+owner,"actor","fan.pmx");
+        var first=ModelRequestKey.stageProp(owner,"sessionA","actor","fan.pmx");
+        var second=ModelRequestKey.stageProp(owner,"sessionB","actor","fan.pmx");
+        assertTrue(first.isHeldItem());
+        assertNotEquals(ordinary.cacheKey(),first.cacheKey());
+        assertNotEquals(first.cacheKey(),second.cacheKey());
+    }
+
     @Test
     void independentPropDoesNotReplaceCharacterCacheIdentity() {
         ModelRequestKey character = new ModelRequestKey(ModelSubjectKind.PLAYER, "uuid", "model-folder");

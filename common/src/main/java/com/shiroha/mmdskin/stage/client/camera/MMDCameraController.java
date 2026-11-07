@@ -186,6 +186,10 @@ public final class MMDCameraController {
     public void setLocalPropAssignment(com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment) {
         playerSyncPort.beginLocalProp(assignment);
     }
+    public void setLocalPropAssignment(com.shiroha.mmdskin.stage.domain.model.StagePropAssignment assignment,
+                                       java.util.List<java.nio.file.Path> actorMotions) {
+        playerSyncPort.beginLocalProp(assignment,actorMotions);
+    }
 
     public void setHostEndFrame(Float frame) {
         if (frame != null) playbackSession.setMaxFrame(frame);

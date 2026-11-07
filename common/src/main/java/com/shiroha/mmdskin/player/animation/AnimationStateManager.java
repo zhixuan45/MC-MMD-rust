@@ -220,7 +220,7 @@ public class AnimationStateManager {
     private static void stopCustomAnim(ManagedModel model) {
         com.shiroha.mmdskin.player.runtime.VpdPosePlayback.leave(model);
         model.entityState().playCustomAnim = false;
-        model.entityState().playStageAnim = false;
+        com.shiroha.mmdskin.player.runtime.PlayerMotionHandoff.leaveStage(model.modelInstance(),model.entityState());
         model.modelInstance().changeAnim(model.animationLibrary().animation("idle"), 0);
         model.modelInstance().setLayerLoop(1, true);
         model.modelInstance().changeAnim(0, 1);

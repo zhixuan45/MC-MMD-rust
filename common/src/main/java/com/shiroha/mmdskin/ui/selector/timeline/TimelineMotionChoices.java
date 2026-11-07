@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Reference character motions are preview-only; no absolute path is persisted in a timeline. */
+/** Reference motions supply preview and calibration; only labels and content hashes are persisted. */
 public final class TimelineMotionChoices {
     private TimelineMotionChoices() { }
 

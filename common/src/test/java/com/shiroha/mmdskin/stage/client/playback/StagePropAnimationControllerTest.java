@@ -15,6 +15,72 @@ import static org.junit.jupiter.api.Assertions.*;
 class StagePropAnimationControllerTest {
     @TempDir Path dir;
 
+    @Test void stageSessionReleasesPendingRequestsAndNeverReusesAnOldNativeProp() {
+        var released=new ArrayList<com.shiroha.mmdskin.model.runtime.ModelRequestKey>();
+        var controller=new StagePropAnimationController(new Port(),released::add);
+        UUID owner=UUID.randomUUID(),other=UUID.randomUUID();
+        var assignment=new StagePropAssignment("fan.pmx","prop.vmd");
+        controller.begin(owner,assignment);
+        var first=controller.requestKey(owner,"actor");
+        assertEquals(first,controller.requestKey(owner,"actor"));
+        controller.begin(other,assignment);
+        var otherKey=controller.requestKey(other,"actor");
+        controller.begin(owner,assignment);
+        assertEquals(List.of(first),released,"Even a still-loading prop must be cancelled on stop");
+        var next=controller.requestKey(owner,"actor");
+        assertNotEquals(first,next);
+        assertNotEquals(next,otherKey);
+        var changedActor=controller.requestKey(owner,"otherActor");
+        assertEquals(List.of(first,next),released,"Changing the actor releases the previous prop identity");
+        controller.clear(); controller.clear();
+        assertEquals(4,released.size());
+        assertTrue(released.contains(changedActor)); assertTrue(released.contains(otherKey));
+    }
+
+    @Test void anotherActorMotionCannotReuseARegisteredBoneTimeline() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        Path reference=Files.writeString(dir.resolve("reference.vmd"),"reference");
+        Path other=Files.writeString(dir.resolve("other.vmd"),"other");
+        var base=calibration();
+        var saved=new com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.Signature(base.actor(),base.prop(),base.motion(),
+                com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.hash(reference),base.bone(),base.transform());
+        var document=com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.open(dir.resolve("prop.vmd"),"fan.pmx");
+        com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.save(document,document.timeline(),"reference.vmd",saved);
+        var port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(22);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(reference));
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> base));
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(other));
+        assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> base));
+        assertEquals(1,port.loadModels.size(),"Mismatched compensation must fall back before loading the prop stage VMD");
+        assertTrue(controller.state(owner).boneBindings().isEmpty());
+        assertEquals(0,model.animation);
+        var wrongActor=new com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.Signature("a".repeat(64),base.prop(),
+                base.motion(),base.reference(),base.bone(),base.transform());
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(reference));
+        assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> wrongActor));
+        assertEquals(1,port.loadModels.size(),"Changing characters must not reuse the reference clip's compensation");
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(reference));
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> base),"Returning to the matching performance must recover");
+        assertEquals(2,port.loadModels.size());
+        controller.clear();
+    }
+
+    @Test void unscopedLegacyBoneCompensationRequiresEditorRecalibrationButNoStageMutation() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        Path sidecar=dir.resolve("prop.timeline.json");
+        var json=com.google.gson.JsonParser.parseString(Files.readString(sidecar)).getAsJsonObject();
+        json.remove("calibration"); Files.writeString(sidecar,json.toString());
+        var port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(22);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> calibration()));
+        assertTrue(port.loadModels.isEmpty());
+        assertEquals(0,model.animation);
+        assertTrue(controller.state(owner).boneBindings().isEmpty());
+        controller.clear();
+    }
+
     @Test void failedMotionCannotInstallBoneParentsOrLeakThemIntoTheLegacyAttachment() throws Exception {
         fixture("prop.vmd");
         boneTimeline();
@@ -26,7 +92,7 @@ class StagePropAnimationControllerTest {
         UUID owner=UUID.randomUUID();
         try {
             controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
-            assertFalse(controller.bind(owner,new Model(22).proxy,dir,"fan.pmx"));
+            assertFalse(controller.bind(owner,new Model(22).proxy,dir,"fan.pmx",file -> calibration()));
             controller.applyBoneParents(owner,11,22,new org.joml.Matrix4f());
             controller.stop(owner);
             assertTrue(nativeParents.isEmpty(),"Rejected VMD must not install unowned native parents; no owner exists to clear them");
@@ -47,7 +113,7 @@ class StagePropAnimationControllerTest {
         UUID owner=UUID.randomUUID(); var model=new Model(22);
         try {
             controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
-            assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+            assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> calibration()));
             controller.applyBoneParents(owner,11,33,new org.joml.Matrix4f());
             assertTrue(nativeParents.isEmpty(),"A session must not mutate a different cached prop instance");
             controller.applyBoneParents(owner,11,22,new org.joml.Matrix4f());
@@ -74,9 +140,9 @@ class StagePropAnimationControllerTest {
             UUID owner=UUID.randomUUID();
             try {
                 controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
-                assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+                assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> calibration()));
                 controller.seek(owner,30);
-                assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+                assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> calibration()));
                 assertEquals(com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,controller.state(owner),failure);
                 assertEquals(1,port.loadModels.size(),"Failed binding retries on a new session rather than each draw");
             } finally { controller.clear(); }
@@ -91,7 +157,14 @@ class StagePropAnimationControllerTest {
                 com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,List.of(),List.of(),
                 List.of(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(0,binding)));
         com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.save(
-                com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.open(dir.resolve("prop.vmd"),"fan.pmx"),timeline);
+                com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.open(dir.resolve("prop.vmd"),"fan.pmx"),timeline,"",calibration());
+    }
+
+    private com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.Signature calibration() throws java.io.IOException {
+        Path actor=Files.writeString(dir.resolve("actor.pmx"),"actor");
+        Path prop=Files.writeString(dir.resolve("fan.pmx"),"prop");
+        return com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.capture(actor,prop,dir.resolve("prop.vmd"),null,
+                new com.shiroha.mmdskin.config.ModelConfigData());
     }
 
     private static com.shiroha.mmdskin.bridge.runtime.NativeRuntimePort parentRuntime(List<Integer> calls) {

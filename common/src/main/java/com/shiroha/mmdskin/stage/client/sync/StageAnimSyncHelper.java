@@ -43,7 +43,8 @@ public final class StageAnimSyncHelper {
     public StageAnimSyncHelper(StageFrameQueryPort frameQueryPort, NativeAnimationPort animationPort) {
         this.frameQueryPort = Objects.requireNonNull(frameQueryPort, "frameQueryPort");
         this.animationPort = Objects.requireNonNull(animationPort, "animationPort");
-        this.propAnimations = new com.shiroha.mmdskin.stage.client.playback.StagePropAnimationController(animationPort);
+        this.propAnimations = new com.shiroha.mmdskin.stage.client.playback.StagePropAnimationController(animationPort,
+                key -> com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime.get().modelRepository().reloadSubject(key));
     }
 
     public com.shiroha.mmdskin.stage.client.playback.StagePropAnimationController propAnimations() { return propAnimations; }
@@ -225,7 +226,8 @@ public final class StageAnimSyncHelper {
         tracked.add(mergedAnim);
         remoteStageAnims.put(playerUUID, tracked);
         remoteStageModels.put(playerUUID, modelHandle);
-        propAnimations.begin(playerUUID, descriptor.getPropAssignment());
+        propAnimations.begin(playerUUID, descriptor.getPropAssignment(),
+                descriptor.getMotionFiles().stream().map(name -> new File(stageDir,name).toPath()).toList());
 
         if (frameQueryPort.isStagePresentationActive()) {
             animationPort.seekLayer(modelHandle, 0, frameQueryPort.getCurrentFrame());

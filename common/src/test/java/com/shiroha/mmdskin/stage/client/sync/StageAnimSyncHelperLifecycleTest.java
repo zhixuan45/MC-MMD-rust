@@ -21,6 +21,35 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** 验证舞台外部帧驱动退出时恢复默认播放速度。 */
 class StageAnimSyncHelperLifecycleTest {
+    @Test void ordinaryMotionHandoffStopsOldFrameSeeksAndPropPlayback(@TempDir Path dir) throws Exception {
+        Files.write(dir.resolve("prop.vmd"),new byte[]{1});
+        RecordingAnimationPort port=new RecordingAnimationPort(); port.loadProps=true;
+        var helper=new StageAnimSyncHelper(new NoopFrameQueryPort(),port);
+        UUID owner=UUID.randomUUID(); putModel(helper,owner,41);
+        var prop=(com.shiroha.mmdskin.model.runtime.ModelInstance)Proxy.newProxyInstance(
+                getClass().getClassLoader(),new Class<?>[]{com.shiroha.mmdskin.model.runtime.ModelInstance.class},
+                (p,m,a) -> m.getName().equals("getModelHandle")?51L:null);
+        helper.propAnimations().begin(owner,new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("prop.pmx","prop.vmd"));
+        assertTrue(helper.propAnimations().bind(owner,prop,dir,"prop.pmx"));
+        helper.syncRemoteFrame(42);
+        int oldSeeks=port.seeks.size();
+        var state=new com.shiroha.mmdskin.player.runtime.EntityAnimState(3,null);
+        state.playStageAnim=true; state.playCustomAnim=true;
+        var actor=(com.shiroha.mmdskin.model.runtime.ModelInstance)Proxy.newProxyInstance(
+                getClass().getClassLoader(),new Class<?>[]{com.shiroha.mmdskin.model.runtime.ModelInstance.class},(p,m,a) -> {
+                    assertEquals("setLayerSpeed",m.getName());
+                    assertFalse(state.playStageAnim);
+                    assertEquals(1f,a[1]);
+                    return null;
+                });
+        com.shiroha.mmdskin.player.runtime.PlayerMotionHandoff.leaveStage(actor,state,() -> helper.end(owner));
+        helper.syncRemoteFrame(80);
+        assertEquals(oldSeeks,port.seeks.size(),"Old stage must not seek the replacement ordinary clip or prop");
+        assertNull(helper.propAnimations().assignment(owner));
+        assertEquals(List.of(101L),port.deleted);
+        assertTrue(state.playCustomAnim);
+    }
+
     @Test
     void endRestoresStageLayerSpeedBeforeRemovingModel() throws Exception {
         RecordingAnimationPort port = new RecordingAnimationPort();
