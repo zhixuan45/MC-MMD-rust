@@ -31,6 +31,7 @@ public final class PassStateProbe {
             exercise(ORTHOGRAPHIC, GL46C.GL_LEQUAL, false, positions, normals, 30, 1, 0, 0, false);
             exercise(ORTHOGRAPHIC, GL46C.GL_GREATER, true, positions, normals, 30, 1, 0, 0, false);
             exercise(PERSPECTIVE, GL46C.GL_LEQUAL, false, positions, normals, 30, 1, 0, 0, false);
+            exercise(PERSPECTIVE, GL46C.GL_LEQUAL, true, positions, normals, 1, 1, 0, 0, false);
             for (float zoom : new float[]{10, 30, 60}) {
                 for (float modelScale : new float[]{0.5f, 1, 2}) {
                     exercise(ORTHOGRAPHIC, GL46C.GL_LEQUAL, false, positions, normals,
@@ -40,7 +41,7 @@ public final class PassStateProbe {
             checkMaterialTextures(positions, normals);
             checkSubmeshesWithoutEdgeFlag(positions, normals);
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "OpenGL 状态错误");
-            System.out.println("PASS outline pass state and width: orthographic zoom/model-scale mapping; perspective unchanged; finally cleanup");
+            System.out.println("PASS outline pass state and width: strict depth for GUI/world; orthographic zoom/model-scale mapping; finally cleanup");
 
             GL46C.glDeleteBuffers(positions);
             GL46C.glDeleteBuffers(normals);
@@ -77,7 +78,7 @@ public final class PassStateProbe {
         try {
             OutlineRenderPass.draw(shader, inputs, (material, alpha) -> {
                 int during = GL46C.glGetInteger(GL46C.GL_DEPTH_FUNC);
-                int expected = projectionKind == ORTHOGRAPHIC ? GL46C.GL_LESS : initialDepthFunc;
+                int expected = GL46C.GL_LESS;
                 check(during == expected, "pass 内 depth func=" + during + " 期望=" + expected);
                 check(GL46C.glGetBoolean(GL46C.GL_DEPTH_TEST), "depth test 应保持开启");
                 check(!GL46C.glGetBoolean(GL46C.GL_DEPTH_WRITEMASK), "pass 内 depth mask 应关闭");

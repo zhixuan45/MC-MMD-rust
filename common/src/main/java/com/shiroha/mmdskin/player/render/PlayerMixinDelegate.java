@@ -49,6 +49,8 @@ public final class PlayerMixinDelegate {
 
     public static void renderSceneModel(AbstractClientPlayer player, float tickDelta,
                                          PoseStack matrixStack, int packedLight) {
+        // GUI 预览共用玩家入口，但放置场景只能使用世界/阴影矩阵。
+        if (InventoryRenderScope.isActive() || PaperDollRenderScope.isActive()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || !mc.player.getUUID().equals(player.getUUID())) return;
 

@@ -44,4 +44,13 @@ class ModelSettingsLayoutTest {
             }
         }
     }
+    @Test void timelineEntryIsReachableAtSmallGuiScales() {
+        for (int height:new int[]{180,240,480}) {
+            var top=ModelSettingsLayout.create(320,height,0);
+            var layout=ModelSettingsLayout.create(320,height,top.heldPmxTimelineButton.y-top.viewport.y);
+            var button=layout.heldPmxTimelineButton;
+            assertTrue(layout.contentHit(button,button.centerX(),button.centerY()));
+            assertTrue(button.bottom()<layout.saveButton.y);
+        }
+    }
 }

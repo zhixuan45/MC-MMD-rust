@@ -121,6 +121,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw '纸娃娃描边基线验证失败' }
     & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskClasspath" PaperDollProbe --fixed
     if ($LASTEXITCODE -ne 0) { throw '纸娃娃描边修复回归验证失败' }
+    & (Join-Path $Jdk 'bin/java.exe') -cp "$taskOutput;$taskClasspath" PaperDollProbe --scene-depth
+    if ($LASTEXITCODE -ne 0) { throw '场景地板描边深度回归验证失败' }
     $taskStateSources = @($taskStubFiles) + @(
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineRenderPass.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineCoverage.java'),

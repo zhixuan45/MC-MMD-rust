@@ -250,7 +250,9 @@ public abstract class BaseModelInstance implements ModelInstance {
             if (held) heldItemEvaluationFrame = frame;
             update();
         }
-        doRenderModel(entityIn, entityYaw, entityPitch, entityTrans, mat, packedLight, context);
+        if (context == null || context.allowsDraw()) {
+            doRenderModel(entityIn, entityYaw, entityPitch, entityTrans, mat, packedLight, context);
+        }
     }
 
     @Override

@@ -8,6 +8,7 @@ import com.shiroha.mmdskin.compat.tacz.TaczThirdPersonGunTransform;
 import com.shiroha.mmdskin.config.ModelConfigData;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
+import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -121,11 +122,26 @@ public class ItemRenderHelper {
                 model.entityState().rightHandMat,model.entityState().matBuffer,boneName);
     }
 
-    static Matrix4f propPhysicsTransform(Matrix4f attachment, ModelConfigData config, float ownerScale, float propScale) {
-        return new Matrix4f().scaling(ownerScale).mul(attachment)
+    public static Matrix4f getTimelinePropAttachment(ManagedModel model, String boneName) {
+        return resolvePropAttachment(matrixPort,model.modelInstance().getModelHandle(),
+                model.entityState().rightHandMat,model.entityState().matBuffer,boneName,false);
+    }
+
+    public static Matrix4f propLocalTransform(Matrix4f attachment, ModelConfigData config, Offset offset) {
+        return new Matrix4f(attachment)
                 .translate(config.heldPmxOffsetX, config.heldPmxOffsetY, config.heldPmxOffsetZ)
                 .rotateXYZ(config.heldPmxRotX * DEG_TO_RAD, config.heldPmxRotY * DEG_TO_RAD, config.heldPmxRotZ * DEG_TO_RAD)
-                .scale(10.0f * config.heldItemScale * config.heldPmxScale * propScale);
+                .translate(offset.x(), offset.y(), offset.z())
+                .rotateXYZ(offset.rotationX() * DEG_TO_RAD, offset.rotationY() * DEG_TO_RAD, offset.rotationZ() * DEG_TO_RAD);
+    }
+
+    static Matrix4f propPhysicsTransform(Matrix4f attachment, ModelConfigData config, float ownerScale, float propScale) {
+        return propPhysicsTransform(propLocalTransform(attachment,config,Offset.IDENTITY),
+                10.0f * config.heldItemScale * config.heldPmxScale,ownerScale,propScale);
+    }
+
+    static Matrix4f propPhysicsTransform(Matrix4f local, float scale, float ownerScale, float propScale) {
+        return new Matrix4f().scaling(ownerScale).mul(local).scale(scale * propScale);
     }
 
     static void syncPropPhysics(ManagedModel owner, ManagedModel prop, Matrix4f local) {
@@ -137,8 +153,13 @@ public class ItemRenderHelper {
     }
 
     static Matrix4f resolvePropAttachment(NativeMatrixPort port,long modelHandle,long matrix,ByteBuffer buffer,String boneName) {
+        return resolvePropAttachment(port,modelHandle,matrix,buffer,boneName,true);
+    }
+
+    static Matrix4f resolvePropAttachment(NativeMatrixPort port,long modelHandle,long matrix,ByteBuffer buffer,String boneName,boolean fallback) {
         if (boneName != null && !boneName.isEmpty()
                 && port.populateBoneMatrix(modelHandle, matrix, boneName)) return convertToMatrix4f(port,matrix,buffer);
+        if (!fallback) return null;
         port.populateHandMatrix(modelHandle,matrix,true);
         return convertToMatrix4f(port,matrix,buffer);
     }

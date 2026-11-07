@@ -33,6 +33,10 @@ public final class PaperDollProbe {
             GL46C.glBindVertexArray(vao);
             int mesh = createThinDoubleSidedPanel();
             int baseProgram = createProgram(BASE_VERTEX, BASE_FRAGMENT);
+            if (args.length > 0 && "--scene-depth".equals(args[0])) {
+                verifySceneDepth(fbo, vao, baseProgram);
+                return;
+            }
             if (baseline) {
                 Matrices matrices = paperDollMatrices();
                 System.out.printf("GUI baseline: viewDepth=%.1f distanceFade=%.3f modelViewDet=%.4f frontFace=%s%n",
@@ -135,6 +139,32 @@ public final class PaperDollProbe {
             }
         }
         GL46C.glDeleteProgram(legacy); GL46C.glDeleteProgram(current);
+    }
+
+    private static void verifySceneDepth(int fbo, int vao, int baseProgram) throws Exception {
+        List<Float> positions = new ArrayList<>(), normals = new ArrayList<>();
+        for (int z = -120; z < 0; z += 4) for (int x = -120; x < 120; x += 4) {
+            addDoubleFace(positions, normals, new float[][]{
+                    {x,0,z}, {x,0,z+4}, {x+4,0,z+4}, {x+4,0,z}}, 0,1,0);
+        }
+        buffer(0, 3, toArray(positions));
+        buffer(1, 3, toArray(normals));
+        float angle = (float) Math.toRadians(5);
+        float c = (float) Math.cos(angle), s = (float) Math.sin(angle);
+        float[] camera = identity();
+        camera[5] = c; camera[6] = s; camera[9] = -s; camera[10] = c;
+        camera = multiply(camera, translation(0, -2, 0));
+        Matrices matrices = new Matrices(perspectiveMatrix(1.04719755f, .05f, 256),
+                camera, 0, 0, 1);
+        int count = positions.size() / 3;
+        int[] baseline = runCase(fbo, vao, count, baseProgram, matrices,
+                GL46C.GL_LEQUAL, GL46C.GL_LEQUAL, "production", .0022f, false);
+        int[] strict = runCase(fbo, vao, count, baseProgram, matrices,
+                GL46C.GL_LEQUAL, GL46C.GL_LESS, "production", .0022f, false);
+        printCandidate("Scene floor LEQUAL", baseline);
+        printCandidate("Scene floor LESS", strict);
+        check(baseline[1] > SIZE, "场景基线必须复现大面积黑色覆盖");
+        check(strict[1] == 0, "严格深度比较应保留地板主体");
     }
 
     private static ByteBuffer renderPerspectiveFrame(int fbo, int vao, int count, int program,

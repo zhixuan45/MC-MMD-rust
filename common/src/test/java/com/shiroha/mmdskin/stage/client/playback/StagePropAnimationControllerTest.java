@@ -109,6 +109,96 @@ class StagePropAnimationControllerTest {
         controller.stop(owner); assertEquals(Set.of(101L,102L),port.deleted);
     }
 
+    @Test void timelineUsesUnclampedStageFrameForLateJoinRewindAndLoop() throws Exception {
+        fixture("prop.vmd"); timeline("prop",true);
+        Port port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(11);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        controller.seek(owner,600);
+        controller.bind(owner,model.proxy,dir,"fan.pmx");
+        assertEquals(120,port.lastFrame(11));
+        assertTrue(controller.state(owner).visible());
+        assertEquals("左ダミー",controller.state(owner).attachment().bone());
+        controller.seek(owner,950);
+        assertFalse(controller.state(owner).visible());
+        assertEquals(1,port.seeks.size(),"Control tracks must keep advancing after the prop VMD ends");
+        controller.seek(owner,300);
+        assertTrue(controller.state(owner).visible());
+        assertEquals("右ダミー",controller.state(owner).attachment().bone());
+        controller.seek(owner,0);
+        assertFalse(controller.state(owner).visible());
+        assertEquals("右ダミー",controller.state(owner).attachment().bone());
+        controller.stop(owner);
+        assertEquals(com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,controller.state(owner));
+    }
+
+    @Test void changingAttachmentResetsPhysicsOnceAndRepeatedDrawsDoNotReloadTheTimeline() throws Exception {
+        fixture("prop.vmd"); timeline("prop",true);
+        Port port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(11);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        controller.bind(owner,model.proxy,dir,"fan.pmx");
+        int resets=model.resets;
+        controller.seek(owner,120);
+        assertEquals(resets,model.resets,"Visibility changes preserve the continuously evaluated physics");
+        controller.seek(owner,480);
+        assertEquals(resets+1,model.resets);
+        controller.seek(owner,481);
+        controller.seek(owner,481);
+        assertEquals(resets+1,model.resets);
+        Files.writeString(dir.resolve("prop.timeline.json"),"{");
+        controller.bind(owner,model.proxy,dir,"fan.pmx");
+        assertEquals("左ダミー",controller.state(owner).attachment().bone());
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        controller.bind(owner,model.proxy,dir,"fan.pmx");
+        assertEquals(com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,controller.state(owner));
+        controller.clear();
+    }
+
+    @Test void differentPerformersAndReplacementModelsRetainIndependentTimelineState() throws Exception {
+        fixture("prop.vmd"); timeline("prop",true);
+        Port port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID a=UUID.randomUUID(),b=UUID.randomUUID(); var ma=new Model(11); var mb=new Model(22);
+        var assignment=new StagePropAssignment("fan.pmx","prop.vmd");
+        controller.begin(a,assignment); controller.begin(b,assignment);
+        controller.bind(a,ma.proxy,dir,"fan.pmx"); controller.bind(b,mb.proxy,dir,"fan.pmx");
+        controller.seek(a,600); controller.seek(b,50);
+        assertTrue(controller.state(a).visible()); assertFalse(controller.state(b).visible());
+        ma.handle=0; controller.seek(a,601);
+        var replacement=new Model(33);
+        controller.bind(a,replacement.proxy,dir,"fan.pmx");
+        assertEquals("左ダミー",controller.state(a).attachment().bone());
+        assertFalse(controller.state(b).visible());
+        controller.clear();
+    }
+
+    @Test void malformedTimelineFallsBackWithoutBreakingMotionAndInvalidSeekKeepsItsState() throws Exception {
+        fixture("prop.vmd");
+        Files.writeString(dir.resolve("prop.timeline.json"),"{");
+        Port port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(11);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx"));
+        controller.seek(owner,60);
+        for (float frame:new float[]{Float.NaN,Float.POSITIVE_INFINITY,-1}) controller.seek(owner,frame);
+        assertEquals(60,port.lastFrame(11));
+        assertEquals(com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,controller.state(owner));
+        controller.clear();
+    }
+
+    private void timeline(String name,boolean initiallyHidden) throws Exception {
+        Files.writeString(dir.resolve(name+".timeline.json"),"""
+                {"version":1,"objects":[{"id":"fan","asset":"fan.pmx",
+                  "initial":{"visible":%s},
+                  "tracks":{
+                    "visibility":[{"frame":120,"value":true},{"frame":900,"value":false}],
+                    "attachment":[
+                      {"frame":0,"parent":{"object":"actor","bone":"右ダミー"}},
+                      {"frame":480,"parent":{"object":"actor","bone":"左ダミー"}}]
+                  }}]}
+                """.formatted(!initiallyHidden));
+    }
+
     private void fixture(String name) throws Exception { Files.write(dir.resolve(name),new byte[]{1}); }
 
     private static final class Model {

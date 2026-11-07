@@ -1,9 +1,11 @@
 package com.shiroha.mmdskin.stage.client.playback;
 
 import com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles;
+import com.shiroha.mmdskin.asset.catalog.PropTimelineFiles;
 import com.shiroha.mmdskin.bridge.runtime.NativeAnimationPort;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.stage.domain.model.StagePropAssignment;
+import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import java.nio.file.Path;
@@ -25,6 +27,9 @@ public final class StagePropAnimationController {
         Path attemptedDir;
         long attemptedHandle, modelHandle, animation;
         float maxFrame, appliedFrame=Float.NaN;
+        PropTimeline timeline=PropTimeline.EMPTY;
+        PropTimeline.State state=PropTimeline.State.DEFAULT;
+        final java.util.Set<String> missingBones=new java.util.HashSet<>();
         Session(StagePropAssignment assignment) { this.assignment=assignment; }
     }
 
@@ -41,6 +46,18 @@ public final class StagePropAnimationController {
         return session==null?null:session.assignment;
     }
 
+    public synchronized PropTimeline.State state(UUID owner) {
+        Session session=sessions.get(owner);
+        return session==null?PropTimeline.State.DEFAULT:session.state;
+    }
+
+    public synchronized void warnMissingBone(UUID owner,String bone) {
+        Session session=sessions.get(owner);
+        if (session!=null && session.missingBones.add(bone)) {
+            LOGGER.warn("[StageProp] Timeline parent bone '{}' is missing for {}; prop is hidden at this binding",bone,owner);
+        }
+    }
+
     /** A model that finished loading late is immediately evaluated at the current stage frame. */
     public synchronized boolean bind(UUID owner,ModelInstance model,Path modelDir,String pmxFile) {
         Session session=sessions.get(owner);
@@ -49,10 +66,18 @@ public final class StagePropAnimationController {
         if (session.attempted==model && session.attemptedHandle==handle && modelDir.equals(session.attemptedDir)) return session.animation!=0;
         closeBinding(session);
         session.attempted=model; session.attemptedHandle=handle; session.attemptedDir=modelDir;
+        session.timeline=PropTimeline.EMPTY;
+        session.state=PropTimeline.State.DEFAULT;
         Path file=HeldPmxMotionFiles.resolve(modelDir,session.assignment.motionFile());
         if (file==null) {
             LOGGER.warn("[StageProp] Missing local prop motion: {} / {}",modelDir,session.assignment.motionFile());
             return false;
+        }
+        try {
+            session.timeline=PropTimelineFiles.load(file,pmxFile);
+            session.state=session.timeline.evaluate(session.frame);
+        } catch (java.io.IOException failure) {
+            LOGGER.warn("[StageProp] {}",failure.getMessage());
         }
         try {
             long animation=animations.loadAnimation(handle,file.toString());
@@ -85,8 +110,11 @@ public final class StagePropAnimationController {
         if (session==null) return;
         boolean rewind=frame<session.frame;
         session.frame=frame;
+        PropTimeline.State state=session.timeline.evaluate(frame);
+        boolean attachmentChanged=!Objects.equals(session.state.attachment(),state.attachment());
+        session.state=state;
         if (session.model!=null && session.model.getModelHandle()!=session.modelHandle) closeBinding(session);
-        if (rewind && session.model!=null) session.model.resetPhysics();
+        if ((rewind || attachmentChanged) && session.model!=null) session.model.resetPhysics();
         applyFrame(session);
     }
 

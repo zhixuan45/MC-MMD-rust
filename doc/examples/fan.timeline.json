@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "motion": "扇子动作.vmd",
+  "objects": [
+    {
+      "id": "fan",
+      "asset": "团扇.pmx",
+      "initial": {
+        "visible": false
+      },
+      "tracks": {
+        "visibility": [
+          { "frame": 120, "value": true },
+          { "frame": 900, "value": false }
+        ],
+        "attachment": [
+          {
+            "frame": 0,
+            "parent": { "object": "actor", "bone": "右ダミー" },
+            "mode": "snap"
+          },
+          {
+            "frame": 480,
+            "parent": { "object": "actor", "bone": "左ダミー" },
+            "mode": "snap",
+            "offset": [0.0, 0.0, 0.0],
+            "rotation": [0.0, 0.0, 0.0]
+          }
+        ]
+      }
+    }
+  ]
+}

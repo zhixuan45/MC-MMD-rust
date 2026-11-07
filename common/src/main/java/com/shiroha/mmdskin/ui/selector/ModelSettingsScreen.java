@@ -138,6 +138,12 @@ public class ModelSettingsScreen extends Screen {
                     value -> config.heldPmxStageMotion=value));
             return true;
         }
+        if (layout.contentHit(layout.heldPmxTimelineButton,mouseX,mouseY)) {
+            if (!config.heldPmxFile.isEmpty() && !config.heldPmxStageMotion.isEmpty()) {
+                minecraft.setScreen(new PropTimelineScreen(this,modelName,config));
+            }
+            return true;
+        }
         if (layout.contentHit(layout.eyeToggle, mouseX, mouseY)) {
             config.eyeTrackingEnabled = !config.eyeTrackingEnabled;
             return true;
@@ -559,6 +565,10 @@ public class ModelSettingsScreen extends Screen {
         String motion=config.heldPmxStageMotion.isEmpty()?Component.translatable("gui.mmdskin.model_settings.prop_motion_disabled").getString():config.heldPmxStageMotion;
         drawFallbackButton(guiGraphics,layout.heldPmxBoneButton,font.plainSubstrByWidth(Component.translatable("gui.mmdskin.model_settings.prop_bone",bone).getString(),layout.heldPmxBoneButton.w-8),layout.contentHit(layout.heldPmxBoneButton,hoverMouseX,hoverMouseY));
         drawFallbackButton(guiGraphics,layout.heldPmxMotionButton,font.plainSubstrByWidth(Component.translatable("gui.mmdskin.model_settings.prop_motion",motion).getString(),layout.heldPmxMotionButton.w-8),layout.contentHit(layout.heldPmxMotionButton,hoverMouseX,hoverMouseY));
+        drawFallbackButton(guiGraphics,layout.heldPmxTimelineButton,
+                Component.translatable(config.heldPmxFile.isEmpty() || config.heldPmxStageMotion.isEmpty()
+                        ? "gui.mmdskin.timeline.select_assets" : "gui.mmdskin.timeline.open").getString(),
+                layout.contentHit(layout.heldPmxTimelineButton,hoverMouseX,hoverMouseY));
         drawFallbackCard(guiGraphics, layout.tailCard, Component.translatable("gui.mmdskin.model_settings.tail_physics").getString());
         guiGraphics.drawString(this.font, Component.translatable("gui.mmdskin.model_settings.tail_idle_lift").getString(),
                 layout.tailCard.x + 4, layout.tailIdleToggle.y, TranslucentTrayChrome.BODY_TEXT, false);

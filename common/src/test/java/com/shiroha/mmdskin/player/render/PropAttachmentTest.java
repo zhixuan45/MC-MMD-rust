@@ -44,6 +44,32 @@ class PropAttachmentTest {
         assertTrue(original.equals(bone, 0));
     }
 
+    @Test void explicitTimelineBoneNeverFallsBackToTheRightHand() {
+        Port port=new Port();
+        ItemRenderHelper.resolvePropAttachment(port,1,2,buffer(),"head",false);
+        assertNull(ItemRenderHelper.resolvePropAttachment(port,1,2,buffer(),"missing",false));
+        assertEquals(0,port.handReads);
+    }
+
+    @Test void timelineOffsetUsesTheSameMatrixForDrawingAndPhysicsWithoutChangingSavedConfig() {
+        var config=new com.shiroha.mmdskin.config.ModelConfigData();
+        config.heldPmxOffsetX=.4f; config.heldPmxRotY=30;
+        config.heldItemScale=.8f; config.heldPmxScale=1.5f;
+        var bone=new Matrix4f().translation(3,8,-4).rotateZ(.6f);
+        var original=new Matrix4f(bone);
+        var offset=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset(1,2,3,10,20,90);
+        var local=ItemRenderHelper.propLocalTransform(bone,config,offset);
+        var expected=new Matrix4f(bone).translate(.4f,0,0).rotateY((float)Math.toRadians(30))
+                .translate(1,2,3).rotateXYZ((float)Math.toRadians(10),(float)Math.toRadians(20),(float)Math.toRadians(90));
+        assertTrue(expected.equals(local,1e-5f));
+        float scale=10*config.heldItemScale*config.heldPmxScale;
+        var draw=new com.mojang.blaze3d.vertex.PoseStack();
+        draw.scale(.09f,.09f,.09f); draw.last().pose().mul(local); draw.scale(scale*.12f,scale*.12f,scale*.12f);
+        assertTrue(draw.last().pose().equals(ItemRenderHelper.propPhysicsTransform(local,scale,.09f,.12f),1e-5f));
+        assertTrue(original.equals(bone,0));
+        assertEquals(.4f,config.heldPmxOffsetX); assertEquals(30,config.heldPmxRotY);
+    }
+
     private static ByteBuffer buffer() { return ByteBuffer.allocateDirect(64).order(ByteOrder.LITTLE_ENDIAN); }
     private static final class Port implements NativeMatrixPort {
         Matrix4f value=new Matrix4f();

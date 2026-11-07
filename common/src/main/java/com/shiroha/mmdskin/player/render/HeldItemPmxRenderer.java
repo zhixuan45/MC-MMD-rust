@@ -8,8 +8,8 @@ import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.scene.RenderScene;
+import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
 import net.minecraft.client.player.AbstractClientPlayer;
-import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -20,23 +20,21 @@ import org.apache.logging.log4j.Logger;
  */
 final class HeldItemPmxRenderer {
     private static final Logger LOGGER = LogManager.getLogger();
-    private static final float RAD_PER_DEGREE = (float) Math.PI / 180.0f;
-
     private HeldItemPmxRenderer() { }
 
     /**
-     * @return true only if a ready prop model was submitted for rendering.
+     * @return true if a ready prop owns the slot, including an intentionally hidden stage prop.
      */
     static boolean renderMainHand(AbstractClientPlayer player, ManagedModel character,
                                   PoseStack poseStack, int packedLight, float tickDelta) {
-        if (player.getMainHandItem().isEmpty()) return false;
-
         String modelName = character.requestKey().modelName();
         ModelConfigData config = ModelConfigManager.getConfig(modelName);
         var stageRuntime = com.shiroha.mmdskin.stage.client.StageClientRuntime.peek();
         var propAnimations = stageRuntime != null ? stageRuntime.animSyncHelper().propAnimations() : null;
         boolean inStage = character.entityState().playStageAnim;
         var assignment = inStage && propAnimations != null ? propAnimations.assignment(player.getUUID()) : null;
+        if (!inStage && propAnimations != null) propAnimations.stop(player.getUUID());
+        if (assignment == null && player.getMainHandItem().isEmpty()) return false;
         String pmx = assignment != null ? assignment.pmxFile() : config.heldPmxFile;
         if (pmx == null || pmx.isEmpty()) return false;
 
@@ -47,19 +45,22 @@ final class HeldItemPmxRenderer {
         ManagedModel prop = ClientRenderRuntime.get().modelRepository().acquire(propKey);
         if (prop == null || prop.modelInstance().getModelHandle() == 0L) return false;
 
-        if (inStage && propAnimations != null) propAnimations.bind(player.getUUID(), prop.modelInstance(), java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx);
-        else if (propAnimations != null) propAnimations.stop(player.getUUID());
+        if (assignment != null) propAnimations.bind(player.getUUID(), prop.modelInstance(), java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx);
+        var state = assignment != null ? propAnimations.state(player.getUUID()) : PropTimeline.State.DEFAULT;
+        var binding = state.attachment();
 
         // All geometry transforms and draw state are local to this prop.
         poseStack.pushPose();
         try {
-            var attachment = ItemRenderHelper.getPropAttachment(character, config.heldPmxBone);
-            poseStack.last().pose().mul(attachment);
-            poseStack.translate(config.heldPmxOffsetX, config.heldPmxOffsetY, config.heldPmxOffsetZ);
-            poseStack.mulPose(new Quaternionf().rotationXYZ(
-                    config.heldPmxRotX * RAD_PER_DEGREE,
-                    config.heldPmxRotY * RAD_PER_DEGREE,
-                    config.heldPmxRotZ * RAD_PER_DEGREE));
+            var attachment = binding == null ? ItemRenderHelper.getPropAttachment(character, config.heldPmxBone)
+                    : ItemRenderHelper.getTimelinePropAttachment(character, binding.bone());
+            if (attachment == null) {
+                propAnimations.warnMissingBone(player.getUUID(),binding.bone());
+                return true;
+            }
+            var local = ItemRenderHelper.propLocalTransform(attachment, config,
+                    binding == null ? PropTimeline.Offset.IDENTITY : binding.offset());
+            poseStack.last().pose().mul(local);
             // The character stack already has its MMD world scale; the prop
             // renderer applies MMD scale once more. Like the vanilla item path,
             // compensate with a 10x hand-space factor before the prop render.
@@ -71,12 +72,12 @@ final class HeldItemPmxRenderer {
             float propScale = prop.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
                     ? base.getModelScale() : 0.09f * config.modelScale;
             ItemRenderHelper.syncPropPhysics(character, prop,
-                    ItemRenderHelper.propPhysicsTransform(attachment, config, ownerScale, propScale));
+                    ItemRenderHelper.propPhysicsTransform(local, scale, ownerScale, propScale));
 
             // NULL entity avoids living-entity animation/IK state being applied to the prop.
             // ITEM scene avoids a second full character world render or player pose mutation.
             prop.modelInstance().render(null, 0.0f, 0.0f, new Vector3f(),
-                    tickDelta, poseStack, packedLight, config.heldPmxPhysicsEnabled ? RenderScene.HELD_ITEM : RenderScene.HELD_ITEM_NO_PHYSICS);
+                    tickDelta, poseStack, packedLight, scene(state.visible(),config.heldPmxPhysicsEnabled));
             return true;
         } catch (RuntimeException e) {
             LOGGER.debug("PMX main-hand prop render failed for {}: {}", modelName, pmx, e);
@@ -84,5 +85,10 @@ final class HeldItemPmxRenderer {
         } finally {
             poseStack.popPose();
         }
+    }
+
+    static RenderScene scene(boolean visible, boolean physics) {
+        if (visible) return physics ? RenderScene.HELD_ITEM : RenderScene.HELD_ITEM_NO_PHYSICS;
+        return physics ? RenderScene.HELD_ITEM_HIDDEN : RenderScene.HELD_ITEM_HIDDEN_NO_PHYSICS;
     }
 }

@@ -19,6 +19,8 @@ public final class RenderScene {
     public static final RenderScene ITEM = new Builder().sceneType(SceneType.ITEM).build();
     public static final RenderScene HELD_ITEM = new Builder().sceneType(SceneType.ITEM).heldItem(true).build();
     public static final RenderScene HELD_ITEM_NO_PHYSICS = new Builder().sceneType(SceneType.ITEM).heldItem(true).physics(false).build();
+    public static final RenderScene HELD_ITEM_HIDDEN = new Builder().sceneType(SceneType.ITEM).heldItem(true).draw(false).build();
+    public static final RenderScene HELD_ITEM_HIDDEN_NO_PHYSICS = new Builder().sceneType(SceneType.ITEM).heldItem(true).physics(false).draw(false).build();
     public static final RenderScene PAPERDOLL = new Builder().sceneType(SceneType.GUI).mirror(false).firstPerson(false).build();
 
     private final SceneType sceneType;
@@ -27,6 +29,7 @@ public final class RenderScene {
     private final boolean heldItem;
     private final boolean physics;
     private final boolean outline;
+    private final boolean draw;
 
     private RenderScene(Builder builder) {
         this.sceneType = builder.sceneType;
@@ -35,6 +38,7 @@ public final class RenderScene {
         this.heldItem = builder.heldItem;
         this.physics = builder.physics;
         this.outline = builder.outline;
+        this.draw = builder.draw;
     }
 
     public SceneType sceneType() {
@@ -68,15 +72,18 @@ public final class RenderScene {
     public boolean isHeldItem() { return heldItem; }
     public boolean allowsPhysics() { return physics; }
     public boolean allowsOutline() { return outline; }
+    public boolean allowsDraw() { return draw; }
 
     public static final class Builder {
         private boolean heldItem;
         private boolean physics = true;
         private boolean outline = true;
+        private boolean draw = true;
 
         public Builder heldItem(boolean value) { heldItem=value; return this; }
         public Builder physics(boolean value) { physics=value; return this; }
         public Builder outline(boolean value) { outline=value; return this; }
+        public Builder draw(boolean value) { draw=value; return this; }
         private SceneType sceneType = SceneType.WORLD;
         private boolean firstPerson;
         private boolean mirror;

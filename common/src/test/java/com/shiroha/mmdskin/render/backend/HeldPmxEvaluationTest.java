@@ -28,6 +28,24 @@ class HeldPmxEvaluationTest {
         assertEquals(List.of(false,true),prop.physics);
     }
 
+    @Test void hiddenPropStillEvaluatesOncePerFrameAndNeverSubmitsGeometry() {
+        PropModel prop=new PropModel();
+        RenderFrameClock.begin();
+        prop.draw(RenderScene.HELD_ITEM_HIDDEN);
+        prop.draw(RenderScene.HELD_ITEM_HIDDEN);
+        assertEquals(1,prop.updates);
+        assertEquals(0,prop.draws);
+        assertEquals(List.of(true),prop.physics);
+        RenderFrameClock.begin();
+        prop.draw(RenderScene.HELD_ITEM_HIDDEN_NO_PHYSICS);
+        assertEquals(2,prop.updates); assertEquals(0,prop.draws);
+        assertEquals(List.of(true,false),prop.physics);
+        RenderFrameClock.begin();
+        prop.draw(RenderScene.HELD_ITEM);
+        assertEquals(3,prop.updates); assertEquals(1,prop.draws);
+        assertEquals(List.of(true,false,true),prop.physics);
+    }
+
     private static final class PropModel extends BaseModelInstance {
         int draws,updates;
         final List<Boolean> physics=new ArrayList<>();

@@ -112,8 +112,8 @@ public final class OutlineRenderPass {
             shader.setOutlineAutoMaterialColor(autoColor);
             shader.setOutlineColor(config.getOutlineColorR(), config.getOutlineColorG(), config.getOutlineColorB());
             GL46C.glDepthMask(false);
-            // GUI 的同深度薄片不能由倒置外壳再次覆盖，外缘仍通过背景深度。
-            if (orthographic) GL46C.glDepthFunc(GL46C.GL_LESS);
+            // 远处外扩衰减为零，场景薄片的背面也会与主体同深度；只让外缘通过背景深度。
+            GL46C.glDepthFunc(GL46C.GL_LESS);
             GL46C.glCullFace(GL46C.GL_FRONT);
             GL46C.glEnable(GL46C.GL_CULL_FACE);
             boolean capture = sharedWorld && WorldTransparencyPipeline.prepareModel();
