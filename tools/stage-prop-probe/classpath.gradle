@@ -1,0 +1,10 @@
+gradle.projectsEvaluated {
+    def common = gradle.rootProject.project(':common')
+    common.tasks.register('writeStagePropProbeClasspath') {
+        doLast {
+            def output = rootProject.file('build/stage-prop-probe/classpath.txt')
+            output.parentFile.mkdirs()
+            output.text = common.sourceSets.main.runtimeClasspath.asPath
+        }
+    }
+}

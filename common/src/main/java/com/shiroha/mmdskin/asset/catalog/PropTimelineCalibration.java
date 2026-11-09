@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.asset.catalog;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.shiroha.mmdskin.config.ModelConfigData;
+import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import java.util.List;
 
 /** The inputs which give baked bone-parent compensation its meaning. No native handles or absolute paths are saved. */
 public final class PropTimelineCalibration {
+    private static final int OUTSIDE_PARENT_VERSION=2;
     private PropTimelineCalibration() { }
 
     public record Signature(String actor, String prop, String motion, String reference,
@@ -70,6 +72,7 @@ public final class PropTimelineCalibration {
         // Deserialize through the constructor to apply the same validation to files and new captures.
         try {
             var value=root.getAsJsonObject("calibration");
+            if(!value.has("outsideParentVersion") || value.get("outsideParentVersion").getAsInt()!=OUTSIDE_PARENT_VERSION) return null;
             var floats=new java.util.ArrayList<Float>();
             for(var number:value.getAsJsonArray("transform")) floats.add(number.getAsFloat());
             return new Signature(value.get("actor").getAsString(),value.get("prop").getAsString(),
@@ -79,20 +82,51 @@ public final class PropTimelineCalibration {
     }
 
     public static JsonObject json(Signature signature) {
-        return new Gson().toJsonTree(signature).getAsJsonObject();
+        var value=new Gson().toJsonTree(signature).getAsJsonObject();
+        value.addProperty("outsideParentVersion",OUTSIDE_PARENT_VERSION);
+        return value;
     }
 
     /** Empty reference is an explicit rest-pose registration, reusable across actor motions. */
     public static String mismatch(Signature saved,Signature current,List<Path> actorMotions) throws IOException {
+        return mismatch(saved,current,actorMotions,null);
+    }
+
+    /** Default hand settings do not participate in an independent stage prop's reference frame. */
+    public static boolean matches(Signature saved,Signature current,PropTimeline timeline) {
+        return sourceMismatch(saved,current,timeline)==null
+                && (!requiresActorReference(timeline) || saved.reference().equals(current.reference()));
+    }
+
+    public static String mismatch(Signature saved,Signature current,List<Path> actorMotions,PropTimeline timeline) throws IOException {
+        String mismatch=sourceMismatch(saved,current,timeline);
+        if(mismatch!=null) return mismatch;
+        if(requiresActorReference(timeline) && !saved.reference().isEmpty()
+                && (actorMotions.size()!=1 || !saved.reference().equals(hash(actorMotions.get(0))))) {
+            return "Character motion differs from the registration reference";
+        }
+        return null;
+    }
+
+    private static String sourceMismatch(Signature saved,Signature current,PropTimeline timeline) {
         if(saved==null) return "Bone compensation has no calibration source; recalculate and save it in the editor";
         if(current==null) return "Current character calibration is unavailable";
         if(!saved.actor().equals(current.actor())) return "Character PMX changed";
         if(!saved.prop().equals(current.prop())) return "Prop PMX changed";
         if(!saved.motion().equals(current.motion())) return "Prop VMD changed";
-        if(!saved.bone().equals(current.bone()) || !saved.transform().equals(current.transform())) return "Attachment configuration changed";
-        if(!saved.reference().isEmpty() && (actorMotions.size()!=1 || !saved.reference().equals(hash(actorMotions.get(0))))) {
-            return "Character motion differs from the registration reference";
+        boolean explicitGrip=timeline==null || timeline.initial().attachment()!=null || !timeline.attachments().isEmpty();
+        if(timeline==null && !saved.bone().equals(current.bone())) return "Attachment configuration changed";
+        for(int i=0;i<saved.transform().size();i++) {
+            if((explicitGrip || i<3 || i==9) && !saved.transform().get(i).equals(current.transform().get(i))) {
+                return "Attachment configuration changed";
+            }
         }
         return null;
+    }
+
+    private static boolean requiresActorReference(PropTimeline timeline) {
+        // A placed grip C=E*inverse(A0), or a snap C=I, does not depend on the actor's reference VMD.
+        return timeline==null || timeline.boneKeys().stream().map(PropTimeline.Key::value)
+                .anyMatch(binding -> !binding.unbind() && binding.keepWorld() && binding.placement()==null);
     }
 }

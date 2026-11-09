@@ -54,6 +54,14 @@ public final class PropTimelineEditor {
     public long revision() { return revision; }
     public int frame() { return frame; }
     public State state() { return snapshot().evaluate(frame); }
+    /** A placement draft changes only the preview; the saved tracks remain untouched until confirmation. */
+    public State preview(BoneBinding placement) {
+        State state=state();
+        if(placement==null) return state;
+        var bindings=new java.util.LinkedHashMap<>(state.boneBindings());
+        bindings.put(placement.childBone(),placement);
+        return new State(true,state.attachment(),bindings);
+    }
     public boolean playing() { return playing; }
     public boolean initialVisible() { return initial.visible(); }
     public boolean hasKey(Track track) {

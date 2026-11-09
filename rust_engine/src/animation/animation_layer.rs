@@ -293,10 +293,12 @@ impl AnimationLayer {
 
     /// 更新帧位置
     fn update_frame(&mut self, dt: f32) {
+        if dt == 0.0 { return; }
         if let Some(ref anim) = self.animation {
             let max_frame = anim.max_frame() as f32;
 
             if max_frame > 0.0 {
+                self.current_frame = self.current_frame.min(max_frame);
                 self.current_frame += dt * 30.0; // 30 FPS
 
                 if self.current_frame > max_frame {

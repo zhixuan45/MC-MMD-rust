@@ -135,6 +135,20 @@ public class ItemRenderHelper {
                 .rotateXYZ(offset.rotationX() * DEG_TO_RAD, offset.rotationY() * DEG_TO_RAD, offset.rotationZ() * DEG_TO_RAD);
     }
 
+    /** Transform before the prop renderer applies its own model scale. */
+    public static boolean usesIndependentPropSpace(boolean stage,com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Attachment attachment) {
+        return stage && attachment==null;
+    }
+
+    public static Matrix4f propRenderTransform(Matrix4f attachment,ModelConfigData config,Offset offset,
+                                               float ownerScale,boolean independent) {
+        float scale=config.heldItemScale*config.heldPmxScale;
+        // Stage props share the actor's PMX origin until the timeline explicitly attaches the whole model.
+        // The prop renderer supplies its own scale; cancel only the actor scale already on the stack.
+        if(independent) return new Matrix4f().scaling(scale/ownerScale);
+        return propLocalTransform(attachment,config,offset).scale(10*scale);
+    }
+
     static Matrix4f propPhysicsTransform(Matrix4f attachment, ModelConfigData config, float ownerScale, float propScale) {
         return propPhysicsTransform(propLocalTransform(attachment,config,Offset.IDENTITY),
                 10.0f * config.heldItemScale * config.heldPmxScale,ownerScale,propScale);

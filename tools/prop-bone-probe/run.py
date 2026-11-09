@@ -58,12 +58,13 @@ def pmx_fixture(path):
 
 def vmd_fixture(path):
     data = b"Vocaloid Motion Data 0002".ljust(30, b"\0") + b"fixture".ljust(20, b"\0")
-    data += struct.pack("<I", 4)
+    data += struct.pack("<I", 5)
     for name, frame, translation, rotation in [
         ("Root", 0, (0, 0, 0), (0, 0, 0, 1)),
         ("Root", 60, (6, 0, 0), (0, 0, 0, 1)),
-        ("Center", 0, (0, 0, 0), (0, 0, 0, 1)),
-        ("Center", 60, (0, 0, 0), (0, 0, math.sqrt(.5), math.sqrt(.5))),
+        ("Root", 120, (6, 0, 0), (0, 0, 0, 1)),
+        ("Center", 0, (2, 0, 1), (0, math.sin(.2), 0, math.cos(.2))),
+        ("Center", 60, (4, 1, -2), (0, 0, math.sqrt(.5), math.sqrt(.5))),
     ]:
         data += name.encode("shift_jis").ljust(15, b"\0") + struct.pack("<I3f4f", frame, *translation, *rotation)
         data += bytes([20] * 8 + [107] * 8 + [0] * 48)

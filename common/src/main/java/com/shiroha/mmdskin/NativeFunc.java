@@ -207,6 +207,8 @@ public class NativeFunc {
 
     public native boolean SetPropPhysicsAttachment(long prop, long owner, ByteBuffer transform);
     public native boolean SetPropBoneParents(long model, int[] indices, float[] matrices);
+    /** 每骨骼两帧窗口：previous, next；索引对应模型骨骼。 */
+    public native boolean SetPropBoneWindows(long model, int[] indices, float[] windows);
     public native boolean GetPropBonePose(long model, int boneIndex, ByteBuffer matrices);
     public native boolean EvaluatePropPose(long model);
 

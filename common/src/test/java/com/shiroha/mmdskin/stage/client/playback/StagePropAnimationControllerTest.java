@@ -15,6 +15,63 @@ import static org.junit.jupiter.api.Assertions.*;
 class StagePropAnimationControllerTest {
     @TempDir Path dir;
 
+    @Test void ordinaryGripSettingsCannotRejectAStageTimelineOrDisableItsMotion() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        var config=new com.shiroha.mmdskin.config.ModelConfigData();
+        config.heldPmxBone="頭"; config.heldPmxOffsetX=9; config.heldPmxRotY=75;
+        var current=com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.capture(
+                dir.resolve("actor.pmx"),dir.resolve("fan.pmx"),dir.resolve("prop.vmd"),null,config);
+        var port=new Port(); var controller=new StagePropAnimationController(port);
+        var owner=UUID.randomUUID(); var model=new Model(22);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> current));
+        controller.seek(owner,60);
+        assertFalse(controller.state(owner).boneBindings().isEmpty());
+        assertEquals(60,port.lastFrame(22));
+        assertNull(controller.takeWarning(owner));
+        controller.clear();
+    }
+
+    @Test void invalidBoneCalibrationMustNotDisableTheIndependentPropVmd() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        var base=calibration();
+        var current=new com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.Signature("a".repeat(64),
+                base.prop(),base.motion(),base.reference(),base.bone(),base.transform());
+        var port=new Port(); var controller=new StagePropAnimationController(port);
+        var owner=UUID.randomUUID(); var model=new Model(22);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> current));
+        controller.seek(owner,60);
+        assertEquals(60,port.lastFrame(22),"A timeline calibration problem must not freeze the VMD");
+        assertTrue(controller.state(owner).boneBindings().isEmpty(),"Unsafe compensation is reported rather than applied");
+        assertTrue(controller.takeWarning(owner).contains("Character PMX changed"));
+        assertNull(controller.takeWarning(owner),"Warnings must only be consumed once");
+        controller.clear();
+    }
+
+    @Test void unavailableCalibrationRetainsVisibilityAndExplicitAttachmentAsVmdContinues() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        var document=com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.open(dir.resolve("prop.vmd"),"fan.pmx");
+        var timeline=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline(
+                new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State(true,null),
+                List.of(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(30,false)),
+                List.of(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(10,
+                        new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Attachment("Hand",
+                                com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset.IDENTITY))),
+                document.timeline().boneKeys());
+        com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.save(document,timeline,"",calibration());
+        var port=new Port(); var controller=new StagePropAnimationController(port); var owner=UUID.randomUUID();
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        assertTrue(controller.bind(owner,new Model(22).proxy,dir,"fan.pmx",file -> { throw new java.io.IOException("PMX missing"); }));
+        controller.seek(owner,45);
+        assertEquals(45,port.lastFrame(22));
+        assertFalse(controller.state(owner).visible());
+        assertEquals("Hand",controller.state(owner).attachment().bone());
+        assertTrue(controller.state(owner).boneBindings().isEmpty());
+        assertNotNull(controller.takeWarning(owner));
+        controller.clear();
+    }
+
     @Test void stageSessionReleasesPendingRequestsAndNeverReusesAnOldNativeProp() {
         var released=new ArrayList<com.shiroha.mmdskin.model.runtime.ModelRequestKey>();
         var controller=new StagePropAnimationController(new Port(),released::add);
@@ -51,22 +108,26 @@ class StagePropAnimationControllerTest {
         controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(reference));
         assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> base));
         controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(other));
-        assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> base));
-        assertEquals(1,port.loadModels.size(),"Mismatched compensation must fall back before loading the prop stage VMD");
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> base));
+        assertEquals(2,port.loadModels.size(),"Mismatched compensation must not prevent loading the independent prop VMD");
         assertTrue(controller.state(owner).boneBindings().isEmpty());
-        assertEquals(0,model.animation);
+        assertNotEquals(0,model.animation);
+        assertTrue(controller.takeWarning(owner).contains("Character motion differs"));
         var wrongActor=new com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.Signature("a".repeat(64),base.prop(),
                 base.motion(),base.reference(),base.bone(),base.transform());
         controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(reference));
-        assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> wrongActor));
-        assertEquals(1,port.loadModels.size(),"Changing characters must not reuse the reference clip's compensation");
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> wrongActor));
+        assertTrue(controller.state(owner).boneBindings().isEmpty());
+        assertEquals(3,port.loadModels.size(),"Changing characters must not reuse the reference clip's compensation");
         controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"),List.of(reference));
         assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> base),"Returning to the matching performance must recover");
-        assertEquals(2,port.loadModels.size());
+        assertEquals(4,port.loadModels.size());
+        assertFalse(controller.state(owner).boneBindings().isEmpty());
+        assertNull(controller.takeWarning(owner));
         controller.clear();
     }
 
-    @Test void unscopedLegacyBoneCompensationRequiresEditorRecalibrationButNoStageMutation() throws Exception {
+    @Test void unscopedLegacyBoneCompensationRequiresRecalibrationWhileVmdRemainsActive() throws Exception {
         fixture("prop.vmd"); boneTimeline();
         Path sidecar=dir.resolve("prop.timeline.json");
         var json=com.google.gson.JsonParser.parseString(Files.readString(sidecar)).getAsJsonObject();
@@ -74,10 +135,11 @@ class StagePropAnimationControllerTest {
         var port=new Port(); var controller=new StagePropAnimationController(port);
         UUID owner=UUID.randomUUID(); var model=new Model(22);
         controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
-        assertFalse(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> calibration()));
-        assertTrue(port.loadModels.isEmpty());
-        assertEquals(0,model.animation);
+        assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx",file -> calibration()));
+        assertEquals(1,port.loadModels.size());
+        assertNotEquals(0,model.animation);
         assertTrue(controller.state(owner).boneBindings().isEmpty());
+        assertNotNull(controller.takeWarning(owner));
         controller.clear();
     }
 
@@ -176,12 +238,38 @@ class StagePropAnimationControllerTest {
                         case "getPropBonePose" -> {
                             var buffer=(ByteBuffer)args[2];
                             new org.joml.Matrix4f().get(0,buffer); new org.joml.Matrix4f().get(64,buffer);
+                            new org.joml.Matrix4f().get(128,buffer);
                             yield true;
                         }
                         case "setPropBoneParents" -> { calls.add(((int[])args[1]).length); yield true; }
                         default -> throw new AssertionError(m.getName());
                     };
                 });
+    }
+
+    @Test void independentModelSpaceIsStableBeforeTheFirstBoneKeyAndAfterUnbind() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        var files=com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.open(dir.resolve("prop.vmd"),"fan.pmx");
+        var binding=files.timeline().boneKeys().getFirst().value();
+        var timeline=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline(
+                com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,List.of(),List.of(),
+                List.of(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(10,binding),
+                        new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(20,
+                                com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding.detached("Center"))));
+        com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.save(files,timeline,"",calibration());
+        var controller=new StagePropAnimationController(new Port());
+        var owner=UUID.randomUUID();
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        assertTrue(controller.bind(owner,new Model(22).proxy,dir,"fan.pmx",file -> calibration()));
+        assertTrue(controller.state(owner).boneBindings().isEmpty());
+        assertTrue(controller.usesBoneParenting(owner));
+        controller.seek(owner,10);
+        assertFalse(controller.state(owner).boneBindings().isEmpty());
+        controller.seek(owner,20);
+        assertTrue(controller.state(owner).boneBindings().isEmpty());
+        assertTrue(controller.usesBoneParenting(owner),"Unbinding must return to independent space, not jump to the hand");
+        controller.stop(owner);
+        assertFalse(controller.usesBoneParenting(owner));
     }
 
     @Test void crossFolderReferenceLoadsThePropsLocalMotionAndTimeline() throws Exception {
@@ -216,8 +304,8 @@ class StagePropAnimationControllerTest {
         for (int i=0;i<5;i++) assertTrue(controller.bind(owner,model.proxy,dir,"fan.pmx"));
         assertEquals(1,port.loadModels.size());
         controller.seek(owner,150); controller.seek(owner,180);
-        assertEquals(120,port.lastFrame(201));
-        assertEquals(2,port.seeks.size());
+        assertEquals(180,port.lastFrame(201));
+        assertEquals(3,port.seeks.size());
         controller.stop(owner); controller.stop(owner);
         assertEquals(0,model.animation); assertEquals(1,model.speed); assertTrue(model.loop);
         assertEquals(Set.of(101L),port.deleted);
@@ -304,12 +392,12 @@ class StagePropAnimationControllerTest {
         controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
         controller.seek(owner,600);
         controller.bind(owner,model.proxy,dir,"fan.pmx");
-        assertEquals(120,port.lastFrame(11));
+        assertEquals(600,port.lastFrame(11));
         assertTrue(controller.state(owner).visible());
         assertEquals("左ダミー",controller.state(owner).attachment().bone());
         controller.seek(owner,950);
         assertFalse(controller.state(owner).visible());
-        assertEquals(1,port.seeks.size(),"Control tracks must keep advancing after the prop VMD ends");
+        assertEquals(2,port.seeks.size(),"The native sampler must receive the stage frame after the prop VMD ends");
         controller.seek(owner,300);
         assertTrue(controller.state(owner).visible());
         assertEquals("右ダミー",controller.state(owner).attachment().bone());

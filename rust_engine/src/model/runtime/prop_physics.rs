@@ -1,5 +1,6 @@
 use super::*;
 use crate::physics::{inv_z, PhysicsMode};
+use crate::skeleton::OutsideParentWindow;
 
 #[derive(Clone, Copy)]
 pub(super) struct PropPhysicsFrame {
@@ -19,9 +20,20 @@ impl MmdModel {
         self.bone_manager.replace_external_parents(parents)
     }
 
+    /// Replaces VMD switch windows without touching the current parent matrices.
+    pub fn set_prop_bone_windows(&mut self, windows: &[(usize, OutsideParentWindow)]) -> bool {
+        self.bone_manager.replace_outside_parent_windows(windows)
+    }
+
     pub fn prop_bone_pose(&self, index: usize) -> Option<(Mat4, Mat4)> {
         let bone = self.bone_manager.get_bone(index)?;
         Some((bone.local_to_world, bone.local_to_parent))
+    }
+
+    /// Rest translation relative to the original parent, excluding all animation.
+    pub fn prop_bone_origin(&self, index: usize) -> Option<Mat4> {
+        let bone = self.bone_manager.get_bone(index)?;
+        Some(Mat4::from_translation(bone.body_shift))
     }
 
     /// PMX units stay local, while this reference frame follows the character attachment.

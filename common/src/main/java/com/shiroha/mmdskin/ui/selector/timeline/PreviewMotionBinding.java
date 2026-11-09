@@ -45,7 +45,7 @@ public final class PreviewMotionBinding implements AutoCloseable {
     public void seek(int frame) {
         if (model.getModelHandle() != modelHandle) throw new IllegalStateException("Preview model was released");
         if (animation == 0) return;
-        float target = Math.min(frame,endFrame);
+        float target = Math.max(0,frame);
         if (Float.compare(target,appliedFrame) != 0) {
             animations.seekLayer(modelHandle,0,target);
             appliedFrame = target;

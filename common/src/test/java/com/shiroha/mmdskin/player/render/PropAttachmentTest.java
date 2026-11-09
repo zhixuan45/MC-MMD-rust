@@ -8,6 +8,30 @@ import java.nio.ByteOrder;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PropAttachmentTest {
+    @Test void stageWithoutAnExplicitModelAttachmentUsesIndependentSpaceWithOrWithoutBoneTracks() {
+        assertTrue(ItemRenderHelper.usesIndependentPropSpace(true,null));
+        assertFalse(ItemRenderHelper.usesIndependentPropSpace(false,null));
+        var explicit=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Attachment("Hand",
+                com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset.IDENTITY);
+        assertFalse(ItemRenderHelper.usesIndependentPropSpace(true,explicit));
+    }
+    @Test void independentPropIgnoresLegacyHandAndGripTransformsAndAppliesEachScaleOnce() {
+        var config=new com.shiroha.mmdskin.config.ModelConfigData();
+        config.heldPmxOffsetX=8; config.heldPmxOffsetY=-3; config.heldPmxRotZ=100;
+        config.heldItemScale=.8f; config.heldPmxScale=1.5f;
+        var offset=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset(3,2,1,40,50,60);
+        for(float ownerScale:new float[]{.045f,.09f,.18f}) {
+            var render=ItemRenderHelper.propRenderTransform(null,config,offset,ownerScale,true);
+            var world=new Matrix4f().scaling(ownerScale).mul(render).scale(.12f);
+            assertTrue(world.equals(new Matrix4f().scaling(.12f*.8f*1.5f),1e-5f));
+            assertTrue(world.equals(ItemRenderHelper.propPhysicsTransform(render,1,ownerScale,.12f),1e-5f));
+        }
+        var bone=new Matrix4f().translation(3,8,-4).rotateY(.6f);
+        var legacy=ItemRenderHelper.propRenderTransform(bone,config,offset,.09f,false);
+        assertTrue(legacy.equals(ItemRenderHelper.propLocalTransform(bone,config,offset).scale(10*.8f*1.5f),1e-5f),
+                "Explicit model attachments and ordinary held props keep their existing transform");
+    }
+
     @Test void namedBoneUsesItsEvaluatedGlobalMatrixWithoutTheHandTransform() {
         Port port=new Port();
         Matrix4f selected=ItemRenderHelper.resolvePropAttachment(port,1,2,buffer(),"head");

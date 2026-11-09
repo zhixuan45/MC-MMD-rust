@@ -8,6 +8,7 @@ use super::motion_track::{
     BoneFrameTransform, BoneMotionTrack, CameraFrameTransform, CameraMotionTrack, IkMotionTrack,
     MorphMotionTrack, MotionTrack,
 };
+use crate::skeleton::OutsideParentWindow;
 
 /// 动画数据
 #[derive(Debug, Clone)]
@@ -161,6 +162,19 @@ impl Motion {
         } else {
             BoneFrameTransform::default()
         }
+    }
+
+    /// Samples a bone with its outside-parent switch window.
+    pub fn find_bone_transform_windowed(
+        &self,
+        name: &str,
+        frame: f32,
+        window: OutsideParentWindow,
+    ) -> BoneFrameTransform {
+        self.bone_tracks
+            .get(name)
+            .map(|track| track.seek_windowed(frame, window, &self.bezier_cache))
+            .unwrap_or_default()
     }
 
     /// 获取 Morph 权重

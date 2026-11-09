@@ -84,19 +84,29 @@ public final class PropTimelinePreview implements AutoCloseable {
     public String missingBone() { return missingBone; }
     public List<String> propBones() { return prop==null?List.of():parenting.bones(prop.modelInstance().getModelHandle()); }
 
-    private Matrix4f propToActor(PropTimeline.State state) {
+    private Matrix4f renderTransform(PropTimeline.State state) {
         var binding=state.attachment();
-        var matrix=binding==null?ItemRenderHelper.getPropAttachment(actor,config.heldPmxBone)
+        boolean independent=ItemRenderHelper.usesIndependentPropSpace(true,binding);
+        var matrix=independent?null:binding==null?ItemRenderHelper.getPropAttachment(actor,config.heldPmxBone)
                 :ItemRenderHelper.getTimelinePropAttachment(actor,binding.bone());
-        if(matrix==null) throw new IllegalArgumentException("Missing outer attachment bone");
+        if(!independent && matrix==null) throw new IllegalArgumentException("Missing outer attachment bone");
+        float ownerScale=actor.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
+                ?base.getModelScale():.09f*config.modelScale;
+        return ItemRenderHelper.propRenderTransform(matrix,config,
+                binding==null?PropTimeline.Offset.IDENTITY:binding.offset(),ownerScale,independent);
+    }
+    private Matrix4f propToActor(Matrix4f renderTransform) {
         float propScale=prop.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
                 ?base.getModelScale():.09f*config.modelScale;
-        return ItemRenderHelper.propLocalTransform(matrix,config,binding==null?PropTimeline.Offset.IDENTITY:binding.offset())
-                .scale(10*config.heldItemScale*config.heldPmxScale*propScale);
+        return new Matrix4f(renderTransform).scale(propScale);
     }
 
     public PropTimeline.BoneBinding register(int frame,PropTimeline baseline,String child,String target,
                                            PropTimeline.Offset offset,boolean keepWorld) {
+        return register(frame,baseline,child,target,offset,keepWorld,null);
+    }
+    public PropTimeline.BoneBinding register(int frame,PropTimeline baseline,String child,String target,
+                                           PropTimeline.Offset offset,boolean keepWorld,PropTimeline.Offset placement) {
         if(!prepare(frame)) throw new IllegalStateException("Preview is still loading");
         var runtime=NativeRuntimeBridgeHolder.get();
         long actorHandle=actor.modelInstance().getModelHandle(),propHandle=prop.modelInstance().getModelHandle();
@@ -104,38 +114,57 @@ public final class PropTimelinePreview implements AutoCloseable {
         runtime.setPhysicsEnabled(propHandle,false);
         if(!runtime.evaluatePropPose(actorHandle)) throw new IllegalStateException("Cannot evaluate character pose");
         var state=baseline.evaluate(frame);
-        Matrix4f base=propToActor(state);
-        parenting.apply(actorHandle,propHandle,base,state);
+        // Even the first registration starts in the independent model space, before any bone key exists.
+        Matrix4f base=propToActor(renderTransform(state));
+        parenting.apply(actorHandle,propHandle,base,baseline,frame,state);
         if(!runtime.evaluatePropPose(propHandle)) throw new IllegalStateException("Cannot evaluate prop pose");
         Matrix4f[] pose=parenting.pose(propHandle,child);
         Matrix4f targetMatrix=PropBoneParenting.targetInProp(base,parenting.pose(actorHandle,target)[0]);
-        var binding=new PropTimeline.BoneBinding(child,target,offset,
-                PropBoneParenting.compensation(targetMatrix,pose[0],pose[1],keepWorld),keepWorld,false);
+        PropTimeline previewTimeline=baseline;
+        if (keepWorld) {
+            var keys=new java.util.ArrayList<>(baseline.boneKeys());
+            keys.add(new PropTimeline.Key<>(frame,new PropTimeline.BoneBinding(child,target,
+                    PropTimeline.Offset.IDENTITY,PropTimeline.identityCompensation(),false,false)));
+            var registeredTimeline=new PropTimeline(baseline.initial(),baseline.visibility(),baseline.attachments(),keys);
+            previewTimeline=registeredTimeline;
+            parenting.apply(actorHandle,propHandle,base,registeredTimeline,frame,state);
+            if(!runtime.evaluatePropPose(propHandle)) throw new IllegalStateException("Cannot evaluate registered prop pose");
+            Matrix4f[] registeredPose=parenting.pose(propHandle,child);
+            registeredPose[0]=pose[0];
+            pose=registeredPose;
+        }
+        var binding=PropBoneParenting.registration(child,target,targetMatrix,pose,offset,keepWorld,placement);
         var bindings=new java.util.LinkedHashMap<>(state.boneBindings());
         bindings.put(child,binding);
-        parenting.apply(actorHandle,propHandle,base,new PropTimeline.State(state.visible(),state.attachment(),bindings));
+        parenting.apply(actorHandle,propHandle,base,previewTimeline,frame,
+                new PropTimeline.State(state.visible(),state.attachment(),bindings));
         image.invalidate();
         return binding;
     }
 
     public void render(GuiGraphics graphics,int x,int y,int width,int height,int frame,long revision,
                        PropTimeline.State state,float yaw,float pitch,float zoom) {
+        render(graphics,x,y,width,height,frame,revision,state,yaw,pitch,zoom,PropTimeline.EMPTY);
+    }
+
+    public void render(GuiGraphics graphics,int x,int y,int width,int height,int frame,long revision,
+                       PropTimeline.State state,float yaw,float pitch,float zoom,PropTimeline timeline) {
         graphics.flush();
         graphics.enableScissor(x,y,x+width,y+height);
         try {
             var key = List.of(frame,revision,state,yaw,pitch,zoom,width,height);
-            if (!image.render(key,60,System.nanoTime(),() -> drawModels(x,y,width,height,state,yaw,pitch,zoom))) {
+            if (!image.render(key,60,System.nanoTime(),() -> drawModels(x,y,width,height,frame,timeline,state,yaw,pitch,zoom))) {
                 // The fallback keeps depth clearing inside the preview box.
                 RenderSystem.depthMask(true);
                 GL46C.glClearBufferfv(GL46C.GL_DEPTH,0,new float[]{1});
-                drawModels(x,y,width,height,state,yaw,pitch,zoom);
+                drawModels(x,y,width,height,frame,timeline,state,yaw,pitch,zoom);
             }
         } finally {
             graphics.disableScissor();
         }
     }
 
-    private void drawModels(int x,int y,int width,int height,PropTimeline.State state,float yaw,float pitch,float zoom) {
+    private void drawModels(int x,int y,int width,int height,int frame,PropTimeline timeline,PropTimeline.State state,float yaw,float pitch,float zoom) {
         Minecraft client = Minecraft.getInstance();
         PaperDollRenderScope.enter();
         try {
@@ -156,20 +185,19 @@ public final class PropTimelinePreview implements AutoCloseable {
                     .rotateX((float)Math.toRadians(pitch)));
             // The renderer applies the actor model scale to this stack, exactly as in the held-prop path.
             actor.modelInstance().render(null,0,0,new Vector3f(),0,stack,0xF000F0,SCENE);
-            parenting.apply(actor.modelInstance().getModelHandle(),prop.modelInstance().getModelHandle(),propToActor(state),state);
             missingBone = "";
-            if (!state.visible()) return;
-            var attachment = state.attachment();
-            var matrix = attachment == null ? ItemRenderHelper.getPropAttachment(actor,config.heldPmxBone)
-                    : ItemRenderHelper.getTimelinePropAttachment(actor,attachment.bone());
-            if (matrix == null) {
-                missingBone = attachment.bone();
-                return;
+            if(state.attachment()!=null) {
+                var attachment=state.attachment();
+                if(attachment!=null && ItemRenderHelper.getTimelinePropAttachment(actor,attachment.bone())==null) {
+                    missingBone=attachment.bone();
+                    return;
+                }
             }
-            stack.last().pose().mul(ItemRenderHelper.propLocalTransform(matrix,config,
-                    attachment == null ? PropTimeline.Offset.IDENTITY : attachment.offset()));
-            float propScale = 10 * config.heldItemScale * config.heldPmxScale;
-            stack.scale(propScale,propScale,propScale);
+            Matrix4f local=renderTransform(state);
+            parenting.apply(actor.modelInstance().getModelHandle(),prop.modelInstance().getModelHandle(),propToActor(local),
+                    timeline,frame,state);
+            if (!state.visible()) return;
+            stack.last().pose().mul(local);
             prop.modelInstance().render(null,0,0,new Vector3f(),0,stack,0xF000F0,SCENE);
         } finally {
             client.gameRenderer.lightTexture().turnOffLightLayer();

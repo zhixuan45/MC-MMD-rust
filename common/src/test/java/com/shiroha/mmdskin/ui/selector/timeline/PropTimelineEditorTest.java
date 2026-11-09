@@ -13,6 +13,30 @@ class PropTimelineEditorTest {
     private static final Attachment RIGHT = new Attachment("右ダミー",Offset.IDENTITY);
     private static final Attachment LEFT = new Attachment("左ダミー",new Offset(1,2,3,10,20,30));
 
+    @Test void placementIsPreviewOnlyUntilTheExactDisplayedBindingIsConfirmed() {
+        var editor=new PropTimelineEditor(EMPTY);
+        var placed=new Offset(.5f,-1,2,20,30,40);
+        var draft=new BoneBinding("Center","右手首",Offset.IDENTITY,identityCompensation(),true,false,placed);
+        State preview=editor.preview(draft);
+        assertEquals(draft,preview.boneBindings().get("Center"));
+        assertFalse(editor.dirty());
+        assertTrue(editor.state().boneBindings().isEmpty(),"A cancelled draft must not create a timeline key");
+        editor.boneBinding(draft);
+        assertEquals(preview,editor.state(),"Confirmation commits exactly the state shown before registration");
+        assertTrue(editor.dirty());
+        assertEquals(placed,editor.snapshot().boneKeys().getFirst().value().placement());
+    }
+
+    @Test void hiddenPropsAreVisibleDuringPlacementWithoutChangingTheVisibilityTrack() {
+        var editor=new PropTimelineEditor(new PropTimeline(new State(false,null),List.of(),List.of()));
+        var draft=new BoneBinding("Center","右手首",Offset.IDENTITY,identityCompensation(),true,false,Offset.IDENTITY);
+        assertTrue(editor.preview(draft).visible(),"A hidden track must not prevent inspecting the placement");
+        assertFalse(editor.preview(null).visible(),"Cancelling restores timeline visibility");
+        assertFalse(editor.dirty());
+        editor.boneBinding(draft);
+        assertFalse(editor.state().visible(),"Confirmation must not silently add a visibility key");
+    }
+
     @Test void addsUpdatesAndDeletesOnlyTheSelectedFramesProperty() {
         var editor = new PropTimelineEditor(EMPTY);
         editor.motionEnd(1000);

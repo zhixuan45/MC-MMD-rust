@@ -8,6 +8,7 @@ use super::interpolation::{
     coefficient, lerp_element_wise, lerp_f32, BoneKeyframeInterpolation, KeyframeInterpolationPoint,
 };
 use super::keyframe::{BoneKeyframe, IkKeyframe, MorphKeyframe};
+use crate::skeleton::OutsideParentWindow;
 
 /// 骨骼帧变换结果
 #[derive(Debug, Clone, Copy)]
@@ -40,6 +41,22 @@ impl Default for BoneFrameTransform {
 }
 
 impl BoneFrameTransform {
+    fn from_keyframe(keyframe: &BoneKeyframe) -> Self {
+        Self {
+            translation: keyframe.translation,
+            orientation: keyframe.orientation,
+            interpolation: BoneKeyframeInterpolation::build(
+                &keyframe.interpolation_x,
+                &keyframe.interpolation_y,
+                &keyframe.interpolation_z,
+                &keyframe.interpolation_r,
+            ),
+            local_transform_mix: None,
+            enable_physics: keyframe.is_physics_simulation_enabled,
+            disable_physics: false,
+        }
+    }
+
     /// 混合平移（考虑 local_transform_mix）
     pub fn mixed_translation(&self, local_user_translation: Vec3) -> Vec3 {
         if let Some(coef) = self.local_transform_mix {
@@ -134,6 +151,71 @@ impl BoneMotionTrack {
         }
 
         (prev, next)
+    }
+
+    /// Samples a VMD local pose with MMD's outside-parent switch window.
+    ///
+    /// Before a switch the previous key is held. At the current binding's start
+    /// the nearest later key is used immediately; if no later key exists the
+    /// bone switches to zero translation and identity rotation. The current
+    /// binding's start takes priority when one key interval spans both its start
+    /// and the next switch.
+    pub fn seek_windowed(
+        &self,
+        frame: f32,
+        window: OutsideParentWindow,
+        bezier_factory: &dyn BezierCurveFactory,
+    ) -> BoneFrameTransform {
+        let frame = frame.max(0.0);
+        if !window.is_active() {
+            return self.seek_precisely(frame.floor() as u32, frame.fract(), bezier_factory);
+        }
+        if frame.fract() == 0.0 {
+            if let Some(keyframe) = self.keyframes.get(&(frame as u32)) {
+                return BoneFrameTransform::from_keyframe(keyframe);
+            }
+        }
+
+        let Some((&previous_frame, previous_keyframe)) =
+            self.keyframes.range(..=frame.floor() as u32).next_back()
+        else {
+            return self.seek_precisely(frame.floor() as u32, frame.fract(), bezier_factory);
+        };
+        let next_keyframe = self
+            .keyframes
+            .range((previous_frame.saturating_add(1))..)
+            .next()
+            .map(|(_, keyframe)| keyframe);
+
+        // Current binding start. At/after it, use the nearest later key even when
+        // that key is also the next switch; before it, hold the previous key.
+        if window.previous != 0 && previous_frame < window.previous {
+            if let Some(next) = next_keyframe {
+                if window.previous <= next.frame_index {
+                    return if frame < window.previous as f32 {
+                        BoneFrameTransform::from_keyframe(previous_keyframe)
+                    } else {
+                        BoneFrameTransform::from_keyframe(next)
+                    };
+                }
+            } else if frame >= window.previous as f32 {
+                return BoneFrameTransform::default();
+            } else {
+                return BoneFrameTransform::from_keyframe(previous_keyframe);
+            }
+        }
+
+        // A key interval that spans the next switch must not interpolate toward
+        // a pose authored for the future parent.
+        if window.next != 0 && previous_frame < window.next {
+            if let Some(next) = next_keyframe {
+                if window.next <= next.frame_index && frame < window.next as f32 {
+                    return BoneFrameTransform::from_keyframe(previous_keyframe);
+                }
+            }
+        }
+
+        self.seek_precisely(frame.floor() as u32, frame.fract(), bezier_factory)
     }
 }
 
@@ -326,6 +408,118 @@ impl MotionTrack for BoneMotionTrack {
 
     fn max_frame_index(&self) -> u32 {
         self.keyframes.keys().last().copied().unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod outside_parent_window_tests {
+    use super::*;
+    use crate::animation::bezier_curve::BezierCurveCache;
+
+    fn key(frame: u32, x: f32) -> BoneKeyframe {
+        let mut keyframe = BoneKeyframe::with_transform(frame, Vec3::new(x, 0.0, 0.0), Quat::IDENTITY);
+        for curve in [
+            &mut keyframe.interpolation_x,
+            &mut keyframe.interpolation_y,
+            &mut keyframe.interpolation_z,
+            &mut keyframe.interpolation_r,
+        ] {
+            *curve = [0, 0, 127, 127];
+        }
+        keyframe
+    }
+
+    fn track(keys: &[(u32, f32)]) -> BoneMotionTrack {
+        let mut track = BoneMotionTrack::new();
+        for &(frame, x) in keys {
+            track.insert_keyframe(key(frame, x));
+        }
+        track
+    }
+
+    fn x(track: &BoneMotionTrack, frame: f32, previous: u32, next: u32) -> f32 {
+        track
+            .seek_windowed(
+                frame,
+                OutsideParentWindow { previous, next },
+                &BezierCurveCache::new(),
+            )
+            .translation
+            .x
+    }
+
+    #[test]
+    fn next_switch_holds_previous_key_until_the_switch_frame() {
+        let track = track(&[(0, 0.0), (60, 6.0)]);
+        assert_eq!(x(&track, 30.0, 0, 60), 0.0);
+        assert_eq!(x(&track, 59.9, 0, 60), 0.0);
+        assert_eq!(x(&track, 60.0, 0, 60), 6.0);
+    }
+
+    #[test]
+    fn binding_start_uses_the_nearest_later_key_immediately() {
+        let track = track(&[(0, 0.0), (60, 6.0)]);
+        assert_eq!(x(&track, 29.9, 30, 0), 0.0);
+        assert_eq!(x(&track, 30.0, 30, 0), 6.0);
+        assert_eq!(x(&track, 45.0, 30, 0), 6.0);
+    }
+
+    #[test]
+    fn last_key_before_a_later_binding_start_switches_to_zero_pose() {
+        let track = track(&[(0, 0.0), (30, 3.0)]);
+        assert_eq!(x(&track, 20.0, 60, 0), 2.0);
+        assert_eq!(x(&track, 40.0, 60, 0), 3.0);
+        assert_eq!(x(&track, 60.0, 60, 0), 0.0);
+        assert_eq!(x(&track, 61.0, 60, 0), 0.0);
+    }
+
+    #[test]
+    fn exact_key_at_binding_start_is_not_replaced_by_zero_pose() {
+        let track = track(&[(0, 0.0), (60, 6.0)]);
+        assert_eq!(x(&track, 60.0, 60, 0), 6.0);
+    }
+
+    #[test]
+    fn binding_start_takes_priority_over_a_future_switch_in_one_interval() {
+        let track = track(&[(0, 0.0), (100, 10.0)]);
+        assert_eq!(x(&track, 45.0, 30, 60), 10.0);
+    }
+
+    #[test]
+    fn inactive_window_and_no_future_switch_keep_normal_interpolation() {
+        let track = track(&[(0, 0.0), (60, 6.0)]);
+        assert_eq!(x(&track, 30.0, 0, 0), 3.0);
+    }
+
+    #[test]
+    fn empty_and_single_key_tracks_follow_the_window_rules() {
+        let empty = BoneMotionTrack::new();
+        assert_eq!(
+            empty
+                .seek_windowed(25.0, OutsideParentWindow { previous: 20, next: 0 }, &BezierCurveCache::new())
+                .translation,
+            Vec3::ZERO
+        );
+        let single = track(&[(10, 2.0)]);
+        assert_eq!(x(&single, 15.0, 20, 0), 2.0);
+        assert_eq!(x(&single, 25.0, 20, 0), 0.0);
+    }
+
+    #[test]
+    fn full_switch_sequence_holds_jumps_and_zeroes() {
+        let track = track(&[
+            (0, 0.0),
+            (3098, 10.0),
+            (3099, 20.0),
+            (3168, 30.0),
+            (3370, 40.0),
+            (3375, 50.0),
+        ]);
+        assert_eq!(x(&track, 3098.5, 0, 3099), 10.0, "hold the previous key before 3099");
+        assert_eq!(x(&track, 3101.0, 3100, 0), 30.0, "switch to the nearest later key");
+        assert_eq!(x(&track, 3400.0, 3400, 0), 0.0, "zero pose after the last key");
+        assert!((x(&track, 3200.0, 3168, 0) - 31.584_158).abs() < 1e-3,
+                "no future switch keeps ordinary interpolation");
     }
 }
 

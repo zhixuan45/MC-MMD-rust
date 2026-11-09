@@ -13,15 +13,15 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PreviewMotionBindingTest {
-    @Test void actorAndPropUseSeparateHandlesAndHoldTheirRespectiveLastFrames() {
+    @Test void actorAndPropUseSeparateHandlesAndReceiveAbsoluteFrames() {
         var port = new Port();
         var actor = new Model(11); var prop = new Model(22);
         try (var a = new PreviewMotionBinding(port,actor.instance,Path.of("dance.vmd"));
              var p = new PreviewMotionBinding(port,prop.instance,Path.of("fan.vmd"))) {
             a.seek(600); p.seek(600);
-            assertEquals(List.of("11:600.0","22:120.0"),port.seeks);
+            assertEquals(List.of("11:600.0","22:600.0"),port.seeks);
             a.seek(600); p.seek(900);
-            assertEquals(2,port.seeks.size());
+            assertEquals(List.of("11:600.0","22:600.0","22:900.0"),port.seeks);
             a.seek(0); p.seek(0);
             assertEquals(0,actor.speed); assertFalse(actor.loop);
             assertEquals(0,prop.speed); assertFalse(prop.loop);

@@ -215,6 +215,11 @@ public final class NativeRuntimeBridge implements
         NativePoseInputs.externalPose(model);
         return nativeFunc().SetPropBoneParents(model,indices,matrices);
     }
+    @Override public boolean setPropBoneWindows(long model, int[] indices, float[] windows) {
+        if (indices == null || windows == null || windows.length != indices.length * 2) return false;
+        NativePoseInputs.externalPose(model);
+        return nativeFunc().SetPropBoneWindows(model,indices,windows);
+    }
     @Override public boolean getPropBonePose(long model, int index, ByteBuffer matrices) {
         return nativeFunc().GetPropBonePose(model,index,matrices);
     }

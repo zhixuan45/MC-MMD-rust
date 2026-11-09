@@ -19,7 +19,7 @@ public final class PropTimeline {
         }
     }
 
-    /** A null attachment in State inherits the user's configured prop attachment. */
+    /** A null stage attachment uses independent model coordinates; ordinary held items use their configured grip. */
     public record Attachment(String bone, Offset offset) {
         public Attachment {
             Objects.requireNonNull(bone, "bone");
@@ -30,9 +30,13 @@ public final class PropTimeline {
         }
     }
 
-    /** Compensation is a column-major parent-frame matrix, baked once at registration. */
+    /** Column-major outside-parent compensation, before the static origin is removed at runtime. */
     public record BoneBinding(String childBone,String bone,Offset offset,List<Float> compensation,
-                              boolean keepWorld,boolean unbind) {
+                              boolean keepWorld,boolean unbind,Offset placement) {
+        public BoneBinding(String childBone,String bone,Offset offset,List<Float> compensation,
+                           boolean keepWorld,boolean unbind) {
+            this(childBone,bone,offset,compensation,keepWorld,unbind,null);
+        }
         public BoneBinding {
             if (childBone == null || childBone.isBlank() || childBone.length()>256
                     || childBone.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Invalid prop bone");
@@ -51,6 +55,9 @@ public final class PropTimeline {
                 throw new IllegalArgumentException("Compensation must be an invertible affine transform");
             }
             if (!unbind) new Attachment(bone,offset);
+            if(placement!=null && (!keepWorld || unbind)) {
+                throw new IllegalArgumentException("Placed bones must register with pose compensation");
+            }
         }
         public static BoneBinding detached(String child) {
             return new BoneBinding(child,"",Offset.IDENTITY,identityCompensation(),false,true);
@@ -59,6 +66,29 @@ public final class PropTimeline {
 
     public static List<Float> identityCompensation() {
         return List.of(1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f);
+    }
+
+    /**
+     * MMD outside-parent VMD switch window for one prop bone.
+     *
+     * <p>{@code previousFrame} is the start of the current binding segment, or the
+     * first future binding start when the sampled frame is still unbound. {@code
+     * nextFrame} is the next frame whose target differs, or zero when no switch
+     * follows. {@link #DEFAULT} keeps ordinary VMD sampling.
+     */
+    public record BoneWindow(int previousFrame, int nextFrame) {
+        public static final BoneWindow DEFAULT = new BoneWindow(0, 0);
+
+        public BoneWindow {
+            if (previousFrame < 0 || nextFrame < 0) {
+                throw new IllegalArgumentException("Negative outside-parent window frame");
+            }
+            if (nextFrame != 0 && previousFrame >= nextFrame) {
+                throw new IllegalArgumentException("Invalid outside-parent window");
+            }
+        }
+
+        public boolean active() { return previousFrame != 0 || nextFrame != 0; }
     }
 
     public record State(boolean visible, Attachment attachment,Map<String,BoneBinding> boneBindings) {
@@ -80,6 +110,9 @@ public final class PropTimeline {
     private final List<Key<Boolean>> visibility;
     private final List<Key<Attachment>> attachments;
     private final List<Key<BoneBinding>> boneKeys;
+    private final Map<String,List<TargetChange>> targetChanges;
+
+    private record TargetChange(int frame,String target) {}
 
     public PropTimeline(State initial, List<Key<Boolean>> visibility, List<Key<Attachment>> attachments) {
         this(initial,visibility,attachments,List.of());
@@ -99,6 +132,7 @@ public final class PropTimeline {
             }
         }
         this.boneKeys = List.copyOf(keys);
+        this.targetChanges = buildTargetChanges(initial, this.boneKeys);
     }
 
     public State evaluate(float frame) {
@@ -117,6 +151,95 @@ public final class PropTimeline {
     public List<Key<Boolean>> visibility() { return visibility; }
     public List<Key<Attachment>> attachments() { return attachments; }
     public List<Key<BoneBinding>> boneKeys() { return boneKeys; }
+
+    /**
+     * Window for one child bone. Bones without any binding history have no window.
+     * The timeline instance is already owner-scoped, so the target bone name is
+     * sufficient; no owner UUID is added to the timeline protocol.
+     */
+    public BoneWindow outsideParentWindow(String childBone, float frame) {
+        Objects.requireNonNull(childBone, "childBone");
+        validateFrame(frame);
+        var changes = targetChanges.get(childBone);
+        if (changes == null) return BoneWindow.DEFAULT;
+        int index = lastChangeAtOrBefore(changes, frame);
+        if (index >= 0) {
+            int previous = changes.get(index).frame();
+            int next = index + 1 < changes.size() ? changes.get(index + 1).frame() : 0;
+            return new BoneWindow(previous, next);
+        }
+        // Before the first binding, the future start must still affect earlier frames.
+        int previous = changes.get(0).frame();
+        int next = changes.size() > 1 ? changes.get(1).frame() : 0;
+        return new BoneWindow(previous, next);
+    }
+
+    /** Windows for every child with a historical or future outside parent. */
+    public Map<String,BoneWindow> outsideParentWindows(float frame) {
+        validateFrame(frame);
+        var result = new LinkedHashMap<String,BoneWindow>();
+        for (String childBone : targetChanges.keySet()) {
+            result.put(childBone, outsideParentWindow(childBone, frame));
+        }
+        return java.util.Collections.unmodifiableMap(result);
+    }
+
+    /**
+     * Windows for timeline bindings plus any binding currently present in {@code
+     * state}. State-only bindings keep {@link BoneWindow#DEFAULT} because they have
+     * no timeline switch history yet.
+     */
+    public Map<String,BoneWindow> outsideParentWindows(float frame, State state) {
+        Objects.requireNonNull(state, "state");
+        var result = new LinkedHashMap<>(outsideParentWindows(frame));
+        for (String childBone : state.boneBindings().keySet()) {
+            result.putIfAbsent(childBone, BoneWindow.DEFAULT);
+        }
+        return java.util.Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String,List<TargetChange>> buildTargetChanges(State initial,List<Key<BoneBinding>> keys) {
+        var changes = new LinkedHashMap<String,List<TargetChange>>();
+        for (var entry : initial.boneBindings().entrySet()) {
+            if (!entry.getValue().unbind()) {
+                changes.computeIfAbsent(entry.getKey(), ignored -> new ArrayList<>())
+                        .add(new TargetChange(0, entry.getValue().bone()));
+            }
+        }
+        for (Key<BoneBinding> key : keys) {
+            BoneBinding binding = key.value();
+            String target = binding.unbind() ? null : binding.bone();
+            var childChanges = changes.computeIfAbsent(binding.childBone(), ignored -> new ArrayList<>());
+            if (!childChanges.isEmpty() && childChanges.getLast().frame() == key.frame()) {
+                // A frame-zero key overrides an initial binding at the same frame.
+                childChanges.set(childChanges.size() - 1, new TargetChange(key.frame(), target));
+            } else {
+                String previous = childChanges.isEmpty() ? null : childChanges.getLast().target();
+                if (!Objects.equals(previous,target)) childChanges.add(new TargetChange(key.frame(), target));
+            }
+        }
+        var result = new LinkedHashMap<String,List<TargetChange>>();
+        for (var entry : changes.entrySet()) {
+            if (entry.getValue().stream().anyMatch(change -> change.target() != null)) {
+                result.put(entry.getKey(), List.copyOf(entry.getValue()));
+            }
+        }
+        return java.util.Collections.unmodifiableMap(result);
+    }
+
+    private static int lastChangeAtOrBefore(List<TargetChange> changes, float frame) {
+        int low = 0, high = changes.size();
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            if (changes.get(middle).frame() <= frame) low = middle + 1;
+            else high = middle;
+        }
+        return low - 1;
+    }
+
+    private static void validateFrame(float frame) {
+        if (!Float.isFinite(frame) || frame < 0) throw new IllegalArgumentException("Invalid timeline frame");
+    }
 
     private static <T> List<Key<T>> sorted(List<Key<T>> keys) {
         var result = new ArrayList<>(keys);

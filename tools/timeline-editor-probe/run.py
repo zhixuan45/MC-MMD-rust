@@ -256,12 +256,19 @@ public final class PropTimelinePreview implements AutoCloseable {
     public java.util.List<String> bones(){return java.util.List.of("右ダミー","左ダミー","頭");}
     public java.util.List<String> propBones(){return java.util.List.of("Root","Center","FingerPivot");}
     public static PropTimeline lastBaseline;
+    public static PropTimeline.State lastState;
+    public static int registrations;
     public PropTimeline.BoneBinding register(int frame,PropTimeline baseline,String child,String target,PropTimeline.Offset offset,boolean keepWorld){
+        return register(frame,baseline,child,target,offset,keepWorld,null);
+    }
+    public PropTimeline.BoneBinding register(int frame,PropTimeline baseline,String child,String target,PropTimeline.Offset offset,boolean keepWorld,PropTimeline.Offset placement){
         lastBaseline=baseline;
-        return new PropTimeline.BoneBinding(child,target,offset,PropTimeline.identityCompensation(),keepWorld,false);
+        registrations++;
+        return new PropTimeline.BoneBinding(child,target,offset,PropTimeline.identityCompensation(),keepWorld,false,placement);
     }
     public String missingBone(){return "";}
-    public void render(GuiGraphics g,int x,int y,int w,int h,int frame,long revision,PropTimeline.State state,float yaw,float pitch,float zoom){
+    public void render(GuiGraphics g,int x,int y,int w,int h,int frame,long revision,PropTimeline.State state,float yaw,float pitch,float zoom,PropTimeline timeline){
+        lastState=state;
         var font=new Font();
         g.drawCenteredString(font,"UI probe: 3D preview stub",x+w/2,y+h/2-12,0xff91a6bd);
         g.drawCenteredString(font,"Frame "+frame+" / "+(state.visible()?"Shown":"Hidden"),x+w/2,y+h/2+2,0xffc6d9ef);

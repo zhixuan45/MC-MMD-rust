@@ -7,6 +7,7 @@ import com.shiroha.mmdskin.config.ModelConfigData;
 import com.shiroha.mmdskin.config.PathConstants;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Attachment;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset;
+import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding;
 import com.shiroha.mmdskin.ui.chrome.TranslucentTrayChrome;
 import com.shiroha.mmdskin.ui.selector.timeline.PropTimelineEditor;
 import com.shiroha.mmdskin.ui.selector.timeline.PropTimelineEditor.Track;
@@ -54,8 +55,11 @@ public final class PropTimelineScreen extends Screen {
     private int propertyScroll;
     private float yaw = 20,pitch,zoom = 1;
     private long lastRenderNs;
-    private boolean keepWorld=true;
-    private Button childButton,modeButton;
+    private boolean keepWorld=false;
+    private Button childButton,modeButton,chooseBoneButton,placeButton,cancelPlaceButton,unbindButton,recalculateButton;
+    private BoneBinding placement;
+    private String[] placementInputs;
+    private boolean placementValid=true,placementPreviousMode;
     private List<String> propBoneChoices=List.of();
 
     public PropTimelineScreen(Screen parent,String modelName,ModelConfigData config) {
@@ -88,8 +92,8 @@ public final class PropTimelineScreen extends Screen {
                 referenceLabel=PropTimelineFiles.referenceMotion(document);
                 referenceMotion=motionChoices.get(referenceLabel);
                 if(!editor.snapshot().boneKeys().isEmpty()) {
-                    if(missingReference() || !java.util.Objects.equals(PropTimelineCalibration.read(document),
-                            PropTimelineCalibration.capture(modelName,config,motion,referenceMotion))) editor.invalidateCompensation();
+                    if(missingReference() || !PropTimelineCalibration.matches(PropTimelineCalibration.read(document),
+                            PropTimelineCalibration.capture(modelName,config,motion,referenceMotion),editor.snapshot())) editor.invalidateCompensation();
                 }
                 boneChoices = ModelSelectorServices.modelSettings().listBoneNames(modelName);
             } catch (Exception failure) {
@@ -102,7 +106,7 @@ public final class PropTimelineScreen extends Screen {
         }
         int y = layout.controlsY;
         button(12,y,30,text("previous"),() -> seek(editor.frame()-1));
-        playButton = button(46,y,40,text("play"),() -> editor.playing(!editor.playing()));
+        playButton = button(46,y,40,text("play"),() -> { if(placement==null) editor.playing(!editor.playing()); });
         button(90,y,30,text("next"),() -> seek(editor.frame()+1));
         frameBox = new EditBox(font,124,y,56,18,text("frame"));
         frameBox.setMaxLength(10);
@@ -169,34 +173,40 @@ public final class PropTimelineScreen extends Screen {
             boneBox = new EditBox(font,layout.properties.x(),0,layout.properties.w()-40,18,text("bone"));
             boneBox.setMaxLength(256);
             addProperty(boneBox,60);
-            Button choose = Button.builder(Component.literal("…"),b -> chooseBone())
+            chooseBoneButton = Button.builder(Component.literal("…"),b -> chooseBone())
                     .bounds(layout.properties.right()-36,0,36,18).build();
-            addProperty(choose,60);
+            addProperty(chooseBoneButton,60);
+            placeButton=propertyButton(84,text("place_align"),this::alignPlacement);
             int cell = (layout.properties.w()-8)/3;
             for (int i = 0; i < offsets.length; i++) {
                 offsets[i] = new EditBox(font,layout.properties.x()+(i%3)*(cell+4),0,cell,18,
                         text(i<3?"offset":"rotation"));
                 offsets[i].setMaxLength(20);
-                addProperty(offsets[i],i<3?98:134);
+                offsets[i].setResponder(value -> { if(!syncing && placement!=null) updatePlacement(); });
+                addProperty(offsets[i],i<3?122:158);
             }
-            writeButton = propertyButton(160,text("write_attachment"),this::writeAttachment);
-            deleteButton = propertyButton(184,text("delete"),this::delete);
-            propertyButton(208,text("unbind"),() -> {
+            writeButton = propertyButton(184,text("write_attachment"),this::writeAttachment);
+            deleteButton = propertyButton(208,text("delete"),this::delete);
+            unbindButton=propertyButton(232,text("unbind"),() -> {
                 if(!editor.selectedBone().isEmpty()) {
                     editor.boneBinding(com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding.detached(editor.selectedBone()));
                     changed();
                 }
             });
-            propertyButton(232,text("recalculate"),() -> {
+            recalculateButton=propertyButton(256,text("recalculate"),() -> {
                 try { recalculate(); status=text("recalculated").getString(); refreshFields(); }
                 catch(Exception failure) { report(failure); }
+            });
+            cancelPlaceButton=propertyButton(280,text("place_cancel"),() -> {
+                discardPlacement();
+                changed();
             });
         }
         positionProperties();
     }
 
     private void positionProperties() {
-        int content = track == Track.VISIBILITY ? 102 : 254;
+        int content = track == Track.VISIBILITY ? 102 : 302;
         propertyScroll = Math.max(0,Math.min(Math.max(0,content-layout.properties.h()),propertyScroll));
         for (int i = 0; i < properties.size(); i++) {
             AbstractWidget widget = properties.get(i);
@@ -233,6 +243,12 @@ public final class PropTimelineScreen extends Screen {
                     keepWorld=pendingKeepWorld;
                     modeButton.setMessage(text(keepWorld?"keep_world":"snap"));
                 }
+                if(placement!=null) {
+                    boneBox.setValue(placement.bone());
+                    for(int i=0;i<offsets.length;i++) offsets[i].setValue(placementInputs[i]);
+                    keepWorld=true;
+                    modeButton.setMessage(text("keep_world"));
+                }
             }
             updateLabels();
         } finally { syncing = false; }
@@ -244,22 +260,39 @@ public final class PropTimelineScreen extends Screen {
             valueButton.setMessage(text(draftVisible?"visible":"hidden"));
             initialButton.setMessage(text(editor.initialVisible()?"initial_visible":"initial_hidden"));
         }
-        writeButton.setMessage(text(editor.hasKey(track)?"update_key":track==Track.VISIBILITY?"write_visibility":"write_attachment"));
-        deleteButton.active = editor.hasKey(track);
+        boolean placing=placement!=null;
+        writeButton.setMessage(text(placing?"place_confirm":editor.hasKey(track)?"update_key":track==Track.VISIBILITY?"write_visibility":"write_attachment"));
+        writeButton.active=!placing || placementValid;
+        deleteButton.active = !placing && editor.hasKey(track);
+        playButton.active=!placing;
+        frameBox.active=!placing;
+        if(track==Track.ATTACHMENT) {
+            childButton.active=!placing;
+            modeButton.active=!placing;
+            boneBox.active=!placing;
+            chooseBoneButton.active=!placing;
+            placeButton.active=!editor.selectedBone().isEmpty();
+            cancelPlaceButton.active=placing;
+            unbindButton.active=!placing && !editor.selectedBone().isEmpty();
+            recalculateButton.active=!placing;
+        }
     }
 
     private void selectTrack(Track value) {
+        discardPlacement();
         track = value; propertyScroll = 0;
         init();
     }
 
     private void seek(int frame) {
+        discardPlacement();
         editor.playing(false);
         editor.seek(frame);
         refreshFields();
     }
 
     private void adjacent(boolean next) {
+        discardPlacement();
         editor.playing(false);
         editor.adjacent(track,next);
         refreshFields();
@@ -270,20 +303,83 @@ public final class PropTimelineScreen extends Screen {
         refreshFields();
     }
 
-    private void delete() { editor.delete(track); changed(); }
+    private void delete() { if(placement==null) { editor.delete(track); changed(); } }
+
+    private Offset readOffset() {
+        float[] values=new float[6];
+        for(int i=0;i<values.length;i++) values[i]=Float.parseFloat(offsets[i].getValue());
+        return new Offset(values[0],values[1],values[2],values[3],values[4],values[5]);
+    }
+
+    private void alignPlacement() {
+        try {
+            requireRegistrationPreview();
+            if(editor.selectedBone().isEmpty()) return;
+            editor.playing(false);
+            if(editor.compensationStale()) recalculate();
+            String child=editor.selectedBone(),target=boneBox.getValue().trim();
+            var aligned=preview.register(editor.frame(),editor.beforeRegistration(editor.frame(),child),
+                    child,target,Offset.IDENTITY,true,Offset.IDENTITY);
+            if(placement==null) placementPreviousMode=keepWorld;
+            placement=aligned;
+            placementInputs=new String[]{"0.0","0.0","0.0","0.0","0.0","0.0"};
+            placementValid=true;
+            keepWorld=true;
+            propertyScroll=0;
+            positionProperties();
+            refreshFields();
+            status=text("place_hint").getString();
+        } catch(Exception invalid) { report(invalid); }
+    }
+
+    private void updatePlacement() {
+        placementInputs=java.util.Arrays.stream(offsets).map(EditBox::getValue).toArray(String[]::new);
+        try {
+            requireRegistrationPreview();
+            Offset placed=readOffset();
+            placement=preview.register(editor.frame(),editor.beforeRegistration(editor.frame(),placement.childBone()),
+                    placement.childBone(),placement.bone(),Offset.IDENTITY,true,placed);
+            placementValid=true;
+            status=text("place_hint").getString();
+        } catch(Exception invalid) {
+            placementValid=false;
+            status=text("invalid_binding").getString();
+        }
+        updateLabels();
+    }
+
+    private void discardPlacement() {
+        if(placement!=null) {
+            keepWorld=placementPreviousMode;
+            status="";
+        }
+        placement=null;
+        placementInputs=null;
+        placementValid=true;
+    }
 
     private void writeAttachment() {
         try {
-            float[] values = new float[6];
-            for (int i = 0; i < values.length; i++) values[i] = Float.parseFloat(offsets[i].getValue());
-            var offset=new Offset(values[0],values[1],values[2],values[3],values[4],values[5]);
+            if(placement!=null) {
+                if(!placementValid) throw new IllegalArgumentException(text("invalid_binding").getString());
+                // Commit the exact binding already shown in the preview, without sampling a new pose.
+                editor.boneBinding(placement);
+                placement=null;
+                placementInputs=null;
+                changed();
+                status=text("place_registered").getString();
+                return;
+            }
+            var offset=readOffset();
             if(editor.selectedBone().isEmpty()) editor.attachment(new Attachment(boneBox.getValue().trim(),offset));
             else {
                 requireRegistrationPreview();
                 if(editor.compensationStale()) recalculate();
                 String child=editor.selectedBone();
+                var existing=editor.hasKey(track)?editor.state().boneBindings().get(child):null;
                 editor.boneBinding(preview.register(editor.frame(),editor.beforeRegistration(editor.frame(),child),
-                        child,boneBox.getValue().trim(),offset,keepWorld));
+                        child,boneBox.getValue().trim(),offset,keepWorld,
+                        keepWorld && existing!=null?existing.placement():null));
             }
             changed();
         } catch (Exception invalid) { status = text("register_failed",invalid.getMessage()).getString(); }
@@ -308,7 +404,7 @@ public final class PropTimelineScreen extends Screen {
             else {
                 var baseline=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline(source.initial(),source.visibility(),source.attachments(),keys);
                 keys.add(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(key.frame(),
-                        preview.register(key.frame(),baseline,binding.childBone(),binding.bone(),binding.offset(),binding.keepWorld())));
+                        preview.register(key.frame(),baseline,binding.childBone(),binding.bone(),binding.offset(),binding.keepWorld(),binding.placement())));
             }
         }
         editor.replaceCalibrated(keys);
@@ -336,6 +432,7 @@ public final class PropTimelineScreen extends Screen {
     }
 
     private void chooseReference() {
+        discardPlacement();
         editor.playing(false);
         minecraft.setScreen(new HeldPmxSelectionScreen(this,text("reference"),text("reference_hint"),
                 text("reference_none"),List.copyOf(motionChoices.keySet()),referenceLabel,false,value -> {
@@ -349,11 +446,12 @@ public final class PropTimelineScreen extends Screen {
 
     private void save() {
         try {
+            if(placement!=null) { status=text("place_hint").getString(); return; }
             PropTimelineCalibration.Signature calibration=null;
             if(!editor.snapshot().boneKeys().isEmpty()) {
                 requireRegistrationPreview();
                 calibration=PropTimelineCalibration.capture(modelName,config,motion,referenceMotion);
-                if(!calibration.equals(PropTimelineCalibration.read(document))) editor.invalidateCompensation();
+                if(!PropTimelineCalibration.matches(PropTimelineCalibration.read(document),calibration,editor.snapshot())) editor.invalidateCompensation();
             }
             if(editor.compensationStale()) recalculate();
             document = PropTimelineFiles.save(document,editor.snapshot(),referenceLabel,calibration);
@@ -386,7 +484,7 @@ public final class PropTimelineScreen extends Screen {
             renderPreview(graphics);
             drawTimeline(graphics,mouseX,mouseY);
             playButton.setMessage(text(editor.playing()?"pause":"play"));
-            saveButton.active = editor.dirty() || document.originalJson()==null;
+            saveButton.active = placement==null && (editor.dirty() || document.originalJson()==null);
             graphics.drawString(font,font.plainSubstrByWidth("/ "+editor.endFrame(),Math.max(1,width-258)),184,layout.controlsY+5,0xffbccce0,false);
         }
         super.render(graphics,mouseX,mouseY,delta);
@@ -395,8 +493,8 @@ public final class PropTimelineScreen extends Screen {
             if (track==Track.ATTACHMENT) {
                 int y = layout.properties.y()-propertyScroll;
                 graphics.drawString(font,text("bone"),layout.properties.x(),y+48,0xffd7e4f6,false);
-                graphics.drawString(font,text("offset"),layout.properties.x(),y+86,0xffb7c9de,false);
-                graphics.drawString(font,text("rotation"),layout.properties.x(),y+122,0xffb7c9de,false);
+                graphics.drawString(font,text(placement==null?"offset":"place_offset"),layout.properties.x(),y+110,0xffb7c9de,false);
+                graphics.drawString(font,text(placement==null?"rotation":"place_rotation"),layout.properties.x(),y+146,0xffb7c9de,false);
             }
             for (AbstractWidget widget : properties) widget.render(graphics,mouseX,mouseY,delta);
             graphics.disableScissor();
@@ -413,7 +511,7 @@ public final class PropTimelineScreen extends Screen {
                     boneChoices = preview.bones();
                     propBoneChoices=preview.propBones();
                     preview.render(graphics,layout.preview.x(),layout.preview.y(),layout.preview.w(),layout.preview.h(),
-                            editor.frame(),editor.revision(),editor.state(),yaw,pitch,zoom);
+                            editor.frame(),editor.revision(),editor.preview(placement),yaw,pitch,zoom,editor.snapshot());
                     if (!preview.missingBone().isEmpty()) {
                         graphics.drawString(font,text("missing_bone",preview.missingBone()),layout.preview.x()+4,layout.preview.y()+4,0xffff9a80,false);
                     }
@@ -557,7 +655,7 @@ public final class PropTimelineScreen extends Screen {
                     case GLFW.GLFW_KEY_RIGHT -> seek(editor.frame()+(hasShiftDown()?10:1));
                     case GLFW.GLFW_KEY_HOME -> seek(0);
                     case GLFW.GLFW_KEY_END -> seek(editor.endFrame());
-                    case GLFW.GLFW_KEY_SPACE -> editor.playing(!editor.playing());
+                    case GLFW.GLFW_KEY_SPACE -> { if(placement==null) editor.playing(!editor.playing()); }
                     case GLFW.GLFW_KEY_DELETE -> delete();
                     default -> { return super.keyPressed(key,scan,modifiers); }
                 }
@@ -568,7 +666,7 @@ public final class PropTimelineScreen extends Screen {
     }
 
     @Override public void onClose() {
-        if (editor != null && editor.dirty()) {
+        if (editor != null && (editor.dirty() || placement!=null)) {
             editor.playing(false);
             minecraft.setScreen(new ConfirmScreen(discard -> minecraft.setScreen(discard?parent:this),
                     text("unsaved_title"),text("unsaved_body"),text("discard"),text("continue")));

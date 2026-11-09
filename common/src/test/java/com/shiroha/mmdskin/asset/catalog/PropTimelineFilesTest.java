@@ -11,6 +11,20 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PropTimelineFilesTest {
+    @Test void placedRegistrationRetainsItsRecipeWhenSavingAndReopening() throws Exception {
+        Path motion=dir.resolve("prop.vmd");
+        var placed=new PropTimeline.Offset(.5f,-.25f,1.5f,30,-20,90);
+        var binding=new PropTimeline.BoneBinding("Center","右手首",PropTimeline.Offset.IDENTITY,
+                PropTimeline.identityCompensation(),true,false,placed);
+        var timeline=new PropTimeline(PropTimeline.State.DEFAULT,java.util.List.of(),java.util.List.of(),
+                java.util.List.of(new PropTimeline.Key<>(20,binding)));
+        var saved=PropTimelineFiles.save(PropTimelineFiles.open(motion,"fan.pmx"),timeline);
+        assertEquals(timeline.boneKeys(),PropTimelineFiles.open(motion,"fan.pmx").timeline().boneKeys());
+        assertThrows(IllegalArgumentException.class,() -> PropTimelineFiles.parse(
+                saved.originalJson().replace("\"keepWorld\"","\"snap\""),"prop.vmd","fan.pmx"));
+        assertThrows(IllegalArgumentException.class,() -> new PropTimeline.BoneBinding("Center","右手首",
+                PropTimeline.Offset.IDENTITY,PropTimeline.identityCompensation(),true,true,placed));
+    }
     @TempDir Path dir;
 
     private static final String FAN = """

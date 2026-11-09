@@ -45,38 +45,44 @@ final class HeldItemPmxRenderer {
         ManagedModel prop = ClientRenderRuntime.get().modelRepository().acquire(propKey);
         if (prop == null || prop.modelInstance().getModelHandle() == 0L) return false;
 
-        if (assignment != null) propAnimations.bind(player.getUUID(), prop.modelInstance(),
+        if (assignment != null) {
+            boolean ready=propAnimations.bind(player.getUUID(), prop.modelInstance(),
                 java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx,
-                motion -> com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.capture(modelName,config,motion,null));
+                motion -> {
+                    var stageConfig=config.normalizedCopy();
+                    stageConfig.heldPmxFile=pmx;
+                    return com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration.capture(modelName,stageConfig,motion,null);
+                });
+            String warning=propAnimations.takeWarning(player.getUUID());
+            if(warning!=null && player==net.minecraft.client.Minecraft.getInstance().player) {
+                player.displayClientMessage(net.minecraft.network.chat.Component.translatable("mmdskin.stage.prop_warning",warning),false);
+            }
+            if(!ready) return true;
+        }
         var state = assignment != null ? propAnimations.state(player.getUUID()) : PropTimeline.State.DEFAULT;
         var binding = state.attachment();
 
         // All geometry transforms and draw state are local to this prop.
         poseStack.pushPose();
         try {
-            var attachment = binding == null ? ItemRenderHelper.getPropAttachment(character, config.heldPmxBone)
-                    : ItemRenderHelper.getTimelinePropAttachment(character, binding.bone());
-            if (attachment == null) {
-                propAnimations.warnMissingBone(player.getUUID(),binding.bone());
-                return true;
-            }
-            var local = ItemRenderHelper.propLocalTransform(attachment, config,
-                    binding == null ? PropTimeline.Offset.IDENTITY : binding.offset());
-            poseStack.last().pose().mul(local);
-            // The character stack already has its MMD world scale; the prop
-            // renderer applies MMD scale once more. Like the vanilla item path,
-            // compensate with a 10x hand-space factor before the prop render.
-            float scale = 10.0f * config.heldItemScale * config.heldPmxScale;
-            poseStack.scale(scale, scale, scale);
-
             float ownerScale = character.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
                     ? base.getModelScale() : 0.09f * config.modelScale;
+            boolean independent=ItemRenderHelper.usesIndependentPropSpace(assignment!=null,binding);
+            var attachment = independent ? null : binding == null ? ItemRenderHelper.getPropAttachment(character, config.heldPmxBone)
+                    : ItemRenderHelper.getTimelinePropAttachment(character, binding.bone());
+            if (!independent && attachment == null) {
+                if(binding!=null) propAnimations.warnMissingBone(player.getUUID(),binding.bone());
+                return true;
+            }
+            var local = ItemRenderHelper.propRenderTransform(attachment, config,
+                    binding == null ? PropTimeline.Offset.IDENTITY : binding.offset(),ownerScale,independent);
+            poseStack.last().pose().mul(local);
             float propScale = prop.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
                     ? base.getModelScale() : 0.09f * config.modelScale;
             if(assignment!=null && !propAnimations.applyBoneParents(player.getUUID(),character.modelInstance().getModelHandle(),
-                    prop.modelInstance().getModelHandle(),new org.joml.Matrix4f(local).scale(scale*propScale))) return true;
+                    prop.modelInstance().getModelHandle(),new org.joml.Matrix4f(local).scale(propScale))) return true;
             ItemRenderHelper.syncPropPhysics(character, prop,
-                    ItemRenderHelper.propPhysicsTransform(local, scale, ownerScale, propScale));
+                    ItemRenderHelper.propPhysicsTransform(local, 1, ownerScale, propScale));
 
             // NULL entity avoids living-entity animation/IK state being applied to the prop.
             // ITEM scene avoids a second full character world render or player pose mutation.

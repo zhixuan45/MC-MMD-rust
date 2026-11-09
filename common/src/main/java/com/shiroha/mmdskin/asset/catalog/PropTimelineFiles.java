@@ -131,6 +131,7 @@ public final class PropTimelineFiles {
                 JsonArray compensation = new JsonArray();
                 binding.compensation().forEach(compensation::add);
                 value.add("compensation",compensation);
+                if(binding.placement()!=null) value.add("placement",offsetJson(binding.placement()));
                 bones.add(value);
             }
             tracks.add("boneAttachment",bones);
@@ -158,12 +159,16 @@ public final class PropTimelineFiles {
     }
 
     private static JsonObject attachmentJson(Attachment attachment) {
-        JsonObject value = new JsonObject(), parent = new JsonObject();
+        JsonObject value = offsetJson(attachment.offset()), parent = new JsonObject();
         parent.addProperty("object","actor");
         parent.addProperty("bone",attachment.bone());
         value.add("parent",parent);
         value.addProperty("mode","snap");
-        Offset offset = attachment.offset();
+        return value;
+    }
+
+    private static JsonObject offsetJson(Offset offset) {
+        JsonObject value=new JsonObject();
         JsonArray translation = new JsonArray(), rotation = new JsonArray();
         for (float number : new float[]{offset.x(),offset.y(),offset.z()}) translation.add(number);
         for (float number : new float[]{offset.rotationX(),offset.rotationY(),offset.rotationZ()}) rotation.add(number);
@@ -223,9 +228,15 @@ public final class PropTimelineFiles {
                         compensation.add(number.getAsFloat());
                     }
                     float[] offset=vector(key,"offset"), rotation=vector(key,"rotation");
+                    Offset placement=null;
+                    if(key.has("placement")) {
+                        JsonObject placed=key.getAsJsonObject("placement");
+                        float[] position=vector(placed,"offset"), angles=vector(placed,"rotation");
+                        placement=new Offset(position[0],position[1],position[2],angles[0],angles[1],angles[2]);
+                    }
                     BoneBinding binding=new BoneBinding(child,string(parent.get("bone")),
                             new Offset(offset[0],offset[1],offset[2],rotation[0],rotation[1],rotation[2]),
-                            compensation,mode.equals("keepWorld"),false);
+                            compensation,mode.equals("keepWorld"),false,placement);
                     boneKeys.add(new Key<>(integer(key.get("frame")),binding));
                 }
             }

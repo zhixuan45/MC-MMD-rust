@@ -36,6 +36,7 @@ public final class StagePropAnimationController {
         PropTimeline timeline=PropTimeline.EMPTY;
         PropTimeline.State state=PropTimeline.State.DEFAULT;
         final java.util.Set<String> missingBones=new java.util.HashSet<>();
+        String warning;
         com.shiroha.mmdskin.player.render.PropBoneParenting parenting;
         Session(StagePropAssignment assignment,java.util.List<Path> actorMotions) {
             this.assignment=assignment; this.actorMotions=java.util.List.copyOf(actorMotions);
@@ -84,18 +85,44 @@ public final class StagePropAnimationController {
         return session==null?PropTimeline.State.DEFAULT:session.state;
     }
 
+    public synchronized boolean usesBoneParenting(UUID owner) {
+        Session session=sessions.get(owner);
+        return session!=null && !session.timeline.boneKeys().isEmpty();
+    }
+
+    /** Read once per load attempt, so render retries cannot flood the player's chat. */
+    public synchronized String takeWarning(UUID owner) {
+        Session session=sessions.get(owner);
+        if(session==null) return null;
+        String warning=session.warning;
+        session.warning=null;
+        return warning;
+    }
+
+    private void warn(Session session,String message) {
+        session.warning=message;
+        LOGGER.warn("[StageProp] {} / {}: {}",session.assignment.pmxFile(),session.assignment.motionFile(),message);
+    }
+
+    private static PropTimeline withoutBoneParents(PropTimeline timeline) {
+        var initial=timeline.initial();
+        return new PropTimeline(new PropTimeline.State(initial.visible(),initial.attachment()),
+                timeline.visibility(),timeline.attachments());
+    }
+
     public synchronized boolean applyBoneParents(UUID owner,long actor,long prop,org.joml.Matrix4f propToActor) {
         Session session=sessions.get(owner);
         if(session==null) return true;
         if(session.model==null || session.modelHandle!=prop || session.model.getModelHandle()!=prop) return true;
-        if(session.parenting==null && session.state.boneBindings().isEmpty()) return true;
+        if(session.parenting==null && session.state.boneBindings().isEmpty()
+                && session.timeline.outsideParentWindows(session.frame).isEmpty()) return true;
         if(session.parenting==null) {
             var runtime=com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.get();
             session.parenting=new com.shiroha.mmdskin.player.render.PropBoneParenting(runtime,runtime);
         }
         try {
-            return session.parenting.apply(actor,prop,propToActor,session.state);
-        } catch (IllegalArgumentException invalid) {
+            return session.parenting.apply(actor,prop,propToActor,session.timeline,session.frame,session.state);
+        } catch (IllegalArgumentException | IllegalStateException invalid) {
             if(session.missingBones.add("bone-parent:"+invalid.getMessage())) {
                 LOGGER.warn("[StageProp] Bone parenting failed for {}; prop hidden at this binding: {}",owner,invalid.getMessage());
             }
@@ -121,12 +148,13 @@ public final class StagePropAnimationController {
         long handle=model.getModelHandle();
         if (session.attempted==model && session.attemptedHandle==handle && modelDir.equals(session.attemptedDir)) return session.animation!=0;
         closeBinding(session);
+        session.warning=null;
         session.attempted=model; session.attemptedHandle=handle; session.attemptedDir=modelDir;
         session.timeline=PropTimeline.EMPTY;
         session.state=PropTimeline.State.DEFAULT;
         Path file=HeldPmxMotionFiles.resolve(modelDir,session.assignment.motionFile());
         if (file==null) {
-            LOGGER.warn("[StageProp] Missing local prop motion: {} / {}",modelDir,session.assignment.motionFile());
+            warn(session,"Missing local prop motion: "+session.assignment.motionFile());
             return false;
         }
         PropTimeline timeline=PropTimeline.EMPTY;
@@ -135,25 +163,29 @@ public final class StagePropAnimationController {
             timeline=document.timeline();
             if(!timeline.boneKeys().isEmpty()) {
                 String mismatch=PropTimelineCalibration.mismatch(PropTimelineCalibration.read(document),
-                        calibration==null?null:calibration.capture(file),session.actorMotions);
+                        calibration==null?null:calibration.capture(file),session.actorMotions,timeline);
                 if(mismatch!=null) {
-                    LOGGER.warn("[StageProp] {}; using simple attachment without stage motion/timeline for {}",mismatch,owner);
-                    return false;
+                    warn(session,mismatch+"; recalculate bone parenting in the timeline editor. Prop VMD and other tracks remain active");
+                    timeline=withoutBoneParents(timeline);
                 }
             }
         } catch (java.io.IOException failure) {
-            LOGGER.warn("[StageProp] {}",failure.getMessage());
-            if(!timeline.boneKeys().isEmpty()) return false;
+            warn(session,failure.getMessage()+"; prop VMD remains active");
+            timeline=withoutBoneParents(timeline);
         } catch (RuntimeException failure) {
-            LOGGER.warn("[StageProp] Invalid calibration; using simple attachment for {}: {}",owner,failure.getMessage());
-            return false;
+            warn(session,"Invalid timeline calibration: "+failure.getMessage()+"; prop VMD remains active");
+            timeline=withoutBoneParents(timeline);
         }
         try {
             long animation=animations.loadAnimation(handle,file.toString());
-            if (animation==0) return false;
+            if (animation==0) {
+                warn(session,"Could not load prop VMD: "+session.assignment.motionFile());
+                return false;
+            }
             session.animation=animation;
             if (!animations.hasBoneData(animation) && !animations.hasMorphData(animation)) {
                 closeBinding(session);
+                warn(session,"Prop VMD has no bone or morph tracks");
                 return false;
             }
             session.model=model; session.modelHandle=handle; session.animation=animation;
@@ -172,6 +204,7 @@ public final class StagePropAnimationController {
             return true;
         } catch (RuntimeException failure) {
             closeBinding(session);
+            warn(session,"Failed to apply prop VMD: "+failure.getMessage());
             LOGGER.warn("[StageProp] Failed to apply prop motion {}",file,failure);
             return false;
         }
@@ -194,7 +227,7 @@ public final class StagePropAnimationController {
 
     private void applyFrame(Session session) {
         if (session.model==null || session.animation==0) return;
-        float frame=Math.min(session.frame,session.maxFrame);
+        float frame=session.frame;
         if (Float.compare(frame,session.appliedFrame)==0) return;
         animations.seekLayer(session.modelHandle,0,frame);
         session.appliedFrame=frame;

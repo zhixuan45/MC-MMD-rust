@@ -1236,14 +1236,64 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPropBoneParents(
     result as jboolean
 }
 
-/// Two column-major matrices: evaluated global followed by evaluated animation-local.
+/// Replaces each prop bone's VMD outside-parent switch window.
+/// `windows` stores two f32 values per index: previous frame and next frame.
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPropBoneWindows(
+    env: JNIEnv, _class: JClass, handle: jlong, indices: JIntArray, windows: JFloatArray,
+) -> jboolean {
+    let Ok(count) = env.get_array_length(&indices) else { return 0; };
+    if !(0..=4096).contains(&count)
+        || env.get_array_length(&windows).ok() != Some(count * 2)
+    {
+        return 0;
+    }
+    let mut names = vec![0; count as usize];
+    let mut values = vec![0.0; count as usize * 2];
+    if env.get_int_array_region(&indices, 0, &mut names).is_err()
+        || env.get_float_array_region(&windows, 0, &mut values).is_err()
+    {
+        return 0;
+    }
+    let frame = |value: f32| -> Option<u32> {
+        if !value.is_finite()
+            || value < 0.0
+            || value > u32::MAX as f32
+            || (value - value.round()).abs() > 1e-3
+        {
+            None
+        } else {
+            Some(value.round() as u32)
+        }
+    };
+    let mut parsed = Vec::with_capacity(names.len());
+    for (index, window) in names.into_iter().zip(values.chunks_exact(2)) {
+        let Ok(index) = usize::try_from(index) else { return 0; };
+        let Some(previous) = frame(window[0]) else { return 0; };
+        let Some(next) = frame(window[1]) else { return 0; };
+        if next != 0 && previous >= next {
+            return 0;
+        }
+        parsed.push((
+            index,
+            crate::skeleton::OutsideParentWindow { previous, next },
+        ));
+    }
+    let models = MODELS.read().unwrap();
+    let Some(model) = models.get(&handle) else { return 0; };
+    let result = model.lock().unwrap().set_prop_bone_windows(&parsed);
+    result as jboolean
+}
+
+/// Global/local matrices, plus local rest origin when the buffer has at least 192 bytes.
 #[no_mangle]
 pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetPropBonePose(
     env: JNIEnv, _class: JClass, handle: jlong, index: jint, buffer: JByteBuffer,
 ) -> jboolean {
     let Ok(index) = usize::try_from(index) else { return 0; };
     let Ok(address) = env.get_direct_buffer_address(&buffer) else { return 0; };
-    if env.get_direct_buffer_capacity(&buffer).unwrap_or(0) < 128 { return 0; }
+    let capacity = env.get_direct_buffer_capacity(&buffer).unwrap_or(0);
+    if capacity < 128 { return 0; }
     let models = MODELS.read().unwrap();
     let Some(model) = models.get(&handle) else { return 0; };
     let model = model.lock().unwrap();
@@ -1251,6 +1301,13 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetPropBonePose(
     let bytes = unsafe { std::slice::from_raw_parts_mut(address, 128) };
     for (i, value) in global.to_cols_array().into_iter().chain(local.to_cols_array()).enumerate() {
         bytes[i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    if capacity >= 192 {
+        let Some(origin) = model.prop_bone_origin(index) else { return 0; };
+        let bytes = unsafe { std::slice::from_raw_parts_mut(address.add(128), 64) };
+        for (i, value) in origin.to_cols_array().into_iter().enumerate() {
+            bytes[i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
+        }
     }
     1
 }

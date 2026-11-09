@@ -549,9 +549,14 @@ impl VmdAnimation {
                     .flatten()
             });
             if let Some(bone_idx) = bone_idx {
-                let raw = self
-                    .motion
-                    .find_bone_transform(bone_name, frame_index, amount);
+                let raw = match bone_manager.outside_parent_window(bone_idx) {
+                    Some(window) if window.is_active() => self
+                        .motion
+                        .find_bone_transform_windowed(bone_name, frame, window),
+                    _ => self
+                        .motion
+                        .find_bone_transform(bone_name, frame_index, amount),
+                };
                 // VMD 数据经过左手→右手转换，VRM 需要额外做 Y 轴 180° 镜像
                 let translation = bone_manager.convert_vmd_translation(raw.translation);
                 let orientation = bone_manager.convert_vmd_rotation(raw.orientation);

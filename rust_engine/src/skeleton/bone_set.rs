@@ -8,6 +8,23 @@ use super::{BoneLink, IkSolver};
 #[path = "physics_writeback.rs"]
 mod physics_writeback;
 
+/// MMD outside-parent switch window for one prop bone.
+///
+/// `previous` is the first frame of the binding run active at the sampled frame;
+/// `next` is the next frame whose target differs, or zero when no switch follows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OutsideParentWindow {
+    pub previous: u32,
+    pub next: u32,
+}
+
+impl OutsideParentWindow {
+    #[inline]
+    pub fn is_active(self) -> bool {
+        self.previous != 0 || self.next != 0
+    }
+}
+
 /// 骨骼集合 - 类似 nphysics Multibody
 ///
 /// 设计原则（参考 nphysics）：
@@ -46,6 +63,8 @@ pub struct BoneSet {
     is_vrm: bool,
     /// Model-space parent frames supplied by prop external parenting; animation locals stay intact.
     external_parents: HashMap<usize, Mat4>,
+    /// Per-bone VMD interpolation windows created by outside-parent switches.
+    outside_parent_windows: HashMap<usize, OutsideParentWindow>,
 }
 
 impl BoneSet {
@@ -64,6 +83,7 @@ impl BoneSet {
             needs_hierarchy_update: true,
             is_vrm: false,
             external_parents: HashMap::new(),
+            outside_parent_windows: HashMap::new(),
         }
     }
 
@@ -425,6 +445,19 @@ impl BoneSet {
     }
 
     pub fn replace_external_parents(&mut self, parents: &[(usize, Mat4)]) -> bool {
+        let Some(next) = self.validated_external_parents(parents) else {
+            return false;
+        };
+        // Window storage is independent of parent matrices; Java updates both
+        // inputs together and clears windows explicitly.
+        self.external_parents = next;
+        true
+    }
+
+    fn validated_external_parents(
+        &self,
+        parents: &[(usize, Mat4)],
+    ) -> Option<HashMap<usize, Mat4>> {
         let mut next = HashMap::with_capacity(parents.len());
         for &(index, matrix) in parents {
             if index >= self.links.len() || !matrix.is_finite() || matrix.determinant() <= 1e-8
@@ -432,11 +465,35 @@ impl BoneSet {
                 || matrix.z_axis.w.abs() > 1e-5 || (matrix.w_axis.w - 1.0).abs() > 1e-5
                 || next.insert(index, matrix).is_some()
             {
+                return None;
+            }
+        }
+        Some(next)
+    }
+
+    /// Replaces only the VMD switch windows. Windows are independent of parent
+    /// matrices and apply to unbound bones too; an empty slice clears every
+    /// window.
+    pub fn replace_outside_parent_windows(
+        &mut self,
+        windows: &[(usize, OutsideParentWindow)],
+    ) -> bool {
+        let mut next = HashMap::with_capacity(windows.len());
+        for &(index, window) in windows {
+            if index >= self.links.len()
+                || (window.next != 0 && window.previous >= window.next)
+                || next.insert(index, window).is_some()
+            {
                 return false;
             }
         }
-        self.external_parents = next;
+        self.outside_parent_windows = next;
         true
+    }
+
+    #[inline]
+    pub fn outside_parent_window(&self, index: usize) -> Option<OutsideParentWindow> {
+        self.outside_parent_windows.get(&index).copied()
     }
 
     fn parent_frame(&self, index: usize) -> Mat4 {
@@ -739,6 +796,8 @@ impl BoneSet {
         total += (self.physics_bone_indices.capacity() * size_of::<usize>()) as u64;
         total += (self.physics_writeback_order.capacity() * size_of::<usize>()) as u64;
         total += (self.physics_transform_buf.capacity() * size_of::<Option<Mat4>>()) as u64;
+        total += (self.outside_parent_windows.capacity()
+            * (size_of::<usize>() + size_of::<OutsideParentWindow>())) as u64;
         // children_cache: Vec<Vec<usize>>
         for children in &self.children_cache {
             total += (children.capacity() * size_of::<usize>()) as u64;
