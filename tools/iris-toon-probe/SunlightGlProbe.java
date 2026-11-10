@@ -18,6 +18,7 @@ public final class SunlightGlProbe {
     public static void main(String[] args) throws Exception {
         boolean normalBias = args.length > 1 && args[1].equals("normal-bias");
         boolean core = args.length > 1 && args[1].equals("core");
+        boolean lightingOnly = args.length > 1 && args[1].equals("lighting-only");
         if (!GLFW.glfwInit()) throw new IllegalStateException("GLFW initialization");
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, core ? 4 : 3);
@@ -29,8 +30,10 @@ public final class SunlightGlProbe {
             GLFW.glfwMakeContextCurrent(window);
             GL.createCapabilities();
             System.out.println("GL: " + GL46C.glGetString(GL46C.GL_VERSION) + " / " + GL46C.glGetString(GL46C.GL_RENDERER));
-            TerrainShadowGlProbe.run();
-            com.shiroha.mmdskin.compat.iris.TransmissionGlProbe.run();
+            if (!lightingOnly) {
+                TerrainShadowGlProbe.run();
+                com.shiroha.mmdskin.compat.iris.TransmissionGlProbe.run();
+            }
             int checked = 0;
             for (String pack : List.of("BSL_v10.1.8.zip", "BSL_v8.4.02.2.zip", "ComplementaryShaders_v4.7.1.zip",
                     "ComplementaryReimagined_r5.9.3.zip", "ComplementaryUnbound_r5.9.3.zip")) {

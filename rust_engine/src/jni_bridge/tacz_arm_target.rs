@@ -11,6 +11,7 @@ use jni::JNIEnv;
 use once_cell::sync::Lazy;
 
 use crate::model::tacz_arm_targets::{TaczArmApplyOutcome, TaczArmTargets, DIAGNOSTIC_FLOAT_COUNT};
+
 static PENDING_TARGETS: Lazy<Mutex<HashMap<i64, TaczArmTargets>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static LAST_APPLY_RESULTS: Lazy<Mutex<HashMap<i64, i32>>> =
@@ -23,7 +24,7 @@ static LAST_APPLY_DIAGNOSTICS: Lazy<Mutex<HashMap<i64, [f32; DIAGNOSTIC_FLOAT_CO
 pub(crate) fn take_tacz_arm_targets(model: i64) -> Option<TaczArmTargets> {
     PENDING_TARGETS
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(super::boundary::reject_poison)
         .remove(&model)
 }
 
@@ -36,18 +37,18 @@ pub(crate) fn record_tacz_arm_apply_result(
     let packed = i32::from(received_mask & 0b11) | (i32::from(outcome.applied_mask & 0b11) << 2);
     LAST_APPLY_RESULTS
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(super::boundary::reject_poison)
         .insert(model, packed);
     LAST_APPLY_DIAGNOSTICS
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(super::boundary::reject_poison)
         .insert(model, outcome.diagnostics);
 }
 
 fn take_tacz_arm_apply_result(model: i64) -> i32 {
     LAST_APPLY_RESULTS
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(super::boundary::reject_poison)
         .remove(&model)
         .unwrap_or(0)
 }
@@ -59,26 +60,28 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetLastTaczArmDiagnos
     model: jlong,
     output: JFloatArray,
 ) -> jboolean {
-    let Ok(length) = env.get_array_length(&output) else {
-        return 0;
-    };
-    if length != DIAGNOSTIC_FLOAT_COUNT as i32 {
-        return 0;
-    }
-    let diagnostics = LAST_APPLY_DIAGNOSTICS
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .remove(&model);
-    let Some(diagnostics) = diagnostics else {
-        return 0;
-    };
-    if env
-        .set_float_array_region(&output, 0, &diagnostics)
-        .is_err()
-    {
-        return 0;
-    }
-    1
+    jni_guard!(env, {
+        let Ok(length) = env.get_array_length(&output) else {
+            return 0;
+        };
+        if length != DIAGNOSTIC_FLOAT_COUNT as i32 {
+            return 0;
+        }
+        let diagnostics = LAST_APPLY_DIAGNOSTICS
+            .lock()
+            .unwrap_or_else(super::boundary::reject_poison)
+            .remove(&model);
+        let Some(diagnostics) = diagnostics else {
+            return 0;
+        };
+        if env
+            .set_float_array_region(&output, 0, &diagnostics)
+            .is_err()
+        {
+            return 0;
+        }
+        1
+    })
 }
 
 #[no_mangle]
@@ -87,7 +90,7 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetLastTaczArmApplyRe
     _class: JClass,
     model: jlong,
 ) -> jint {
-    take_tacz_arm_apply_result(model)
+    jni_guard!(_env, { take_tacz_arm_apply_result(model) })
 }
 
 #[no_mangle]
@@ -98,35 +101,38 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetTaczArmTargets(
     matrices: JFloatArray,
     valid_mask: jint,
 ) -> jboolean {
-    if model == 0 {
-        return 0;
-    }
-    let Ok(length) = env.get_array_length(&matrices) else {
-        clear_tacz_arm_targets(model);
-        return 0;
-    };
-    if length != 32 {
-        clear_tacz_arm_targets(model);
-        return 0;
-    }
-    let mut values = [0.0f32; 32];
-    if env
-        .get_float_array_region(&matrices, 0, &mut values)
-        .is_err()
-    {
-        clear_tacz_arm_targets(model);
-        return 0;
-    }
-    let Some(targets) = TaczArmTargets::from_column_major_slice(&values, valid_mask as u8) else {
-        // 非法输入不能留下旧目标，避免下一帧误用。
-        clear_tacz_arm_targets(model);
-        return 0;
-    };
-    let mut pending = PENDING_TARGETS
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    pending.insert(model, targets);
-    1
+    jni_guard!(env, {
+        if model == 0 {
+            return 0;
+        }
+        let Ok(length) = env.get_array_length(&matrices) else {
+            clear_tacz_arm_targets(model);
+            return 0;
+        };
+        if length != 32 {
+            clear_tacz_arm_targets(model);
+            return 0;
+        }
+        let mut values = [0.0f32; 32];
+        if env
+            .get_float_array_region(&matrices, 0, &mut values)
+            .is_err()
+        {
+            clear_tacz_arm_targets(model);
+            return 0;
+        }
+        let Some(targets) = TaczArmTargets::from_column_major_slice(&values, valid_mask as u8)
+        else {
+            // 非法输入不能留下旧目标，避免下一帧误用。
+            clear_tacz_arm_targets(model);
+            return 0;
+        };
+        let mut pending = PENDING_TARGETS
+            .lock()
+            .unwrap_or_else(super::boundary::reject_poison);
+        pending.insert(model, targets);
+        1
+    })
 }
 
 #[no_mangle]
@@ -135,24 +141,26 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ClearTaczArmTargets(
     _class: JClass,
     model: jlong,
 ) {
-    clear_tacz_arm_targets(model);
+    jni_guard!(_env, {
+        clear_tacz_arm_targets(model);
+    })
 }
 
 pub(crate) fn clear_tacz_arm_targets(model: i64) {
     PENDING_TARGETS
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(super::boundary::reject_poison)
         .remove(&model);
 }
 
 pub(crate) fn clear_tacz_arm_diagnostics(model: i64) {
     LAST_APPLY_RESULTS
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(super::boundary::reject_poison)
         .remove(&model);
     LAST_APPLY_DIAGNOSTICS
         .lock()
-        .unwrap_or_else(|error| error.into_inner())
+        .unwrap_or_else(super::boundary::reject_poison)
         .remove(&model);
 }
 

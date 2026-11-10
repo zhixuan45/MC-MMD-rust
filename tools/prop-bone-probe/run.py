@@ -100,6 +100,7 @@ final class NativeLibraryLoader {
     production = ROOT / "common/src/main/java/com/shiroha/mmdskin"
     sources = ["NativeFunc.java", "bridge/runtime/SphereMaterialNative.java", "bridge/runtime/NativeMatrixPort.java",
                "bridge/runtime/NativeModelQueryPort.java", "player/render/PropBoneParenting.java",
+               "bridge/runtime/PropBoneBindingAdapter.java", "stage/domain/timeline/BoneParentMath.java",
                "stage/domain/timeline/PropTimeline.java"]
     subprocess.run([str(args.jdk / "bin/javac.exe"), "-encoding", "UTF-8", "-proc:none",
                     "-cp", classpath, "-d", str(output / "classes"), str(shim),

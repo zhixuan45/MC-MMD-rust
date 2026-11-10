@@ -205,7 +205,15 @@ public class NativeFunc {
 
     public native void SetModelPositionAndYaw(long model, float posX, float posY, float posZ, float yaw);
 
-    public native boolean SetPropPhysicsAttachment(long prop, long owner, ByteBuffer transform);
+    public boolean SetPropPhysicsAttachment(long prop, long owner, ByteBuffer transform) {
+        return SetPropPhysicsAttachment(prop, owner, transform, 64);
+    }
+    public native boolean SetPropPhysicsAttachment(long prop, long owner, ByteBuffer transform, int byteLength);
+    /** Atomically replaces all parent matrices and switch windows; zero means success. */
+    public native int SetPropBindings(long model, int[] parentIndices, float[] matrices,
+                                      int[] windowIndices, float[] windows);
+    /** Fixed 192-byte (global/local/rest) packet; returns 3 matrices or a negative error code. */
+    public native int GetPropBonePosePacket(long model, int boneIndex, ByteBuffer matrices, int byteLength);
     public native boolean SetPropBoneParents(long model, int[] indices, float[] matrices);
     /** 每骨骼两帧窗口：previous, next；索引对应模型骨骼。 */
     public native boolean SetPropBoneWindows(long model, int[] indices, float[] windows);

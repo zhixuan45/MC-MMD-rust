@@ -2,6 +2,10 @@ use super::*;
 
 impl MmdModel {
     pub fn init_physics(&mut self) -> bool {
+        let bone_count = self.bone_manager.bone_count();
+        self.bone_manager.set_forbidden_external_parent_indices(
+            super::prop_physics::prop_forbidden_bones(&self.rigid_bodies, bone_count),
+        );
         if self.rigid_bodies.is_empty() {
             log::debug!("模型没有刚体数据，跳过物理初始化");
             return false;
@@ -16,7 +20,6 @@ impl MmdModel {
         };
 
         // 当前姿态只用于把新 Bullet 世界同步到动画帧，不能参与永久 offset 的构建。
-        let bone_count = self.bone_manager.bone_count();
         self.physics_bone_transforms_buf
             .resize(bone_count, Mat4::IDENTITY);
         for i in 0..bone_count {

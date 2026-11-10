@@ -1,6 +1,7 @@
 use super::*;
 use crate::animation::{BoneKeyframe, Motion};
-use crate::skeleton::{BoneLink, OutsideParentWindow};
+use crate::skeleton::{BoneLink, BoneSet};
+use crate::animation::{OutsideParentWindow, PropBindingError};
 use mmd::pmx::rigid_body::{RigidBody, RigidBodyMode, RigidBodyShape};
 
 fn prop() -> MmdModel {
@@ -171,6 +172,28 @@ fn prop_bone_parent_validation_is_atomic_and_never_overrides_physics_owned_bones
     assert!(!model.set_prop_bone_parents(&[(9999, parent)]));
     model.tick_animation_no_skinning(0.0);
     assert!(model.prop_bone_pose(0).unwrap().0.abs_diff_eq(parent, 1e-5));
+}
+
+#[test]
+fn prop_binding_parent_and_window_updates_commit_atomically() {
+    let mut model = two_controls();
+    let original = Mat4::from_translation(Vec3::X * 4.0);
+    assert!(model.set_prop_bindings(&[(0, original)], &[(0, OutsideParentWindow { previous: 10, next: 20 })]).is_ok());
+    let error = model.set_prop_bindings(&[(1, Mat4::from_translation(Vec3::Y * 9.0))], &[(0, OutsideParentWindow { previous: 20, next: 10 })]);
+    assert_eq!(error, Err(PropBindingError::InvalidWindow));
+    assert!(model.bone_manager.external_parents().get(&0).unwrap().abs_diff_eq(original, 1e-6));
+    assert!(!model.bone_manager.external_parents().contains_key(&1));
+    assert_eq!(model.animation_layer_manager.prop_bindings().window(0), Some(OutsideParentWindow { previous: 10, next: 20 }));
+}
+
+#[test]
+fn bone_set_itself_rejects_forbidden_external_parent_indices() {
+    let mut bones = BoneSet::new();
+    bones.add_bone(BoneLink::new("Dynamic".into()));
+    bones.build_hierarchy();
+    bones.set_forbidden_external_parent_indices([0usize].into_iter().collect());
+    assert_eq!(bones.replace_external_parents(&[(0, Mat4::IDENTITY)]), Err(PropBindingError::DynamicBone));
+    assert!(bones.external_parents().is_empty());
 }
 
 #[test]

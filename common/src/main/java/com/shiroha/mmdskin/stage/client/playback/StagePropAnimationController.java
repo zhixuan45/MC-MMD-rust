@@ -1,13 +1,15 @@
 package com.shiroha.mmdskin.stage.client.playback;
 
 import com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles;
-import com.shiroha.mmdskin.asset.catalog.PropTimelineFiles;
 import com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration;
 import com.shiroha.mmdskin.bridge.runtime.NativeAnimationPort;
+import com.shiroha.mmdskin.bridge.runtime.PropMotionHandle;
+import com.shiroha.mmdskin.bridge.runtime.PropBoneBindingAdapter;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
 import com.shiroha.mmdskin.stage.domain.model.StagePropAssignment;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
+import com.shiroha.mmdskin.stage.application.PropTimelineApplicationService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import java.nio.file.Path;
@@ -31,13 +33,16 @@ public final class StagePropAnimationController {
         float frame;
         ModelInstance attempted, model;
         Path attemptedDir;
-        long attemptedHandle, modelHandle, animation;
-        float maxFrame, appliedFrame=Float.NaN;
+        long attemptedHandle, modelHandle;
+        PropMotionHandle motion;
+        float maxFrame;
         PropTimeline timeline=PropTimeline.EMPTY;
         PropTimeline.State state=PropTimeline.State.DEFAULT;
+        PropBoneBindingAdapter.ApplyResult bindResult=new PropBoneBindingAdapter.ApplyResult(
+                PropBoneBindingAdapter.Status.PENDING,-1,"Prop model is not ready");
         final java.util.Set<String> missingBones=new java.util.HashSet<>();
         String warning;
-        com.shiroha.mmdskin.player.render.PropBoneParenting parenting;
+        PropBoneBindingAdapter parenting;
         Session(StagePropAssignment assignment,java.util.List<Path> actorMotions) {
             this.assignment=assignment; this.actorMotions=java.util.List.copyOf(actorMotions);
         }
@@ -66,6 +71,7 @@ public final class StagePropAnimationController {
             closeBinding(session);
             releaseModel.accept(session.requestedKey);
             session.attempted=null;
+            session.bindResult=new PropBoneBindingAdapter.ApplyResult(PropBoneBindingAdapter.Status.PENDING,-1,"Prop model is not ready");
         }
         session.requestedKey=key;
         return key;
@@ -104,30 +110,30 @@ public final class StagePropAnimationController {
         LOGGER.warn("[StageProp] {} / {}: {}",session.assignment.pmxFile(),session.assignment.motionFile(),message);
     }
 
-    private static PropTimeline withoutBoneParents(PropTimeline timeline) {
-        var initial=timeline.initial();
-        return new PropTimeline(new PropTimeline.State(initial.visible(),initial.attachment()),
-                timeline.visibility(),timeline.attachments());
-    }
-
-    public synchronized boolean applyBoneParents(UUID owner,long actor,long prop,org.joml.Matrix4f propToActor) {
+    public synchronized PropBoneBindingAdapter.ApplyResult applyBoneParentsResult(UUID owner,long actor,long prop,org.joml.Matrix4f propToActor) {
         Session session=sessions.get(owner);
-        if(session==null) return true;
-        if(session.model==null || session.modelHandle!=prop || session.model.getModelHandle()!=prop) return true;
+        if(session==null) return new PropBoneBindingAdapter.ApplyResult(PropBoneBindingAdapter.Status.PENDING,-1,"Stage prop session is not ready");
+        if(session.model==null || session.modelHandle!=prop || session.model.getModelHandle()!=prop)
+            return new PropBoneBindingAdapter.ApplyResult(PropBoneBindingAdapter.Status.PENDING,-1,"Prop model is not ready");
         if(session.parenting==null && session.state.boneBindings().isEmpty()
-                && session.timeline.outsideParentWindows(session.frame).isEmpty()) return true;
+                && session.timeline.outsideParentWindows(session.frame).isEmpty())
+            return new PropBoneBindingAdapter.ApplyResult(PropBoneBindingAdapter.Status.READY,0,null);
         if(session.parenting==null) {
             var runtime=com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder.get();
-            session.parenting=new com.shiroha.mmdskin.player.render.PropBoneParenting(runtime,runtime);
+            session.parenting=new PropBoneBindingAdapter(runtime,runtime);
         }
-        try {
-            return session.parenting.apply(actor,prop,propToActor,session.timeline,session.frame,session.state);
-        } catch (IllegalArgumentException | IllegalStateException invalid) {
-            if(session.missingBones.add("bone-parent:"+invalid.getMessage())) {
-                LOGGER.warn("[StageProp] Bone parenting failed for {}; prop hidden at this binding: {}",owner,invalid.getMessage());
-            }
-            return false;
+        PropBoneBindingAdapter.ApplyResult result=session.parenting.applyResult(actor,prop,propToActor,
+                session.timeline,session.frame,session.state);
+        if(result.status()==PropBoneBindingAdapter.Status.FAILED
+                && session.missingBones.add("bone-parent:"+result.code()+":"+result.message())) {
+            LOGGER.warn("[StageProp] Bone parenting failed for {}; prop hidden at this binding: {}",owner,result.message());
         }
+        return result;
+    }
+
+    /** Compatibility visibility result for the existing renderer call site. */
+    public synchronized boolean applyBoneParents(UUID owner,long actor,long prop,org.joml.Matrix4f propToActor) {
+        return applyBoneParentsResult(owner,actor,prop,propToActor).status()!=PropBoneBindingAdapter.Status.FAILED;
     }
 
     public synchronized void warnMissingBone(UUID owner,String bone) {
@@ -137,77 +143,101 @@ public final class StagePropAnimationController {
         }
     }
 
-    /** A model that finished loading late is immediately evaluated at the current stage frame. */
-    public synchronized boolean bind(UUID owner,ModelInstance model,Path modelDir,String pmxFile) {
+    /** Compatibility boolean API retained for existing callers. */
+    public boolean bind(UUID owner,ModelInstance model,Path modelDir,String pmxFile) {
         return bind(owner,model,modelDir,pmxFile,null);
     }
 
-    public synchronized boolean bind(UUID owner,ModelInstance model,Path modelDir,String pmxFile,CalibrationSource calibration) {
-        Session session=sessions.get(owner);
-        if (session==null || model==null || model.getModelHandle()==0 || !session.assignment.pmxFile().equals(pmxFile)) return false;
-        long handle=model.getModelHandle();
-        if (session.attempted==model && session.attemptedHandle==handle && modelDir.equals(session.attemptedDir)) return session.animation!=0;
-        closeBinding(session);
-        session.warning=null;
-        session.attempted=model; session.attemptedHandle=handle; session.attemptedDir=modelDir;
+    public boolean bind(UUID owner,ModelInstance model,Path modelDir,String pmxFile,CalibrationSource calibration) {
+        return bindResult(owner,model,modelDir,pmxFile,calibration).ready();
+    }
+
+    /**
+     * Reads timeline/calibration files outside the controller monitor, then rechecks session identity
+     * before the native animation handle is attached to the model.
+     */
+    public PropBoneBindingAdapter.ApplyResult bindResult(UUID owner,ModelInstance model,Path modelDir,String pmxFile) {
+        return bindResult(owner,model,modelDir,pmxFile,null);
+    }
+
+    public PropBoneBindingAdapter.ApplyResult bindResult(UUID owner,ModelInstance model,Path modelDir,
+                                                          String pmxFile,CalibrationSource calibration) {
+        final Session session;
+        final long handle;
+        final java.util.List<Path> actorMotions;
+        synchronized(this) {
+            session=sessions.get(owner);
+            if(session==null) return pending("Stage prop session is not ready");
+            if(model==null || model.getModelHandle()==0) return pending("Prop model is not ready");
+            if(!session.assignment.pmxFile().equals(pmxFile)) return failed(-6,"Prop model does not match the stage assignment");
+            handle=model.getModelHandle();
+            if(session.attempted==model && session.attemptedHandle==handle && Objects.equals(modelDir,session.attemptedDir))
+                return session.bindResult;
+            closeBinding(session);
+            session.warning=null;
+            session.attempted=model; session.attemptedHandle=handle; session.attemptedDir=modelDir;
+            session.bindResult=pending("Prop motion is loading");
+            actorMotions=session.actorMotions;
+        }
+
+        Path motionFile=HeldPmxMotionFiles.resolve(modelDir,session.assignment.motionFile());
+        if(motionFile==null) return failAttempt(owner,session,model,handle,
+                "Missing local prop motion: "+session.assignment.motionFile(),-7);
+        PropTimelineApplicationService.PlaybackResult playback=PropTimelineApplicationService.loadForPlayback(
+                motionFile,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile),
+                calibration==null?null:calibration::capture,actorMotions);
+
+        synchronized(this) {
+            if(sessions.get(owner)!=session || session.attempted!=model || session.attemptedHandle!=handle
+                    || model.getModelHandle()!=handle) return pending("Prop binding attempt was superseded");
+            PropMotionHandle candidate;
+            try {
+                candidate=PropMotionHandle.open(animations,model,motionFile);
+            } catch(RuntimeException failure) {
+                return failAttemptLocked(session,"Failed to validate or load prop VMD: "+failure.getMessage(),-7);
+            }
+            session.motion=candidate;
+            session.model=model; session.modelHandle=handle;
+            session.maxFrame=candidate.endFrame();
+            try {
+                session.timeline=playback.timeline();
+                session.state=session.timeline.evaluate(session.frame);
+                if(playback.warning()!=null) warn(session,playback.warning());
+                applyFrame(session);
+                session.bindResult=ready();
+                return session.bindResult;
+            } catch(RuntimeException failure) {
+                closeBinding(session);
+                return failAttemptLocked(session,"Failed to apply prop VMD: "+failure.getMessage(),-7);
+            }
+        }
+    }
+
+    private PropBoneBindingAdapter.ApplyResult failAttempt(UUID owner,Session session,ModelInstance model,
+                                                            long handle,String message,int code) {
+        synchronized(this) {
+            if(sessions.get(owner)!=session || session.attempted!=model || session.attemptedHandle!=handle)
+                return pending("Prop binding attempt was superseded");
+            return failAttemptLocked(session,message,code);
+        }
+    }
+
+    private PropBoneBindingAdapter.ApplyResult failAttemptLocked(Session session,String message,int code) {
         session.timeline=PropTimeline.EMPTY;
         session.state=PropTimeline.State.DEFAULT;
-        Path file=HeldPmxMotionFiles.resolve(modelDir,session.assignment.motionFile());
-        if (file==null) {
-            warn(session,"Missing local prop motion: "+session.assignment.motionFile());
-            return false;
-        }
-        PropTimeline timeline=PropTimeline.EMPTY;
-        try {
-            var document=PropTimelineFiles.open(file,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile));
-            timeline=document.timeline();
-            if(!timeline.boneKeys().isEmpty()) {
-                String mismatch=PropTimelineCalibration.mismatch(PropTimelineCalibration.read(document),
-                        calibration==null?null:calibration.capture(file),session.actorMotions,timeline);
-                if(mismatch!=null) {
-                    warn(session,mismatch+"; recalculate bone parenting in the timeline editor. Prop VMD and other tracks remain active");
-                    timeline=withoutBoneParents(timeline);
-                }
-            }
-        } catch (java.io.IOException failure) {
-            warn(session,failure.getMessage()+"; prop VMD remains active");
-            timeline=withoutBoneParents(timeline);
-        } catch (RuntimeException failure) {
-            warn(session,"Invalid timeline calibration: "+failure.getMessage()+"; prop VMD remains active");
-            timeline=withoutBoneParents(timeline);
-        }
-        try {
-            long animation=animations.loadAnimation(handle,file.toString());
-            if (animation==0) {
-                warn(session,"Could not load prop VMD: "+session.assignment.motionFile());
-                return false;
-            }
-            session.animation=animation;
-            if (!animations.hasBoneData(animation) && !animations.hasMorphData(animation)) {
-                closeBinding(session);
-                warn(session,"Prop VMD has no bone or morph tracks");
-                return false;
-            }
-            session.model=model; session.modelHandle=handle; session.animation=animation;
-            float maximum=animations.getMotionEndFrame(animation);
-            if (!Float.isFinite(maximum) || maximum<0) maximum=animations.getAnimationMaxFrame(animation);
-            session.maxFrame=Float.isFinite(maximum)?Math.max(0,maximum):0;
-            model.changeAnim(animation,0);
-            model.setLayerLoop(0,false);
-            model.setLayerSpeed(0,0);
-            model.resetPhysics();
-            // Publish controls only after the model owns a usable motion. Otherwise
-            // failed loads could install native parents with no binding to clear them.
-            session.timeline=timeline;
-            session.state=timeline.evaluate(session.frame);
-            applyFrame(session);
-            return true;
-        } catch (RuntimeException failure) {
-            closeBinding(session);
-            warn(session,"Failed to apply prop VMD: "+failure.getMessage());
-            LOGGER.warn("[StageProp] Failed to apply prop motion {}",file,failure);
-            return false;
-        }
+        session.bindResult=failed(code,message);
+        if(session.missingBones.add("bind:"+code+":"+message)) warn(session,message);
+        return session.bindResult;
+    }
+
+    private static PropBoneBindingAdapter.ApplyResult ready() {
+        return new PropBoneBindingAdapter.ApplyResult(PropBoneBindingAdapter.Status.READY,0,null);
+    }
+    private static PropBoneBindingAdapter.ApplyResult pending(String message) {
+        return new PropBoneBindingAdapter.ApplyResult(PropBoneBindingAdapter.Status.PENDING,-1,message);
+    }
+    private static PropBoneBindingAdapter.ApplyResult failed(int code,String message) {
+        return new PropBoneBindingAdapter.ApplyResult(PropBoneBindingAdapter.Status.FAILED,code,message);
     }
 
     public synchronized void seek(UUID owner,float frame) {
@@ -226,11 +256,9 @@ public final class StagePropAnimationController {
     }
 
     private void applyFrame(Session session) {
-        if (session.model==null || session.animation==0) return;
+        if (session.model==null || session.motion==null || session.motion.animation()==0) return;
         float frame=session.frame;
-        if (Float.compare(frame,session.appliedFrame)==0) return;
-        animations.seekLayer(session.modelHandle,0,frame);
-        session.appliedFrame=frame;
+        session.motion.seek(frame);
     }
 
     public synchronized void stop(UUID owner) {
@@ -247,14 +275,15 @@ public final class StagePropAnimationController {
 
     private void closeBinding(Session session) {
         ModelInstance model=session.model;
-        long handle=session.modelHandle, animation=session.animation;
-        session.model=null; session.animation=0; session.modelHandle=0; session.appliedFrame=Float.NaN;
+        long handle=session.modelHandle;
+        PropMotionHandle motion=session.motion; session.motion=null; session.model=null; session.modelHandle=0;
         session.timeline=PropTimeline.EMPTY;
         session.state=PropTimeline.State.DEFAULT;
+        session.bindResult=pending("Prop model is not ready");
         try {
             if (model!=null && model.getModelHandle()==handle) {
                 if(session.parenting!=null) session.parenting.clear(handle);
-                model.changeAnim(0,0);
+                if(motion!=null) motion.close();
                 model.setLayerSpeed(0,1);
                 model.setLayerLoop(0,true);
                 model.resetPhysics();
@@ -262,9 +291,9 @@ public final class StagePropAnimationController {
         } catch (RuntimeException failure) { LOGGER.warn("[StageProp] Could not restore prop animation state",failure); }
         finally {
             session.parenting=null;
-            if (animation!=0) {
-                try { animations.deleteAnimation(animation); }
-                catch (RuntimeException failure) { LOGGER.warn("[StageProp] Could not release prop animation {}",animation,failure); }
+            if (motion!=null) {
+                try { motion.close(); }
+                catch (RuntimeException failure) { LOGGER.warn("[StageProp] Could not release prop animation",failure); }
             }
         }
     }

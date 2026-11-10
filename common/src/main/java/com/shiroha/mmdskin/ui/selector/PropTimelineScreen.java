@@ -1,18 +1,16 @@
 package com.shiroha.mmdskin.ui.selector;
 
-import com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles;
-import com.shiroha.mmdskin.asset.catalog.PropTimelineFiles;
-import com.shiroha.mmdskin.asset.catalog.PropTimelineCalibration;
 import com.shiroha.mmdskin.config.ModelConfigData;
-import com.shiroha.mmdskin.config.PathConstants;
+import com.shiroha.mmdskin.stage.application.PropRegistrationService;
+import com.shiroha.mmdskin.stage.application.PropTimelineApplicationService;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Attachment;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding;
 import com.shiroha.mmdskin.ui.chrome.TranslucentTrayChrome;
 import com.shiroha.mmdskin.ui.selector.timeline.PropTimelineEditor;
 import com.shiroha.mmdskin.ui.selector.timeline.PropTimelineEditor.Track;
+import com.shiroha.mmdskin.ui.selector.timeline.PropTimelineLayout;
 import com.shiroha.mmdskin.ui.selector.timeline.PropTimelinePreview;
-import com.shiroha.mmdskin.ui.selector.timeline.TimelineMotionChoices;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -33,8 +31,7 @@ public final class PropTimelineScreen extends Screen {
     private final Screen parent;
     private final String modelName;
     private final ModelConfigData config;
-    private final Path modelDir;
-    private PropTimelineFiles.Document document;
+    private final PropTimelineApplicationService application;
     private PropTimelineEditor editor;
     private PropTimelinePreview preview;
     private Path motion,referenceMotion;
@@ -67,7 +64,7 @@ public final class PropTimelineScreen extends Screen {
         this.parent = parent;
         this.modelName = modelName;
         this.config = config.normalizedCopy();
-        modelDir = PathConstants.getModelDir(modelName).toPath();
+        application = new PropTimelineApplicationService(modelName, this.config);
     }
 
     private static Component text(String key,Object... values) {
@@ -78,23 +75,16 @@ public final class PropTimelineScreen extends Screen {
         clearWidgets();
         chrome.clear(); properties.clear(); propertyY.clear();
         layout = new PropTimelineLayout(width,height);
-        if (document == null && !failedOpen) {
+        if (!application.isOpen() && !failedOpen) {
             try {
-                motion = HeldPmxMotionFiles.resolve(
-                        com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.motionDirectory(modelName,config.heldPmxFile),
-                        config.heldPmxStageMotion);
-                if (motion == null || config.heldPmxFile.isEmpty()) throw new IllegalArgumentException(text("select_assets").getString());
-                document = PropTimelineFiles.open(motion,
-                        com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(config.heldPmxFile));
-                editor = new PropTimelineEditor(document.timeline());
+                var opened=application.open();
+                motion=opened.motion();
+                editor = new PropTimelineEditor(opened.timeline());
                 editor.motionEnd(300);
-                motionChoices = TimelineMotionChoices.list(modelDir,PathConstants.getStageAnimDir().toPath());
-                referenceLabel=PropTimelineFiles.referenceMotion(document);
-                referenceMotion=motionChoices.get(referenceLabel);
-                if(!editor.snapshot().boneKeys().isEmpty()) {
-                    if(missingReference() || !PropTimelineCalibration.matches(PropTimelineCalibration.read(document),
-                            PropTimelineCalibration.capture(modelName,config,motion,referenceMotion),editor.snapshot())) editor.invalidateCompensation();
-                }
+                motionChoices = opened.motionChoices();
+                referenceLabel=opened.referenceLabel();
+                referenceMotion=opened.referenceMotion();
+                if(opened.compensationStale()) editor.invalidateCompensation();
                 boneChoices = ModelSelectorServices.modelSettings().listBoneNames(modelName);
             } catch (Exception failure) {
                 failedOpen = true;
@@ -394,24 +384,14 @@ public final class PropTimelineScreen extends Screen {
     }
 
     private void recalculate() {
-        if(editor.snapshot().boneKeys().isEmpty()) return;
-        requireRegistrationPreview();
         var source=editor.snapshot();
-        var keys=new ArrayList<com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding>>();
-        for(var key:source.boneKeys()) {
-            var binding=key.value();
-            if(binding.unbind()) keys.add(key);
-            else {
-                var baseline=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline(source.initial(),source.visibility(),source.attachments(),keys);
-                keys.add(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(key.frame(),
-                        preview.register(key.frame(),baseline,binding.childBone(),binding.bone(),binding.offset(),binding.keepWorld(),binding.placement())));
-            }
-        }
-        editor.replaceCalibrated(keys);
+        if(source.boneKeys().isEmpty()) return;
+        requireRegistrationPreview();
+        editor.replaceCalibrated(application.recalculate(source,preview::register).boneKeys());
     }
 
     private boolean missingReference() {
-        return !referenceLabel.isEmpty() && (referenceMotion==null || !java.nio.file.Files.isRegularFile(referenceMotion));
+        return application.referenceMissing(referenceLabel,referenceMotion);
     }
 
     private void requireRegistrationPreview() {
@@ -447,14 +427,12 @@ public final class PropTimelineScreen extends Screen {
     private void save() {
         try {
             if(placement!=null) { status=text("place_hint").getString(); return; }
-            PropTimelineCalibration.Signature calibration=null;
-            if(!editor.snapshot().boneKeys().isEmpty()) {
-                requireRegistrationPreview();
-                calibration=PropTimelineCalibration.capture(modelName,config,motion,referenceMotion);
-                if(!PropTimelineCalibration.matches(PropTimelineCalibration.read(document),calibration,editor.snapshot())) editor.invalidateCompensation();
-            }
-            if(editor.compensationStale()) recalculate();
-            document = PropTimelineFiles.save(document,editor.snapshot(),referenceLabel,calibration);
+            var timeline=editor.snapshot();
+            if(!timeline.boneKeys().isEmpty()) requireRegistrationPreview();
+            PropRegistrationService.Registrar registrar=preview==null?null:preview::register;
+            var saved=application.save(timeline,referenceLabel,referenceMotion,
+                    editor.compensationStale(),registrar);
+            if(saved.recalculated()) editor.replaceCalibrated(saved.timeline().boneKeys());
             editor.markSaved();
             status = text("saved").getString();
         } catch (Exception failure) { report(failure); }
@@ -484,7 +462,7 @@ public final class PropTimelineScreen extends Screen {
             renderPreview(graphics);
             drawTimeline(graphics,mouseX,mouseY);
             playButton.setMessage(text(editor.playing()?"pause":"play"));
-            saveButton.active = placement==null && (editor.dirty() || document.originalJson()==null);
+            saveButton.active = placement==null && (editor.dirty() || application.isNewDocument());
             graphics.drawString(font,font.plainSubstrByWidth("/ "+editor.endFrame(),Math.max(1,width-258)),184,layout.controlsY+5,0xffbccce0,false);
         }
         super.render(graphics,mouseX,mouseY,delta);

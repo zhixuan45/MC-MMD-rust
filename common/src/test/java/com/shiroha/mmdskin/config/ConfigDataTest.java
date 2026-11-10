@@ -15,14 +15,14 @@ class ConfigDataTest {
     void baseBrightnessDefaultsPersistsAndUpdatesLive(@TempDir Path configDir) throws Exception {
         Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");
         ConfigData data = ConfigData.load(configDir);
-        assertEquals(0, data.toonBaseBrightness);
-        data.toonBaseBrightness = .15f;
+        assertEquals(0, data.baseBrightness);
+        data.baseBrightness = .15f;
         data.save(configDir);
         ConfigData loaded = ConfigData.load(configDir);
         ConfigManager.init(new TestConfig(loaded));
         try {
             assertEquals(.15f, ConfigManager.getToonBaseBrightness());
-            loaded.toonBaseBrightness = .4f;
+            loaded.baseBrightness = .4f;
             assertEquals(.4f, ConfigManager.getToonBaseBrightness());
         } finally {
             ConfigManager.init(null);
@@ -36,9 +36,9 @@ class ConfigDataTest {
         normalize.setAccessible(true);
         for (float[] pair : new float[][]{{-1, 0}, {0, 0}, {.15f, .15f}, {1, 1}, {2, 1},
                 {Float.NaN, 0}, {Float.POSITIVE_INFINITY, 0}, {Float.NEGATIVE_INFINITY, 0}}) {
-            data.toonBaseBrightness = pair[0];
+            data.baseBrightness = pair[0];
             normalize.invoke(data);
-            assertEquals(pair[1], data.toonBaseBrightness);
+            assertEquals(pair[1], data.baseBrightness);
         }
     }
 
@@ -46,6 +46,8 @@ class ConfigDataTest {
     void worldShadowSoftnessDefaultsPersistsAndUpdatesLive(@TempDir Path configDir) throws Exception {
         Files.writeString(configDir.resolve("config.json"), "{\"toonWholeModelLighting\":true}");
         ConfigData data = ConfigData.load(configDir);
+        assertTrue(data.receiveTerrainShadow);
+        assertTrue(data.terrainTransmission);
         assertEquals(1.5f, data.toonWorldShadowSoftness);
         data.toonWorldShadowSoftness = .75f;
         data.save(configDir);
@@ -55,6 +57,82 @@ class ConfigDataTest {
             assertEquals(.75f, ConfigManager.getToonWorldShadowSoftness());
             loaded.toonWorldShadowSoftness = 2.5f;
             assertEquals(2.5f, ConfigManager.getToonWorldShadowSoftness());
+        } finally {
+            ConfigManager.init(null);
+        }
+    }
+
+    @Test
+    void rendererSettingsMigrateLegacyKeysAndCanonicalFieldsTakePrecedence(@TempDir Path configDir)
+            throws Exception {
+        Files.writeString(configDir.resolve("config.json"), """
+                {
+                  "toonWholeModelLighting": true,
+                  "toonOutlineMaterialColor": true,
+                  "toonBaseBrightness": 0.35
+                }
+                """);
+
+        ConfigData migrated = ConfigData.load(configDir);
+        assertTrue(migrated.receiveTerrainShadow);
+        assertTrue(migrated.terrainTransmission);
+        assertTrue(migrated.outlineMaterialColor);
+        assertEquals(0.35f, migrated.baseBrightness, 0.0001f);
+        String saved = Files.readString(configDir.resolve("config.json"));
+        assertTrue(saved.contains("\"receiveTerrainShadow\""));
+        assertTrue(saved.contains("\"terrainTransmission\""));
+
+        Files.writeString(configDir.resolve("config.json"), """
+                {
+                  "receiveTerrainShadow": false,
+                  "terrainTransmission": false,
+                  "outlineMaterialColor": false,
+                  "baseBrightness": 0.2,
+                  "toonWholeModelLighting": true,
+                  "toonOutlineMaterialColor": true,
+                  "toonBaseBrightness": 0.9
+                }
+                """);
+        ConfigData canonical = ConfigData.load(configDir);
+        assertFalse(canonical.receiveTerrainShadow);
+        assertFalse(canonical.terrainTransmission);
+        assertFalse(canonical.outlineMaterialColor);
+        assertEquals(0.2f, canonical.baseBrightness, 0.0001f);
+
+        Files.writeString(configDir.resolve("config.json"), "{\"toonWholeModelLighting\":false}");
+        ConfigData disabledLegacy = ConfigData.load(configDir);
+        assertFalse(disabledLegacy.receiveTerrainShadow);
+        assertTrue(disabledLegacy.terrainTransmission);
+    }
+
+    @Test
+    void canonicalRendererFieldsStaySyncedWithLegacyMirrorsOnSave(@TempDir Path configDir) {
+        ConfigData data = new ConfigData();
+        assertFalse(data.toonWholeModelLighting);
+        assertFalse(data.toonOutlineMaterialColor);
+        assertEquals(0.0f, data.toonBaseBrightness, 0.0001f);
+        data.receiveTerrainShadow = true;
+        data.terrainTransmission = false;
+        data.outlineMaterialColor = true;
+        data.baseBrightness = 0.4f;
+        data.save(configDir);
+
+        ConfigData loaded = ConfigData.load(configDir);
+        assertTrue(loaded.receiveTerrainShadow);
+        assertFalse(loaded.terrainTransmission);
+        assertTrue(loaded.outlineMaterialColor);
+        assertEquals(0.4f, loaded.baseBrightness, 0.0001f);
+        assertEquals(Boolean.TRUE, loaded.toonWholeModelLighting);
+        assertEquals(Boolean.TRUE, loaded.toonOutlineMaterialColor);
+        assertEquals(0.4f, loaded.toonBaseBrightness, 0.0001f);
+
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            assertTrue(ConfigManager.isReceiveTerrainShadowEnabled());
+            assertTrue(ConfigManager.isToonWholeModelLightingEnabled());
+            assertFalse(ConfigManager.isTerrainTransmissionEnabled());
+            assertTrue(ConfigManager.isToonOutlineMaterialColor());
+            assertEquals(0.4f, ConfigManager.getToonBaseBrightness(), 0.0001f);
         } finally {
             ConfigManager.init(null);
         }
@@ -340,13 +418,13 @@ class ConfigDataTest {
         Files.createDirectories(configDir);
         Files.writeString(configDir.resolve("config.json"), "{\"toonOutlineEnabled\":true}");
         ConfigData loaded = ConfigData.load(configDir);
-        assertFalse(loaded.toonOutlineMaterialColor);
+        assertFalse(loaded.outlineMaterialColor);
         assertFalse(new TestConfig(loaded).isToonOutlineMaterialColor());
 
-        loaded.toonOutlineMaterialColor = true;
+        loaded.outlineMaterialColor = true;
         loaded.save(configDir);
         ConfigData roundTrip = ConfigData.load(configDir);
-        assertTrue(roundTrip.toonOutlineMaterialColor);
+        assertTrue(roundTrip.outlineMaterialColor);
         ConfigManager.init(new TestConfig(roundTrip));
         try {
             assertTrue(ConfigManager.isToonOutlineMaterialColor());

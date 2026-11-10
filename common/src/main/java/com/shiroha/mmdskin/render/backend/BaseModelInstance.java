@@ -1,7 +1,6 @@
 package com.shiroha.mmdskin.render.backend;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
-import com.shiroha.mmdskin.compat.iris.IrisCompat;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.debug.client.ModelIssueDiagnostics;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
@@ -11,6 +10,7 @@ import com.shiroha.mmdskin.render.effect.SwimmingVeilRenderer;
 import com.shiroha.mmdskin.render.pipeline.LivingEntityModelStateHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.policy.WorldRenderPolicy;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.shader.EyeEmissionBuffer;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public abstract class BaseModelInstance implements ModelInstance {
     protected static final Logger logger = LogManager.getLogger();
+    private static final IrisBackend IRIS = IrisBackend.current();
 
     protected static final float MAX_DELTA_TIME = 0.25f;
     protected static final float MODEL_SCALE = 0.09f;
@@ -76,9 +77,9 @@ public abstract class BaseModelInstance implements ModelInstance {
     private boolean swimmingVeil;
     private float swimmingVeilSeconds;
     public final void setupToonTerrainShadow(ToonShaderBase shader, RenderScene scene) {
-        shader.setTerrainShadowReceiver(ConfigManager.isToonWholeModelLightingEnabled()
-                && scene != null && scene.isWorldScene() && !IrisCompat.isRenderingShadows()
-                && IrisCompat.isIrisShaderActive());
+        shader.setTerrainShadowReceiver(ConfigManager.isReceiveTerrainShadowEnabled()
+                && scene != null && scene.isWorldScene() && !IRIS.isShadowPass()
+                && IRIS.isShaderPackActive());
     }
 
     public final void setSwimmingVeil(boolean enabled, float seconds) {
@@ -89,7 +90,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     /** 在模型根变换已应用、世界透明作用域仍有效时调用。 */
     public final void renderSwimmingVeil(PoseStack stack, RenderScene scene) {
         if (!swimmingVeil || scene == null || !scene.isWorldScene() || scene.isFirstPerson()
-                || IrisCompat.isRenderingShadows()) return;
+                || IRIS.isShadowPass()) return;
         if (swimmingVeilRenderer == null) swimmingVeilRenderer = new SwimmingVeilRenderer(backendPort(), model);
         swimmingVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack), swimmingVeilSeconds);
     }
@@ -348,7 +349,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         }
         try {
             doRenderModel(entityIn, entityYaw, entityPitch, entityTrans, mat, packedLight, context);
-            if (context != null && context.isWorldScene() && !IrisCompat.isRenderingShadows()) {
+            if (context != null && context.isWorldScene() && !IRIS.isShadowPass()) {
                 paperDollPose.capture(entityIn, com.shiroha.mmdskin.render.pipeline.RenderFrameClock.current(),
                         backendPort().poseInputRevision(model), context.isFirstPerson());
             }
@@ -607,7 +608,7 @@ public abstract class BaseModelInstance implements ModelInstance {
     /** 1.21.1 将镜头视图与实体局部 PoseStack 分开维护，上传前必须重新组合。 */
     public final Matrix4f composeModelViewMatrix(PoseStack deliverStack) {
         return composeModelViewMatrix(RenderSystem.getModelViewMatrix(), deliverStack.last().pose(),
-                IrisCompat.isRenderingShadows(), composedModelViewMatrix);
+                IRIS.isShadowPass(), composedModelViewMatrix);
     }
 
     static Matrix4f composeModelViewMatrix(Matrix4f cameraView, Matrix4f entityPose,
@@ -651,7 +652,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         var renderer = Minecraft.getInstance().gameRenderer;
         renderer.overlayTexture().setupOverlayColor();
         renderer.lightTexture().turnOnLightLayer();
-        if (!IrisCompat.isIrisProgram(shader)) {
+        if (!IRIS.isIrisProgram(shader)) {
             shader.setSampler("Sampler1", RenderSystem.getShaderTexture(1));
             shader.setSampler("Sampler2", RenderSystem.getShaderTexture(2));
         }

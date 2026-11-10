@@ -1,8 +1,22 @@
 # 地形阴影接收（2026-11-05）
 
-沿用 `toonWholeModelLighting` 保存键，设置界面显示为“接收地形阴影”，默认关闭。
+设置界面显示为“接收地形阴影”，默认关闭。
 开启后主体和描边按各自片元的真实位置采样地形阴影，不再共用模型包围球上的采样点。
 关闭、GUI 场景、原包照明同步失败或没有有效地形快照时回到经典逐片元阴影。
+
+## 配置拆分与迁移
+
+第 4 批架构治理将原 `toonWholeModelLighting` 语义拆成：
+
+- `receiveTerrainShadow`：捕获并接收地形阴影。
+- `terrainTransmission`：捕获受支持的水、玻璃等半透明地形，默认开启。
+- `outlineMaterialColor`：描边使用材质与贴图自适应颜色。
+- `baseBrightness`：主体与跟随光照描边的底板亮度。
+
+旧配置仍可直接读取。若缺少新键，`toonWholeModelLighting=true` 会迁移为
+`receiveTerrainShadow=true`，`toonOutlineMaterialColor` 与 `toonBaseBrightness`
+分别迁移到对应的独立键。迁移后的配置保留旧键镜像，供旧版本继续读取；
+新键与旧键同时存在时以新键为准。
 
 ## 接入与范围
 
@@ -12,8 +26,11 @@ Fabric / NeoForge 的 `IrisShadowEvaluationMixin` 在每次 `renderShadows` 开�
 捕获点位于实体提交之前，包含不透明建筑、地面和裁切树叶，不包含实体、方块实体及半透明地形。
 
 `IrisShadowSource` 从 renderer 的 `targets` 读取阴影源 FBO、深度纹理和分辨率，
-`IrisTerrainShadow` 校验纹理身份与尺寸后复制，维护独立深度纹理和 FBO，保留宿主读写 FBO、纹理绑定、
-scissor 和 unpack PBO 状态。分辨率/格式变化时重建；renderer 销毁或替换时释放。
+`TerrainShadowFrame` 统一维护当前帧的捕获、透射、状态、失败原因和资源生命周期；
+`IrisTerrainShadow` 校验纹理身份与尺寸后复制。普通深度复制使用精简快照，只保存
+读写 FBO、当前纹理绑定、active texture、unpack PBO 和 scissor；透射回放使用完整快照，
+额外保留全部纹理与 sampler、program、VAO、缓冲、blend 和 viewport。
+分辨率/格式变化时重建；renderer 销毁或替换时释放。
 原阴影图继续接收全部后续人物几何，所以人物向世界投影的路径保持原有行为。
 这一阶段排除所有实体的阴影，不提供“仅忽略当前人物、保留其他实体”的身份过滤。
 
@@ -22,8 +39,14 @@ BSL / Complementary 适配继续计算原包阴影坐标和过滤，仅在有效
 经典模式保留原深度和颜色采样。地形接收减少模型内部自遮挡，
 材质法线、Toon 色阶和原有阳光平坦化继续参与表面照明。
 
-`TerrainShadowBinding` 按程序活动 sampler 分配空闲单元，不修改 Iris 的阴影采样器绑定；
+`TerrainShadowBinding` 缓存程序 uniform location，按程序活动 sampler 分配空闲单元，
+不修改 Iris 的阴影采样器绑定；
 主体和描边切换时恢复前一绑定，模型绘制结束及异常退出时释放临时绑定。
+
+渲染层通过 `render.port.IrisBackend` 读取 Iris 状态、Toon 元数据、实体诊断、
+透明队列目标和地形阴影纹理，`compat.iris.IrisBackendAdapter` 负责实现。
+Iris 反射、私有字段名和捕获注入点仍集中在 `compat.iris`；
+`common/src/main/java/com/shiroha/mmdskin/render/**` 不再直接引用兼容包实现。
 
 ## 验证入口
 

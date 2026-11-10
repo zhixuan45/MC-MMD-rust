@@ -6,15 +6,16 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.bridge.runtime.NativeAnimationBridgeHolder;
 import com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder;
+import com.shiroha.mmdskin.bridge.runtime.PropBoneBindingAdapter;
 import com.shiroha.mmdskin.config.ModelConfigData;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.model.runtime.ModelRequestKey;
 import com.shiroha.mmdskin.model.runtime.ModelSubjectKind;
 import com.shiroha.mmdskin.player.render.ItemRenderHelper;
 import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
-import com.shiroha.mmdskin.player.render.PropBoneParenting;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.scene.RenderScene;
+import com.shiroha.mmdskin.stage.application.PropRegistrationService;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
 import com.shiroha.mmdskin.ui.paperdoll.PaperDollFrameCache;
 import net.minecraft.client.Minecraft;
@@ -44,7 +45,10 @@ public final class PropTimelinePreview implements AutoCloseable {
     private List<String> bones = List.of();
     private String missingBone = "";
     private boolean closed;
-    private final PropBoneParenting parenting=new PropBoneParenting(NativeRuntimeBridgeHolder.get(),NativeRuntimeBridgeHolder.get());
+    private final PropBoneBindingAdapter parenting=
+            new PropBoneBindingAdapter(NativeRuntimeBridgeHolder.get(),NativeRuntimeBridgeHolder.get());
+    private final PropRegistrationService registration=
+            new PropRegistrationService(new NativeBindingPort(NativeRuntimeBridgeHolder.get(),parenting));
 
     public PropTimelinePreview(String modelName,ModelConfigData config,Path propMotion,Path actorMotion) {
         this.config = config.normalizedCopy();
@@ -108,38 +112,36 @@ public final class PropTimelinePreview implements AutoCloseable {
     public PropTimeline.BoneBinding register(int frame,PropTimeline baseline,String child,String target,
                                            PropTimeline.Offset offset,boolean keepWorld,PropTimeline.Offset placement) {
         if(!prepare(frame)) throw new IllegalStateException("Preview is still loading");
-        var runtime=NativeRuntimeBridgeHolder.get();
         long actorHandle=actor.modelInstance().getModelHandle(),propHandle=prop.modelInstance().getModelHandle();
-        runtime.setPhysicsEnabled(actorHandle,false);
-        runtime.setPhysicsEnabled(propHandle,false);
-        if(!runtime.evaluatePropPose(actorHandle)) throw new IllegalStateException("Cannot evaluate character pose");
         var state=baseline.evaluate(frame);
         // Even the first registration starts in the independent model space, before any bone key exists.
         Matrix4f base=propToActor(renderTransform(state));
-        parenting.apply(actorHandle,propHandle,base,baseline,frame,state);
-        if(!runtime.evaluatePropPose(propHandle)) throw new IllegalStateException("Cannot evaluate prop pose");
-        Matrix4f[] pose=parenting.pose(propHandle,child);
-        Matrix4f targetMatrix=PropBoneParenting.targetInProp(base,parenting.pose(actorHandle,target)[0]);
-        PropTimeline previewTimeline=baseline;
-        if (keepWorld) {
-            var keys=new java.util.ArrayList<>(baseline.boneKeys());
-            keys.add(new PropTimeline.Key<>(frame,new PropTimeline.BoneBinding(child,target,
-                    PropTimeline.Offset.IDENTITY,PropTimeline.identityCompensation(),false,false)));
-            var registeredTimeline=new PropTimeline(baseline.initial(),baseline.visibility(),baseline.attachments(),keys);
-            previewTimeline=registeredTimeline;
-            parenting.apply(actorHandle,propHandle,base,registeredTimeline,frame,state);
-            if(!runtime.evaluatePropPose(propHandle)) throw new IllegalStateException("Cannot evaluate registered prop pose");
-            Matrix4f[] registeredPose=parenting.pose(propHandle,child);
-            registeredPose[0]=pose[0];
-            pose=registeredPose;
-        }
-        var binding=PropBoneParenting.registration(child,target,targetMatrix,pose,offset,keepWorld,placement);
-        var bindings=new java.util.LinkedHashMap<>(state.boneBindings());
-        bindings.put(child,binding);
-        parenting.apply(actorHandle,propHandle,base,previewTimeline,frame,
-                new PropTimeline.State(state.visible(),state.attachment(),bindings));
+        var binding=registration.register(actorHandle,propHandle,base,baseline,frame,state,
+                child,target,offset,keepWorld,placement);
         image.invalidate();
         return binding;
+    }
+
+    private record NativeBindingPort(
+            com.shiroha.mmdskin.bridge.runtime.NativeRuntimePort runtime,
+            PropBoneBindingAdapter parenting) implements PropRegistrationService.BindingPort {
+        @Override public void setPhysicsEnabled(long model, boolean enabled) {
+            runtime.setPhysicsEnabled(model, enabled);
+        }
+
+        @Override public boolean evaluate(long model) {
+            return runtime.evaluatePropPose(model);
+        }
+
+        @Override public void apply(long actor, long prop, Matrix4f propToActor,
+                                   PropTimeline timeline, int frame, PropTimeline.State state) {
+            parenting.apply(actor, prop, propToActor, timeline, frame, state);
+        }
+
+        @Override public Matrix4f[] pose(long model, String bone) {
+            return parenting.pose(model, bone);
+        }
+
     }
 
     public void render(GuiGraphics graphics,int x,int y,int width,int height,int frame,long revision,

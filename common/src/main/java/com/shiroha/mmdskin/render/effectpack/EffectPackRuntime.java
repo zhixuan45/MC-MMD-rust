@@ -1,7 +1,7 @@
 package com.shiroha.mmdskin.render.effectpack;
 
 import com.shiroha.mmdskin.config.PathConstants;
-import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.texture.runtime.TextureRepository;
 import org.apache.logging.log4j.LogManager;
@@ -13,6 +13,7 @@ import java.util.Map;
 
 /** 仅在客户端渲染线程访问；磁盘扫描和纹理加载不进入逐材质的热路径。 */
 public final class EffectPackRuntime {
+    private static final IrisBackend IRIS = IrisBackend.current();
     private static EffectPackRuntime instance;
     private final Path library;
     private final Path config;
@@ -108,7 +109,7 @@ public final class EffectPackRuntime {
             var active = new java.util.ArrayList<FxEffect>();
             active.add(current);
             for (var rule : materialRules) active.add(deduplicateWorld(effect(rule.effect())));
-            if (!IrisCompat.isRenderingShadows()) program = FxProgram.of(active);
+            if (!IRIS.isShadowPass()) program = FxProgram.of(active);
         }
         return previous;
     }

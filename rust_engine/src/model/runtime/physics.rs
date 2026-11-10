@@ -4,6 +4,10 @@ use crate::physics::upstream_adapter::sync_config;
 
 impl MmdModel {
     pub fn init_physics(&mut self) -> bool {
+        let bone_count = self.bone_manager.bone_count();
+        self.bone_manager.set_forbidden_external_parent_indices(
+            super::prop_physics::prop_forbidden_bones(&self.rigid_bodies, bone_count),
+        );
         if self.rigid_bodies.is_empty() {
             log::debug!("模型没有刚体数据，跳过物理初始化");
             return false;
@@ -20,7 +24,6 @@ impl MmdModel {
         };
 
         // 收集骨骼变换（复用缓冲区）
-        let bone_count = self.bone_manager.bone_count();
         self.physics_bone_transforms_buf
             .resize(bone_count, Mat4::IDENTITY);
         for i in 0..bone_count {
@@ -50,7 +53,10 @@ impl MmdModel {
     /// 读取尾部闲置受力：(骨骼索引、波形延迟秒数、当前加速度(方块/秒²)、目标抬高(方块))。
     #[cfg(not(feature = "legacy-physics"))]
     pub fn physics_tail_idle_samples(&self) -> Vec<(i32, f32, f32, f32)> {
-        self.physics.as_ref().map(|p| p.tail_idle_samples()).unwrap_or_default()
+        self.physics
+            .as_ref()
+            .map(|p| p.tail_idle_samples())
+            .unwrap_or_default()
     }
 
     /// 重置物理系统

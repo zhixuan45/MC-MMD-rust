@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.compat.iris;
 
+import com.shiroha.mmdskin.config.ConfigManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL46C;
@@ -7,51 +8,37 @@ import org.lwjgl.opengl.GL46C;
 /** Copies the terrain depth before Iris submits entities, without changing the host shadow map. */
 public final class IrisTerrainShadow {
     private static final Logger LOGGER = LogManager.getLogger();
-    private static Object renderer;
-    private static boolean requested, valid, reported;
-    private static int texture, framebuffer, width, height, format;
-    private static String status = "not captured", warnedStatus;
-    private static IrisShadowSource sourceAccess;
-    private static boolean transmissionReported;
-    private static String transmissionFailure;
 
     private IrisTerrainShadow() {}
 
     public static void beginFrame(Object owner, boolean enabled) {
-        if (renderer != owner) {
-            release();
-            renderer = owner;
-        }
-        requested = enabled;
-        valid = false;
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
+        frame.begin(owner, enabled);
         IrisTerrainTransmission.beginFrame();
-        status = enabled ? "terrain capture not reached" : "disabled";
     }
 
     public static void capture(Object owner) {
-        if (renderer != owner || !requested) return;
-        valid = false;
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
+        if (frame.owner != owner || !frame.requested) return;
+        frame.captured = false;
         IrisShadowSource.Source shadow;
         try {
-            if (sourceAccess == null || !sourceAccess.matches(owner))
-                sourceAccess = new IrisShadowSource(owner.getClass());
-            shadow = sourceAccess.read(owner);
+            if (frame.sourceAccess == null || !frame.sourceAccess.matches(owner))
+                frame.sourceAccess = new IrisShadowSource(owner.getClass());
+            shadow = frame.sourceAccess.read(owner);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            status = "Iris shadow target lookup failed: " + e.getClass().getSimpleName();
+            frame.failCapture("Iris shadow target lookup failed: " + e.getClass().getSimpleName());
             return;
         }
         if (shadow.framebuffer() <= 0 || shadow.texture() <= 0 || shadow.resolution() <= 0) {
-            status = "invalid Iris shadow target";
+            frame.failCapture("invalid Iris shadow target");
             return;
         }
-        int draw = GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING);
-        int read = GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING);
-        int previousTexture = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
-        boolean scissor = GL46C.glIsEnabled(GL46C.GL_SCISSOR_TEST);
-        try {
+        try (ShadowReplayGlState state = ShadowReplayGlState.depthCopy()) {
+            int draw = state.draw;
             GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, shadow.framebuffer());
             if (GL46C.glCheckFramebufferStatus(GL46C.GL_READ_FRAMEBUFFER) != GL46C.GL_FRAMEBUFFER_COMPLETE) {
-                status = "incomplete Iris shadow source framebuffer";
+                frame.failCapture("incomplete Iris shadow source framebuffer");
                 return;
             }
             int attachmentType = GL46C.glGetFramebufferAttachmentParameteri(GL46C.GL_READ_FRAMEBUFFER,
@@ -61,7 +48,7 @@ public final class IrisTerrainShadow {
             int level = GL46C.glGetFramebufferAttachmentParameteri(GL46C.GL_READ_FRAMEBUFFER,
                     GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL);
             if (attachmentType != GL46C.GL_TEXTURE || source != shadow.texture() || level != 0) {
-                status = "Iris shadow depth identity mismatch";
+                frame.failCapture("Iris shadow depth identity mismatch");
                 return;
             }
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, source);
@@ -69,7 +56,7 @@ public final class IrisTerrainShadow {
             int sourceHeight = GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_HEIGHT);
             int sourceFormat = GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_INTERNAL_FORMAT);
             if (sourceWidth != shadow.resolution() || sourceHeight != shadow.resolution()) {
-                status = "Iris shadow depth extent mismatch";
+                frame.failCapture("Iris shadow depth extent mismatch");
                 return;
             }
             int storageFormat = sourceFormat;
@@ -82,80 +69,81 @@ public final class IrisTerrainShadow {
                         : bits > 16 ? GL46C.GL_DEPTH_COMPONENT24 : GL46C.GL_DEPTH_COMPONENT16;
             }
             if (sourceWidth <= 0 || sourceHeight <= 0 || !depthFormat(storageFormat)) {
-                status = "unsupported shadow depth format " + sourceFormat;
+                frame.failCapture("unsupported shadow depth format " + sourceFormat);
                 return;
             }
             int minFilter = GL46C.glGetTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER);
             int magFilter = GL46C.glGetTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER);
-            if (texture == 0 || width != sourceWidth || height != sourceHeight || format != storageFormat) {
-                releaseStorage();
-                width = sourceWidth;
-                height = sourceHeight;
-                format = storageFormat;
-                texture = GL46C.glGenTextures();
-                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
-                int unpack = GL46C.glGetInteger(GL46C.GL_PIXEL_UNPACK_BUFFER_BINDING);
+            if (frame.texture == 0 || frame.width != sourceWidth || frame.height != sourceHeight
+                    || frame.format != storageFormat) {
+                frame.releaseCaptureStorage();
+                frame.releaseTransmissionStorage();
+                frame.width = sourceWidth;
+                frame.height = sourceHeight;
+                frame.format = storageFormat;
+                frame.texture = GL46C.glGenTextures();
+                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, frame.texture);
                 GL46C.glBindBuffer(GL46C.GL_PIXEL_UNPACK_BUFFER, 0);
-                try {
-                    GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, format, width, height, 0,
-                            GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, 0L);
-                } finally {
-                    GL46C.glBindBuffer(GL46C.GL_PIXEL_UNPACK_BUFFER, unpack);
-                }
+                GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, frame.format, frame.width, frame.height, 0,
+                        GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, 0L);
                 GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_BASE_LEVEL, 0);
                 GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAX_LEVEL, 0);
                 GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_S, GL46C.GL_CLAMP_TO_EDGE);
                 GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_WRAP_T, GL46C.GL_CLAMP_TO_EDGE);
                 GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_COMPARE_MODE, GL46C.GL_COMPARE_REF_TO_TEXTURE);
                 GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_COMPARE_FUNC, GL46C.GL_LEQUAL);
-                framebuffer = GL46C.glGenFramebuffers();
-                GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, framebuffer);
+                frame.framebuffer = GL46C.glGenFramebuffers();
+                GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, frame.framebuffer);
                 GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT,
-                        GL46C.GL_TEXTURE_2D, texture, 0);
+                        GL46C.GL_TEXTURE_2D, frame.texture, 0);
                 GL46C.glDrawBuffer(GL46C.GL_NONE);
                 GL46C.glReadBuffer(GL46C.GL_NONE);
                 if (GL46C.glCheckFramebufferStatus(GL46C.GL_FRAMEBUFFER) != GL46C.GL_FRAMEBUFFER_COMPLETE) {
-                    releaseStorage();
-                    status = "incomplete terrain snapshot framebuffer";
+                    frame.releaseCaptureStorage();
+                    frame.failCapture("incomplete terrain snapshot framebuffer");
                     return;
                 }
             }
-            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, frame.texture);
             GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER,
                     minFilter == GL46C.GL_NEAREST ? GL46C.GL_NEAREST : GL46C.GL_LINEAR);
             GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, magFilter);
             GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, shadow.framebuffer());
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, framebuffer);
+            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, frame.framebuffer);
             GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
-            GL46C.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
+            GL46C.glBlitFramebuffer(0, 0, frame.width, frame.height, 0, 0, frame.width, frame.height,
                     GL46C.GL_DEPTH_BUFFER_BIT, GL46C.GL_NEAREST);
-            valid = true;
-            status = "ready";
-            warnedStatus = null;
-            if (!reported) {
-                reported = true;
+            frame.captured("ready");
+            frame.warnedStatus = null;
+            if (!frame.reported) {
+                frame.reported = true;
                 LOGGER.info("[MMD terrain shadow] captured Iris-owned depth before entities: {}x{}, sourceFbo={}, sourceDepth={}, hostDrawFbo={}, sourceFormat={}, storedFormat={}",
-                        width, height, shadow.framebuffer(), source, draw, sourceFormat, format);
+                        frame.width, frame.height, shadow.framebuffer(), source, draw, sourceFormat, frame.format);
             }
-        } finally {
-            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, previousTexture);
-            GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, draw);
-            GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, read);
-            if (scissor) GL46C.glEnable(GL46C.GL_SCISSOR_TEST);
         }
     }
 
-    public static int texture() { return valid ? texture : 0; }
+    public static int texture() {
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
+        return frame.captureValid() ? frame.texture : 0;
+    }
 
     public static void captureTransmission(Object owner, Object level, net.minecraft.client.Camera camera) {
-        if (renderer != owner || !requested || !valid) return;
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
+        if (frame.owner != owner || !frame.requested || !frame.captureValid()) return;
+        if (!ConfigManager.isTerrainTransmissionEnabled()) {
+            frame.transmission = false;
+            frame.replayStatus = "disabled by configuration";
+            return;
+        }
         try {
-            if (IrisTerrainShadowReplay.capture(owner, level, camera, sourceAccess.read(owner), framebuffer, format)) {
-                transmissionFailure = null;
-                if (!transmissionReported) {
-                    transmissionReported = true;
+            if (IrisTerrainShadowReplay.capture(owner, level, camera, frame.sourceAccess.read(owner),
+                    frame.framebuffer, frame.format)) {
+                frame.capturedTransmission(IrisTerrainShadowReplay.status());
+                if (!frame.transmissionReported) {
+                    frame.transmissionReported = true;
                     LOGGER.info("[MMD terrain shadow] captured terrain transmission before entities: {}x{}, {}",
-                            width, height, IrisTerrainShadowReplay.status());
+                            frame.width, frame.height, IrisTerrainShadowReplay.status());
                 }
             } else {
                 warnTransmissionUnavailable(IrisTerrainShadowReplay.status());
@@ -168,43 +156,28 @@ public final class IrisTerrainShadow {
     }
 
     private static void warnTransmissionUnavailable(String detail) {
-        if (!detail.equals(transmissionFailure)) {
-            transmissionFailure = detail;
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
+        if (!detail.equals(frame.transmissionFailure)) {
+            frame.failTransmission(detail);
             LOGGER.warn("[MMD terrain shadow] terrain transmission unavailable; opaque terrain remains active: {}", detail);
         }
     }
 
     public static void warnUnavailable() {
-        if (requested && !valid && !status.equals(warnedStatus)) {
-            warnedStatus = status;
-            LOGGER.warn("[MMD terrain shadow] classic receiver fallback: {}", status);
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
+        if (frame.requested && !frame.captureValid() && !frame.status.equals(frame.warnedStatus)) {
+            frame.warnedStatus = frame.status;
+            LOGGER.warn("[MMD terrain shadow] classic receiver fallback: {}", frame.status);
         }
     }
 
     public static void destroy(Object owner) {
-        if (renderer == owner) release();
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
+        if (frame.owner == owner) release();
     }
 
     public static void release() {
-        valid = false;
-        requested = false;
-        renderer = null;
-        reported = false;
-        status = "not captured";
-        warnedStatus = null;
-        sourceAccess = null;
-        transmissionReported = false;
-        transmissionFailure = null;
-        IrisTerrainTransmission.release();
-        IrisTerrainShadowReplay.reset();
-        releaseStorage();
-    }
-
-    private static void releaseStorage() {
-        if (framebuffer != 0) GL46C.glDeleteFramebuffers(framebuffer);
-        if (texture != 0) GL46C.glDeleteTextures(texture);
-        texture = framebuffer = width = height = format = 0;
-        valid = false;
+        TerrainShadowFrame.current().releaseAll();
     }
 
     private static boolean depthFormat(int value) {

@@ -134,7 +134,8 @@ public final class Probe {
         Path fixture = Path.of(args[1]);
         NativeMatrixPort matrices = (NativeMatrixPort) Proxy.newProxyInstance(Probe.class.getClassLoader(),
                 new Class<?>[]{NativeMatrixPort.class}, (p, method, a) -> switch (method.getName()) {
-                    case "getPropBonePose" -> API.GetPropBonePose((long)a[0], (int)a[1], (java.nio.ByteBuffer)a[2]);
+                    case "getPropBonePose" -> API.GetPropBonePosePacket((long)a[0], (int)a[1], (java.nio.ByteBuffer)a[2],192)==3;
+                    case "setPropBindings" -> API.SetPropBindings((long)a[0],(int[])a[1],(float[])a[2],(int[])a[3],(float[])a[4]);
                     case "setPropBoneParents" -> API.SetPropBoneParents((long)a[0], (int[])a[1], (float[])a[2]);
                     case "setPropBoneWindows" -> API.SetPropBoneWindows((long)a[0], (int[])a[1], (float[])a[2]);
                     case "evaluatePropPose" -> API.EvaluatePropPose((long)a[0]);
@@ -224,6 +225,22 @@ public final class Probe {
                 near(new Matrix4f().translation(0,1,0),center[2],"JNI static origin excludes all VMD input");
                 var oldBuffer=java.nio.ByteBuffer.allocateDirect(128).order(java.nio.ByteOrder.LITTLE_ENDIAN);
                 check(API.GetPropBonePose(prop,1,oldBuffer),"Original 128-byte pose callers remain supported");
+                check(API.GetPropBonePosePacket(prop,1,oldBuffer,192)==-6,
+                        "Fixed pose ABI rejects an undersized buffer");
+                var packet=java.nio.ByteBuffer.allocateDirect(192).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+                check(API.GetPropBonePosePacket(prop,1,packet,128)==-6,
+                        "Fixed pose ABI rejects an incorrect explicit length");
+                check(API.GetPropBonePosePacket(prop,1,packet,192)==3,"Fixed pose ABI returns three matrices");
+                check(API.SetPropBindings(prop,new int[]{0},new Matrix4f().get(new float[16]),
+                        new int[]{0},new float[]{30,60})==0,"Atomic binding accepts both inputs");
+                check(API.SetPropBindings(prop,new int[]{3},new Matrix4f().get(new float[16]),
+                        new int[0],new float[0])==-3,"Atomic binding rejects a dynamic rigid-body bone");
+                check(API.SetPropBindings(prop,new int[0],new float[0],
+                        new int[]{0},new float[]{60,30})==-5,"Atomic binding rejects an inverted switch window");
+                check(API.SetPropBindings(prop,new int[]{0},new float[15],
+                        new int[0],new float[0])==-6,"Atomic binding rejects a malformed matrix packet");
+                check(API.SetPropBindings(prop,new int[0],new float[0],new int[0],new float[0])==0,
+                        "Empty atomic binding restores the original hierarchy");
                 Matrix4f snapTarget=PropBoneParenting.targetInProp(outer,parenting.pose(actor,"Tip")[0]);
                 var snap=new BoneBinding("Center","Tip",Offset.IDENTITY,PropTimeline.identityCompensation(),false,false);
                 var snapState=new State(true,null,java.util.Map.of("Center",snap));

@@ -1,7 +1,7 @@
 package com.shiroha.mmdskin.render.material;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import net.minecraft.client.renderer.ShaderInstance;
 import org.apache.logging.log4j.LogManager;
 import org.lwjgl.opengl.GL;
@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 
 /** 克隆当前实体程序，仅追加最终 alpha 的 discard；保留原照明、属性和 MRT 输出。 */
 final class EntityPixelAlphaPass implements AutoCloseable {
+    private static final IrisBackend IRIS = IrisBackend.current();
     private static final Pattern MAIN = Pattern.compile("void\\s+main\\s*\\(\\s*(?:void)?\\s*\\)\\s*\\{");
     private static final Pattern COMMENTS = Pattern.compile("/\\*.*?\\*/|//[^\\r\\n]*", Pattern.DOTALL);
     private static final Pattern VANILLA_CUTOFF = Pattern.compile("(if\\s*\\(\\s*color\\.a\\s*<\\s*)0\\.10*(\\s*\\))");
@@ -39,7 +40,7 @@ final class EntityPixelAlphaPass implements AutoCloseable {
         if ((shadowPass && !fxShadow) || shader == null || shader.getId() != original
                 || GL46C.glGetUniformLocation(original, "AlphaPass") >= 0) return scope;
         // 已知原版实体程序也需拆分实心覆盖，防止后方发片覆盖前方实心像素。
-        if (!IrisCompat.isIrisProgram(shader) && !shader.getName().equals("rendertype_entity_translucent")) return scope;
+        if (!IRIS.isIrisProgram(shader) && !shader.getName().equals("rendertype_entity_translucent")) return scope;
         var cache = fxShadow ? shadowCache : normalCache;
         CachedProgram cached = cache.get(shader);
         if (cached == null || cached.source() != original) {
@@ -55,8 +56,8 @@ final class EntityPixelAlphaPass implements AutoCloseable {
             int created = 0;
             uniforms = List.of();
             try {
-                int slot = IrisCompat.entityColorOutputSlot(shader);
-                if (slot >= 0 || fxShadow) created = create(original, slot, !IrisCompat.isIrisProgram(shader), fxShadow);
+                int slot = IRIS.entityColorOutputSlot(shader);
+                if (slot >= 0 || fxShadow) created = create(original, slot, !IRIS.isIrisProgram(shader), fxShadow);
             } catch (RuntimeException e) {
                 LogManager.getLogger().warn("实体像素 alpha 分通道初始化失败，保留原程序: {}", e.getMessage());
             }

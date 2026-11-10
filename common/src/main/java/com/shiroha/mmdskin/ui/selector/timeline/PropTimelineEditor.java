@@ -81,12 +81,19 @@ public final class PropTimelineEditor {
     public void invalidateCompensation() { if (!boneKeys.isEmpty()) compensationStale=true; }
 
     public void boneBinding(BoneBinding binding) {
-        int existing=-1;
-        for (int i=0;i<boneKeys.size();i++) if (boneKeys.get(i).frame()==frame
-                && boneKeys.get(i).value().childBone().equals(binding.childBone())) { existing=i; break; }
-        if (existing>=0) boneKeys.set(existing,new Key<>(frame,binding));
-        else boneKeys.add(new Key<>(frame,binding));
-        boneKeys.sort(java.util.Comparator.comparingInt(Key::frame));
+        var updated = new ArrayList<>(boneKeys);
+        int existing = -1;
+        for (int i = 0; i < updated.size(); i++) {
+            Key<BoneBinding> key = updated.get(i);
+            if (key.frame()==frame && key.value().childBone().equals(binding.childBone())) {
+                existing = i;
+                break;
+            }
+        }
+        if (existing >= 0) updated.set(existing,new Key<>(frame,binding));
+        else updated.add(new Key<>(frame,binding));
+        boneKeys.clear();
+        boneKeys.addAll(normalizedBoneKeys(updated));
         selectedBone=binding.childBone();
         int position=boneKeys.indexOf(new Key<>(frame,binding));
         compensationStale=compensationStale || position<boneKeys.size()-1;
@@ -96,7 +103,7 @@ public final class PropTimelineEditor {
     /** Excludes the edited key and later same-frame registrations while calculating its baseline. */
     public PropTimeline beforeRegistration(int target,String child) {
         var previous=new ArrayList<Key<BoneBinding>>();
-        for (var key:boneKeys) {
+        for (var key:snapshot().boneKeys()) {
             if (key.frame()>target) break;
             if (key.frame()==target && key.value().childBone().equals(child)) break;
             previous.add(key);
@@ -104,7 +111,8 @@ public final class PropTimelineEditor {
         return new PropTimeline(initial,snapshot().visibility(),snapshot().attachments(),previous);
     }
     public void replaceCalibrated(List<Key<BoneBinding>> keys) {
-        boneKeys.clear(); boneKeys.addAll(keys); compensationStale=false; changed();
+        List<Key<BoneBinding>> normalized = normalizedBoneKeys(keys);
+        boneKeys.clear(); boneKeys.addAll(normalized); compensationStale=false; changed();
     }
 
     public void motionEnd(float end) {
@@ -158,5 +166,8 @@ public final class PropTimelineEditor {
     }
 
     private NavigableMap<Integer,?> keys(Track track) { return track == Track.VISIBILITY ? visibility : attachments; }
+    private List<Key<BoneBinding>> normalizedBoneKeys(List<Key<BoneBinding>> keys) {
+        return new PropTimeline(initial,List.of(),List.of(),keys).boneKeys();
+    }
     private void changed() { snapshot = null; revision++; }
 }

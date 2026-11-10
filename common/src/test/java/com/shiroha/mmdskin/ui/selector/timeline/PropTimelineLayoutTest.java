@@ -1,4 +1,4 @@
-package com.shiroha.mmdskin.ui.selector;
+package com.shiroha.mmdskin.ui.selector.timeline;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

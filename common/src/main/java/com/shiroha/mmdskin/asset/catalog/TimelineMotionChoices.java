@@ -1,6 +1,4 @@
-package com.shiroha.mmdskin.ui.selector.timeline;
-
-import com.shiroha.mmdskin.asset.catalog.HeldPmxMotionFiles;
+package com.shiroha.mmdskin.asset.catalog;
 
 import java.io.IOException;
 import java.nio.file.Files;

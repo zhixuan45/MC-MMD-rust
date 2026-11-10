@@ -1,6 +1,18 @@
 //! JNI 绑定层 - 与 Java 代码交互
 
+macro_rules! jni_guard {
+    ($env:ident, $body:block) => {{
+        let mut __jni_env = $env;
+        crate::jni_bridge::boundary::guard(&mut __jni_env, Default::default(), |$env| $body)
+    }};
+    ($env:ident, $default:expr, $body:block) => {{
+        let mut __jni_env = $env;
+        crate::jni_bridge::boundary::guard(&mut __jni_env, $default, |$env| $body)
+    }};
+}
+
 mod animation_handle;
+mod boundary;
 mod evaluation_profile;
 mod issue_diagnostics;
 mod material_sphere;
@@ -53,7 +65,10 @@ fn next_handle_id() -> i64 {
 /// 注册模型并返回句柄
 pub fn register_model(model: MmdModel) -> i64 {
     let id = next_handle_id();
-    let mut models = MODELS.write().unwrap();
+    let Ok(mut models) = MODELS.write() else {
+        log::error!("JNI model registry lock poisoned while registering model");
+        return 0;
+    };
     models.insert(id, Arc::new(Mutex::new(model)));
     id
 }
@@ -61,7 +76,10 @@ pub fn register_model(model: MmdModel) -> i64 {
 /// 注册动画并返回句柄
 pub fn register_animation(animation: VmdAnimation) -> i64 {
     let id = next_handle_id();
-    let mut animations = ANIMATIONS.write().unwrap();
+    let Ok(mut animations) = ANIMATIONS.write() else {
+        log::error!("JNI animation registry lock poisoned while registering animation");
+        return 0;
+    };
     animations.insert(id, Arc::new(animation));
     id
 }
@@ -69,7 +87,10 @@ pub fn register_animation(animation: VmdAnimation) -> i64 {
 /// 注册纹理并返回句柄
 pub fn register_texture(texture: Texture) -> i64 {
     let id = next_handle_id();
-    let mut textures = TEXTURES.write().unwrap();
+    let Ok(mut textures) = TEXTURES.write() else {
+        log::error!("JNI texture registry lock poisoned while registering texture");
+        return 0;
+    };
     textures.insert(id, Arc::new(texture));
     id
 }

@@ -111,8 +111,11 @@ public final class PropTimeline {
     private final List<Key<Attachment>> attachments;
     private final List<Key<BoneBinding>> boneKeys;
     private final Map<String,List<TargetChange>> targetChanges;
+    private final Map<String,List<IndexedBoneKey>> boneTracks;
 
     private record TargetChange(int frame,String target) {}
+    private record IndexedBoneKey(int insertionOrder,Key<BoneBinding> key) {}
+    private record EvaluatedBoneBinding(int insertionOrder,String childBone,BoneBinding binding) {}
 
     public PropTimeline(State initial, List<Key<Boolean>> visibility, List<Key<Attachment>> attachments) {
         this(initial,visibility,attachments,List.of());
@@ -132,17 +135,63 @@ public final class PropTimeline {
             }
         }
         this.boneKeys = List.copyOf(keys);
+        var tracks = new LinkedHashMap<String,List<IndexedBoneKey>>();
+        var bound = new java.util.HashMap<String,Boolean>();
+        var insertionOrders = new java.util.HashMap<String,Integer>();
+        int initialIndex = 0;
+        for (String childBone : initial.boneBindings().keySet()) {
+            bound.put(childBone, true);
+            insertionOrders.put(childBone, initialIndex++ - initial.boneBindings().size());
+        }
+        for (int i = 0; i < this.boneKeys.size(); i++) {
+            Key<BoneBinding> key = this.boneKeys.get(i);
+            String childBone = key.value().childBone();
+            if (key.value().unbind()) {
+                bound.put(childBone, false);
+            } else {
+                if (!bound.getOrDefault(childBone, false)) insertionOrders.put(childBone, i);
+                bound.put(childBone, true);
+            }
+            tracks.computeIfAbsent(key.value().childBone(), ignored -> new ArrayList<>())
+                    .add(new IndexedBoneKey(insertionOrders.getOrDefault(childBone, i), key));
+        }
+        var immutableTracks = new LinkedHashMap<String,List<IndexedBoneKey>>();
+        tracks.forEach((bone, track) -> immutableTracks.put(bone, List.copyOf(track)));
+        this.boneTracks = java.util.Collections.unmodifiableMap(immutableTracks);
         this.targetChanges = buildTargetChanges(initial, this.boneKeys);
     }
 
     public State evaluate(float frame) {
         if (!Float.isFinite(frame) || frame < 0) throw new IllegalArgumentException("Invalid timeline frame");
-        var bindings = new LinkedHashMap<>(initial.boneBindings());
-        for (Key<BoneBinding> key : boneKeys) {
-            if (key.frame()>frame) break;
-            if (key.value().unbind()) bindings.remove(key.value().childBone());
-            else bindings.put(key.value().childBone(),key.value());
+        var activeKeys = new LinkedHashMap<String,IndexedBoneKey>();
+        for (List<IndexedBoneKey> track : boneTracks.values()) {
+            int index = lastBoneKeyAtOrBefore(track, frame);
+            if (index >= 0) {
+                IndexedBoneKey key = track.get(index);
+                activeKeys.put(key.key().value().childBone(), key);
+            }
         }
+        var evaluated = new ArrayList<EvaluatedBoneBinding>(initial.boneBindings().size() + activeKeys.size());
+        int initialOrder = 0;
+        for (var entry : initial.boneBindings().entrySet()) {
+            IndexedBoneKey indexed = activeKeys.remove(entry.getKey());
+            if (indexed == null) {
+                evaluated.add(new EvaluatedBoneBinding(initialOrder - initial.boneBindings().size(),
+                        entry.getKey(), entry.getValue()));
+            } else if (!indexed.key().value().unbind()) {
+                evaluated.add(new EvaluatedBoneBinding(indexed.insertionOrder(), entry.getKey(), indexed.key().value()));
+            }
+            initialOrder++;
+        }
+        for (IndexedBoneKey indexed : activeKeys.values()) {
+            if (!indexed.key().value().unbind()) {
+                evaluated.add(new EvaluatedBoneBinding(indexed.insertionOrder(),
+                        indexed.key().value().childBone(), indexed.key().value()));
+            }
+        }
+        evaluated.sort(Comparator.comparingInt(EvaluatedBoneBinding::insertionOrder));
+        var bindings = new LinkedHashMap<String,BoneBinding>();
+        for (EvaluatedBoneBinding entry : evaluated) bindings.put(entry.childBone(), entry.binding());
         return new State(valueAt(visibility, frame, initial.visible()),
                 valueAt(attachments, frame, initial.attachment()),bindings);
     }
@@ -232,6 +281,16 @@ public final class PropTimeline {
         while (low < high) {
             int middle = (low + high) >>> 1;
             if (changes.get(middle).frame() <= frame) low = middle + 1;
+            else high = middle;
+        }
+        return low - 1;
+    }
+
+    private static int lastBoneKeyAtOrBefore(List<IndexedBoneKey> keys, float frame) {
+        int low = 0, high = keys.size();
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            if (keys.get(middle).key().frame() <= (double) frame) low = middle + 1;
             else high = middle;
         }
         return low - 1;

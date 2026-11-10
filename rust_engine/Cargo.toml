@@ -88,6 +88,11 @@ name = "vr-pmx-demo"
 path = "src/bin/vrdemo-old/main.rs"
 required-features = ["vr_demo"]
 
+[[example]]
+name = "probe_static_physics"
+path = "examples/probe_static_physics.rs"
+required-features = ["legacy-physics"]
+
 [build-dependencies]
 cc = "1.0"
 

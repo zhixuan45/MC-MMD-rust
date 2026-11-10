@@ -8,7 +8,7 @@ use super::motion_track::{
     BoneFrameTransform, BoneMotionTrack, CameraFrameTransform, CameraMotionTrack, IkMotionTrack,
     MorphMotionTrack, MotionTrack,
 };
-use crate::skeleton::OutsideParentWindow;
+use super::prop_binding::OutsideParentWindow;
 
 /// 动画数据
 #[derive(Debug, Clone)]

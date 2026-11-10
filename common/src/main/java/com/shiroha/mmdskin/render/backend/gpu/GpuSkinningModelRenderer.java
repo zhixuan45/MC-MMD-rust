@@ -5,10 +5,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
-import com.shiroha.mmdskin.compat.iris.IrisCompat;
-import com.shiroha.mmdskin.compat.iris.IrisEntityDiagnostics;
-import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.config.ConfigManager;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
 import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
@@ -38,6 +36,7 @@ import org.lwjgl.system.MemoryUtil;
 /** 文件职责：执行 GPU skinning 模型实例的渲染流程。 */
 final class GpuSkinningModelRenderer {
     private static final Logger logger = LogManager.getLogger();
+    private static final IrisBackend IRIS = IrisBackend.current();
     private static final long FIRST_PERSON_DIAGNOSTIC_INTERVAL_NANOS = 5_000_000_000L;
     private static long lastFirstPersonDiagnosticNanos;
 
@@ -65,7 +64,7 @@ final class GpuSkinningModelRenderer {
     }
 
     private static String sceneKey(RenderScene context) {
-        if (IrisCompat.isRenderingShadows()) return "SHADOW";
+        if (IRIS.isShadowPass()) return "SHADOW";
         if (context == null) return "OTHER";
         if (context.isFirstPerson()) return "FIRST_PERSON";
         if (context.isPaperDoll()) return "PAPERDOLL";
@@ -119,7 +118,7 @@ final class GpuSkinningModelRenderer {
                     "当前光影输出协议或程序编译未通过，模型效果未应用；可在效果包诊断和客户端日志中检查。");
         }
         float toonIntensity = isGuiScene ? 1.0f
-                : (IrisCompat.isIrisShaderActive() ? light.intensity() * 0.8f : light.intensity());
+                : (IRIS.isShaderPackActive() ? light.intensity() * 0.8f : light.intensity());
 
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
@@ -207,7 +206,7 @@ final class GpuSkinningModelRenderer {
 
     private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene, boolean worldScene) {
         // 阴影通道复用 Iris 程序；GPU 蒙皮结果仍作为普通顶点输入。
-        if (IrisCompat.isRenderingShadows() || (!ConfigManager.isToonRenderingEnabled()
+        if (IRIS.isShadowPass() || (!ConfigManager.isToonRenderingEnabled()
                 && !com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled())) {
             return false;
         }
@@ -224,7 +223,7 @@ final class GpuSkinningModelRenderer {
             }
         }
         return irisEntityScene
-                ? IrisToonCompat.prepare(GpuSkinningModelInstance.toonShaderCpu, worldScene)
+                ? IRIS.prepareToon(GpuSkinningModelInstance.toonShaderCpu, worldScene)
                 : GpuSkinningModelInstance.toonShaderCpu.selectOutputProfile(
                         com.shiroha.mmdskin.render.shader.ToonOutputProfile.vanilla());
     }
@@ -327,7 +326,7 @@ final class GpuSkinningModelRenderer {
         }
         target.shaderProgram = shader.getId();
 
-        boolean irisActive = IrisCompat.isIrisShaderActive();
+        boolean irisActive = IRIS.isShaderPackActive();
         float colorFactor = irisActive ? 1.0f : light.intensity();
         float alphaFactor = target.getGlobalAlpha();
         RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, alphaFactor);
@@ -340,7 +339,7 @@ final class GpuSkinningModelRenderer {
         RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
-        boolean shadowPass = IrisCompat.isRenderingShadows();
+        boolean shadowPass = IRIS.isShadowPass();
         int shadowDraw = shadowPass ? GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING) : -1;
         int shadowRead = shadowPass ? GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING) : -1;
         try {
@@ -348,7 +347,7 @@ final class GpuSkinningModelRenderer {
             target.setUniforms(shader, deliverStack);
             shader.apply();
             GlStateManager._glUseProgram(target.shaderProgram);
-            if (!IrisCompat.isIrisProgram(shader)) {
+            if (!IRIS.isIrisProgram(shader)) {
                 RenderSystem.enableBlend();
                 RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA,
                         GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE,
@@ -368,13 +367,13 @@ final class GpuSkinningModelRenderer {
             int skyBrightness = LightingHelper.computeSkyBrightness(light.skyLight(), light.skyDarken(), irisActive);
             uploadLightBufferIfNeeded(target, blockBrightness, skyBrightness);
             bindVertexAttributes(target, !guiScene);
-            IrisEntityDiagnostics.record(shader, light);
+            IRIS.recordEntityDiagnostics(shader, light);
             drawAllSubMeshes(target, minecraft);
         } finally {
             try {
                 clearRenderState(target);
             } finally {
-                IrisCompat.clearProgram(shader, shadowDraw, shadowRead);
+                IRIS.clearProgram(shader, shadowDraw, shadowRead);
             }
         }
     }
@@ -499,7 +498,7 @@ final class GpuSkinningModelRenderer {
         RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
-        ShaderInstance irisShader = irisEntityScene ? IrisToonCompat.preparedEntityShader() : null;
+        ShaderInstance irisShader = irisEntityScene ? IRIS.preparedEntityShader() : null;
         ShaderInstance hostShader = irisShader != null ? irisShader : RenderSystem.getShader();
         try {
             // 先设普通混合，再让 Iris 应用每个缓冲的混合规则。
@@ -564,7 +563,7 @@ final class GpuSkinningModelRenderer {
             try {
                 // 与 CPU 路径一致，清理原版/Iris 宿主的程序缓存。
                 GpuSkinningModelInstance.toonShaderCpu.releaseTerrainShadowBinding();
-                IrisCompat.clearProgram(hostShader, -1, -1);
+                IRIS.clearProgram(hostShader, -1, -1);
             } finally {
                 GL46C.glUseProgram(0);
                 clearRenderState(target);
@@ -610,7 +609,7 @@ final class GpuSkinningModelRenderer {
                 target::effectiveMaterialAlpha,
                 target.mats,
                 target.materialMorphData(),
-                IrisCompat.isRenderingShadows(),
+                IRIS.isShadowPass(),
                 materialId -> {
                     if (eyeShader != null) {
                         var material = target.mats[materialId];

@@ -291,20 +291,29 @@ public class ModConfigScreen {
         toonCategory.addEntry(entryBuilder
             .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_base_brightness"),
-                (int) Math.round(data.toonBaseBrightness * 100), 0, 100)
+                (int) Math.round(data.baseBrightness * 100), 0, 100)
             .setDefaultValue(0)
             .setTextGetter(value -> Component.literal(value + "%"))
             .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_base_brightness.tooltip"))
-            .setSaveConsumer(value -> data.toonBaseBrightness = value / 100.0f)
+            .setSaveConsumer(value -> data.baseBrightness = value / 100.0f)
             .build());
 
         toonCategory.addEntry(entryBuilder
             .startBooleanToggle(
-                Component.translatable("gui.mmdskin.mod_settings.toon_whole_model_lighting"),
-                data.toonWholeModelLighting)
+                Component.translatable("gui.mmdskin.mod_settings.toon_receive_terrain_shadow"),
+                data.receiveTerrainShadow)
             .setDefaultValue(false)
-            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_whole_model_lighting.tooltip"))
-            .setSaveConsumer(value -> data.toonWholeModelLighting = value)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_receive_terrain_shadow.tooltip"))
+            .setSaveConsumer(value -> data.receiveTerrainShadow = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_terrain_transmission"),
+                data.terrainTransmission)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_terrain_transmission.tooltip"))
+            .setSaveConsumer(value -> data.terrainTransmission = value)
             .build());
 
         toonCategory.addEntry(entryBuilder
@@ -426,10 +435,10 @@ public class ModConfigScreen {
         toonCategory.addEntry(entryBuilder
             .startBooleanToggle(
                 Component.translatable("gui.mmdskin.mod_settings.toon_outline_material_color"),
-                data.toonOutlineMaterialColor)
+                data.outlineMaterialColor)
             .setDefaultValue(false)
             .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline_material_color.tooltip"))
-            .setSaveConsumer(value -> data.toonOutlineMaterialColor = value)
+            .setSaveConsumer(value -> data.outlineMaterialColor = value)
             .build());
 
         toonCategory.addEntry(entryBuilder

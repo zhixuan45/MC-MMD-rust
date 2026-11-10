@@ -146,8 +146,17 @@ public class ConfigManager {
         return provider != null ? provider.getToonShaderSphereSuppression() : 0.0f;
     }
 
+    public static boolean isReceiveTerrainShadowEnabled() {
+        return provider != null && provider.isReceiveTerrainShadowEnabled();
+    }
+
+    public static boolean isTerrainTransmissionEnabled() {
+        return provider == null || provider.isTerrainTransmissionEnabled();
+    }
+
+    /** Compatibility alias for integrations that still use the pre-split key name. */
     public static boolean isToonWholeModelLightingEnabled() {
-        return provider != null && provider.isToonWholeModelLightingEnabled();
+        return isReceiveTerrainShadowEnabled();
     }
 
     public static float getToonWorldShadowSoftness() {

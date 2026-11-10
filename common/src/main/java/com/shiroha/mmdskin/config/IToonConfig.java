@@ -32,7 +32,11 @@ public interface IToonConfig {
 
     default float getToonShaderSphereSuppression() { return 0.0f; }
 
-    default boolean isToonWholeModelLightingEnabled() { return false; }
+    default boolean isReceiveTerrainShadowEnabled() { return false; }
+
+    default boolean isTerrainTransmissionEnabled() { return true; }
+
+    default boolean isToonWholeModelLightingEnabled() { return isReceiveTerrainShadowEnabled(); }
 
     default float getToonWorldShadowSoftness() { return 1.5f; }
 

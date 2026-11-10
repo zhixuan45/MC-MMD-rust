@@ -19,6 +19,7 @@ use super::keyframe::{
 };
 use super::motion::Motion;
 use super::motion_track::{BoneFrameTransform, CameraFrameTransform};
+use super::prop_binding::PropBindingState;
 
 /// VMD 文件头
 const VMD_HEADER_V1: &[u8] = b"Vocaloid Motion Data file";
@@ -140,8 +141,6 @@ impl VmdFile {
     pub fn max_frame(&self) -> u32 {
         self.motion.duration()
     }
-
-
 }
 
 /// 读取骨骼关键帧
@@ -415,15 +414,32 @@ pub struct VmdAnimation {
 
 impl VmdAnimation {
     pub fn camera_end_frame(&self) -> Option<u32> {
-        if self.motion.camera_track.is_empty() { None }
-        else { Some(self.motion.camera_track.max_frame_index()) }
+        if self.motion.camera_track.is_empty() {
+            None
+        } else {
+            Some(self.motion.camera_track.max_frame_index())
+        }
     }
 
     pub fn motion_end_frame(&self) -> Option<u32> {
         use crate::animation::motion_track::MotionTrack;
-        self.motion.bone_tracks.values().map(|track| track.max_frame_index())
-            .chain(self.motion.morph_tracks.values().map(|track| track.max_frame_index()))
-            .chain(self.motion.ik_tracks.values().map(|track| track.max_frame_index())).max()
+        self.motion
+            .bone_tracks
+            .values()
+            .map(|track| track.max_frame_index())
+            .chain(
+                self.motion
+                    .morph_tracks
+                    .values()
+                    .map(|track| track.max_frame_index()),
+            )
+            .chain(
+                self.motion
+                    .ik_tracks
+                    .values()
+                    .map(|track| track.max_frame_index()),
+            )
+            .max()
     }
 
     /// 从 VmdFile 创建
@@ -535,6 +551,23 @@ impl VmdAnimation {
         bone_manager: &mut BoneManager,
         morph_manager: &mut MorphManager,
     ) {
+        self.evaluate_with_binding(
+            frame,
+            weight,
+            bone_manager,
+            morph_manager,
+            &PropBindingState::default(),
+        );
+    }
+
+    pub fn evaluate_with_binding(
+        &self,
+        frame: f32,
+        weight: f32,
+        bone_manager: &mut BoneManager,
+        morph_manager: &mut MorphManager,
+        bindings: &PropBindingState,
+    ) {
         let frame = frame.max(0.0);
         let frame_index = frame.floor() as u32;
         let amount = frame.fract();
@@ -549,7 +582,7 @@ impl VmdAnimation {
                     .flatten()
             });
             if let Some(bone_idx) = bone_idx {
-                let raw = match bone_manager.outside_parent_window(bone_idx) {
+                let raw = match bindings.window(bone_idx) {
                     Some(window) if window.is_active() => self
                         .motion
                         .find_bone_transform_windowed(bone_name, frame, window),
@@ -629,8 +662,14 @@ mod track_duration_tests {
     #[test]
     fn mixed_vmd_reports_camera_and_motion_end_frames_independently() {
         let mut motion = Motion::new();
-        motion.insert_camera_keyframe(CameraKeyframe { frame_index: 900, ..Default::default() });
-        motion.insert_bone_keyframe("Root", BoneKeyframe::with_transform(600, Vec3::ZERO, Quat::IDENTITY));
+        motion.insert_camera_keyframe(CameraKeyframe {
+            frame_index: 900,
+            ..Default::default()
+        });
+        motion.insert_bone_keyframe(
+            "Root",
+            BoneKeyframe::with_transform(600, Vec3::ZERO, Quat::IDENTITY),
+        );
         let animation = VmdAnimation::from_motion(motion);
         assert_eq!(animation.camera_end_frame(), Some(900));
         assert_eq!(animation.motion_end_frame(), Some(600));

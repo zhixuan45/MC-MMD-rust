@@ -54,10 +54,38 @@ class PreviewMotionBindingTest {
         assertEquals(List.of(1L,2L),port.deleted);
     }
 
+    @Test void partialLayerSetupFailureDetachesAndReleasesTheLoadedMotion() {
+        for(String failingStep:List.of("setLayerSpeed","resetPhysics")) {
+            var port=new Port(); var model=new Model(44); model.failOnceAt=failingStep;
+            assertThrows(IllegalStateException.class,
+                    () -> new PreviewMotionBinding(port,model.instance,Path.of("partial.vmd")));
+            assertEquals(0,model.animation,failingStep+" must detach the partially installed VMD");
+            assertEquals(1,model.speed); assertTrue(model.loop);
+            assertEquals(List.of(1L),port.deleted);
+        }
+    }
+
+    @Test void closingTwiceOrAfterModelReleaseDeletesOnlyTheOwnedHandle() {
+        var port=new Port(); var live=new Model(51);
+        var binding=new PreviewMotionBinding(port,live.instance,Path.of("live.vmd"));
+        binding.close(); binding.close();
+        assertEquals(List.of(1L),port.deleted);
+        assertEquals(0,live.animation); assertEquals(1,live.speed); assertTrue(live.loop);
+
+        var freed=new Model(52);
+        var released=new PreviewMotionBinding(port,freed.instance,Path.of("freed.vmd"));
+        freed.handle=0;
+        released.close(); released.close();
+        assertEquals(List.of(1L,2L),port.deleted);
+        assertNotEquals(0,freed.animation,"A released model must not receive cleanup mutations");
+    }
+
     private static final class Model {
         long handle,animation;
         float speed = 1;
         boolean loop = true;
+        String failOnceAt;
+        int resetCalls;
         final ModelInstance instance;
         Model(long handle) {
             this.handle = handle;
@@ -65,11 +93,12 @@ class PreviewMotionBindingTest {
                     (p,m,a) -> {
                         if (m.getName().equals("getModelHandle")) return this.handle;
                         assertNotEquals(0,this.handle);
+                        if (m.getName().equals(failOnceAt)) { failOnceAt=null; throw new IllegalStateException("injected "+m.getName()); }
                         switch (m.getName()) {
                             case "changeAnim" -> { if ((long)a[1]==0) animation=(long)a[0]; }
                             case "setLayerLoop" -> loop=(boolean)a[1];
                             case "setLayerSpeed" -> speed=(float)a[1];
-                            case "resetPhysics" -> { }
+                            case "resetPhysics" -> resetCalls++;
                             default -> throw new AssertionError(m.getName());
                         }
                         return null;

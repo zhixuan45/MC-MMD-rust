@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.pipeline;
 
 import com.shiroha.mmdskin.config.ConfigManager;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.policy.ConfigManagerRenderPerformanceConfig;
 import com.shiroha.mmdskin.render.policy.RenderPerformanceConfig;
 import java.util.LinkedHashMap;
@@ -10,6 +11,7 @@ import org.apache.logging.log4j.Logger;
 
 /** 文件职责：记录渲染热路径耗时并按周期输出统计。 */
 public final class RenderPerformanceProfiler {
+    private static final IrisBackend IRIS = IrisBackend.current();
     public static final String SECTION_LIVING_STATE_SYNC = "livingStateSync";
     public static final String SECTION_NATIVE_MODEL_UPDATE = "nativeModelUpdate";
     public static final String SECTION_BONE_UPLOAD = "boneUpload";
@@ -104,7 +106,7 @@ public final class RenderPerformanceProfiler {
     }
 
     public static Scene scene(com.shiroha.mmdskin.render.scene.RenderScene scene) {
-        if (com.shiroha.mmdskin.compat.iris.IrisCompat.isRenderingShadows()) return Scene.SHADOW;
+        if (IRIS.isShadowPass()) return Scene.SHADOW;
         if (scene == null) return Scene.OTHER;
         if (scene.isPaperDoll()) return Scene.PAPERDOLL;
         if (scene.isFirstPerson()) return Scene.FIRST_PERSON;

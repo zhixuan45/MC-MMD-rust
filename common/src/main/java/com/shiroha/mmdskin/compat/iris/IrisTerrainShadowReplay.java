@@ -1,11 +1,7 @@
 package com.shiroha.mmdskin.compat.iris;
 
-import com.mojang.blaze3d.platform.GlStateManager;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferUploader;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.RenderType;
-import org.lwjgl.opengl.GL46C;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
@@ -16,9 +12,6 @@ import java.util.regex.Pattern;
 final class IrisTerrainShadowReplay {
     private static final Pattern UNSAFE = Pattern.compile(
             "\\b(?:image\\w*|atomic\\w*|buffer|shadowtex\\d*|shadowcolor\\d*|gl_FragDepth)\\b|\\blayout\\s*\\(");
-    private static Object cachedSet;
-    private static boolean supported;
-    private static String status = "not attempted", packStatus = "not checked";
 
     private IrisTerrainShadowReplay() {}
 
@@ -41,7 +34,7 @@ final class IrisTerrainShadowReplay {
         images.setAccessible(true);
         if (!translucent.getBoolean(owner)) return unavailable("Iris translucent terrain shadows disabled");
         if (images.getBoolean(owner)) return unavailable("Iris reports image/voxelization side effects");
-        if (!currentPackSupported()) return unavailable(packStatus);
+        if (!currentPackSupported()) return unavailable(TerrainShadowFrame.current().packStatus);
         var targetsField = type.getDeclaredField("targets");
         targetsField.setAccessible(true);
         Object targets = targetsField.get(owner);
@@ -54,112 +47,73 @@ final class IrisTerrainShadowReplay {
                 .findFirst().orElseThrow();
         Object view = type.getField("MODELVIEW").get(null), projection = type.getField("PROJECTION").get(null);
         var position = camera.getPosition();
-        // Native RenderType calls update Blaze3D caches. Restore those as well as actual GL state.
-        try (var cache = new EngineCacheState()) {
-            boolean captured = IrisTerrainTransmission.capture(source.framebuffer(), color, opaqueFbo, source.resolution(), format, () -> {
+        // Native RenderType calls update Blaze3D caches; the unified state restores both layers.
+        try (var state = new ShadowReplayGlState(true)) {
+            boolean captured = IrisTerrainTransmission.capture(
+                    source.framebuffer(), color, opaqueFbo, source.resolution(), format, () -> {
                 try {
                     layer.invoke(level, RenderType.translucent(), position.x, position.y, position.z, view, projection);
                 } catch (ReflectiveOperationException e) {
                     throw new IllegalStateException("Iris translucent terrain replay failed", e);
                 }
             });
-            status = IrisTerrainTransmission.status();
+            TerrainShadowFrame.current().replayStatus = IrisTerrainTransmission.status();
             return captured;
         }
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static boolean currentPackSupported() throws ReflectiveOperationException {
+        TerrainShadowFrame frame = TerrainShadowFrame.current();
         Class<?> iris = Class.forName("net.irisshaders.iris.Iris");
         Object pack = ((Optional<?>) iris.getMethod("getCurrentPack").invoke(null)).orElse(null);
         if (pack == null) {
-            packStatus = "no active shader pack";
+            frame.packStatus = "no active shader pack";
             return false;
         }
         Object dimension = iris.getMethod("getCurrentDimension").invoke(null);
         Object set = pack.getClass().getMethod("getProgramSet", dimension.getClass()).invoke(pack, dimension);
-        if (set == cachedSet) return supported;
-        cachedSet = set;
-        supported = false;
-        packStatus = "unsupported shader pack shadow protocol";
+        if (set == frame.replayProgramSet) return frame.replaySupported;
+        frame.replayProgramSet = set;
+        frame.replaySupported = false;
+        frame.packStatus = "unsupported shader pack shadow protocol";
         Class<? extends Enum> ids = (Class<? extends Enum>) Class.forName("net.irisshaders.iris.shaderpack.loading.ProgramId");
         Class<?> resolverType = Class.forName("net.irisshaders.iris.shaderpack.programs.ProgramFallbackResolver");
         Object resolver = resolverType.getConstructor(set.getClass()).newInstance(set);
         Object shadow = ((Optional<?>) resolverType.getMethod("resolve", ids)
                 .invoke(resolver, Enum.valueOf(ids, "ShadowWater"))).orElse(null);
-        if (shadow == null) { packStatus = "no shadow program"; return false; }
+        if (shadow == null) { frame.packStatus = "no shadow program"; return false; }
         Object[] compute = (Object[]) set.getClass().getMethod("getShadowCompute").invoke(set);
         if (compute != null && Arrays.stream(compute).anyMatch(java.util.Objects::nonNull)) {
-            packStatus = "shadow compute programs cannot be replayed";
+            frame.packStatus = "shadow compute programs cannot be replayed";
             return false;
         }
         for (String stage : new String[]{"getGeometrySource", "getTessControlSource", "getTessEvalSource"})
             if (((Optional<?>) shadow.getClass().getMethod(stage).invoke(shadow)).isPresent()) {
-                packStatus = "unsupported shadow stage: " + stage;
+                frame.packStatus = "unsupported shadow stage: " + stage;
                 return false;
             }
         Object directives = shadow.getClass().getMethod("getDirectives").invoke(shadow);
         int[] buffers = (int[]) directives.getClass().getMethod("getDrawBuffers").invoke(directives);
         if (!Arrays.equals(buffers, new int[]{0})) {
-            packStatus = "unsupported shadow draw buffers: " + Arrays.toString(buffers);
+            frame.packStatus = "unsupported shadow draw buffers: " + Arrays.toString(buffers);
             return false;
         }
         String fragment = ((Optional<?>) shadow.getClass().getMethod("getFragmentSource").invoke(shadow)).map(Object::toString).orElse("");
         String vertex = ((Optional<?>) shadow.getClass().getMethod("getVertexSource").invoke(shadow)).map(Object::toString).orElse("");
-        return supported = supports(fragment, vertex);
+        return frame.replaySupported = supports(fragment, vertex);
     }
 
-    static String status() { return status; }
+    static String status() {
+        return TerrainShadowFrame.current().replayStatus;
+    }
 
-    private static boolean unavailable(String reason) { status = reason; return false; }
+    private static boolean unavailable(String reason) {
+        TerrainShadowFrame.current().replayStatus = reason;
+        return false;
+    }
 
     static void reset() {
-        cachedSet = null;
-        supported = false;
-        status = "not attempted";
-        packStatus = "not checked";
-    }
-
-    private static final class EngineCacheState implements AutoCloseable {
-        final net.minecraft.client.renderer.ShaderInstance shader = RenderSystem.getShader();
-        final int[] shaderTextures = new int[12];
-        final ShadowReplayGlState gl = new ShadowReplayGlState();
-
-        EngineCacheState() {
-            for (int i = 0; i < shaderTextures.length; i++) shaderTextures[i] = RenderSystem.getShaderTexture(i);
-        }
-
-        @Override public void close() {
-            try {
-                // Clearing invalidates ShaderInstance/Iris program caches before raw GL restoration.
-                var current = RenderSystem.getShader();
-                if (current != null) current.clear();
-            } finally {
-                gl.close();
-                restoreCaches();
-            }
-        }
-
-        private void restoreCaches() {
-            RenderSystem.setShader(() -> shader);
-            for (int i = 0; i < shaderTextures.length; i++) RenderSystem.setShaderTexture(i, shaderTextures[i]);
-            for (int i = 0; i < Math.min(shaderTextures.length, gl.textures.length); i++) {
-                GlStateManager._activeTexture(GL46C.GL_TEXTURE0 + i);
-                GlStateManager._bindTexture(gl.textures[i]);
-            }
-            GlStateManager._activeTexture(gl.active);
-            if (gl.depthTest) GlStateManager._enableDepthTest(); else GlStateManager._disableDepthTest();
-            GlStateManager._depthFunc(gl.depthFunc);
-            GlStateManager._depthMask(gl.depthMask);
-            if (gl.cull) GlStateManager._enableCull(); else GlStateManager._disableCull();
-            if (gl.blend) GlStateManager._enableBlend(); else GlStateManager._disableBlend();
-            GlStateManager._blendFuncSeparate(gl.srcRgb, gl.dstRgb, gl.srcAlpha, gl.dstAlpha);
-            GlStateManager._blendEquation(gl.eqRgb);
-            GlStateManager._colorMask(gl.colorMask.get(0) != 0, gl.colorMask.get(1) != 0,
-                    gl.colorMask.get(2) != 0, gl.colorMask.get(3) != 0);
-            // Preserve a distinct alpha equation after synchronizing the engine's RGB cache.
-            gl.restoreBlendTargets();
-            BufferUploader.invalidate();
-        }
+        TerrainShadowFrame.current().resetReplayState();
     }
 }

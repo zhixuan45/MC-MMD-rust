@@ -1,22 +1,29 @@
 package com.shiroha.mmdskin.render.shader;
 
-import com.shiroha.mmdskin.compat.iris.IrisTerrainShadow;
-import com.shiroha.mmdskin.compat.iris.IrisTerrainTransmission;
 import com.shiroha.mmdskin.render.material.ProgramSamplerLayout;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import org.lwjgl.opengl.GL46C;
 
 /** One temporary texture binding shared by successive body and outline draws. */
 final class TerrainShadowBinding {
+    private static final IrisBackend IRIS = IrisBackend.current();
+
     private int[] boundUnits = new int[0], previousTextures = new int[0], previousSamplers = new int[0];
     private int softSampler;
+    private int uniformProgram = -1;
+    private ProgramUniforms uniforms;
+
+    private record ProgramUniforms(int flag, int transmissionFlag, int sampler,
+                                   int translucent, int color, int albedo) {}
 
     void bind(int program, boolean enabled, float softness) {
         close();
-        int flag = GL46C.glGetUniformLocation(program, "ToonTerrainShadowEnabled");
-        int sampler = GL46C.glGetUniformLocation(program, "ToonTerrainShadowDepth");
-        int transmissionFlag = GL46C.glGetUniformLocation(program, "ToonTerrainShadowTransmissionEnabled");
-        int translucent = GL46C.glGetUniformLocation(program, "ToonTerrainShadowTranslucentDepth");
-        int color = GL46C.glGetUniformLocation(program, "ToonTerrainShadowColor");
+        ProgramUniforms programUniforms = uniforms(program);
+        int flag = programUniforms.flag;
+        int sampler = programUniforms.sampler;
+        int transmissionFlag = programUniforms.transmissionFlag;
+        int translucent = programUniforms.translucent;
+        int color = programUniforms.color;
         if (flag >= 0) GL46C.glUniform1i(flag, 0);
         if (transmissionFlag >= 0) GL46C.glUniform1i(transmissionFlag, 0);
         if (sampler < 0) return;
@@ -27,16 +34,17 @@ final class TerrainShadowBinding {
             if (originalUnit >= 0) GL46C.glUniform1i(sampler, originalUnit);
             if (originalUnit >= 0 && translucent >= 0) GL46C.glUniform1i(translucent, originalUnit);
             if (color >= 0) {
-                int albedo = GL46C.glGetUniformLocation(program, "Sampler0");
-                GL46C.glUniform1i(color, albedo < 0 ? 0 : GL46C.glGetUniformi(program, albedo));
+                GL46C.glUniform1i(color, programUniforms.albedo < 0 ? 0
+                        : GL46C.glGetUniformi(program, programUniforms.albedo));
             }
             return;
         }
         // Even the disabled branch needs a distinct unit for the shadow sampler type.
         for (int i = 0; i < locations.length; i++) GL46C.glUniform1i(locations[i], units[i]);
-        int depth = enabled ? IrisTerrainShadow.texture() : 0;
+        IrisBackend.TerrainShadowTextures textures = IRIS.terrainShadowTextures();
+        int depth = enabled ? textures.depth() : 0;
         if (depth == 0) {
-            if (enabled) IrisTerrainShadow.warnUnavailable();
+            if (enabled) IRIS.warnTerrainShadowUnavailable();
             return;
         }
         int active = GL46C.glGetInteger(GL46C.GL_ACTIVE_TEXTURE);
@@ -56,8 +64,7 @@ final class TerrainShadowBinding {
                             : GL46C.glGetSamplerParameteri(comparisonSampler, GL46C.GL_TEXTURE_COMPARE_FUNC));
             comparisonSampler = softSampler;
         }
-        boolean transmission = translucent >= 0 && color >= 0 && IrisTerrainTransmission.depthTexture() != 0
-                && IrisTerrainTransmission.colorTexture() != 0;
+        boolean transmission = translucent >= 0 && color >= 0 && textures.hasTransmission();
         boundUnits = units;
         previousTextures = new int[units.length];
         previousSamplers = new int[units.length];
@@ -66,14 +73,28 @@ final class TerrainShadowBinding {
             GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + unit);
             previousTextures[i] = GL46C.glGetInteger(GL46C.GL_TEXTURE_BINDING_2D);
             previousSamplers[i] = GL46C.glGetIntegeri(GL46C.GL_SAMPLER_BINDING, unit);
-            int target = location == color ? (transmission ? IrisTerrainTransmission.colorTexture() : 0)
-                    : location == translucent && transmission ? IrisTerrainTransmission.depthTexture() : depth;
+            int target = location == color ? (transmission ? textures.transmissionColor() : 0)
+                    : location == translucent && transmission ? textures.transmissionDepth() : depth;
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, target);
             GL46C.glBindSampler(unit, location == color ? 0 : comparisonSampler);
         }
         GL46C.glActiveTexture(active);
         if (flag >= 0) GL46C.glUniform1i(flag, 1);
         if (transmissionFlag >= 0) GL46C.glUniform1i(transmissionFlag, transmission ? 1 : 0);
+    }
+
+    private ProgramUniforms uniforms(int program) {
+        if (uniformProgram != program || uniforms == null) {
+            uniformProgram = program;
+            uniforms = new ProgramUniforms(
+                    GL46C.glGetUniformLocation(program, "ToonTerrainShadowEnabled"),
+                    GL46C.glGetUniformLocation(program, "ToonTerrainShadowTransmissionEnabled"),
+                    GL46C.glGetUniformLocation(program, "ToonTerrainShadowDepth"),
+                    GL46C.glGetUniformLocation(program, "ToonTerrainShadowTranslucentDepth"),
+                    GL46C.glGetUniformLocation(program, "ToonTerrainShadowColor"),
+                    GL46C.glGetUniformLocation(program, "Sampler0"));
+        }
+        return uniforms;
     }
 
     void close() {
@@ -92,5 +113,7 @@ final class TerrainShadowBinding {
         close();
         if (softSampler != 0) GL46C.glDeleteSamplers(softSampler);
         softSampler = 0;
+        uniformProgram = -1;
+        uniforms = null;
     }
 }

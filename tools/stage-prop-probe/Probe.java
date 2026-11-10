@@ -106,17 +106,19 @@ public final class Probe {
             Matrix4f target=PropBoneParenting.targetInProp(base,parenting.pose(previewActor,"Tip")[0]);
             Matrix4f[] registration=parenting.pose(previewProp,"Center");
             Offset placement=mode.equals("placed")?new Offset(.6f,-.4f,1.2f,25,-35,80):null;
-            if(!mode.equals("snap")) {
-                Matrix4f original=registration[0];
-                check(API.SetPropBoneWindows(previewProp,new int[]{1},new float[]{f(30),0}),"registration window");
-                check(API.EvaluatePropPose(previewProp),"registration window evaluation");
-                registration=parenting.pose(previewProp,"Center");
-                registration[0]=original;
-            }
-            var binding=PropBoneParenting.registration("Center","Tip",target,registration,Offset.IDENTITY,
-                    !mode.equals("snap"),placement);
             Matrix4f desired=placement==null?registration[0]:PropBoneParenting.placementPose(target,placement);
-            parenting.apply(previewActor,previewProp,base,new State(true,null,Map.of("Center",binding)));
+            var service=new com.shiroha.mmdskin.stage.application.PropRegistrationService(
+                    new com.shiroha.mmdskin.stage.application.PropRegistrationService.BindingPort() {
+                @Override public void setPhysicsEnabled(long handle,boolean enabled) { API.SetPhysicsEnabled(handle,enabled); }
+                @Override public boolean evaluate(long handle) { return API.EvaluatePropPose(handle); }
+                @Override public void apply(long owner,long child,Matrix4f transform,PropTimeline source,int frame,State state) {
+                    check(parenting.apply(owner,child,transform,source,frame,state),"registration transaction");
+                }
+                @Override public Matrix4f[] pose(long handle,String bone) { return parenting.pose(handle,bone); }
+            });
+            var binding=service.register(previewActor,previewProp,base,
+                    new PropTimeline(initial,List.of(),attaches),f(30),initial,
+                    "Center","Tip",Offset.IDENTITY,!mode.equals("snap"),placement);
             check(API.EvaluatePropPose(previewProp),"registration evaluation");
             if(!mode.equals("snap")) near(desired,pose(parenting,previewProp),"registration continuity "+mode);
             var timeline=new PropTimeline(initial,List.of(new Key<>(f(100),false),new Key<>(f(110),true)),attaches,
@@ -207,7 +209,8 @@ public final class Probe {
         runtime=(NativeRuntimePort)Proxy.newProxyInstance(Probe.class.getClassLoader(),new Class<?>[]{NativeRuntimePort.class},
                 (p,m,a) -> switch(m.getName()) {
                     case "getBoneNames" -> API.GetBoneNames((long)a[0]);
-                    case "getPropBonePose" -> API.GetPropBonePose((long)a[0],(int)a[1],(ByteBuffer)a[2]);
+                    case "getPropBonePose" -> API.GetPropBonePosePacket((long)a[0],(int)a[1],(ByteBuffer)a[2],192)==3;
+                    case "setPropBindings" -> API.SetPropBindings((long)a[0],(int[])a[1],(float[])a[2],(int[])a[3],(float[])a[4]);
                     case "setPropBoneParents" -> API.SetPropBoneParents((long)a[0],(int[])a[1],(float[])a[2]);
                     case "setPropBoneWindows" -> API.SetPropBoneWindows((long)a[0],(int[])a[1],(float[])a[2]);
                     case "evaluatePropPose" -> API.EvaluatePropPose((long)a[0]);

@@ -95,4 +95,18 @@ class PropTimelineEditorTest {
         editor.advance(Double.NaN); assertEquals(0,editor.frame());
         assertFalse(editor.dirty());
     }
+
+    @Test void editorUsesTimelineNormalizationAndKeepsBeforeRegistrationCutoffOrder() {
+        var a = new BoneBinding("A", "Right", Offset.IDENTITY, identityCompensation(), true, false);
+        var b = new BoneBinding("B", "Left", Offset.IDENTITY, identityCompensation(), true, false);
+        var editor = new PropTimelineEditor(EMPTY);
+        editor.replaceCalibrated(List.of(new Key<>(50, a), new Key<>(20, b)));
+
+        assertEquals(List.of(20, 50), editor.snapshot().boneKeys().stream().map(Key::frame).toList());
+        assertEquals(List.of("B"), List.copyOf(editor.beforeRegistration(50, "A")
+                .evaluate(50).boneBindings().keySet()));
+        assertThrows(IllegalArgumentException.class, () -> editor.replaceCalibrated(List.of(
+                new Key<>(50, a), new Key<>(50, a))));
+        assertEquals(List.of(20, 50), editor.snapshot().boneKeys().stream().map(Key::frame).toList());
+    }
 }

@@ -7,6 +7,9 @@ use mmd_engine::{
     MmdModel,
 };
 
+// These tests share global physics configuration and allocation counters.
+static PHYSICS_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn body(index: i32, mode: RigidBodyMode) -> RigidBody {
     RigidBody {
         local_name: ["頭", "后长发_0_1", "M-后长发_0_1"][index as usize].into(),
@@ -29,6 +32,7 @@ fn body(index: i32, mode: RigidBodyMode) -> RigidBody {
 
 #[test]
 fn imported_world_owns_simulation_and_preserves_upstream_motion_state_writeback() {
+    let _test = PHYSICS_TEST_LOCK.lock().unwrap();
     let old_before = mmd_engine::physics::bullet_ffi::get_alloc_stats();
     {
         let bodies = [
@@ -82,6 +86,7 @@ fn imported_world_owns_simulation_and_preserves_upstream_motion_state_writeback(
 
 #[test]
 fn model_keeps_authored_topology_and_resyncs_after_animation_pose_is_ready() {
+    let _test = PHYSICS_TEST_LOCK.lock().unwrap();
     let mut model = MmdModel::new();
     for name in ["頭", "后长发_0_1", "M-后长发_0_1"] {
         let mut bone = BoneLink::new(name.into());
@@ -146,6 +151,7 @@ fn model_keeps_authored_topology_and_resyncs_after_animation_pose_is_ready() {
 
 #[test]
 fn inertia_uses_block_velocity_without_frame_time_amplification() {
+    let _test = PHYSICS_TEST_LOCK.lock().unwrap();
     use mmd_engine::physics::{get_config, set_config, PhysicsConfig};
 
     let original = get_config();

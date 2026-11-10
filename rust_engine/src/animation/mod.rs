@@ -9,6 +9,7 @@ mod interpolation;
 mod keyframe;
 mod motion;
 mod motion_track;
+mod prop_binding;
 mod vmd_loader;
 pub mod vmd_writer;
 mod vpd_file;
@@ -28,6 +29,7 @@ pub use motion_track::{
     BoneFrameTransform, BoneMotionTrack, CameraFrameTransform, CameraMotionTrack, MorphMotionTrack,
     MotionTrack,
 };
+pub use prop_binding::{OutsideParentWindow, PropBindingError, PropBindingState};
 pub use vmd_loader::{VmdAnimation, VmdFile};
 pub use vmd_writer::write_vmd;
 pub use vpd_file::{VpdBone, VpdFile, VpdMorph};

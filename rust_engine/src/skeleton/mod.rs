@@ -5,7 +5,7 @@ mod bone_set;
 mod ik_solver;
 
 pub use bone_link::{AppendConfig, BoneFlags, BoneLink, IkConfig, IkLink};
-pub use bone_set::{BoneSet, OutsideParentWindow};
+pub use bone_set::BoneSet;
 pub use ik_solver::IkSolver;
 
 use glam::{Mat4, Quat, Vec3};

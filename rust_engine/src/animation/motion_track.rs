@@ -8,7 +8,7 @@ use super::interpolation::{
     coefficient, lerp_element_wise, lerp_f32, BoneKeyframeInterpolation, KeyframeInterpolationPoint,
 };
 use super::keyframe::{BoneKeyframe, IkKeyframe, MorphKeyframe};
-use crate::skeleton::OutsideParentWindow;
+use super::prop_binding::OutsideParentWindow;
 
 /// 骨骼帧变换结果
 #[derive(Debug, Clone, Copy)]
@@ -19,12 +19,8 @@ pub struct BoneFrameTransform {
     pub orientation: Quat,
     /// 插值参数
     pub interpolation: BoneKeyframeInterpolation,
-    /// 本地变换混合系数（用于物理过渡）
-    pub local_transform_mix: Option<f32>,
     /// 是否启用物理
     pub enable_physics: bool,
-    /// 是否禁用物理
-    pub disable_physics: bool,
 }
 
 impl Default for BoneFrameTransform {
@@ -33,9 +29,8 @@ impl Default for BoneFrameTransform {
             translation: Vec3::ZERO,
             orientation: Quat::IDENTITY,
             interpolation: BoneKeyframeInterpolation::default(),
-            local_transform_mix: None,
+
             enable_physics: false,
-            disable_physics: false,
         }
     }
 }
@@ -51,27 +46,8 @@ impl BoneFrameTransform {
                 &keyframe.interpolation_z,
                 &keyframe.interpolation_r,
             ),
-            local_transform_mix: None,
+
             enable_physics: keyframe.is_physics_simulation_enabled,
-            disable_physics: false,
-        }
-    }
-
-    /// 混合平移（考虑 local_transform_mix）
-    pub fn mixed_translation(&self, local_user_translation: Vec3) -> Vec3 {
-        if let Some(coef) = self.local_transform_mix {
-            local_user_translation.lerp(self.translation, coef)
-        } else {
-            self.translation
-        }
-    }
-
-    /// 混合旋转（考虑 local_transform_mix）
-    pub fn mixed_orientation(&self, local_user_orientation: Quat) -> Quat {
-        if let Some(coef) = self.local_transform_mix {
-            local_user_orientation.slerp(self.orientation, coef)
-        } else {
-            self.orientation
         }
     }
 }
@@ -240,9 +216,8 @@ impl MotionTrack for BoneMotionTrack {
                     &kf.interpolation_z,
                     &kf.interpolation_r,
                 ),
-                local_transform_mix: None,
+
                 enable_physics: kf.is_physics_simulation_enabled,
-                disable_physics: false,
             })
     }
 
@@ -290,9 +265,8 @@ impl MotionTrack for BoneMotionTrack {
                             &next.interpolation_z,
                             &next.interpolation_r,
                         ),
-                        local_transform_mix: Some(coef),
+
                         enable_physics: false,
-                        disable_physics: true,
                     }
                 } else {
                     // 正常插值
@@ -326,9 +300,8 @@ impl MotionTrack for BoneMotionTrack {
                             &next.interpolation_z,
                             &next.interpolation_r,
                         ),
-                        local_transform_mix: None,
+
                         enable_physics: prev_enabled && next_enabled,
-                        disable_physics: false,
                     }
                 }
             }
@@ -343,9 +316,8 @@ impl MotionTrack for BoneMotionTrack {
                         &prev.interpolation_z,
                         &prev.interpolation_r,
                     ),
-                    local_transform_mix: None,
+
                     enable_physics: prev.is_physics_simulation_enabled,
-                    disable_physics: false,
                 }
             }
             (None, Some(next)) => {
@@ -359,9 +331,8 @@ impl MotionTrack for BoneMotionTrack {
                         &next.interpolation_z,
                         &next.interpolation_r,
                     ),
-                    local_transform_mix: None,
+
                     enable_physics: next.is_physics_simulation_enabled,
-                    disable_physics: false,
                 }
             }
             (None, None) => {
@@ -382,20 +353,12 @@ impl MotionTrack for BoneMotionTrack {
         if amount > 0.0 {
             let f1 = self.seek(frame_index.saturating_add(1), bezier_factory);
 
-            let local_transform_mix = match (f0.local_transform_mix, f1.local_transform_mix) {
-                (Some(a0), Some(a1)) => Some(lerp_f32(a0, a1, amount)),
-                (None, Some(a1)) => Some(amount * a1),
-                (Some(a0), None) => Some((1.0 - amount) * a0),
-                _ => None,
-            };
-
             BoneFrameTransform {
                 translation: f0.translation.lerp(f1.translation, amount),
                 orientation: f0.orientation.slerp(f1.orientation, amount),
                 interpolation: f0.interpolation.lerp(f1.interpolation, amount),
-                local_transform_mix,
+
                 enable_physics: f0.enable_physics && f1.enable_physics,
-                disable_physics: f0.disable_physics || f1.disable_physics,
             }
         } else {
             f0

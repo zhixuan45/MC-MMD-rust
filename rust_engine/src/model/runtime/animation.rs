@@ -368,66 +368,8 @@ impl MmdModel {
     }
 
     /// 更新动画（每帧调用）- 多动画层版本（CPU蒙皮模式）
-    #[allow(unreachable_code)]
     pub fn tick_animation(&mut self, elapsed: f32) {
         self.tick_animation_internal(elapsed, true, None);
-        return;
-        // 更新所有动画层
-        self.animation_layer_manager.update(elapsed);
-
-        // 执行动画更新
-        self.begin_animation();
-
-        // 评估所有层并混合结果
-        self.animation_layer_manager
-            .evaluate_normalized(&mut self.bone_manager, &mut self.morph_manager);
-        self.apply_transition_blend(elapsed);
-
-        // 应用 VPD 骨骼姿势覆盖（在动画评估后）
-        self.apply_vpd_bone_overrides();
-
-        // 自动眨眼
-        self.update_auto_blink(elapsed);
-
-        // VR 模式下跳过普通头部旋转，由 VR IK 接管
-        if !self.vr_enabled {
-            self.apply_head_rotation();
-        }
-        self.apply_vpd_morph_overrides();
-        self.update_morph_animation();
-
-        // 骨骼更新（物理前）— 先计算当前帧全局变换
-        self.update_node_animation(false);
-
-        // VR IK 求解（在全局变换计算之后，确保用当前帧的骨骼位置）
-        if self.vr_enabled {
-            let strength = self.vr_ik_strength;
-            if let Some(frame) = self.vr_tracking_frame {
-                self.vr_debug_state = self.vr_ik_solver.solve_tracking_frame(
-                    &mut self.bone_manager,
-                    &frame,
-                    strength,
-                );
-            } else {
-                let tracking = self.vr_tracking_data;
-                self.vr_ik_solver
-                    .solve(&mut self.bone_manager, &tracking, strength);
-                self.vr_debug_state = VrDebugState::default();
-            }
-        }
-
-        // 物理更新
-        self.update_physics(elapsed);
-
-        // 骨骼更新（物理后）
-        self.update_node_animation(true);
-
-        // 清除物理骨骼保护（允许下一帧重新计算）
-        self.end_physics_update();
-
-        self.end_animation();
-
-        self.update();
     }
 
     /// 在物理前混合局部动画输入，不能混入上一帧的动态刚体结果。
@@ -529,74 +471,8 @@ impl MmdModel {
     }
 
     /// 仅更新动画（不执行 CPU 蒙皮，用于 GPU 蒙皮模式）
-    #[allow(unreachable_code)]
     pub fn tick_animation_no_skinning(&mut self, elapsed: f32) {
         self.tick_animation_internal(elapsed, false, None);
-        return;
-        self.animation_layer_manager.update(elapsed);
-        self.begin_animation();
-
-        self.animation_layer_manager
-            .evaluate_normalized(&mut self.bone_manager, &mut self.morph_manager);
-        self.apply_transition_blend(elapsed);
-
-        // 应用 VPD 骨骼姿势覆盖（在动画评估后）
-        self.apply_vpd_bone_overrides();
-
-        // 自动眨眼
-        self.update_auto_blink(elapsed);
-
-        // VR 模式下跳过普通头部旋转，由 VR IK 接管
-        if !self.vr_enabled {
-            self.apply_head_rotation();
-        }
-        self.apply_vpd_morph_overrides();
-        self.update_morph_animation();
-
-        // 一次性计算所有 Morph 有效权重，供顶点和 UV Morph 同步使用
-        self.compute_and_cache_effective_weights();
-        self.sync_gpu_morph_weights_from_cache();
-        self.sync_gpu_uv_morph_weights_from_cache();
-
-        // 骨骼更新（物理前）— 先计算当前帧全局变换
-        self.update_node_animation(false);
-
-        // VR IK 求解（在全局变换计算之后，确保用当前帧的骨骼位置）
-        if self.vr_enabled {
-            let strength = self.vr_ik_strength;
-            if let Some(frame) = self.vr_tracking_frame {
-                self.vr_debug_state = self.vr_ik_solver.solve_tracking_frame(
-                    &mut self.bone_manager,
-                    &frame,
-                    strength,
-                );
-            } else {
-                let tracking = self.vr_tracking_data;
-                self.vr_ik_solver
-                    .solve(&mut self.bone_manager, &tracking, strength);
-                self.vr_debug_state = VrDebugState::default();
-            }
-        } else {
-            self.vr_debug_state = VrDebugState::default();
-        }
-
-        // 记录物理更新前的动态骨骼数量
-        let physics_enabled = self.physics_enabled && self.physics.is_some();
-
-        self.update_physics(elapsed);
-        self.update_node_animation(true);
-        self.end_physics_update();
-        self.end_animation();
-
-        // 调试日志（仅首次）
-        if !self.debug_logged && physics_enabled {
-            self.debug_logged = true;
-            if let Some(ref physics) = self.physics {
-                let dynamic_count = physics.get_dynamic_bone_indices().len();
-                log::info!("GPU蒙皮物理调试: 物理已启用, {} 个动态骨骼", dynamic_count);
-            }
-        }
-        // 注意：不调用 self.update()，跳过 CPU 蒙皮
     }
 
     // ========== 物理系统方法 ==========

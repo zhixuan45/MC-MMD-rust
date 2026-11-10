@@ -206,6 +206,20 @@ pub fn load_pmx<P: AsRef<Path>>(path: P) -> Result<MmdModel> {
     model.submeshes = submeshes;
     model.texture_paths = texture_paths;
     model.rigid_bodies = rigid_bodies;
+    let bone_count = model.bone_manager.bone_count();
+    let forbidden_external_parent_indices = model
+        .rigid_bodies
+        .iter()
+        .filter_map(|body| {
+            (body.mode != mmd::pmx::rigid_body::RigidBodyMode::Static)
+                .then(|| usize::try_from(body.bone_index).ok())
+                .flatten()
+                .filter(|&index| index < bone_count)
+        })
+        .collect();
+    model
+        .bone_manager
+        .set_forbidden_external_parent_indices(forbidden_external_parent_indices);
     model.joints = joints;
     model.update_positions = update_positions;
     model.update_normals = update_normals;

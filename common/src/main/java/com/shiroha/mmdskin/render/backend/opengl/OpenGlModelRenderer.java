@@ -5,10 +5,8 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.config.ConfigManager;
-import com.shiroha.mmdskin.compat.iris.IrisCompat;
-import com.shiroha.mmdskin.compat.iris.IrisEntityDiagnostics;
-import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.shader.ToonShaderCpu;
 import com.shiroha.mmdskin.render.shader.ToonRenderHelper;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
@@ -36,6 +34,7 @@ import org.lwjgl.system.MemoryUtil;
 
 final class OpenGlModelRenderer {
     private static final Logger logger = LogManager.getLogger();
+    private static final IrisBackend IRIS = IrisBackend.current();
     private static final long FIRST_PERSON_DIAGNOSTIC_INTERVAL_NANOS = 5_000_000_000L;
     private static long lastFirstPersonDiagnosticNanos;
 
@@ -58,7 +57,7 @@ final class OpenGlModelRenderer {
     }
 
     private static String sceneKey(RenderScene context) {
-        if (IrisCompat.isRenderingShadows()) return "SHADOW";
+        if (IRIS.isShadowPass()) return "SHADOW";
         if (context == null) return "OTHER";
         if (context.isFirstPerson()) return "FIRST_PERSON";
         if (context.isPaperDoll()) return "PAPERDOLL";
@@ -133,7 +132,7 @@ final class OpenGlModelRenderer {
                     (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha));
         }
         float toonIntensity = isGuiScene ? 1.0f
-                : (IrisCompat.isIrisShaderActive() ? light.intensity() * 0.8f : light.intensity());
+                : (IRIS.isShaderPackActive() ? light.intensity() * 0.8f : light.intensity());
         boolean drawQueryStarted = GpuTimerQueryPool.draw().begin();
         if (useToon) {
             long drawTimer = RenderPerformanceProfiler.get().startTimer();
@@ -209,7 +208,7 @@ final class OpenGlModelRenderer {
 
     private static boolean initializeToonShaderIfNeeded(boolean irisEntityScene, boolean worldScene) {
         // 阴影通道必须保留 Iris 的深度输出程序，跳过 Toon 与描边。
-        if (IrisCompat.isRenderingShadows() || (!ConfigManager.isToonRenderingEnabled()
+        if (IRIS.isShadowPass() || (!ConfigManager.isToonRenderingEnabled()
                 && !com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enabled())) {
             return false;
         }
@@ -228,7 +227,7 @@ final class OpenGlModelRenderer {
         }
 
         return irisEntityScene
-                ? IrisToonCompat.prepare(OpenGlModelInstance.toonShaderCpu, worldScene)
+                ? IRIS.prepareToon(OpenGlModelInstance.toonShaderCpu, worldScene)
                 : OpenGlModelInstance.toonShaderCpu.selectOutputProfile(
                         com.shiroha.mmdskin.render.shader.ToonOutputProfile.vanilla());
     }
@@ -257,7 +256,7 @@ final class OpenGlModelRenderer {
     private static void renderStandard(OpenGlModelInstance target, Minecraft minecraft,
                                        LightingHelper.LightData light, PoseStack deliverStack,
                                        boolean guiScene) {
-        boolean irisActive = IrisCompat.isIrisShaderActive();
+        boolean irisActive = IRIS.isShaderPackActive();
         float colorFactor = irisActive ? 1.0f : light.intensity();
         float alphaFactor = target.getGlobalAlpha();
         RenderSystem.setShaderColor(colorFactor, colorFactor, colorFactor, alphaFactor);
@@ -270,7 +269,7 @@ final class OpenGlModelRenderer {
         RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
-        boolean shadowPass = IrisCompat.isRenderingShadows();
+        boolean shadowPass = IRIS.isShadowPass();
         int shadowDraw = shadowPass ? GL46C.glGetInteger(GL46C.GL_DRAW_FRAMEBUFFER_BINDING) : -1;
         int shadowRead = shadowPass ? GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING) : -1;
         ShaderInstance activeShader = null;
@@ -281,7 +280,7 @@ final class OpenGlModelRenderer {
             if (currentShader != null && currentShader.getId() == target.shaderProgram) {
                 activeShader = currentShader;
             }
-            if (!IrisCompat.isIrisProgram(activeShader)) {
+            if (!IRIS.isIrisProgram(activeShader)) {
                 RenderSystem.enableBlend();
                 RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA,
                         GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE,
@@ -293,14 +292,14 @@ final class OpenGlModelRenderer {
             bindStandardAttributes(target);
             bindCustomShaderAttributes(target);
             // GUI/纸娃娃使用原版实体 shader，不能注入 Iris 世界实体属性。
-            if (!guiScene && IrisCompat.isIrisProgram(activeShader)) bindIrisAttributes(target);
-            IrisEntityDiagnostics.record(activeShader, light);
+            if (!guiScene && IRIS.isIrisProgram(activeShader)) bindIrisAttributes(target);
+            IRIS.recordEntityDiagnostics(activeShader, light);
             drawSubMeshes(target, minecraft);
         } finally {
             try {
                 clearStandardRenderState(target);
             } finally {
-                IrisCompat.clearProgram(activeShader, shadowDraw, shadowRead);
+                IRIS.clearProgram(activeShader, shadowDraw, shadowRead);
             }
         }
     }
@@ -308,7 +307,7 @@ final class OpenGlModelRenderer {
     private static boolean bindActiveShader(OpenGlModelInstance target, PoseStack deliverStack) {
         int shaderPipelineMode = ClientRenderRuntime.get().renderBackendRegistry().shaderPipelineMode();
         // 自定义 MMD shader 模式也不能覆盖 Iris 的阴影程序。
-        if (IrisCompat.isRenderingShadows() || shaderPipelineMode == 0) {
+        if (IRIS.isShadowPass() || shaderPipelineMode == 0) {
             ShaderInstance mcShader = RenderSystem.getShader();
             if (mcShader == null) {
                 return false;
@@ -581,7 +580,7 @@ final class OpenGlModelRenderer {
                 target::effectiveMaterialAlpha,
                 target.mats,
                 target.materialMorphData(),
-                IrisCompat.isRenderingShadows(),
+                IRIS.isShadowPass(),
                 materialId -> {
                     if (eyeShader != null) {
                         var material = target.mats[materialId];
@@ -652,7 +651,7 @@ final class OpenGlModelRenderer {
                 GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
 
         // Iris 全局开启不代表 GUI 当前 shader 是 Iris 实体程序。
-        ShaderInstance irisShader = irisEntityScene ? IrisToonCompat.preparedEntityShader() : null;
+        ShaderInstance irisShader = irisEntityScene ? IRIS.preparedEntityShader() : null;
         ShaderInstance hostShader = irisShader != null ? irisShader : RenderSystem.getShader();
         try {
             if (irisShader != null) {
@@ -708,7 +707,7 @@ final class OpenGlModelRenderer {
             try {
                 // 原版宿主也须清理程序缓存，保证 Toon 之后的 apply 会重新绑定。
                 OpenGlModelInstance.toonShaderCpu.releaseTerrainShadowBinding();
-                IrisCompat.clearProgram(hostShader, -1, -1);
+                IRIS.clearProgram(hostShader, -1, -1);
             } finally {
                 GL46C.glBindVertexArray(0);
                 GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, 0);

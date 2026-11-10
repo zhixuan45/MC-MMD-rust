@@ -1,9 +1,9 @@
 package com.shiroha.mmdskin.render.pipeline.transparency;
 
-import com.shiroha.mmdskin.compat.iris.IrisToonCompat;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyProfiler.Stage;
 import com.shiroha.mmdskin.render.gl.DepthAttachment;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import org.apache.logging.log4j.LogManager;
 import org.lwjgl.opengl.GL;
@@ -23,6 +23,7 @@ import java.util.Map;
  * Verified Iris water programs can join the list without redirecting terrain draw calls.
  */
 public final class WorldTransparencyPipeline {
+    private static final IrisBackend IRIS = IrisBackend.current();
     private static final WorldTransparencyPipeline INSTANCE = new WorldTransparencyPipeline();
 
     /** JVM options override the live GUI configuration, when explicitly provided. */
@@ -344,8 +345,8 @@ public final class WorldTransparencyPipeline {
         boolean stableTarget = false;
         if (INSTANCE.shaderPack) {
             FramebufferColorTarget currentColor = FramebufferColorTarget.capture();
-            boolean verifiedProfile = IrisToonCompat.hasPrimaryColorOutput();
-            stableTarget = IrisToonCompat.hasStablePrimaryColorOutput();
+            boolean verifiedProfile = IRIS.hasPrimaryColorOutput();
+            stableTarget = IRIS.hasStablePrimaryColorOutput();
             boolean lateMatch = FramebufferColorTarget.compatible(
                     currentColor, INSTANCE.previousTranslucentColor);
             boolean opaqueMatch = FramebufferColorTarget.compatible(
@@ -362,7 +363,7 @@ public final class WorldTransparencyPipeline {
             // The same binder selects the post-deferred side after colortex0 flips.
             // Public loader callbacks binding main color do not prove that main color
             // will survive the later Iris final pass.
-            var target = IrisToonCompat.worldColorTarget();
+            var target = IRIS.worldColorTarget();
             boolean irisTarget = verifiedProfile && target != null && matchesIrisColorTarget(target, currentColor);
             boolean sameSceneTarget = stableTarget && WorldTransparencyStagePolicy.canDeferShaderPack(
                     verifiedProfile, currentColor, INSTANCE.previousOpaqueColor,
@@ -372,7 +373,7 @@ public final class WorldTransparencyPipeline {
                         + ", verified=" + verifiedProfile + ", stable=" + stableTarget
                         + ", opaqueMatch=" + opaqueMatch + ", lateMatch=" + lateMatch
                         + ", irisStageTarget=" + irisTarget
-                        + ", verification=" + IrisToonCompat.targetDiagnostic());
+                        + ", verification=" + IRIS.targetDiagnostic());
             if (INSTANCE.queued && (INSTANCE.irisColorTarget != null) != irisTarget)
                 return INSTANCE.modelFallback("mixed world transparency targets",
                         "queuedIrisTarget=" + (INSTANCE.irisColorTarget != null) + ", requestedIrisTarget=" + irisTarget);
@@ -425,7 +426,7 @@ public final class WorldTransparencyPipeline {
         if (!INSTANCE.frame || !INSTANCE.queueActive || !INSTANCE.shaderPack || !INSTANCE.queued
                 || !INSTANCE.preTranslucentDepthCaptured
                 || !Boolean.parseBoolean(System.getProperty("mmdskin.irisWaterCapture", "true"))
-                || com.shiroha.mmdskin.compat.iris.IrisCompat.isRenderingShadows()) return null;
+                || IRIS.isShadowPass()) return null;
         int program = GL46C.glGetInteger(GL46C.GL_CURRENT_PROGRAM);
         if (program == 0 || GL46C.glGetUniformLocation(program, "MmdWaterCapture") < 0) return null;
         int[] current = new int[4];
@@ -975,7 +976,7 @@ public final class WorldTransparencyPipeline {
         INSTANCE.metadataClear.close();
         INSTANCE.waterResolve.close();
         WorldTransparencyProfiler.release();
-        IrisToonCompat.resetTransparencyVerification();
+        IRIS.resetTransparencyVerification();
         INSTANCE.programs.values().forEach(TransparencyProgram::close); INSTANCE.programs.clear();
         INSTANCE.releaseStorage(); INSTANCE.viewport = null;
         INSTANCE.previousTranslucentColor = INSTANCE.previousOpaqueColor = INSTANCE.sourceColor = null;

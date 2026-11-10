@@ -15,11 +15,13 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetTailPhysicsOptions
     idle_lift: jboolean,
     movement_boost: jboolean,
 ) {
-    let models = MODELS.read().unwrap_or_else(|error| error.into_inner());
-    if let Some(model) = models.get(&handle) {
-        let mut model = model.lock().unwrap_or_else(|error| error.into_inner());
-        model.set_tail_physics_options(idle_lift != 0, movement_boost != 0);
-    }
+    jni_guard!(_env, {
+        let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
+        if let Some(model) = models.get(&handle) {
+            let mut model = model.lock().unwrap_or_else(super::boundary::reject_poison);
+            model.set_tail_physics_options(idle_lift != 0, movement_boost != 0);
+        }
+    })
 }
 
 /// 同步尾巴位移使用的实际渲染比例，单位：方块/模型单位。
@@ -30,9 +32,11 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetTailPhysicsScale(
     handle: jlong,
     blocks_per_model_unit: jfloat,
 ) {
-    let models = MODELS.read().unwrap_or_else(|error| error.into_inner());
-    if let Some(model) = models.get(&handle) {
-        let mut model = model.lock().unwrap_or_else(|error| error.into_inner());
-        model.set_tail_physics_scale(blocks_per_model_unit);
-    }
+    jni_guard!(_env, {
+        let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
+        if let Some(model) = models.get(&handle) {
+            let mut model = model.lock().unwrap_or_else(super::boundary::reject_poison);
+            model.set_tail_physics_scale(blocks_per_model_unit);
+        }
+    })
 }

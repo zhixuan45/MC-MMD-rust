@@ -14,15 +14,15 @@ pub extern "system" fn Java_com_shiroha_mmdskin_bridge_runtime_SphereMaterialNat
     model_handle: jlong,
     material_index: jint,
 ) -> jint {
-    sphere_texture_mode(model_handle, material_index)
+    jni_guard!(_env, { sphere_texture_mode(model_handle, material_index) })
 }
 
 fn sphere_texture_mode(model_handle: jlong, material_index: jint) -> jint {
-    let models = MODELS.read().unwrap_or_else(|error| error.into_inner());
+    let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
     let Some(model) = models.get(&model_handle) else {
         return 0;
     };
-    let model = model.lock().unwrap_or_else(|error| error.into_inner());
+    let model = model.lock().unwrap_or_else(super::boundary::reject_poison);
     let Some(material) = model.materials.get(material_index as usize) else {
         return 0;
     };

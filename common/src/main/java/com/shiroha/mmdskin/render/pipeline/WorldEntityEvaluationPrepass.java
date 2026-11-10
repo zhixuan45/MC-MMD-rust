@@ -12,6 +12,7 @@ import com.shiroha.mmdskin.render.backend.BaseModelInstance;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.entity.EntityAnimationResolver;
 import com.shiroha.mmdskin.render.entity.MobReplacementService;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.scene.MutableRenderPose;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
@@ -32,6 +33,8 @@ import java.util.function.Predicate;
 
 /** 收集当前 pass 首次需要姿态的替换实体，所有实体访问都留在渲染线程。 */
 public final class WorldEntityEvaluationPrepass {
+    private static final IrisBackend IRIS = IrisBackend.current();
+
     @FunctionalInterface
     public interface MaidEligibility {
         boolean canReplace(LivingEntity entity);
@@ -58,7 +61,7 @@ public final class WorldEntityEvaluationPrepass {
     public static void prepareWorld(Camera camera, Frustum frustum, DeltaTracker delta,
             Predicate<BlockPos> sectionCompiled, Predicate<AbstractClientPlayer> ysmActive,
             MaidEligibility maidEligibility, MaidYawResolver maidYawResolver) {
-        if (!NativeEvaluationBatch.enabled() || frustum == null || IrisCompatBridge.shadows()
+        if (!NativeEvaluationBatch.enabled() || frustum == null || IRIS.isShadowPass()
                 || FirstPersonManager.vrRuntime().isLocalPlayerInVr()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return;
@@ -87,7 +90,7 @@ public final class WorldEntityEvaluationPrepass {
             Predicate<AbstractClientPlayer> ysmActive, MaidEligibility maidEligibility,
             MaidYawResolver maidYawResolver) {
         if (!NativeEvaluationBatch.enabled() || shadowCandidates == null || frustum == null
-                || !IrisCompatBridge.shadows() || FirstPersonManager.vrRuntime().isLocalPlayerInVr()) return;
+                || !IRIS.isShadowPass() || FirstPersonManager.vrRuntime().isLocalPlayerInVr()) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null) return;
         List<Candidate> candidates = new ArrayList<>();
@@ -199,7 +202,4 @@ public final class WorldEntityEvaluationPrepass {
         }
     }
 
-    private static final class IrisCompatBridge {
-        static boolean shadows() { return com.shiroha.mmdskin.compat.iris.IrisCompat.isRenderingShadows(); }
-    }
 }

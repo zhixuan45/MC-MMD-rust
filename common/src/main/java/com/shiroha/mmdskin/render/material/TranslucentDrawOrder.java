@@ -1,7 +1,7 @@
 package com.shiroha.mmdskin.render.material;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
 
 import org.joml.Matrix4f;
@@ -21,6 +21,7 @@ import java.util.HashMap;
  * not order-independent handling of intersecting triangles.
  */
 public final class TranslucentDrawOrder implements AutoCloseable {
+    private static final IrisBackend IRIS = IrisBackend.current();
     private static boolean reusePreparation() {
         return !"false".equalsIgnoreCase(System.getProperty("mmdskin.reuseTranslucentPreparation"));
     }
@@ -229,7 +230,7 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             // Pack entity shaders may deform vertices or derive alpha beyond the diffuse atlas.
             // Own Toon programs have the known MaterialColor/texture-alpha formula.
             packEntity =
-                    IrisCompat.isIrisProgram(RenderSystem.getShader())
+                    IRIS.isIrisProgram(RenderSystem.getShader())
                             && GL46C.glGetUniformLocation(program, "MaterialColor") < 0;
             coverageSafe = splitPixels && !packEntity;
             for (int s = 0; s < count; s++) {

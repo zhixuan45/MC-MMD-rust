@@ -1,6 +1,22 @@
 use super::*;
+use crate::animation::{OutsideParentWindow, PropBindingError, PropBindingState};
 use crate::physics::{inv_z, PhysicsMode};
-use crate::skeleton::OutsideParentWindow;
+use std::collections::HashSet;
+
+pub(crate) fn prop_forbidden_bones(
+    bodies: &[mmd::pmx::rigid_body::RigidBody],
+    bone_count: usize,
+) -> HashSet<usize> {
+    bodies
+        .iter()
+        .filter_map(|body| {
+            (body.mode != mmd::pmx::rigid_body::RigidBodyMode::Static)
+                .then(|| usize::try_from(body.bone_index).ok())
+                .flatten()
+                .filter(|&index| index < bone_count)
+        })
+        .collect()
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct PropPhysicsFrame {
@@ -10,19 +26,42 @@ pub(super) struct PropPhysicsFrame {
 
 impl MmdModel {
     /// External parenting controls animation anchors, never a physics-owned dynamic bone.
-    pub fn set_prop_bone_parents(&mut self, parents: &[(usize, Mat4)]) -> bool {
-        if parents.iter().any(|(index, _)| self.rigid_bodies.iter().any(|body| {
-            body.bone_index == *index as i32
-                && body.mode != mmd::pmx::rigid_body::RigidBodyMode::Static
-        })) {
-            return false;
+    pub fn set_prop_bindings(
+        &mut self,
+        parents: &[(usize, Mat4)],
+        windows: &[(usize, OutsideParentWindow)],
+    ) -> Result<(), PropBindingError> {
+        let mut state = PropBindingState::from_slices(parents, windows)?;
+        let bone_count = self.bone_manager.bone_count();
+        if state.windows.keys().any(|&index| index >= bone_count) {
+            return Err(PropBindingError::MissingBone);
         }
-        self.bone_manager.replace_external_parents(parents)
+        self.bone_manager.replace_external_parents(parents)?;
+        state.parents.clear();
+        self.animation_layer_manager.set_prop_bindings(state);
+        Ok(())
+    }
+
+    pub fn set_prop_bone_parents(&mut self, parents: &[(usize, Mat4)]) -> bool {
+        let windows: Vec<_> = self
+            .animation_layer_manager
+            .prop_bindings()
+            .windows
+            .iter()
+            .map(|(&i, &w)| (i, w))
+            .collect();
+        self.set_prop_bindings(parents, &windows).is_ok()
     }
 
     /// Replaces VMD switch windows without touching the current parent matrices.
     pub fn set_prop_bone_windows(&mut self, windows: &[(usize, OutsideParentWindow)]) -> bool {
-        self.bone_manager.replace_outside_parent_windows(windows)
+        let parents: Vec<_> = self
+            .bone_manager
+            .external_parents()
+            .iter()
+            .map(|(&i, &m)| (i, m))
+            .collect();
+        self.set_prop_bindings(&parents, windows).is_ok()
     }
 
     pub fn prop_bone_pose(&self, index: usize) -> Option<(Mat4, Mat4)> {
@@ -39,10 +78,14 @@ impl MmdModel {
     /// PMX units stay local, while this reference frame follows the character attachment.
     pub fn set_prop_attachment_transform(&mut self, world: Mat4) -> bool {
         let scale = world.x_axis.truncate().length();
-        if !world.is_finite() || !scale.is_finite() || !(1e-6..1e3).contains(&scale)
+        if !world.is_finite()
+            || !scale.is_finite()
+            || !(1e-6..1e3).contains(&scale)
             || world.determinant() <= 0.0
-            || world.x_axis.w.abs() > 1e-6 || world.y_axis.w.abs() > 1e-6
-            || world.z_axis.w.abs() > 1e-6 || (world.w_axis.w - 1.0).abs() > 1e-6
+            || world.x_axis.w.abs() > 1e-6
+            || world.y_axis.w.abs() > 1e-6
+            || world.z_axis.w.abs() > 1e-6
+            || (world.w_axis.w - 1.0).abs() > 1e-6
         {
             return false;
         }
@@ -52,7 +95,12 @@ impl MmdModel {
         }
         match &mut self.prop_physics_frame {
             Some(frame) => frame.current = world,
-            None => self.prop_physics_frame = Some(PropPhysicsFrame { current: world, previous: None }),
+            None => {
+                self.prop_physics_frame = Some(PropPhysicsFrame {
+                    current: world,
+                    previous: None,
+                })
+            }
         }
         true
     }
@@ -60,16 +108,23 @@ impl MmdModel {
     /// Preserve dynamic bodies in world space when the attachment moves, before Bullet steps.
     /// A render-only parent transform cannot rotate gravity or produce attachment inertia.
     pub(super) fn prepare_prop_physics(&mut self, physics: &mut MMDPhysics) -> bool {
-        let Some(frame) = self.prop_physics_frame.as_mut() else { return false; };
+        let Some(frame) = self.prop_physics_frame.as_mut() else {
+            return false;
+        };
         let current = frame.current;
         let scale = current.x_axis.truncate().length();
         let rotation = glam::Mat3::from_mat4(current) / scale;
-        let gravity = rotation.transpose() * Vec3::new(0.0, crate::physics::get_config().gravity_y, 0.0);
+        let gravity =
+            rotation.transpose() * Vec3::new(0.0, crate::physics::get_config().gravity_y, 0.0);
         physics.set_gravity(gravity.x, gravity.y, -gravity.z);
 
         if let Some(previous) = frame.previous {
             let old_scale = previous.x_axis.truncate().length();
-            if current.w_axis.truncate().distance(previous.w_axis.truncate()) > 8.0
+            if current
+                .w_axis
+                .truncate()
+                .distance(previous.w_axis.truncate())
+                > 8.0
                 || (scale / old_scale - 1.0).abs() > 1e-3
             {
                 // Teleports and size edits align the chain instead of launching it.
@@ -78,7 +133,9 @@ impl MmdModel {
                 let change = inv_z(current.inverse() * previous);
                 let velocity_rotation = glam::Mat3::from_mat4(change);
                 for data in &physics.rigid_bodies {
-                    if data.physics_mode == PhysicsMode::FollowBone { continue; }
+                    if data.physics_mode == PhysicsMode::FollowBone {
+                        continue;
+                    }
                     if let Some(body) = &data.bullet_body {
                         body.set_transform(change * body.get_simulation_transform());
                         let linear = velocity_rotation * body.get_linear_velocity();

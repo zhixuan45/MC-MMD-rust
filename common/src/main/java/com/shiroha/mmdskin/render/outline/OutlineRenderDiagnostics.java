@@ -1,7 +1,7 @@
 package com.shiroha.mmdskin.render.outline;
 
 import com.shiroha.mmdskin.config.ConfigManager;
-import com.shiroha.mmdskin.compat.iris.IrisCompat;
+import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.shader.ToonConfig;
 import org.apache.logging.log4j.LogManager;
@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 /** 描边问题采样日志；仅在调试位 bit8 开启时读取 GL 状态。 */
 public final class OutlineRenderDiagnostics {
     private static final Logger LOGGER = LogManager.getLogger();
+    private static final IrisBackend IRIS = IrisBackend.current();
     private static final int FLAG = 8;
     private static final long INTERVAL_NANOS = 2_000_000_000L;
     private static final RateLimiter LIMITER = new RateLimiter(512);
@@ -24,7 +25,7 @@ public final class OutlineRenderDiagnostics {
     public static boolean shouldSample(int flags, long modelHandle, RenderScene scene, long nowNanos) {
         if ((flags & FLAG) == 0) return false;
         // 光影的阴影与主场景分别采样，避免早绘制的阴影通道占用全部窗口。
-        String sampleScene = sceneKey(scene) + ":shadow=" + IrisCompat.isRenderingShadows();
+        String sampleScene = sceneKey(scene) + ":shadow=" + IRIS.isShadowPass();
         return LIMITER.shouldSample(true, modelHandle, sampleScene, nowNanos);
     }
 
@@ -34,8 +35,8 @@ public final class OutlineRenderDiagnostics {
                            OutlineRenderPass.AlphaResolver alphaResolver) {
         boolean toonEnabled = ToonConfig.getInstance().isEnabled();
         boolean outlineEnabled = ToonConfig.getInstance().isOutlineEnabled();
-        boolean shadow = IrisCompat.isRenderingShadows();
-        boolean iris = IrisCompat.isIrisShaderActive();
+        boolean shadow = IRIS.isShadowPass();
+        boolean iris = IRIS.isShaderPackActive();
         boolean orthographic = projection != null && isOrthographic(projection);
         float rootWidth = ToonConfig.getInstance().getOutlineWidth();
         float viewScale = modelView == null ? Float.NaN : viewScale(modelView);

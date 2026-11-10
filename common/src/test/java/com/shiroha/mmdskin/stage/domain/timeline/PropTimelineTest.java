@@ -2,6 +2,7 @@ package com.shiroha.mmdskin.stage.domain.timeline;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import static com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.*;
@@ -15,6 +16,25 @@ class PropTimelineTest {
         return new PropTimeline(new State(false, null),
                 List.of(new Key<>(900, false), new Key<>(120, true)),
                 List.of(new Key<>(480, LEFT), new Key<>(0, RIGHT)));
+    }
+
+    private static LinkedHashMap<String,BoneBinding> linearBindings(PropTimeline timeline, float frame) {
+        var bindings = new LinkedHashMap<>(timeline.initial().boneBindings());
+        for (Key<BoneBinding> key : timeline.boneKeys()) {
+            if (key.frame() > frame) break;
+            if (key.value().unbind()) bindings.remove(key.value().childBone());
+            else bindings.put(key.value().childBone(), key.value());
+        }
+        return bindings;
+    }
+
+    private static void assertMatchesLinearBindings(PropTimeline timeline, int lastFrame) {
+        for (int frame = 0; frame <= lastFrame; frame++) {
+            var expected = linearBindings(timeline, frame);
+            var actual = timeline.evaluate(frame).boneBindings();
+            assertEquals(expected, actual, "bindings at frame " + frame);
+            assertEquals(List.copyOf(expected.keySet()), List.copyOf(actual.keySet()), "order at frame " + frame);
+        }
     }
 
     @Test void fractionalFramesUseTheLastKeyIncludingTheExactBoundary() {
@@ -55,5 +75,51 @@ class PropTimelineTest {
         assertThrows(IllegalArgumentException.class, () -> new PropTimeline(State.DEFAULT,
                 List.of(new Key<>(10, true), new Key<>(10, false)), List.of()));
         assertThrows(IllegalArgumentException.class, () -> new Offset(Float.NaN, 0, 0, 0, 0, 0));
+    }
+
+    @Test void boneTrackIndexesPreserveRegistrationOrderAndUnbindRebindMapOrder() {
+        var a = new BoneBinding("A", "Right", Offset.IDENTITY, identityCompensation(), true, false);
+        var b = new BoneBinding("B", "Left", Offset.IDENTITY, identityCompensation(), true, false);
+        var timeline = new PropTimeline(State.DEFAULT, List.of(), List.of(), List.of(
+                new Key<>(20, b), new Key<>(20, a), new Key<>(30, BoneBinding.detached("A")),
+                new Key<>(40, a)));
+
+        assertEquals(List.of("B", "A"), List.copyOf(timeline.evaluate(20).boneBindings().keySet()));
+        assertEquals(List.of("B"), List.copyOf(timeline.evaluate(35).boneBindings().keySet()));
+        assertEquals(List.of("B", "A"), List.copyOf(timeline.evaluate(40).boneBindings().keySet()));
+        assertEquals("Right", timeline.evaluate(40).boneBindings().get("A").bone());
+        assertMatchesLinearBindings(timeline, 45);
+    }
+
+    @Test void updatingAnEarlierBindingKeepsItsOriginalInsertionPosition() {
+        var a = new BoneBinding("A", "Right", Offset.IDENTITY, identityCompensation(), true, false);
+        var aUpdated = new BoneBinding("A", "Right", new Offset(1, 0, 0, 0, 0, 0),
+                identityCompensation(), true, false);
+        var b = new BoneBinding("B", "Left", Offset.IDENTITY, identityCompensation(), true, false);
+        var timeline = new PropTimeline(State.DEFAULT, List.of(), List.of(), List.of(
+                new Key<>(0, a), new Key<>(10, b), new Key<>(20, aUpdated)));
+
+        assertEquals(List.of("A"), List.copyOf(timeline.evaluate(0).boneBindings().keySet()));
+        for (int frame : new int[]{10, 19, 20, 25}) {
+            assertEquals(List.of("A", "B"), List.copyOf(timeline.evaluate(frame).boneBindings().keySet()));
+        }
+        assertEquals(aUpdated, timeline.evaluate(20).boneBindings().get("A"));
+        assertMatchesLinearBindings(timeline, 25);
+    }
+
+    @Test void initialBindingsKeepTheirOrderWhenLaterKeysUpdateThem() {
+        var initialBindings = new LinkedHashMap<String,BoneBinding>();
+        initialBindings.put("A", new BoneBinding("A", "Right", Offset.IDENTITY,
+                identityCompensation(), true, false));
+        initialBindings.put("B", new BoneBinding("B", "Left", Offset.IDENTITY,
+                identityCompensation(), true, false));
+        var updatedA = new BoneBinding("A", "Right", new Offset(2, 0, 0, 0, 0, 0),
+                identityCompensation(), true, false);
+        var timeline = new PropTimeline(new State(true, null, initialBindings), List.of(), List.of(),
+                List.of(new Key<>(10, updatedA)));
+
+        assertEquals(List.of("A", "B"), List.copyOf(timeline.evaluate(0).boneBindings().keySet()));
+        assertEquals(List.of("A", "B"), List.copyOf(timeline.evaluate(10).boneBindings().keySet()));
+        assertMatchesLinearBindings(timeline, 15);
     }
 }

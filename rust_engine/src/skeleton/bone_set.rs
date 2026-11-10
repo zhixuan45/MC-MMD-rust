@@ -4,26 +4,10 @@ use glam::{Mat4, Quat, Vec3};
 use std::collections::{HashMap, HashSet};
 
 use super::{BoneLink, IkSolver};
+use crate::animation::PropBindingError;
 
 #[path = "physics_writeback.rs"]
 mod physics_writeback;
-
-/// MMD outside-parent switch window for one prop bone.
-///
-/// `previous` is the first frame of the binding run active at the sampled frame;
-/// `next` is the next frame whose target differs, or zero when no switch follows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OutsideParentWindow {
-    pub previous: u32,
-    pub next: u32,
-}
-
-impl OutsideParentWindow {
-    #[inline]
-    pub fn is_active(self) -> bool {
-        self.previous != 0 || self.next != 0
-    }
-}
 
 /// 骨骼集合 - 类似 nphysics Multibody
 ///
@@ -49,6 +33,7 @@ pub struct BoneSet {
 
     /// 物理驱动的骨骼索引集合
     physics_bone_indices: HashSet<usize>,
+    forbidden_external_parent_indices: HashSet<usize>,
     /// 按真实父子关系回写物理，独立于 PMX 的变形层级。
     physics_writeback_order: Vec<usize>,
     physics_transform_buf: Vec<Option<Mat4>>,
@@ -63,8 +48,6 @@ pub struct BoneSet {
     is_vrm: bool,
     /// Model-space parent frames supplied by prop external parenting; animation locals stay intact.
     external_parents: HashMap<usize, Mat4>,
-    /// Per-bone VMD interpolation windows created by outside-parent switches.
-    outside_parent_windows: HashMap<usize, OutsideParentWindow>,
 }
 
 impl BoneSet {
@@ -77,13 +60,13 @@ impl BoneSet {
             ik_solvers: Vec::new(),
             skinning_matrices: Vec::new(),
             physics_bone_indices: HashSet::new(),
+            forbidden_external_parent_indices: HashSet::new(),
             physics_writeback_order: Vec::new(),
             physics_transform_buf: Vec::new(),
             children_cache: Vec::new(),
             needs_hierarchy_update: true,
             is_vrm: false,
             external_parents: HashMap::new(),
-            outside_parent_windows: HashMap::new(),
         }
     }
 
@@ -305,6 +288,16 @@ impl BoneSet {
         self.physics_bone_indices.contains(&index)
     }
 
+    pub fn set_forbidden_external_parent_indices(&mut self, indices: HashSet<usize>) {
+        self.forbidden_external_parent_indices = indices;
+    }
+    pub fn is_forbidden_external_parent(&self, index: usize) -> bool {
+        self.forbidden_external_parent_indices.contains(&index)
+    }
+    pub fn external_parents(&self) -> &HashMap<usize, Mat4> {
+        &self.external_parents
+    }
+
     // ========================================
     // 变换更新（核心功能）
     // ========================================
@@ -444,64 +437,45 @@ impl BoneSet {
         }
     }
 
-    pub fn replace_external_parents(&mut self, parents: &[(usize, Mat4)]) -> bool {
-        let Some(next) = self.validated_external_parents(parents) else {
-            return false;
-        };
-        // Window storage is independent of parent matrices; Java updates both
-        // inputs together and clears windows explicitly.
-        self.external_parents = next;
-        true
-    }
-
-    fn validated_external_parents(
-        &self,
+    pub fn replace_external_parents(
+        &mut self,
         parents: &[(usize, Mat4)],
-    ) -> Option<HashMap<usize, Mat4>> {
+    ) -> Result<(), PropBindingError> {
         let mut next = HashMap::with_capacity(parents.len());
         for &(index, matrix) in parents {
-            if index >= self.links.len() || !matrix.is_finite() || matrix.determinant() <= 1e-8
-                || matrix.x_axis.w.abs() > 1e-5 || matrix.y_axis.w.abs() > 1e-5
-                || matrix.z_axis.w.abs() > 1e-5 || (matrix.w_axis.w - 1.0).abs() > 1e-5
-                || next.insert(index, matrix).is_some()
+            if index >= self.links.len() {
+                return Err(PropBindingError::MissingBone);
+            }
+            if self.forbidden_external_parent_indices.contains(&index) {
+                return Err(PropBindingError::DynamicBone);
+            }
+            if !matrix.is_finite()
+                || matrix.determinant() <= 1e-8
+                || matrix.x_axis.w.abs() > 1e-5
+                || matrix.y_axis.w.abs() > 1e-5
+                || matrix.z_axis.w.abs() > 1e-5
+                || (matrix.w_axis.w - 1.0).abs() > 1e-5
             {
-                return None;
+                return Err(PropBindingError::InvalidMatrix);
+            }
+            if next.insert(index, matrix).is_some() {
+                return Err(PropBindingError::InvalidPacket);
             }
         }
-        Some(next)
-    }
-
-    /// Replaces only the VMD switch windows. Windows are independent of parent
-    /// matrices and apply to unbound bones too; an empty slice clears every
-    /// window.
-    pub fn replace_outside_parent_windows(
-        &mut self,
-        windows: &[(usize, OutsideParentWindow)],
-    ) -> bool {
-        let mut next = HashMap::with_capacity(windows.len());
-        for &(index, window) in windows {
-            if index >= self.links.len()
-                || (window.next != 0 && window.previous >= window.next)
-                || next.insert(index, window).is_some()
-            {
-                return false;
-            }
-        }
-        self.outside_parent_windows = next;
-        true
-    }
-
-    #[inline]
-    pub fn outside_parent_window(&self, index: usize) -> Option<OutsideParentWindow> {
-        self.outside_parent_windows.get(&index).copied()
+        self.external_parents = next;
+        Ok(())
     }
 
     fn parent_frame(&self, index: usize) -> Mat4 {
-        self.external_parents.get(&index).copied().unwrap_or_else(|| {
-            usize::try_from(self.links[index].parent_index).ok()
-                .and_then(|parent| self.links.get(parent))
-                .map_or(Mat4::IDENTITY, |parent| parent.local_to_world)
-        })
+        self.external_parents
+            .get(&index)
+            .copied()
+            .unwrap_or_else(|| {
+                usize::try_from(self.links[index].parent_index)
+                    .ok()
+                    .and_then(|parent| self.links.get(parent))
+                    .map_or(Mat4::IDENTITY, |parent| parent.local_to_world)
+            })
     }
 
     /// 应用附加变换
@@ -565,7 +539,11 @@ impl BoneSet {
             .iter()
             .position(|s| s.bone_index == bone_index);
         if let Some(idx) = solver_idx {
-            self.ik_solvers[idx].solve(&mut self.links, &self.children_cache, &self.external_parents);
+            self.ik_solvers[idx].solve(
+                &mut self.links,
+                &self.children_cache,
+                &self.external_parents,
+            );
             self.update_global_transform_recursive(bone_index);
         }
     }
@@ -674,7 +652,8 @@ impl BoneSet {
             return;
         }
         self.links[index].compute_local_transform();
-        self.links[index].local_to_world = self.parent_frame(index) * self.links[index].local_to_parent;
+        self.links[index].local_to_world =
+            self.parent_frame(index) * self.links[index].local_to_parent;
         self.update_children_global_transform(index);
     }
 
@@ -711,7 +690,8 @@ impl BoneSet {
                 continue;
             }
 
-            self.links[idx].local_to_world = self.parent_frame(idx) * self.links[idx].local_to_parent;
+            self.links[idx].local_to_world =
+                self.parent_frame(idx) * self.links[idx].local_to_parent;
         }
     }
 
@@ -796,8 +776,6 @@ impl BoneSet {
         total += (self.physics_bone_indices.capacity() * size_of::<usize>()) as u64;
         total += (self.physics_writeback_order.capacity() * size_of::<usize>()) as u64;
         total += (self.physics_transform_buf.capacity() * size_of::<Option<Mat4>>()) as u64;
-        total += (self.outside_parent_windows.capacity()
-            * (size_of::<usize>() + size_of::<OutsideParentWindow>())) as u64;
         // children_cache: Vec<Vec<usize>>
         for children in &self.children_cache {
             total += (children.capacity() * size_of::<usize>()) as u64;

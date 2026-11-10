@@ -10,10 +10,32 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.io.IOException;
 import static org.junit.jupiter.api.Assertions.*;
 
 class StagePropAnimationControllerTest {
     @TempDir Path dir;
+
+    @Test void bindResultDistinguishesPendingMissingModelFromFailedVmdAndCachesFailures() throws Exception {
+        fixture("prop.vmd");
+        var port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(89);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        assertEquals(com.shiroha.mmdskin.bridge.runtime.PropBoneBindingAdapter.Status.PENDING,
+                controller.bindResult(owner,null,dir,"fan.pmx").status());
+        port.tracks=false;
+        var first=controller.bindResult(owner,model.proxy,dir,"fan.pmx");
+        assertEquals(com.shiroha.mmdskin.bridge.runtime.PropBoneBindingAdapter.Status.FAILED,first.status());
+        assertFalse(controller.bindResult(owner,model.proxy,dir,"fan.pmx").ready());
+        assertEquals(1,port.loadModels.size(),"A failed VMD is not loaded again on every render");
+        assertNotNull(controller.takeWarning(owner));
+        assertNull(controller.takeWarning(owner),"A cached failure is reported once");
+        controller.clear();
+    }
 
     @Test void ordinaryGripSettingsCannotRejectAStageTimelineOrDisableItsMotion() throws Exception {
         fixture("prop.vmd"); boneTimeline();
@@ -211,6 +233,58 @@ class StagePropAnimationControllerTest {
         }
     }
 
+    @Test void stopDoesNotWaitForBlockedCalibrationAndStaleBindNeverLoadsOrMutatesVmd() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        var port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(77);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        CountDownLatch captureEntered=new CountDownLatch(1),allowCapture=new CountDownLatch(1);
+        ExecutorService workers=Executors.newFixedThreadPool(2);
+        try {
+            var bind=workers.submit(() -> controller.bindResult(owner,model.proxy,dir,"fan.pmx",file -> {
+                captureEntered.countDown();
+                try { allowCapture.await(); }
+                catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IOException(interrupted); }
+                return calibration();
+            }));
+            assertTrue(captureEntered.await(2,TimeUnit.SECONDS),"Calibration should run outside the controller monitor");
+            var stop=workers.submit(() -> controller.stop(owner));
+            stop.get(1,TimeUnit.SECONDS);
+            allowCapture.countDown();
+            var result=bind.get(2,TimeUnit.SECONDS);
+            assertEquals(com.shiroha.mmdskin.bridge.runtime.PropBoneBindingAdapter.Status.PENDING,result.status());
+            assertTrue(port.loadModels.isEmpty(),"A stale session must be checked before loading/attaching its VMD");
+            assertEquals(0,model.animation);
+        } finally {
+            allowCapture.countDown(); workers.shutdownNow();
+        }
+    }
+
+    @Test void seekDuringCalibrationIsAppliedAtTheLatestFrameWhenBindingPublishes() throws Exception {
+        fixture("prop.vmd"); boneTimeline();
+        var port=new Port(); var controller=new StagePropAnimationController(port);
+        UUID owner=UUID.randomUUID(); var model=new Model(78);
+        controller.begin(owner,new StagePropAssignment("fan.pmx","prop.vmd"));
+        CountDownLatch captureEntered=new CountDownLatch(1),allowCapture=new CountDownLatch(1);
+        ExecutorService worker=Executors.newSingleThreadExecutor();
+        try {
+            var bind=worker.submit(() -> controller.bindResult(owner,model.proxy,dir,"fan.pmx",file -> {
+                captureEntered.countDown();
+                try { allowCapture.await(); }
+                catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IOException(interrupted); }
+                return calibration();
+            }));
+            assertTrue(captureEntered.await(2,TimeUnit.SECONDS));
+            controller.seek(owner,73);
+            allowCapture.countDown();
+            assertEquals(com.shiroha.mmdskin.bridge.runtime.PropBoneBindingAdapter.Status.READY,
+                    bind.get(2,TimeUnit.SECONDS).status());
+            assertEquals(73,port.lastFrame(78),"Publish must seek to the latest frame, not the initial snapshot");
+        } finally {
+            allowCapture.countDown(); worker.shutdownNow(); controller.clear();
+        }
+    }
+
     private void boneTimeline() throws Exception {
         var binding=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.BoneBinding("Center","Hand",
                 com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Offset.IDENTITY,
@@ -241,7 +315,7 @@ class StagePropAnimationControllerTest {
                             new org.joml.Matrix4f().get(128,buffer);
                             yield true;
                         }
-                        case "setPropBoneParents" -> { calls.add(((int[])args[1]).length); yield true; }
+                        case "setPropBindings" -> { calls.add(((int[])args[1]).length); yield 0; }
                         default -> throw new AssertionError(m.getName());
                     };
                 });
@@ -486,7 +560,7 @@ class StagePropAnimationControllerTest {
                 if (m.getName().equals("getModelHandle")) return this.handle;
                 assertNotEquals(0,this.handle,"A disposed model must never receive native mutations");
                 switch (m.getName()) {
-                    case "changeAnim" -> { if (fail) throw new IllegalStateException("bind failed"); animation=(long)args[0]; }
+                    case "changeAnim" -> { if (fail) throw new IllegalStateException("bind failed"); if ((long)args[1]==0) animation=(long)args[0]; }
                     case "setLayerSpeed" -> speed=(float)args[1];
                     case "setLayerLoop" -> loop=(boolean)args[1];
                     case "resetPhysics" -> resets++;

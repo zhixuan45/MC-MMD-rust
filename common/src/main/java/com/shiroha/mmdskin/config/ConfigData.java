@@ -2,6 +2,8 @@ package com.shiroha.mmdskin.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -51,11 +53,13 @@ public class ConfigData {
     public int toonLevels = 4;
     public float toonTransitionSoftness = 1.2f;
     /** Minimum visible material base color, independent of directional lighting. */
-    public float toonBaseBrightness = 0.0f;
+    public float baseBrightness = 0.0f;
     public float toonShaderFlatness = 0.0f;
     public float toonShaderSphereSuppression = 0.0f;
-    /** Terrain-only per-fragment receiver; keep the saved key for existing configurations. */
-    public boolean toonWholeModelLighting = false;
+    /** Terrain-only per-fragment receiver. */
+    public boolean receiveTerrainShadow = false;
+    /** Replay supported translucent terrain so water and glass attenuate received shadows. */
+    public boolean terrainTransmission = true;
     /** Radius in shadow-map texels; zero keeps the shader pack's original filtering. */
     public float toonWorldShadowSoftness = 1.5f;
     public float toonRimPower = 5.6f;
@@ -70,7 +74,7 @@ public class ConfigData {
     /** 描边默认跟随主体光照。 */
     public boolean toonOutlineFollowLighting = true;
     /** 描边使用材质与贴图自适应颜色。 */
-    public boolean toonOutlineMaterialColor = false;
+    public boolean outlineMaterialColor = false;
     public float toonOutlineWidth = 0.0022f;
     public float toonOutlineR = 0.06f;
     public float toonOutlineG = 0.08f;
@@ -150,6 +154,11 @@ public class ConfigData {
 
     public Map<String, String> mobModelReplacements = new LinkedHashMap<>();
 
+    /** Legacy aliases retained in JSON so older versions can still read a migrated config. */
+    @Deprecated public Boolean toonWholeModelLighting = false;
+    @Deprecated public Boolean toonOutlineMaterialColor = false;
+    @Deprecated public Float toonBaseBrightness = 0.0f;
+
     public static ConfigData load(Path configPath) {
         Path configFile = configPath.resolve("config.json");
 
@@ -159,13 +168,20 @@ public class ConfigData {
             return defaultConfig;
         }
 
-        try (Reader reader = Files.newBufferedReader(configFile)) {
-            ConfigData config = GSON.fromJson(reader, ConfigData.class);
-            if (config == null) {
-                logger.warn("配置文件为空，使用默认配置");
-                return new ConfigData();
+        try {
+            ConfigData config;
+            boolean migrated;
+            try (Reader reader = Files.newBufferedReader(configFile)) {
+                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                config = GSON.fromJson(root, ConfigData.class);
+                if (config == null) {
+                    logger.warn("配置文件为空，使用默认配置");
+                    return new ConfigData();
+                }
+                migrated = config.migrateLegacyFields(root);
+                config.normalize();
             }
-            config.normalize();
+            if (migrated) config.save(configPath);
             return config;
         } catch (Exception e) {
             logger.error("配置加载失败，使用默认配置: {}", e.getMessage());
@@ -175,6 +191,7 @@ public class ConfigData {
 
     public void save(Path configPath) {
         try {
+            syncLegacyAliases();
             if (!Files.exists(configPath)) {
                 Files.createDirectories(configPath);
             }
@@ -208,8 +225,8 @@ public class ConfigData {
         toonHairAlphaCutoff = Float.isFinite(toonHairAlphaCutoff) ? clamp(toonHairAlphaCutoff, 0.001f, 1.0f) : 0.001f;
         toonTransitionSoftness = Float.isFinite(toonTransitionSoftness)
                 ? clamp(toonTransitionSoftness, 0.0f, 2.0f) : 1.2f;
-        toonBaseBrightness = Float.isFinite(toonBaseBrightness)
-                ? clamp(toonBaseBrightness, 0.0f, 1.0f) : 0.0f;
+        baseBrightness = Float.isFinite(baseBrightness)
+                ? clamp(baseBrightness, 0.0f, 1.0f) : 0.0f;
         toonShaderFlatness = Float.isFinite(toonShaderFlatness)
                 ? clamp(toonShaderFlatness, 0.0f, 1.0f) : 0.0f;
         toonShaderSphereSuppression = Float.isFinite(toonShaderSphereSuppression)
@@ -236,6 +253,50 @@ public class ConfigData {
         physicsStaticColliderScale = clamp(physicsStaticColliderScale, 0.1f, 1.5f);
         antiPeekThresholdAngle = clamp(antiPeekThresholdAngle, 5.0f, 60.0f);
         antiPeekHideAngle = clamp(antiPeekHideAngle, 0.0f, antiPeekThresholdAngle);
+        syncLegacyAliases();
+    }
+
+    private boolean migrateLegacyFields(JsonObject root) {
+        boolean migrated = false;
+        if (!root.has("receiveTerrainShadow") && root.has("toonWholeModelLighting")) {
+            receiveTerrainShadow = booleanValue(root, "toonWholeModelLighting", false);
+            migrated = true;
+        }
+        if (!root.has("outlineMaterialColor") && root.has("toonOutlineMaterialColor")) {
+            outlineMaterialColor = booleanValue(root, "toonOutlineMaterialColor", false);
+            migrated = true;
+        }
+        if (!root.has("baseBrightness") && root.has("toonBaseBrightness")) {
+            baseBrightness = floatValue(root, "toonBaseBrightness", 0.0f);
+            migrated = true;
+        }
+        return migrated;
+    }
+
+    private static boolean booleanValue(JsonObject root, String key, boolean fallback) {
+        var value = root.get(key);
+        if (value == null || value.isJsonNull()) return fallback;
+        try {
+            return value.getAsBoolean();
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
+    }
+
+    private static float floatValue(JsonObject root, String key, float fallback) {
+        var value = root.get(key);
+        if (value == null || value.isJsonNull()) return fallback;
+        try {
+            return value.getAsFloat();
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
+    }
+
+    private void syncLegacyAliases() {
+        toonWholeModelLighting = receiveTerrainShadow;
+        toonOutlineMaterialColor = outlineMaterialColor;
+        toonBaseBrightness = baseBrightness;
     }
 
     private static float clamp(float value, float min, float max) {

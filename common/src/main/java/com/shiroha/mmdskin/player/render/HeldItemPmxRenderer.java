@@ -33,7 +33,6 @@ final class HeldItemPmxRenderer {
         var propAnimations = stageRuntime != null ? stageRuntime.animSyncHelper().propAnimations() : null;
         boolean inStage = character.entityState().playStageAnim;
         var assignment = inStage && propAnimations != null ? propAnimations.assignment(player.getUUID()) : null;
-        if (!inStage && propAnimations != null) propAnimations.stop(player.getUUID());
         if (assignment == null && player.getMainHandItem().isEmpty()) return false;
         String pmx = assignment != null ? assignment.pmxFile() : config.heldPmxFile;
         if (pmx == null || pmx.isEmpty()) return false;
@@ -46,7 +45,7 @@ final class HeldItemPmxRenderer {
         if (prop == null || prop.modelInstance().getModelHandle() == 0L) return false;
 
         if (assignment != null) {
-            boolean ready=propAnimations.bind(player.getUUID(), prop.modelInstance(),
+            var result=propAnimations.bindResult(player.getUUID(), prop.modelInstance(),
                 java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx,
                 motion -> {
                     var stageConfig=config.normalizedCopy();
@@ -57,7 +56,7 @@ final class HeldItemPmxRenderer {
             if(warning!=null && player==net.minecraft.client.Minecraft.getInstance().player) {
                 player.displayClientMessage(net.minecraft.network.chat.Component.translatable("mmdskin.stage.prop_warning",warning),false);
             }
-            if(!ready) return true;
+            if(!result.ready()) return false;
         }
         var state = assignment != null ? propAnimations.state(player.getUUID()) : PropTimeline.State.DEFAULT;
         var binding = state.attachment();
@@ -72,15 +71,15 @@ final class HeldItemPmxRenderer {
                     : ItemRenderHelper.getTimelinePropAttachment(character, binding.bone());
             if (!independent && attachment == null) {
                 if(binding!=null) propAnimations.warnMissingBone(player.getUUID(),binding.bone());
-                return true;
+                return false;
             }
             var local = ItemRenderHelper.propRenderTransform(attachment, config,
                     binding == null ? PropTimeline.Offset.IDENTITY : binding.offset(),ownerScale,independent);
             poseStack.last().pose().mul(local);
             float propScale = prop.modelInstance() instanceof com.shiroha.mmdskin.render.backend.BaseModelInstance base
                     ? base.getModelScale() : 0.09f * config.modelScale;
-            if(assignment!=null && !propAnimations.applyBoneParents(player.getUUID(),character.modelInstance().getModelHandle(),
-                    prop.modelInstance().getModelHandle(),new org.joml.Matrix4f(local).scale(propScale))) return true;
+            if(assignment!=null && !propAnimations.applyBoneParentsResult(player.getUUID(),character.modelInstance().getModelHandle(),
+                    prop.modelInstance().getModelHandle(),new org.joml.Matrix4f(local).scale(propScale)).ready()) return false;
             ItemRenderHelper.syncPropPhysics(character, prop,
                     ItemRenderHelper.propPhysicsTransform(local, 1, ownerScale, propScale));
 

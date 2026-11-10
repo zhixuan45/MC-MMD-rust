@@ -35,10 +35,11 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonHairAlphaCutoff() { return data.toonHairAlphaCutoff; }
     @Override public int getToonLevels() { return data.toonLevels; }
     @Override public float getToonTransitionSoftness() { return data.toonTransitionSoftness; }
-    @Override public float getToonBaseBrightness() { return data.toonBaseBrightness; }
+    @Override public float getToonBaseBrightness() { return data.baseBrightness; }
     @Override public float getToonShaderFlatness() { return data.toonShaderFlatness; }
     @Override public float getToonShaderSphereSuppression() { return data.toonShaderSphereSuppression; }
-    @Override public boolean isToonWholeModelLightingEnabled() { return data.toonWholeModelLighting; }
+    @Override public boolean isReceiveTerrainShadowEnabled() { return data.receiveTerrainShadow; }
+    @Override public boolean isTerrainTransmissionEnabled() { return data.terrainTransmission; }
     @Override public float getToonWorldShadowSoftness() { return data.toonWorldShadowSoftness; }
     @Override public float getToonRimPower() { return data.toonRimPower; }
     @Override public float getToonRimIntensity() { return data.toonRimIntensity; }
@@ -50,7 +51,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonSpecularIntensity() { return data.toonSpecularIntensity; }
     @Override public boolean isToonOutlineEnabled() { return data.toonOutlineEnabled; }
     @Override public boolean isToonOutlineFollowLighting() { return data.toonOutlineFollowLighting; }
-    @Override public boolean isToonOutlineMaterialColor() { return data.toonOutlineMaterialColor; }
+    @Override public boolean isToonOutlineMaterialColor() { return data.outlineMaterialColor; }
     @Override public float getToonOutlineWidth() { return data.toonOutlineWidth; }
     @Override public float getToonOutlineR() { return data.toonOutlineR; }
     @Override public float getToonOutlineG() { return data.toonOutlineG; }

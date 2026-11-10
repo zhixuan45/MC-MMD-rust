@@ -35,23 +35,27 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_BatchGetSubMeshData(
     buffer: JByteBuffer,
     first_person_view: jboolean,
 ) -> jint {
-    let out_ptr = match env.get_direct_buffer_address(&buffer) {
-        Ok(pointer) => pointer,
-        Err(_) => return 0,
-    };
-    let out_capacity = match env.get_direct_buffer_capacity(&buffer) {
-        Ok(capacity) => capacity,
-        Err(_) => return 0,
-    };
-    let output = unsafe { std::slice::from_raw_parts_mut(out_ptr, out_capacity) };
+    jni_guard!(env, {
+        let out_ptr = match env.get_direct_buffer_address(&buffer) {
+            Ok(pointer) => pointer,
+            Err(_) => return 0,
+        };
+        let out_capacity = match env.get_direct_buffer_capacity(&buffer) {
+            Ok(capacity) => capacity,
+            Err(_) => return 0,
+        };
+        let output = unsafe { std::slice::from_raw_parts_mut(out_ptr, out_capacity) };
 
-    let models = MODELS.read().unwrap();
-    if let Some(model_arc) = models.get(&model) {
-        let mut model = model_arc.lock().unwrap();
-        batch_get_sub_mesh_data_for_view(&mut model, output, first_person_view != 0) as jint
-    } else {
-        0
-    }
+        let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
+        if let Some(model_arc) = models.get(&model) {
+            let mut model = model_arc
+                .lock()
+                .unwrap_or_else(super::boundary::reject_poison);
+            batch_get_sub_mesh_data_for_view(&mut model, output, first_person_view != 0) as jint
+        } else {
+            0
+        }
+    })
 }
 
 /// 使用当前绘制矩阵刷新第一人称索引，并复制到 Java direct buffer。
@@ -64,43 +68,44 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_RefreshFirstPersonInd
     gpu_skinning: jboolean,
     index_buffer: JByteBuffer,
 ) -> jint {
-    let matrix_ptr = match env.get_direct_buffer_address(&matrix_buffer) {
-        Ok(pointer) => pointer,
-        Err(_) => return 0,
-    };
-    let matrix_capacity = match env.get_direct_buffer_capacity(&matrix_buffer) {
-        Ok(capacity) => capacity,
-        Err(_) => return 0,
-    };
-    if matrix_capacity < 32 * std::mem::size_of::<f32>() {
-        return 0;
-    }
-    let matrices = unsafe { std::slice::from_raw_parts(matrix_ptr as *const f32, 32) };
-    let model_view = Mat4::from_cols_array(&matrices[0..16].try_into().unwrap());
-    let projection = Mat4::from_cols_array(&matrices[16..32].try_into().unwrap());
+    jni_guard!(env, {
+        let matrix_ptr = match env.get_direct_buffer_address(&matrix_buffer) {
+            Ok(pointer) => pointer,
+            Err(_) => return 0,
+        };
+        let matrix_capacity = match env.get_direct_buffer_capacity(&matrix_buffer) {
+            Ok(capacity) => capacity,
+            Err(_) => return 0,
+        };
+        if matrix_capacity < 32 * std::mem::size_of::<f32>() {
+            return 0;
+        }
+        let matrices = unsafe { std::slice::from_raw_parts(matrix_ptr as *const f32, 32) };
+        let model_view = Mat4::from_cols_array(&matrices[0..16].try_into().unwrap());
+        let projection = Mat4::from_cols_array(&matrices[16..32].try_into().unwrap());
 
-    let output_ptr = match env.get_direct_buffer_address(&index_buffer) {
-        Ok(pointer) => pointer,
-        Err(_) => return 0,
-    };
-    let output_capacity = match env.get_direct_buffer_capacity(&index_buffer) {
-        Ok(capacity) => capacity,
-        Err(_) => return 0,
-    };
-    let output = unsafe { std::slice::from_raw_parts_mut(output_ptr, output_capacity) };
+        let output_ptr = match env.get_direct_buffer_address(&index_buffer) {
+            Ok(pointer) => pointer,
+            Err(_) => return 0,
+        };
+        let output_capacity = match env.get_direct_buffer_capacity(&index_buffer) {
+            Ok(capacity) => capacity,
+            Err(_) => return 0,
+        };
+        let output = unsafe { std::slice::from_raw_parts_mut(output_ptr, output_capacity) };
 
-    let models = MODELS.read().unwrap();
-    models
-        .get(&model)
-        .map(|model| {
-            model.lock().unwrap().refresh_first_person_indices(
-                model_view,
-                projection,
-                gpu_skinning != 0,
-                output,
-            ) as jint
-        })
-        .unwrap_or(0)
+        let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
+        models
+            .get(&model)
+            .map(|model| {
+                model
+                    .lock()
+                    .unwrap_or_else(super::boundary::reject_poison)
+                    .refresh_first_person_indices(model_view, projection, gpu_skinning != 0, output)
+                    as jint
+            })
+            .unwrap_or(0)
+    })
 }
 
 #[cfg(test)]

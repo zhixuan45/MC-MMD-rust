@@ -8,6 +8,7 @@ use glam::{Quat, Vec3};
 use crate::morph::MorphManager;
 use crate::skeleton::BoneManager;
 
+use super::PropBindingState;
 use super::VmdAnimation;
 
 /// 单个骨骼的姿态数据
@@ -293,7 +294,9 @@ impl AnimationLayer {
 
     /// 更新帧位置
     fn update_frame(&mut self, dt: f32) {
-        if dt == 0.0 { return; }
+        if dt == 0.0 {
+            return;
+        }
         if let Some(ref anim) = self.animation {
             let max_frame = anim.max_frame() as f32;
 
@@ -363,6 +366,15 @@ impl AnimationLayer {
 
     /// 评估动画并应用到骨骼管理器
     pub fn evaluate(&self, bone_manager: &mut BoneManager, morph_manager: &mut MorphManager) {
+        self.evaluate_with_bindings(bone_manager, morph_manager, &PropBindingState::default());
+    }
+
+    pub fn evaluate_with_bindings(
+        &self,
+        bone_manager: &mut BoneManager,
+        morph_manager: &mut MorphManager,
+        bindings: &PropBindingState,
+    ) {
         if !self.enabled {
             return;
         }
@@ -399,14 +411,15 @@ impl AnimationLayer {
         };
 
         if self.state == AnimationLayerState::Transitioning {
-            self.evaluate_transition(bone_manager, morph_manager);
+            self.evaluate_transition(bone_manager, morph_manager, bindings);
         } else if let Some(ref animation) = self.animation {
             if self.effective_weight > 0.001 {
-                animation.evaluate_with_weight(
+                animation.evaluate_with_binding(
                     self.current_frame,
                     self.effective_weight,
                     bone_manager,
                     morph_manager,
+                    bindings,
                 );
             }
         }
@@ -425,6 +438,7 @@ impl AnimationLayer {
         &self,
         bone_manager: &mut BoneManager,
         morph_manager: &mut MorphManager,
+        bindings: &PropBindingState,
     ) {
         let t = self.transition_progress;
 
@@ -433,11 +447,12 @@ impl AnimationLayer {
 
         // 先应用新动画（权重 = 1.0，获取完整的新动画姿态）
         if let Some(ref animation) = self.animation {
-            animation.evaluate_with_weight(
+            animation.evaluate_with_binding(
                 self.current_frame,
                 self.effective_weight,
                 bone_manager,
                 morph_manager,
+                bindings,
             );
         }
 
@@ -526,6 +541,7 @@ impl AnimationLayer {
 pub struct AnimationLayerManager {
     /// 所有层
     layers: Vec<AnimationLayer>,
+    prop_bindings: PropBindingState,
 }
 
 impl AnimationLayerManager {
@@ -536,7 +552,10 @@ impl AnimationLayerManager {
             layers.push(AnimationLayer::new(i, format!("Layer_{}", i)));
         }
 
-        Self { layers }
+        Self {
+            layers,
+            prop_bindings: PropBindingState::default(),
+        }
     }
 
     /// 获取层（可变）
@@ -675,9 +694,16 @@ impl AnimationLayerManager {
         // 对每个活跃层进行评估（使用 layer.evaluate 以支持过渡）
         for layer_idx in active_layers {
             if let Some(layer) = self.layers.get(layer_idx) {
-                layer.evaluate(bone_manager, morph_manager);
+                layer.evaluate_with_bindings(bone_manager, morph_manager, &self.prop_bindings);
             }
         }
+    }
+
+    pub fn set_prop_bindings(&mut self, bindings: PropBindingState) {
+        self.prop_bindings = bindings;
+    }
+    pub fn prop_bindings(&self) -> &PropBindingState {
+        &self.prop_bindings
     }
 
     /// 获取层数量
