@@ -1,0 +1,99 @@
+plugins {
+    id 'net.neoforged.moddev.legacyforge'
+    id 'com.gradleup.shadow'
+}
+
+legacyForge {
+    version = "${rootProject.minecraft_version}-${rootProject.forge_version}"
+    runs {
+        client {
+            client()
+            gameDirectory = file("run/1.20.1-client")
+            programArguments.addAll '--username', rootProject.minecraft_username
+        }
+        server {
+            server()
+            gameDirectory = file("run/1.20.1-server")
+            programArgument '--nogui'
+        }
+    }
+    mods {
+        "${rootProject.mod_id}" {
+            sourceSet sourceSets.main
+            sourceSet project(':common').sourceSets.main
+        }
+    }
+}
+
+def forgeRefmap = mixin.add(sourceSets.main, 'mmdskin-forge-refmap.json')
+mixin.config 'mmdskin-forge.mixins.json'
+
+configurations {
+    shadowBundle {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
+dependencies {
+    implementation project(':common').sourceSets.main.output
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+    modImplementation "me.shedaniel.cloth:cloth-config-forge:${rootProject.cloth_config_version}"
+    implementation("javazoom:jlayer:1.0.1") { transitive = false }
+    additionalRuntimeClasspath("javazoom:jlayer:1.0.1") { transitive = false }
+    shadowBundle("javazoom:jlayer:1.0.1") { transitive = false }
+}
+
+processResources {
+    def replaceProperties = [
+        mod_id: rootProject.mod_id,
+        mod_name: rootProject.mod_name,
+        mod_version: rootProject.mod_version,
+        mod_authors: rootProject.mod_authors,
+        mod_description: rootProject.mod_description
+    ]
+    inputs.properties replaceProperties
+    filesMatching('META-INF/mods.toml') { expand replaceProperties }
+}
+
+shadowJar {
+    configurations = [project.configurations.shadowBundle]
+    from project(':common').sourceSets.main.output
+    // Legacy Forge adds generated refmaps to jar; the combined Shadow JAR needs it too.
+    from(forgeRefmap)
+    relocate "javazoom", "com.shiroha.mmdskin.shadow.javazoom"
+    archiveClassifier.set("")
+    exclude 'META-INF/versions/**', 'module-info.class', 'fabric.mod.json'
+    mergeServiceFiles()
+    manifest {
+        attributes(
+            'Specification-Title': 'MMD Skin Forge',
+            'Specification-Vendor': 'shiroha233',
+            'Specification-Version': '1',
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': 'shiroha233',
+            'MixinConfigs': 'mmdskin-forge.mixins.json'
+        )
+    }
+}
+
+jar {
+    archiveClassifier.set("slim")
+    manifest.attributes('MixinConfigs': 'mmdskin-forge.mixins.json')
+}
+
+obfuscation {
+    reobfuscate(tasks.named('shadowJar'), sourceSets.main)
+}
+
+tasks.named("assemble").configure {
+    dependsOn tasks.named("reobfShadowJar")
+}
+
+sourcesJar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    def commonSources = project(":common").sourcesJar
+    dependsOn commonSources
+    from commonSources.archiveFile.map { zipTree(it) }
+}

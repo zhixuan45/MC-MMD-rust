@@ -1,0 +1,1004 @@
+/** 负责 Forge 侧模块配置界面。 */
+package com.shiroha.mmdskin.forge.config;
+
+import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
+import com.shiroha.mmdskin.config.ConfigData;
+import com.shiroha.mmdskin.config.PaperDollDisplayMode;
+import com.shiroha.mmdskin.config.PaperDollPosition;
+import com.shiroha.mmdskin.config.PaperDollRotationMode;
+import com.shiroha.mmdskin.config.PaperDollRefreshMode;
+import com.shiroha.mmdskin.config.PhysicsCollisionStabilityMode;
+import com.shiroha.mmdskin.config.PhysicsConfigSnapshot;
+import com.shiroha.mmdskin.config.UIConstants;
+import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
+import com.shiroha.mmdskin.render.entity.MobReplacementTargets;
+import com.shiroha.mmdskin.ui.config.ModelSelectorConfig;
+import com.shiroha.mmdskin.ui.about.AboutContent;
+import me.shedaniel.clothconfig2.api.ConfigBuilder;
+import me.shedaniel.clothconfig2.api.ConfigCategory;
+import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+/** Forge 模组设置界面。 */
+public class ModConfigScreen {
+
+    public static Screen create(Screen parent) {
+        return createSettingsScreen(parent);
+    }
+
+    static Screen createSettingsScreen(Screen parent) {
+        ConfigData data = MmdSkinConfig.getData();
+
+        ConfigBuilder builder = ConfigBuilder.create()
+            .setParentScreen(parent)
+            .setTitle(Component.translatable("gui.mmdskin.mod_settings.title"));
+
+        ConfigEntryBuilder entryBuilder = builder.entryBuilder();
+
+        ConfigCategory renderCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.render"));
+
+        var about = entryBuilder.startSubCategory(Component.translatable("gui.mmdskin.about.title"));
+        for (Component detail : AboutContent.projectDetails()) {
+            about.add(entryBuilder.startTextDescription(detail).build());
+        }
+        var sponsors = entryBuilder.startSubCategory(Component.translatable("gui.mmdskin.about.sponsors"));
+        for (Component detail : AboutContent.sponsorDetails()) {
+            sponsors.add(entryBuilder.startTextDescription(detail).build());
+        }
+        about.add(sponsors.build());
+        renderCategory.addEntry(about.build());
+
+        renderCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.opengl_lighting"),
+                data.openGLEnableLighting)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.opengl_lighting.tooltip"))
+            .setSaveConsumer(value -> data.openGLEnableLighting = value)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.mmd_shader"),
+                data.mmdShaderEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.mmd_shader.tooltip"))
+            .setSaveConsumer(value -> data.mmdShaderEnabled = value)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.first_person_model"),
+                data.firstPersonModelEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.first_person_model.tooltip"))
+            .setSaveConsumer(value -> data.firstPersonModelEnabled = value)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.first_person_camera_forward_offset"),
+                Math.round(data.firstPersonCameraForwardOffset * 1000.0F),
+                -100, 500)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.first_person_camera_forward_offset.tooltip"))
+            .setTextGetter(value -> Component.literal(String.format("%.3f", value.intValue() / 1000.0F)))
+            .setSaveConsumer(value -> data.firstPersonCameraForwardOffset = value.intValue() / 1000.0F)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.first_person_camera_vertical_offset"),
+                Math.round(data.firstPersonCameraVerticalOffset * 1000.0F),
+                -500, 500)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.first_person_camera_vertical_offset.tooltip"))
+            .setTextGetter(value -> Component.literal(String.format("%.3f", value.intValue() / 1000.0F)))
+            .setSaveConsumer(value -> data.firstPersonCameraVerticalOffset = value.intValue() / 1000.0F)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.anti_peek_mode"),
+                data.antiPeekModeEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.anti_peek_mode.tooltip"))
+            .setSaveConsumer(value -> data.antiPeekModeEnabled = value)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.anti_peek_threshold_angle"),
+                Math.round(data.antiPeekThresholdAngle),
+                5, 60)
+            .setDefaultValue(25)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.anti_peek_threshold_angle.tooltip"))
+            .setTextGetter(value -> Component.literal(value + "°"))
+            .setSaveConsumer(value -> data.antiPeekThresholdAngle = value.floatValue())
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.anti_peek_hide_angle"),
+                Math.round(data.antiPeekHideAngle),
+                0, 25)
+            .setDefaultValue(10)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.anti_peek_hide_angle.tooltip"))
+            .setTextGetter(value -> Component.literal(value + "°"))
+            .setSaveConsumer(value -> data.antiPeekHideAngle = value.floatValue())
+            .build());
+
+        ConfigCategory performanceCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.performance"));
+
+        performanceCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.model_pool_max"),
+                data.modelPoolMaxCount, 5, 100)
+            .setDefaultValue(20)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.model_pool_max.tooltip"))
+            .setSaveConsumer(value -> data.modelPoolMaxCount = value)
+            .build());
+
+        performanceCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.gpu_skinning"),
+                data.gpuSkinningEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.gpu_skinning.tooltip"))
+            .setSaveConsumer(value -> data.gpuSkinningEnabled = value)
+            .build());
+
+        performanceCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.gpu_morph"),
+                data.gpuMorphEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.gpu_morph.tooltip"))
+            .setSaveConsumer(value -> data.gpuMorphEnabled = value)
+            .build());
+
+        performanceCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.max_bones"),
+                data.maxBones, 512, 4096)
+            .setDefaultValue(2048)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.max_bones.tooltip"))
+            .setSaveConsumer(value -> data.maxBones = value)
+            .build());
+
+        performanceCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.texture_cache_budget"),
+                data.textureCacheBudgetMB, 64, 1024)
+            .setDefaultValue(256)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.texture_cache_budget.tooltip"))
+            .setTextGetter(value -> Component.literal(value + " MB"))
+            .setSaveConsumer(value -> data.textureCacheBudgetMB = value)
+            .build());
+
+        performanceCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.max_visible_models"),
+                data.maxVisibleModelsPerFrame, 1, 50)
+            .setDefaultValue(10)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.max_visible_models.tooltip"))
+            .setSaveConsumer(value -> data.maxVisibleModelsPerFrame = value)
+            .build());
+
+        ConfigCategory toonCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.toon"));
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_enabled"),
+                data.toonRenderingEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_enabled.tooltip"))
+            .setSaveConsumer(value -> data.toonRenderingEnabled = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_disable_transparency"),
+                data.toonDisableTransparency)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_disable_transparency.tooltip"))
+            .setSaveConsumer(value -> data.toonDisableTransparency = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.shadow_opaque"),
+                data.shadowOpaque)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.shadow_opaque.tooltip"))
+            .setSaveConsumer(value -> data.shadowOpaque = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_disable_depth_seal"),
+                data.toonDisableDepthSeal)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_disable_depth_seal.tooltip"))
+            .setSaveConsumer(value -> data.toonDisableDepthSeal = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_world_transparency_queue"),
+                data.toonWorldTransparencyQueue)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_world_transparency_queue.tooltip"))
+            .setSaveConsumer(value -> data.toonWorldTransparencyQueue = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_transparency_layers"),
+                data.toonTransparencyLayerCount, 0, 16)
+            .setDefaultValue(4)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_transparency_layers.tooltip"))
+            .setSaveConsumer(value -> data.toonTransparencyLayerCount = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_alpha_cutoff"),
+                Math.round(data.toonAlphaCutoff * 1000), 1, 1000)
+            .setDefaultValue(1)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.3f", value / 1000.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_alpha_cutoff.tooltip"))
+            .setSaveConsumer(value -> data.toonAlphaCutoff = value / 1000.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_hair_alpha_cutoff"),
+                Math.round(data.toonHairAlphaCutoff * 1000), 1, 1000)
+            .setDefaultValue(1)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.3f", value / 1000.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_hair_alpha_cutoff.tooltip"))
+            .setSaveConsumer(value -> data.toonHairAlphaCutoff = value / 1000.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_levels"),
+                data.toonLevels, 2, 5)
+            .setDefaultValue(4)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_levels.tooltip"))
+            .setSaveConsumer(value -> data.toonLevels = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_transition_softness"),
+                (int) Math.round(data.toonTransitionSoftness * 100), 0, 200)
+            .setDefaultValue(120)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_transition_softness.tooltip"))
+            .setSaveConsumer(value -> data.toonTransitionSoftness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_base_brightness"),
+                (int) Math.round(data.baseBrightness * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTextGetter(value -> Component.literal(value + "%"))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_base_brightness.tooltip"))
+            .setSaveConsumer(value -> data.baseBrightness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_receive_terrain_shadow"),
+                data.receiveTerrainShadow)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_receive_terrain_shadow.tooltip"))
+            .setSaveConsumer(value -> data.receiveTerrainShadow = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_terrain_transmission"),
+                data.terrainTransmission)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_terrain_transmission.tooltip"))
+            .setSaveConsumer(value -> data.terrainTransmission = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_world_shadow_softness"),
+                (int) Math.round(data.toonWorldShadowSoftness * 100), 0, 400)
+            .setDefaultValue(150)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.2f", value / 100.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_world_shadow_softness.tooltip"))
+            .setSaveConsumer(value -> data.toonWorldShadowSoftness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shader_flatness"),
+                (int) Math.round(data.toonShaderFlatness * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_shader_flatness.tooltip"))
+            .setSaveConsumer(value -> data.toonShaderFlatness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shader_sphere_suppression"),
+                (int) Math.round(data.toonShaderSphereSuppression * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_shader_sphere_suppression.tooltip"))
+            .setSaveConsumer(value -> data.toonShaderSphereSuppression = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_eye_emission"),
+                (int) (data.toonEyeEmission * 100), 0, 300)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_eye_emission.tooltip"))
+            .setSaveConsumer(value -> data.toonEyeEmission = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_rim_power"),
+                (int) (data.toonRimPower * 10), 10, 100)
+            .setDefaultValue(56)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_rim_power.tooltip"))
+            .setSaveConsumer(value -> data.toonRimPower = value / 10.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_rim_intensity"),
+                (int) (data.toonRimIntensity * 100), 0, 100)
+            .setDefaultValue(2)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_rim_intensity.tooltip"))
+            .setSaveConsumer(value -> data.toonRimIntensity = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shadow_r"),
+                (int) (data.toonShadowR * 100), 0, 100)
+            .setDefaultValue(78)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_shadow.tooltip"))
+            .setSaveConsumer(value -> data.toonShadowR = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shadow_g"),
+                (int) (data.toonShadowG * 100), 0, 100)
+            .setDefaultValue(84)
+            .setSaveConsumer(value -> data.toonShadowG = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shadow_b"),
+                (int) (data.toonShadowB * 100), 0, 100)
+            .setDefaultValue(94)
+            .setSaveConsumer(value -> data.toonShadowB = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_specular_power"),
+                (int) data.toonSpecularPower, 1, 128)
+            .setDefaultValue(96)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_specular_power.tooltip"))
+            .setSaveConsumer(value -> data.toonSpecularPower = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_specular_intensity"),
+                (int) (data.toonSpecularIntensity * 100), 0, 100)
+            .setDefaultValue(2)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_specular_intensity.tooltip"))
+            .setSaveConsumer(value -> data.toonSpecularIntensity = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline"),
+                data.toonOutlineEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline.tooltip"))
+            .setSaveConsumer(value -> data.toonOutlineEnabled = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_follow_lighting"),
+                data.toonOutlineFollowLighting)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline_follow_lighting.tooltip"))
+            .setSaveConsumer(value -> data.toonOutlineFollowLighting = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_material_color"),
+                data.outlineMaterialColor)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline_material_color.tooltip"))
+            .setSaveConsumer(value -> data.outlineMaterialColor = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_width"),
+                (int) (data.toonOutlineWidth * 1000), 1, 100)
+            .setDefaultValue(2)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline_width.tooltip"))
+            .setSaveConsumer(value -> data.toonOutlineWidth = value / 1000.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_r"),
+                (int) (data.toonOutlineR * 100), 0, 100)
+            .setDefaultValue(6)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_outline_color.tooltip"))
+            .setSaveConsumer(value -> data.toonOutlineR = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_g"),
+                (int) (data.toonOutlineG * 100), 0, 100)
+            .setDefaultValue(8)
+            .setSaveConsumer(value -> data.toonOutlineG = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_outline_b"),
+                (int) (data.toonOutlineB * 100), 0, 100)
+            .setDefaultValue(12)
+            .setSaveConsumer(value -> data.toonOutlineB = value / 100.0f)
+            .build());
+
+        ConfigCategory paperDollCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.paper_doll"));
+
+        paperDollCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.enabled"),
+                data.paperDollEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.enabled.tooltip"))
+            .setSaveConsumer(value -> data.paperDollEnabled = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.position"),
+                PaperDollPosition.class,
+                data.paperDollPosition)
+            .setDefaultValue(PaperDollPosition.TOP_LEFT)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.position.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.position." + ((PaperDollPosition) e).name().toLowerCase()))
+            .setSaveConsumer(value -> data.paperDollPosition = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_x"),
+                data.paperDollOffsetX,
+                -200, 200)
+            .setDefaultValue(20)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_x.tooltip"))
+            .setSaveConsumer(value -> data.paperDollOffsetX = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_y"),
+                data.paperDollOffsetY,
+                -200, 200)
+            .setDefaultValue(20)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.offset_y.tooltip"))
+            .setSaveConsumer(value -> data.paperDollOffsetY = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.scale"),
+                Math.round(data.paperDollScale),
+                10, 100)
+            .setDefaultValue(30)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.scale.tooltip"))
+            .setSaveConsumer(value -> data.paperDollScale = value.floatValue())
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.display_mode"),
+                PaperDollDisplayMode.class,
+                data.paperDollDisplayMode)
+            .setDefaultValue(PaperDollDisplayMode.ALWAYS)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.display_mode.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.display_mode." + ((PaperDollDisplayMode) e).name().toLowerCase()))
+            .setSaveConsumer(value -> data.paperDollDisplayMode = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode"),
+                PaperDollRotationMode.class,
+                data.paperDollRotationMode)
+            .setDefaultValue(PaperDollRotationMode.FIXED)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.rotation_mode." + ((PaperDollRotationMode) e).name().toLowerCase()))
+            .setSaveConsumer(value -> data.paperDollRotationMode = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.refresh_mode"),
+                PaperDollRefreshMode.class,
+                data.paperDollRefreshMode == null ? PaperDollRefreshMode.FULL : data.paperDollRefreshMode)
+            .setDefaultValue(PaperDollRefreshMode.FULL)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.refresh_mode.tooltip"))
+            .setEnumNameProvider(e -> Component.translatable("gui.mmdskin.mod_settings.paper_doll.refresh_mode." + ((PaperDollRefreshMode) e).name().toLowerCase(java.util.Locale.ROOT)))
+            .setSaveConsumer(value -> data.paperDollRefreshMode = value)
+            .build());
+
+        paperDollCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.paper_doll.show_in_screens"),
+                data.paperDollShowInScreens)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.paper_doll.show_in_screens.tooltip"))
+            .setSaveConsumer(value -> data.paperDollShowInScreens = value)
+            .build());
+
+        ConfigCategory physicsCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.physics"));
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_enabled"),
+                data.physicsEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.stage_physics_reset"),
+                data.stagePhysicsResetOnFirstFrame)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.stage_physics_reset.tooltip"))
+            .setSaveConsumer(value -> data.stagePhysicsResetOnFirstFrame = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_gravity"),
+                (int) (data.physicsGravityY * -1), 10, 200)
+            .setDefaultValue(98)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_gravity.tooltip"))
+            .setSaveConsumer(value -> data.physicsGravityY = value * -1.0f)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_fps"),
+                (int) data.physicsFps, 30, 120)
+            .setDefaultValue(60)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_fps.tooltip"))
+            .setSaveConsumer(value -> data.physicsFps = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_solver_iterations"),
+                data.physicsSolverIterations, 1, 80)
+            .setDefaultValue(10)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_solver_iterations.tooltip"))
+            .setSaveConsumer(value -> data.physicsSolverIterations = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_substeps"),
+                data.physicsMaxSubstepCount, 1, 10)
+            .setDefaultValue(5)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_substeps.tooltip"))
+            .setSaveConsumer(value -> data.physicsMaxSubstepCount = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_inertia"),
+                (int) (data.physicsInertiaStrength * 100), 0, 300)
+            .setDefaultValue(50)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_inertia.tooltip"))
+            .setSaveConsumer(value -> data.physicsInertiaStrength = value / 100.0f)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_max_linear_velocity"),
+                (int) data.physicsMaxLinearVelocity, 0, 100)
+            .setDefaultValue(20)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_max_linear_velocity.tooltip"))
+            .setSaveConsumer(value -> data.physicsMaxLinearVelocity = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_max_angular_velocity"),
+                (int) data.physicsMaxAngularVelocity, 0, 100)
+            .setDefaultValue(20)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_max_angular_velocity.tooltip"))
+            .setSaveConsumer(value -> data.physicsMaxAngularVelocity = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_joints_enabled"),
+                data.physicsJointsEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_joints_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsJointsEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_kinematic_filter"),
+                data.physicsKinematicFilter)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_kinematic_filter.tooltip"))
+            .setSaveConsumer(value -> data.physicsKinematicFilter = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_collision_enabled"),
+                data.physicsCollisionEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_collision_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsCollisionEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startEnumSelector(
+                Component.translatable("gui.mmdskin.mod_settings.physics_collision_stability"),
+                PhysicsCollisionStabilityMode.class,
+                data.physicsCollisionStabilityMode)
+            .setDefaultValue(PhysicsCollisionStabilityMode.STABLE)
+            .setEnumNameProvider(value -> Component.translatable(
+                "gui.mmdskin.mod_settings.physics_collision_stability."
+                    + value.name().toLowerCase(java.util.Locale.ROOT)))
+            .setTooltip(Component.translatable(
+                "gui.mmdskin.mod_settings.physics_collision_stability.tooltip"))
+            .setSaveConsumer(value -> data.physicsCollisionStabilityMode = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_auto_upper_body_colliders"),
+                data.physicsAutoUpperBodyColliders)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_auto_upper_body_colliders.tooltip"))
+            .setSaveConsumer(value -> data.physicsAutoUpperBodyColliders = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_auto_lower_body_colliders"),
+                data.physicsAutoLowerBodyColliders)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_auto_lower_body_colliders.tooltip"))
+            .setSaveConsumer(value -> data.physicsAutoLowerBodyColliders = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.physics_static_collider_scale"),
+                (int) (data.physicsStaticColliderScale * 100), 10, 150)
+            .setDefaultValue(80)
+            .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.2fx", value / 100.0f)))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_static_collider_scale.tooltip"))
+            .setSaveConsumer(value -> data.physicsStaticColliderScale = value / 100.0f)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_debug_log"),
+                data.physicsDebugLog)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_debug_log.tooltip"))
+            .setSaveConsumer(value -> data.physicsDebugLog = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.max_physics_models"),
+                data.maxPhysicsModelsPerFrame, 1, 50)
+            .setDefaultValue(10)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.max_physics_models.tooltip"))
+            .setSaveConsumer(value -> data.maxPhysicsModelsPerFrame = value)
+            .build());
+
+        ConfigCategory debugCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.debug"));
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.debug_hud"),
+                data.debugHudEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_hud.tooltip"))
+            .setSaveConsumer(value -> data.debugHudEnabled = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_gpu_log"),
+                data.debugGpuLog)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_gpu_log.tooltip"))
+            .setSaveConsumer(value -> data.debugGpuLog = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_stages"),
+                data.debugTransparencyStages)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_stages.tooltip"))
+            .setSaveConsumer(value -> data.debugTransparencyStages = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_models"),
+                data.debugTransparencyModels)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_transparency_models.tooltip"))
+            .setSaveConsumer(value -> data.debugTransparencyModels = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_model_deformation_log"),
+                data.debugModelDeformationLog)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_model_deformation_log.tooltip"))
+            .setSaveConsumer(value -> data.debugModelDeformationLog = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_side_physics_log"),
+                data.debugSidePhysicsLog)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_side_physics_log.tooltip"))
+            .setSaveConsumer(value -> data.debugSidePhysicsLog = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_collision_mode_log"),
+                data.debugCollisionModeLog)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_collision_mode_log.tooltip"))
+            .setSaveConsumer(value -> data.debugCollisionModeLog = value)
+            .build());
+
+        debugCategory.addEntry(entryBuilder
+            .startBooleanToggle(Component.translatable("gui.mmdskin.mod_settings.debug_outline_paper_doll_log"),
+                data.debugOutlinePaperDollLog)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.debug_outline_paper_doll_log.tooltip"))
+            .setSaveConsumer(value -> data.debugOutlinePaperDollLog = value)
+            .build());
+
+        ConfigCategory vrCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.vr"));
+
+        vrCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.vr_enabled"),
+                data.vrEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.vr_enabled.tooltip"))
+            .setSaveConsumer(value -> data.vrEnabled = value)
+            .build());
+
+        vrCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.vr_arm_ik_strength"),
+                Math.round(data.vrArmIKStrength * 100.0F),
+                0, 100)
+            .setDefaultValue(100)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.vr_arm_ik_strength.tooltip"))
+            .setTextGetter(value -> Component.literal(value + "%"))
+            .setSaveConsumer(value -> data.vrArmIKStrength = value.intValue() / 100.0F)
+            .build());
+
+        ConfigCategory mobReplacementCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.mob_replacement"));
+
+        mobReplacementCategory.addEntry(entryBuilder
+            .startTextDescription(Component.translatable("gui.mmdskin.mod_settings.mob_replacement.description"))
+            .build());
+
+        for (MobReplacementTargets.Target target : MobReplacementTargets.all()) {
+            String entityTypeId = target.entityTypeId().toString();
+            mobReplacementCategory.addEntry(new MobReplacementListEntry(
+                target,
+                getMobReplacementValue(data, entityTypeId),
+                value -> saveMobReplacementSelection(data, entityTypeId, value)
+            ));
+        }
+
+        ConfigCategory playerReplacementCategory = builder.getOrCreateCategory(
+            Component.translatable("gui.mmdskin.mod_settings.category.player_replacement"));
+
+        playerReplacementCategory.addEntry(entryBuilder
+            .startTextDescription(Component.translatable("gui.mmdskin.mod_settings.player_replacement.description"))
+            .build());
+
+        playerReplacementCategory.addEntry(new AddCustomPlayerEntry(null));
+
+        buildPlayerReplacementEntries(playerReplacementCategory);
+
+        builder.setSavingRunnable(() -> saveConfig(data));
+
+        return builder.build();
+    }
+
+    static void buildPlayerReplacementEntries(ConfigCategory category) {
+        Minecraft mc = Minecraft.getInstance();
+        ModelSelectorConfig config = ModelSelectorConfig.getInstance();
+        java.util.Map<String, String> allConfigured = config.getAllPlayerModels();
+
+        record PlayerInfoHolder(java.util.UUID uuid, String name, boolean isOnline, boolean bindByUuid, String currentModel) {}
+        java.util.Map<String, PlayerInfoHolder> playerMap = new java.util.LinkedHashMap<>();
+
+        // 1. 扫描在线玩家
+        if (mc.getConnection() != null) {
+            for (net.minecraft.client.multiplayer.PlayerInfo info : mc.getConnection().getOnlinePlayers()) {
+                java.util.UUID uuid = info.getProfile().getId();
+                String name = info.getProfile().getName();
+                String uuidKey = uuid.toString();
+
+                String modelByUuid = allConfigured.get(uuidKey);
+                String modelByName = allConfigured.get(name);
+
+                boolean bindByUuid = (modelByUuid != null && !modelByUuid.isBlank() && !UIConstants.DEFAULT_MODEL_NAME.equals(modelByUuid));
+                String currentModel = bindByUuid ? modelByUuid : (modelByName != null ? modelByName : UIConstants.DEFAULT_MODEL_NAME);
+
+                playerMap.put(uuidKey, new PlayerInfoHolder(uuid, name, true, bindByUuid, currentModel));
+            }
+        }
+
+        // 确保本地玩家包含在内
+        if (mc.player != null) {
+            java.util.UUID localUuid = mc.player.getUUID();
+            String localName = mc.player.getName().getString();
+            String localKey = localUuid.toString();
+            if (!playerMap.containsKey(localKey)) {
+                String modelByUuid = allConfigured.get(localKey);
+                String modelByName = allConfigured.get(localName);
+                boolean bindByUuid = (modelByUuid != null && !modelByUuid.isBlank() && !UIConstants.DEFAULT_MODEL_NAME.equals(modelByUuid));
+                String currentModel = bindByUuid ? modelByUuid : (modelByName != null ? modelByName : UIConstants.DEFAULT_MODEL_NAME);
+                playerMap.put(localKey, new PlayerInfoHolder(localUuid, localName, true, bindByUuid, currentModel));
+            }
+        }
+
+        // 2. 扫描已配置但在当前不在线的玩家
+        for (java.util.Map.Entry<String, String> entry : allConfigured.entrySet()) {
+            String key = entry.getKey();
+            String model = entry.getValue();
+            if (model == null || model.isBlank() || UIConstants.DEFAULT_MODEL_NAME.equals(model)) {
+                continue;
+            }
+
+            java.util.UUID parsedUuid = null;
+            try {
+                parsedUuid = java.util.UUID.fromString(key);
+            } catch (IllegalArgumentException ignored) {}
+
+            if (parsedUuid != null) {
+                String uuidKey = parsedUuid.toString();
+                if (!playerMap.containsKey(uuidKey)) {
+                    playerMap.put(uuidKey, new PlayerInfoHolder(parsedUuid, null, false, true, model));
+                }
+            } else {
+                boolean foundInOnline = false;
+                for (PlayerInfoHolder holder : playerMap.values()) {
+                    if (key.equalsIgnoreCase(holder.name)) {
+                        foundInOnline = true;
+                        break;
+                    }
+                }
+                if (!foundInOnline && !playerMap.containsKey(key)) {
+                    playerMap.put(key, new PlayerInfoHolder(null, key, false, false, model));
+                }
+            }
+        }
+
+        // 3. 将所有收集到的条目添加到分类中
+        for (PlayerInfoHolder holder : playerMap.values()) {
+            category.addEntry(new PlayerReplacementListEntry(
+                holder.uuid,
+                holder.name,
+                holder.isOnline,
+                holder.bindByUuid,
+                holder.currentModel
+            ));
+        }
+    }
+
+    static void saveConfig(ConfigData data) {
+        cleanupInvalidMobReplacements(data);
+        MmdSkinConfig.save();
+
+        ClientRenderRuntime.get().renderBackendSettings().setGpuSkinningEnabled(data.gpuSkinningEnabled);
+        ClientRenderRuntime.get().renderBackendSettings().setShaderEnabled(data.mmdShaderEnabled);
+        ClientRenderRuntime.get().modelRepository().reloadAll();
+        ClientRenderRuntime.get().applyPhysicsConfig(PhysicsConfigSnapshot.from(data));
+    }
+
+    static String getMobReplacementValue(ConfigData data, String entityTypeId) {
+        String currentValue = data.mobModelReplacements.getOrDefault(entityTypeId, UIConstants.DEFAULT_MODEL_NAME);
+        if (currentValue == null || currentValue.isBlank()) {
+            return UIConstants.DEFAULT_MODEL_NAME;
+        }
+        return currentValue;
+    }
+
+    public static List<String> createModelSelections() {
+        List<String> selections = new ArrayList<>();
+        selections.add(UIConstants.DEFAULT_MODEL_NAME);
+        for (ModelCatalogEntry modelInfo : ModelCatalogEntry.scanModels()) {
+            String folderName = modelInfo.getFolderName();
+            if (!folderName.isBlank() && !selections.contains(folderName)) {
+                selections.add(folderName);
+            }
+        }
+        return selections;
+    }
+
+    public static Component toModelSelectionComponent(String modelName) {
+        if (modelName == null || modelName.isBlank() || UIConstants.DEFAULT_MODEL_NAME.equals(modelName)) {
+            return Component.translatable("gui.mmdskin.mod_settings.mob_replacement.vanilla");
+        }
+        return Component.literal(modelName);
+    }
+
+    static void saveMobReplacementSelection(ConfigData data, String entityTypeId, String value) {
+        if (value == null || value.isBlank() || UIConstants.DEFAULT_MODEL_NAME.equals(value)) {
+            data.mobModelReplacements.remove(entityTypeId);
+            return;
+        }
+        data.mobModelReplacements.put(entityTypeId, value);
+    }
+
+    static void cleanupInvalidMobReplacements(ConfigData data) {
+        Iterator<String> iterator = data.mobModelReplacements.values().iterator();
+        while (iterator.hasNext()) {
+            String modelName = iterator.next();
+            if (modelName == null || modelName.isBlank() || ModelCatalogEntry.findByFolderName(modelName) == null) {
+                iterator.remove();
+            }
+        }
+    }
+}

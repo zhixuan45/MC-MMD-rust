@@ -17,7 +17,7 @@ import java.util.function.Predicate;
 /** CPU、GPU 和描边共用输出策略；未知契约仅回退当前 pass。 */
 public final class IrisToonCompat {
     private static final Logger LOGGER = LogManager.getLogger();
-    private static final SystemToast.SystemToastId TOAST_ID = new SystemToast.SystemToastId(12000);
+    private static final SystemToast.SystemToastIds TOAST_ID = SystemToast.SystemToastIds.PERIODIC_NOTIFICATION;
     private static final Set<String> NOTIFIED = new HashSet<>();
     private static boolean primaryColorOutput;
     private static boolean stablePrimaryColorOutput;

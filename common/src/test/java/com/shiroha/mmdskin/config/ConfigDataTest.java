@@ -446,7 +446,7 @@ class ConfigDataTest {
             var roundTrip = ConfigData.load(configDir);
             ConfigManager.init(new TestConfig(roundTrip));
             try {
-                assertEquals(Math.clamp(value, 0, 16), ConfigManager.getToonTransparencyLayerCount());
+                assertEquals(Math.max(0, Math.min(16, value)), ConfigManager.getToonTransparencyLayerCount());
                 assertTrue(ConfigManager.isToonDisableDepthSeal());
             } finally {
                 ConfigManager.init(null);

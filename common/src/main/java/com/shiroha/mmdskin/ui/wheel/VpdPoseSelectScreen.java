@@ -61,7 +61,7 @@ public final class VpdPoseSelectScreen extends Screen {
         }
         return false;
     }
-    @Override public boolean mouseScrolled(double x,double y,double horizontal,double vertical) {
+    @Override public boolean mouseScrolled(double x,double y,double vertical) {
         scroll=Math.max(0,Math.min(Math.max(0,files.size()-Math.max(0,(height-94)/20)),scroll-(int)Math.signum(vertical)));
         return true;
     }

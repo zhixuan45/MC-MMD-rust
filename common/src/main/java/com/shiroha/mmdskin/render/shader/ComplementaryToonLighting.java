@@ -32,6 +32,24 @@ final class ComplementaryToonLighting {
                 .replaceAll("\\btexture2D\\b", "texture")
                 .replaceAll("\\btexture2DLod\\b", "textureLod");
         source = adaptShadowSampler(source);
+        source = source.replaceAll("\\btoonShadow2D\\(\\s*shadowtex1\\s*,", "toonOpaqueShadow2D(shadowtex1,")
+                .replaceAll("\\btoonTerrainShadow\\(\\s*shadowtex1\\s*,", "toonTerrainOpaqueShadow(shadowtex1,");
+        // The pack decodes color with per-fragment lightmap-dependent parameters.
+        // Filter once after those parameters exist, instead of nesting PCF at every native tap.
+        boolean transmission = source.contains("toonShadowColor(shadowcolor0,")
+                && source.contains("toonOpaqueShadow2D(shadowtex1,")
+                && Pattern.compile("(?:\\bshadow\\s*=\\s*Sample(?:TAA)?FilteredShadow\\s*\\(|\\breturn\\s+SampleShadow\\s*\\()")
+                        .matcher(source).find();
+        if (transmission) {
+            source = source.replace(
+                    "if (ToonTerrainShadowEnabled && ToonWorldShadowSoftness > 0.0) return vec3(toonFilteredTerrainShadow(shadowPos));",
+                    "if (ToonTerrainShadowEnabled && !ToonTerrainShadowTransmissionEnabled && ToonWorldShadowSoftness > 0.0)"
+                            + " return vec3(toonFilteredTerrainShadow(shadowPos));");
+            source = source.replaceAll("(float\\s+colorPow\\s*=\\s*[^;]+;)",
+                    "$1\nif (ToonTerrainShadowEnabled && ToonTerrainShadowTransmissionEnabled"
+                            + " && ToonWorldShadowSoftness > 0.0)"
+                            + " return toonComplementaryFilteredTransmission(shadowPos, colorMult, colorPow);\n");
+        }
         // 半透明程序包含旧固定管线雾函数；即使调用被优化掉，也须能在 core GLSL 中解析。
         if (source.contains("gl_Fog.")) {
             source = "uniform float iris_FogStart;\nuniform float iris_FogEnd;\n" + source
@@ -53,7 +71,8 @@ final class ComplementaryToonLighting {
         tail = MODERN_DIFFUSE.matcher(tail).replaceAll(sunlight
                 ? "shadowMult *= max(toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime,"
                 : "shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
-        return shadowSamplerWrapper() + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
+        return shadowSamplerWrapper(true) + (transmission ? modernTransmissionFilter() : "")
+                + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + "\nupVec = normalize(gbufferModelView[1].xyz);\n"
                 + "northVec = normalize(gbufferModelView[2].xyz); eastVec = normalize(gbufferModelView[0].xyz);\n"
                 + "sunVec = " + sun.group(1) + ";\n"
@@ -168,10 +187,34 @@ final class ComplementaryToonLighting {
                 + "    return visibility;\n"
                 + "}\n"
                 + "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(toonTerrainShadow(s, p)); }\n"
+                + "vec4 toonOpaqueShadow2D(sampler2DShadow s, vec3 p) { return vec4(toonTerrainOpaqueShadow(s, p)); }\n"
                 + "vec4 toonShadowColor(sampler2D s, vec2 p) {\n"
                 + "    return ToonTerrainShadowEnabled ? (ToonTerrainShadowTransmissionEnabled"
                 + " ? texture(ToonTerrainShadowColor, p) : vec4(0.0)) : texture(s, p);\n"
                 + "}\n";
+    }
+
+    private static String modernTransmissionFilter() {
+        return """
+                vec3 toonComplementaryFilteredTransmission(vec3 p, float colorMult, float colorPow) {
+                    vec2 radius = clamp(ToonWorldShadowSoftness, 0.0, 4.0)
+                            / vec2(textureSize(ToonTerrainShadowDepth, 0));
+                    vec3 shadow = vec3(0.0);
+                    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+                        vec2 uv = p.xy + vec2(x, y) * radius;
+                        float full = texture(ToonTerrainShadowTranslucentDepth, vec3(uv, p.z));
+                        float opaque = texture(ToonTerrainShadowDepth, vec3(uv, p.z));
+                        vec3 transmission = vec3(0.0);
+                        if (opaque * 0.9999 > full)
+                            transmission = pow(max(texture(ToonTerrainShadowColor, uv).rgb * opaque * colorMult,
+                                    vec3(0.0)), vec3(colorPow));
+                        float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0);
+                        toonRecordOpaqueSunVisibility(opaque, weight);
+                        shadow += (transmission * (1.0 - full) + full) * weight;
+                    }
+                    return shadow * 0.0625;
+                }
+                """;
     }
 
     static String clean(String source) {

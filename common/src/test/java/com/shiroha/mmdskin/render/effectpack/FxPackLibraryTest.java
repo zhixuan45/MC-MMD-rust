@@ -35,7 +35,7 @@ class FxPackLibraryTest {
     @Test void translatesMonochromeAndKeepsExplicitInput() throws Exception {
         var scan = scan("gray.fx", colorFx("float4 c = tex2D(ScreenSampler, uv); float gray = dot(c.rgb, float3(0.299, 0.587, 0.114)); c.rgb = lerp(c.rgb, float3(gray, gray, gray), intensity); return c;"));
         assertEquals(1, scan.effects().size(), scan.failures().toString());
-        var effect = scan.effects().getFirst();
+        var effect = scan.effects().get(0);
         assertTrue(effect.supportsWorld());
         assertTrue(effect.colorFunction().contains("mix"));
         assertTrue(effect.colorFunction().contains("mmdInput"));
@@ -69,12 +69,12 @@ class FxPackLibraryTest {
     @Test void rejectsNeighborSamplingRatherThanChangingItsMeaning() throws Exception {
         var result = scan("blur.fx", colorFx("return tex2D(ScreenSampler, uv + float2(0.1, 0.0));"));
         assertTrue(result.effects().isEmpty());
-        assertTrue(result.failures().getFirst().reason().contains("tex2D"));
+        assertTrue(result.failures().get(0).reason().contains("tex2D"));
     }
 
     @Test void rejectsMultipassAndDynamicUniforms() throws Exception {
         var result = scan("passes.fx", colorFx("return float4(1, 1, 1, 1);") + "technique Other { pass X { PixelShader = compile ps_3_0 PS(); } }");
-        assertTrue(result.failures().getFirst().reason().contains("多 pass"));
+        assertTrue(result.failures().get(0).reason().contains("多 pass"));
         result = scan("time.fx", colorFx("float4 c = tex2D(ScreenSampler, uv); return c * time;"));
         assertTrue(result.failures().stream().anyMatch(f -> f.reason().contains("time")));
     }
@@ -84,7 +84,7 @@ class FxPackLibraryTest {
         Path pack = temporary.resolve("library/test");
         Files.writeString(pack.resolve("material_common_2.0.fxsub"), "float4 injected() { return 1; }");
         result = FxPackLibrary.scan(temporary.resolve("library"));
-        assertTrue(result.failures().getFirst().reason().contains("未适配"));
+        assertTrue(result.failures().get(0).reason().contains("未适配"));
     }
 
     @Test void zipTraversalCannotWriteOutsideItsNewPack() throws Exception {
@@ -129,7 +129,7 @@ class FxPackLibraryTest {
         var result = scan("vertex.fx", colorFx("return tex2D(ScreenSampler, uv);")
                 .replace("PixelShader =", "VertexShader = compile vs_3_0 Warp(); PixelShader ="));
         assertTrue(result.effects().isEmpty());
-        assertTrue(result.failures().getFirst().reason().contains("顶点阶段"));
+        assertTrue(result.failures().get(0).reason().contains("顶点阶段"));
     }
 
     @Test void settingsRoundTripKeepsTargetsIndependentAndWorldOffByDefault() throws Exception {
@@ -157,7 +157,7 @@ class FxPackLibraryTest {
         FxPackLibrary.importPack(Path.of(input), library);
         var result = FxPackLibrary.scan(library);
         assertEquals(1, result.effects().size(), result.failures().toString());
-        var effect = result.effects().getFirst();
+        var effect = result.effects().get(0);
         assertEquals(FxEffect.Kind.RAY_MATERIAL, effect.kind());
         assertFalse(effect.supportsWorld());
         assertEquals(3, effect.channels().get("ALBEDO").source());

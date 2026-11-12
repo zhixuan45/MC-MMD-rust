@@ -107,7 +107,7 @@ final class FxConstantExpression {
             int count = args.stream().mapToInt(a -> a.length).sum();
             if (args.size() == 1 && count == 1) {
                 double[] result = new double[width];
-                java.util.Arrays.fill(result, args.getFirst()[0]);
+                java.util.Arrays.fill(result, args.get(0)[0]);
                 return result;
             }
             if (count != width) throw error("向量构造器宽度不匹配", name);
@@ -135,7 +135,7 @@ final class FxConstantExpression {
             default -> throw error("未支持的常量函数", name);
         };
         if (args.size() != arity) throw error("函数参数数量不匹配", name);
-        double[] a = args.getFirst();
+        double[] a = args.get(0);
         return switch (name) {
             case "abs" -> unary(a, Math::abs);
             case "exp" -> unary(a, Math::exp);

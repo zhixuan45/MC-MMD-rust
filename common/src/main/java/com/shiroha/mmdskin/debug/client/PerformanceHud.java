@@ -60,7 +60,7 @@ public class PerformanceHud {
         }
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.options.hideGui || (minecraft.gui != null && minecraft.gui.getDebugOverlay().showDebugScreen())) {
+        if (minecraft.options.hideGui || minecraft.options.renderDebug) {
             return;
         }
 

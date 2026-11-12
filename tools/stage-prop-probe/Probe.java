@@ -11,6 +11,8 @@ import com.shiroha.mmdskin.stage.domain.model.StagePropAssignment;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
 import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.*;
 import com.shiroha.mmdskin.ui.selector.timeline.PreviewMotionBinding;
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
 import org.joml.Matrix4f;
 
 import java.lang.reflect.Proxy;
@@ -205,6 +207,8 @@ public final class Probe {
         }
     }
     public static void main(String[] args) throws Exception {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
         System.load(args[0]); dir=Path.of(args[1]); frameScale=Integer.parseInt(args[2]);
         runtime=(NativeRuntimePort)Proxy.newProxyInstance(Probe.class.getClassLoader(),new Class<?>[]{NativeRuntimePort.class},
                 (p,m,a) -> switch(m.getName()) {

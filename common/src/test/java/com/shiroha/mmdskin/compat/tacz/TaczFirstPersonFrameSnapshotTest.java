@@ -1,13 +1,12 @@
 package com.shiroha.mmdskin.compat.tacz;
 
 import net.minecraft.SharedConstants;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -17,6 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaczFirstPersonFrameSnapshotTest {
+    private static final float EPSILON = 0.00001f;
+
     @BeforeAll
     static void bootStrapMinecraftRegistries() {
         try {
@@ -118,8 +119,8 @@ class TaczFirstPersonFrameSnapshotTest {
     void shouldMatchSameItemWhenFiringChangesDynamicTag() {
         ItemStack beforeFire = new ItemStack(Items.CROSSBOW);
         ItemStack afterFire = beforeFire.copy();
-        CustomData.update(DataComponents.CUSTOM_DATA, beforeFire, tag -> tag.putInt("Ammo", 30));
-        CustomData.update(DataComponents.CUSTOM_DATA, afterFire, tag -> tag.putInt("Ammo", 29));
+        beforeFire.getOrCreateTag().putInt("Ammo", 30);
+        afterFire.getOrCreateTag().putInt("Ammo", 29);
 
         assertTrue(TaczFirstPersonFrameSnapshot.matchesGunStack(beforeFire, afterFire));
         assertFalse(TaczFirstPersonFrameSnapshot.matchesGunStack(beforeFire, new ItemStack(Items.BOW)));
@@ -131,8 +132,8 @@ class TaczFirstPersonFrameSnapshotTest {
         Object player = new Object();
         ItemStack capturedStack = new ItemStack(Items.CROSSBOW);
         ItemStack firingStack = capturedStack.copy();
-        CustomData.update(DataComponents.CUSTOM_DATA, capturedStack, tag -> tag.putInt("Ammo", 30));
-        CustomData.update(DataComponents.CUSTOM_DATA, firingStack, tag -> tag.putInt("Ammo", 29));
+        capturedStack.getOrCreateTag().putInt("Ammo", 30);
+        firingStack.getOrCreateTag().putInt("Ammo", 29);
 
         TaczFirstPersonFrameSnapshot.beginFrame(player, capturedStack, new Matrix4f(), true);
         assertTrue(TaczFirstPersonFrameSnapshot.captureHand(player,
@@ -144,12 +145,16 @@ class TaczFirstPersonFrameSnapshotTest {
 
     @Test
     void shouldRebuildEntityRootRelativeToCurrentCamera() {
+        Matrix3f cameraView = new Matrix3f().rotateY((float) Math.PI / 2);
         var root = TaczFirstPersonPostRenderer.createEntityRootPose(
                 12.5, 70.0, -4.0,
-                10.0, 68.25, -7.5);
+                10.0, 68.25, -7.5,
+                cameraView);
 
-        assertEquals(2.5f, root.last().pose().m30());
-        assertEquals(1.75f, root.last().pose().m31());
-        assertEquals(3.5f, root.last().pose().m32());
+        assertEquals(3.5f, root.last().pose().m30(), EPSILON);
+        assertEquals(1.75f, root.last().pose().m31(), EPSILON);
+        assertEquals(-2.5f, root.last().pose().m32(), EPSILON);
+        Vector3f rotatedNormal = root.last().normal().transform(new Vector3f(1.0f, 0.0f, 0.0f));
+        assertTrue(rotatedNormal.equals(new Vector3f(0.0f, 0.0f, -1.0f), EPSILON));
     }
 }

@@ -18,6 +18,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -35,6 +36,8 @@ public final class BslBatchGlProbe {
     private final FloatBuffer projection = buffer(64).asFloatBuffer();
     private final ModelMaterial[] materials = new ModelMaterial[MATERIALS];
     private int vao, vbo, ebo;
+    private int framebuffer, depthBuffer;
+    private int[] colorTextures;
     private int lastBatchWindows;
 
     private static ByteBuffer buffer(int bytes) { return ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder()); }
@@ -45,28 +48,35 @@ public final class BslBatchGlProbe {
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 4);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
-        long window = GLFW.glfwCreateWindow(SIZE, SIZE, "BSL Toon batch probe", 0, 0);
+        check(args.length > 0, "usage: BslBatchGlProbe <BSL-or-Complementary.zip> [...]");
+        long window = GLFW.glfwCreateWindow(SIZE, SIZE, "Iris Toon batch probe", 0, 0);
         check(window != 0, "GL 4.3 context");
         try {
             GLFW.glfwMakeContextCurrent(window); GL.createCapabilities();
             RenderSystem.initRenderThread();
-            new BslBatchGlProbe().run(Path.of(args[0]));
+            var probe = new BslBatchGlProbe();
+            for (String argument : args) probe.run(Path.of(argument));
         } finally { GLFW.glfwDestroyWindow(window); GLFW.glfwTerminate(); }
     }
 
     private void run(Path packPath) throws Exception {
-        check(Files.isRegularFile(packPath), "missing BSL pack: " + packPath);
+        check(Files.isRegularFile(packPath), "missing shader pack: " + packPath);
         Map<String, String> options = Probe.options(Path.of(packPath + ".txt"));
         try (ZipFile zip = new ZipFile(packPath.toFile())) {
             for (String dimension : List.of("world0", "world-1", "world1")) {
-                ToonOutputProfile profile = profile(zip, options, dimension);
-                check(profile.isSupported() && profile.id().startsWith("bsl:entities:"),
-                        dimension + " BSL output contract: " + profile.reason());
-                compareDimension(profile, dimension);
+                ProfileCase profileCase = profileCase(zip, options, dimension);
+                ToonOutputProfile profile = profileCase.profile();
+                check(profile.isSupported() && (profile.id().startsWith("bsl:entities:")
+                                || profile.id().startsWith("complementary_modern:entities:")),
+                        dimension + " verified entity output contract: " + profile.reason());
+                check(profileCase.buffers().length == profileCase.outputCount(),
+                        dimension + " MRT declaration/output count mismatch");
+                compareDimension(packPath.getFileName().toString(), dimension, profileCase);
             }
         } finally { release(); }
         check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "final GL error");
-        System.out.println("BslBatchGlProbe PASS: BSL 10.1.8 world0/world-1/world1, RGBA and depth matched");
+        System.out.println("BslBatchGlProbe PASS: " + packPath.getFileName()
+                + " world0/world-1/world1, every MRT RGBA and depth matched");
     }
 
     private static ToonOutputProfile profile(ZipFile zip, Map<String, String> options, String dimension) throws Exception {
@@ -75,6 +85,16 @@ public final class BslBatchGlProbe {
 
     private static ToonOutputProfile profile(ZipFile zip, Map<String, String> options, String dimension,
                                              String program) throws Exception {
+        return profileCase(zip, options, dimension, program).profile();
+    }
+
+    private static ProfileCase profileCase(ZipFile zip, Map<String, String> options, String dimension)
+            throws Exception {
+        return profileCase(zip, options, dimension, "gbuffers_entities");
+    }
+
+    private static ProfileCase profileCase(ZipFile zip, Map<String, String> options, String dimension,
+                                           String program) throws Exception {
         String base = "shaders/" + dimension + "/" + program + ".";
         if (zip.getEntry(base + "fsh") == null) base = "shaders/" + program + ".";
         String fragment = JcppProcessor.glslPreprocessSource(Probe.include(zip, base + "fsh", options), defines());
@@ -86,15 +106,24 @@ public final class BslBatchGlProbe {
         check(directive != null, dimension + " missing DRAWBUFFERS");
         int[] buffers = targets ? java.util.Arrays.stream(directive.split(",")).map(String::trim).mapToInt(Integer::parseInt).toArray()
                 : directive.chars().map(value -> value - '0').toArray();
-        return ToonOutputProfile.resolve("BSL_v10.1.8", program, fragment, vertex, buffers);
+        ToonOutputProfile profile = ToonOutputProfile.resolve("BslBatchGlProbe", program, fragment, vertex, buffers);
+        Matcher declarations = Pattern.compile(
+                "layout\\s*\\(\\s*location\\s*=\\s*\\d+\\s*\\)\\s*out\\s+vec4").matcher(profile.fragmentDeclarations());
+        int outputCount = 0;
+        while (declarations.find()) outputCount++;
+        check(outputCount > 0, dimension + " fragment output declarations");
+        return new ProfileCase(profile, buffers.clone(), outputCount);
     }
 
     private static List<StringPair> defines() {
-        return List.of(new StringPair("MC_VERSION", "12101"), new StringPair("IS_IRIS", "1"),
-                new StringPair("IRIS_VERSION", "10814"));
+        return List.of(
+                new StringPair("MC_VERSION", System.getProperty("mmdskin.irisProbe.mcVersion", "12001")),
+                new StringPair("IS_IRIS", "1"),
+                new StringPair("IRIS_VERSION", System.getProperty("mmdskin.irisProbe.irisVersion", "10800")));
     }
 
-    private void compareDimension(ToonOutputProfile profile, String dimension) {
+    private void compareDimension(String packName, String dimension, ProfileCase profileCase) {
+        ToonOutputProfile profile = profileCase.profile();
         System.setProperty("mmdskin.translucentBatch", "false");
         ToonShaderCpu ordinary = new ToonShaderCpu();
         check(ordinary.selectOutputProfile(profile), dimension + " ordinary Toon compile");
@@ -104,18 +133,21 @@ public final class BslBatchGlProbe {
         check(batch.getMainProgram() > 0, dimension + " Toon program");
         release();
         setupGeometry();
+        setupTargets(profileCase.outputCount());
         Image expected = draw(ordinary);
         batch.useMain();
-        check(TranslucentBatchShader.current() != null, dimension + " BSL-owned Toon batch registration");
+        check(TranslucentBatchShader.current() != null, dimension + " verified Toon batch registration");
         Image actual = draw(batch);
         check(lastBatchWindows > 0, dimension + " actual material-table batch was not submitted");
         compare(expected, actual, dimension);
         ordinary.cleanup(); batch.cleanup();
-        System.out.println("PASS BSL " + dimension + " batch Toon: " + profile.id());
+        System.out.println("PASS " + packName + " " + dimension + " batch Toon: " + profile.id()
+                + ", MRT=" + profileCase.outputCount() + ", batchWindows=" + lastBatchWindows);
     }
 
     private Image draw(ToonShaderCpu shader) {
         shader.useMain();
+        lastBatchWindows = 0;
         Matrix4f identity = new Matrix4f(); identity.get(matrix);
         shader.setProjectionMatrix(projection); shader.setModelViewMatrix(matrix);
         shader.setLightDirection(.2f, .5f, 1); shader.setLightIntensity(.8f);
@@ -130,6 +162,7 @@ public final class BslBatchGlProbe {
         GL46C.glEnable(GL46C.GL_DEPTH_TEST); GL46C.glDepthFunc(GL46C.GL_LEQUAL);
         GL46C.glDisable(GL46C.GL_CULL_FACE); GL46C.glDepthMask(true);
         GL46C.glClearColor(.08f, .12f, .18f, .1f);
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, framebuffer);
         GL46C.glClear(GL46C.GL_COLOR_BUFFER_BIT | GL46C.GL_DEPTH_BUFFER_BIT);
         GL46C.glBindVertexArray(vao); GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, ebo);
         FloatBuffer view = buffer(64).asFloatBuffer(); new Matrix4f().get(view);
@@ -141,12 +174,43 @@ public final class BslBatchGlProbe {
                     id -> shader.setEyeMaterialMask(materials[id].eyeEmissionMaskMode()), order, geometry);
             lastBatchWindows = order.batchWindowCount();
         }
-        ByteBuffer rgba = buffer(SIZE * SIZE * 4);
         FloatBuffer depth = buffer(SIZE * SIZE * 4).asFloatBuffer();
-        GL46C.glReadPixels(0, 0, SIZE, SIZE, GL46C.GL_RGBA, GL46C.GL_UNSIGNED_BYTE, rgba);
         GL46C.glReadPixels(0, 0, SIZE, SIZE, GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, depth);
+        List<ByteBuffer> colors = new ArrayList<>(colorTextures.length);
+        for (int slot = 0; slot < colorTextures.length; slot++) {
+            ByteBuffer attachment = buffer(SIZE * SIZE * 4);
+            GL46C.glReadBuffer(GL46C.GL_COLOR_ATTACHMENT0 + slot);
+            GL46C.glReadPixels(0, 0, SIZE, SIZE, GL46C.GL_RGBA, GL46C.GL_UNSIGNED_BYTE, attachment);
+            colors.add(attachment);
+        }
         check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "render GL error");
-        return new Image(rgba, depth);
+        return new Image(colors, depth);
+    }
+
+    private void setupTargets(int outputCount) {
+        framebuffer = GL46C.glGenFramebuffers();
+        colorTextures = new int[outputCount];
+        int[] attachments = new int[outputCount];
+        GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, framebuffer);
+        for (int slot = 0; slot < outputCount; slot++) {
+            colorTextures[slot] = GL46C.glGenTextures();
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, colorTextures[slot]);
+            GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_RGBA8, SIZE, SIZE, 0,
+                    GL46C.GL_RGBA, GL46C.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER, GL46C.GL_NEAREST);
+            GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, GL46C.GL_NEAREST);
+            attachments[slot] = GL46C.GL_COLOR_ATTACHMENT0 + slot;
+            GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, attachments[slot],
+                    GL46C.GL_TEXTURE_2D, colorTextures[slot], 0);
+        }
+        depthBuffer = GL46C.glGenRenderbuffers();
+        GL46C.glBindRenderbuffer(GL46C.GL_RENDERBUFFER, depthBuffer);
+        GL46C.glRenderbufferStorage(GL46C.GL_RENDERBUFFER, GL46C.GL_DEPTH_COMPONENT24, SIZE, SIZE);
+        GL46C.glFramebufferRenderbuffer(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT,
+                GL46C.GL_RENDERBUFFER, depthBuffer);
+        GL46C.glDrawBuffers(attachments);
+        check(GL46C.glCheckFramebufferStatus(GL46C.GL_FRAMEBUFFER) == GL46C.GL_FRAMEBUFFER_COMPLETE,
+                outputCount + "-attachment MRT framebuffer");
     }
 
     private void setupGeometry() {
@@ -200,23 +264,47 @@ public final class BslBatchGlProbe {
     }
 
     private static void compare(Image expected, Image actual, String dimension) {
-        int max = 0, changed = 0, depthChanged = 0;
-        for (int i = 0; i < expected.rgba.capacity(); i++) {
-            int delta = Math.abs((expected.rgba.get(i) & 255) - (actual.rgba.get(i) & 255));
-            max = Math.max(max, delta); if (delta > 1) changed++;
+        check(expected.colors.size() == actual.colors.size(), dimension + " MRT attachment count");
+        int maxRgb = 0, maxAlpha = 0, rgbChanged = 0, alphaChanged = 0, depthChanged = 0;
+        for (int slot = 0; slot < expected.colors.size(); slot++) {
+            ByteBuffer expectedAttachment = expected.colors.get(slot);
+            ByteBuffer actualAttachment = actual.colors.get(slot);
+            check(expectedAttachment.capacity() == actualAttachment.capacity(),
+                    dimension + " slot " + slot + " attachment size");
+            for (int i = 0; i < expectedAttachment.capacity(); i++) {
+                int delta = Math.abs((expectedAttachment.get(i) & 255) - (actualAttachment.get(i) & 255));
+                if (i % 4 == 3) {
+                    maxAlpha = Math.max(maxAlpha, delta);
+                    if (delta > 1) alphaChanged++;
+                } else {
+                    maxRgb = Math.max(maxRgb, delta);
+                    if (delta > 1) rgbChanged++;
+                }
+            }
         }
         for (int i = 0; i < expected.depth.capacity(); i++)
             if (Math.abs(expected.depth.get(i) - actual.depth.get(i)) > 1e-6f) depthChanged++;
-        check(max <= 1 && depthChanged == 0, dimension + " RGBA/depth mismatch: max=" + max
-                + ", changed=" + changed + ", depth=" + depthChanged);
+        check(maxRgb <= 1 && maxAlpha <= 1 && depthChanged == 0,
+                dimension + " MRT RGBA/depth mismatch: rgbMax=" + maxRgb + ", alphaMax=" + maxAlpha
+                        + ", rgbChanged=" + rgbChanged + ", alphaChanged=" + alphaChanged
+                        + ", depthChanged=" + depthChanged);
     }
 
     private void release() {
-        for (ModelMaterial material : materials) if (material != null && material.tex > 0) GL46C.glDeleteTextures(material.tex);
+        for (ModelMaterial material : materials) {
+            if (material != null && material.tex > 0) GL46C.glDeleteTextures(material.tex);
+            if (material != null) material.tex = 0;
+        }
+        if (colorTextures != null) for (int texture : colorTextures) GL46C.glDeleteTextures(texture);
+        if (depthBuffer > 0) GL46C.glDeleteRenderbuffers(depthBuffer);
+        if (framebuffer > 0) GL46C.glDeleteFramebuffers(framebuffer);
         if (vbo > 0) GL46C.glDeleteBuffers(vbo);
         if (ebo > 0) GL46C.glDeleteBuffers(ebo);
         if (vao > 0) GL46C.glDeleteVertexArrays(vao);
+        framebuffer = depthBuffer = vbo = ebo = vao = 0;
+        colorTextures = null;
     }
 
-    private record Image(ByteBuffer rgba, FloatBuffer depth) { }
+    private record ProfileCase(ToonOutputProfile profile, int[] buffers, int outputCount) { }
+    private record Image(List<ByteBuffer> colors, FloatBuffer depth) { }
 }

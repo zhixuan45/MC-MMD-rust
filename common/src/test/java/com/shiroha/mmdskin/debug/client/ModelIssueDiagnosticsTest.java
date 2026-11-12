@@ -42,7 +42,7 @@ class ModelIssueDiagnosticsTest {
         assertEquals(List.of(0x102, 2, 0x102, 0x102), requests);
         // 同一个诊断对象换 native handle 时也必须重新取 manifest。
         diagnostics.sample(backend, 43, "new-model", "GPU");
-        assertEquals(0x102, requests.getLast());
+        assertEquals(0x102, requests.get(requests.size() - 1));
         assertEquals(5, requests.size());
     }
 
@@ -87,12 +87,12 @@ class ModelIssueDiagnosticsTest {
         assertEquals(List.of(0x102, 2), requests);
         enabled.set(6);
         diagnostics.sample(backend, 42, "model", "CPU");
-        assertEquals(0x106, requests.getLast());
+        assertEquals(0x106, requests.get(requests.size() - 1));
         enabled.set(0);
         diagnostics.sample(backend, 42, "model", "CPU");
         enabled.set(1);
         diagnostics.sample(backend, 42, "model", "CPU");
-        assertEquals(0x101, requests.getLast());
+        assertEquals(0x101, requests.get(requests.size() - 1));
         assertTrue(logs.stream().anyMatch(line -> line.contains("model=model\\nother")));
         assertTrue(logs.stream().noneMatch(line -> line.contains("\n")));
     }
@@ -112,7 +112,7 @@ class ModelIssueDiagnosticsTest {
         diagnostics.sample(backend, 42, "model", "GPU");
         assertEquals(1, requests.size());
         assertEquals(1, warnings.size());
-        assertTrue(warnings.getFirst().contains("原生诊断接口缺失"));
+        assertTrue(warnings.get(0).contains("原生诊断接口缺失"));
     }
 
     private static NativeRenderBackendPort backend(List<Integer> requests, boolean missingNative) {

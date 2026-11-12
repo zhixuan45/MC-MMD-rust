@@ -295,7 +295,7 @@ SOURCES = [
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jdk", type=Path, default=Path(r"C:\Program Files\Zulu\zulu-21"))
+    parser.add_argument("--jdk", type=Path, default=Path(r"C:\Program Files\Zulu\zulu-17"))
     args = parser.parse_args()
     output = ROOT / "build/timeline-editor-probe"
     source = output / "src"

@@ -11,49 +11,52 @@ class ShadowModelViewMatrixTest {
     private static final float EPSILON = 0.00001f;
 
     @Test
-    void shadowPositionShouldIgnoreMainCameraRotation() {
-        // 模拟 Iris 已合成的光源视图、实体位移与模型缩放。
+    void shadowPoseShouldUploadWithoutMainCameraMultiplication() {
+        // 1.20.1 的阴影 PoseStack 已合成光源视图、实体位移与模型缩放。
         Matrix4f shadowPose = new Matrix4f().rotateX((float) Math.PI / 2)
                 .translate(2, 3, 4).scale(0.5f);
+        Matrix4f originalShadowPose = new Matrix4f(shadowPose);
         Matrix4f destination = new Matrix4f();
         Vector3f vertex = new Vector3f(2, 0, 0);
 
-        Matrix4f result = BaseModelInstance.composeModelViewMatrix(
-                new Matrix4f().rotateY(1.2f), shadowPose, true, destination);
+        Matrix4f result = BaseModelInstance.composeModelViewMatrix(shadowPose, destination);
         assertSame(destination, result);
+        assertTrue(result.equals(shadowPose, EPSILON));
+        assertTrue(shadowPose.equals(originalShadowPose, EPSILON));
         assertTrue(result.transformPosition(vertex, new Vector3f())
                 .equals(new Vector3f(3, -4, 3), EPSILON));
-
-        Matrix4f turnedCameraResult = BaseModelInstance.composeModelViewMatrix(
-                new Matrix4f().rotateY(-0.7f), shadowPose, true, new Matrix4f());
-        assertTrue(result.equals(turnedCameraResult, EPSILON));
     }
 
     @Test
-    void worldPositionShouldStillIncludeMainCameraView() {
-        Matrix4f camera = new Matrix4f().rotateY((float) Math.PI / 2);
+    void worldPoseShouldIncludeCameraExactlyOnce() {
+        Matrix4f cameraView = new Matrix4f().rotateY((float) Math.PI / 2);
         Matrix4f entity = new Matrix4f().translate(2, 3, 4).scale(0.5f);
+        Matrix4f worldPose = cameraView.mul(entity, new Matrix4f());
+        Matrix4f originalWorldPose = new Matrix4f(worldPose);
 
-        Matrix4f result = BaseModelInstance.composeModelViewMatrix(
-                camera, entity, false, new Matrix4f());
+        Matrix4f result = BaseModelInstance.composeModelViewMatrix(worldPose, new Matrix4f());
+        assertTrue(result.equals(worldPose, EPSILON));
+        assertTrue(worldPose.equals(originalWorldPose, EPSILON));
         assertTrue(result.transformPosition(new Vector3f(2, 0, 0), new Vector3f())
                 .equals(new Vector3f(4, 3, -3), EPSILON));
     }
 
     @Test
-    void switchingBetweenShadowAndWorldShouldNotMutateInputMatrices() {
-        Matrix4f camera = new Matrix4f().rotateY(0.6f);
-        Matrix4f entity = new Matrix4f().rotateX(0.3f).translate(2, 3, 4);
-        Matrix4f originalCamera = new Matrix4f(camera);
-        Matrix4f originalEntity = new Matrix4f(entity);
+    void reusingDestinationShouldNotMutateWorldOrShadowPoses() {
+        Matrix4f worldPose = new Matrix4f().rotateY(0.6f)
+                .rotateX(0.3f).translate(2, 3, 4);
+        Matrix4f shadowPose = new Matrix4f().rotateX((float) Math.PI / 2)
+                .translate(-2, 5, 1).scale(0.25f);
+        Matrix4f originalWorldPose = new Matrix4f(worldPose);
+        Matrix4f originalShadowPose = new Matrix4f(shadowPose);
         Matrix4f destination = new Matrix4f();
 
-        BaseModelInstance.composeModelViewMatrix(camera, entity, true, destination);
-        BaseModelInstance.composeModelViewMatrix(camera, entity, false, destination);
-        BaseModelInstance.composeModelViewMatrix(camera, entity, true, destination);
+        BaseModelInstance.composeModelViewMatrix(worldPose, destination);
+        BaseModelInstance.composeModelViewMatrix(shadowPose, destination);
+        BaseModelInstance.composeModelViewMatrix(worldPose, destination);
 
-        assertTrue(camera.equals(originalCamera, EPSILON));
-        assertTrue(entity.equals(originalEntity, EPSILON));
-        assertTrue(destination.equals(originalEntity, EPSILON));
+        assertTrue(worldPose.equals(originalWorldPose, EPSILON));
+        assertTrue(shadowPose.equals(originalShadowPose, EPSILON));
+        assertTrue(destination.equals(originalWorldPose, EPSILON));
     }
 }

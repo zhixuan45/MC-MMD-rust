@@ -605,16 +605,16 @@ public abstract class BaseModelInstance implements ModelInstance {
         }
     }
 
-    /** 1.21.1 将镜头视图与实体局部 PoseStack 分开维护，上传前必须重新组合。 */
+    /**
+     * 1.20.1 的 world/shadow 栈已含相机或光源视图，GUI 预览栈已处于屏幕空间；
+     * 两种来源都只应用一次，不能再乘当前相机视图。
+     */
     public final Matrix4f composeModelViewMatrix(PoseStack deliverStack) {
-        return composeModelViewMatrix(RenderSystem.getModelViewMatrix(), deliverStack.last().pose(),
-                IRIS.isShadowPass(), composedModelViewMatrix);
+        return composeModelViewMatrix(deliverStack.last().pose(), composedModelViewMatrix);
     }
 
-    static Matrix4f composeModelViewMatrix(Matrix4f cameraView, Matrix4f entityPose,
-                                           boolean shadowPass, Matrix4f destination) {
-        // Iris 阴影 PoseStack 已包含光源视图，不能再乘主相机视图。
-        return shadowPass ? destination.set(entityPose) : cameraView.mul(entityPose, destination);
+    static Matrix4f composeModelViewMatrix(Matrix4f entityPose, Matrix4f destination) {
+        return destination.set(entityPose);
     }
 
     protected void setupShaderUniforms(ShaderInstance shader, PoseStack deliverStack,

@@ -280,13 +280,13 @@ public class ModelSettingsScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
         if (layout.panel.contains(mouseX, mouseY)) {
             draggingScrollbar = false;
-            setScrollOffset(layout.scrollBy(scrollY != 0 ? scrollY : scrollX));
+            setScrollOffset(layout.scrollBy(scrollY));
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        return super.mouseScrolled(mouseX, mouseY, scrollY);
     }
 
     @Override

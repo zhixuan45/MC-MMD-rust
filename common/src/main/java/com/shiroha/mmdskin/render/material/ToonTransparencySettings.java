@@ -11,7 +11,9 @@ public final class ToonTransparencySettings {
 
     static int requestedLayers() {
         String value = System.getProperty("mmdskin.toonTransparencyLayerCount");
-        if (value == null) return Math.clamp(ConfigManager.getToonTransparencyLayerCount(), 0, MAX_LAYERS);
+        if (value == null) {
+            return Math.max(0, Math.min(MAX_LAYERS, ConfigManager.getToonTransparencyLayerCount()));
+        }
         try {
             int count = Integer.parseInt(value);
             return count >= 0 && count <= MAX_LAYERS ? count : -1;

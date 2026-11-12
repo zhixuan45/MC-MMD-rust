@@ -21,7 +21,7 @@ import java.util.UUID;
  * 历史只在同一个 ClientLevel 对象存活期间保留，避免把旧偏好误当作归属证据。
  */
 public final class VerifiedMaidDirectory {
-    private static final ResourceLocation MAID_TYPE = ResourceLocation.fromNamespaceAndPath("touhou_little_maid", "maid");
+    private static final ResourceLocation MAID_TYPE = new ResourceLocation("touhou_little_maid", "maid");
     private static final Map<UUID, MaidRecord> SESSION_RECORDS = new LinkedHashMap<>();
     private static ClientLevel activeContext;
     private static UUID activeOwnerId;

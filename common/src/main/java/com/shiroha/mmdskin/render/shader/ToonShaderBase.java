@@ -18,7 +18,8 @@ import java.util.Set;
  */
 public abstract class ToonShaderBase {
     protected static final Logger logger = LogManager.getLogger();
-    private static final int LIGHTING_DEBUG_MODE = Math.clamp(Integer.getInteger("mmdskin.toonDebug", 0), 0, 9);
+    private static final int LIGHTING_DEBUG_MODE =
+            Math.max(0, Math.min(9, Integer.getInteger("mmdskin.toonDebug", 0)));
 
     protected int mainProgram = 0;
     protected int outlineProgram = 0;
@@ -187,8 +188,9 @@ public abstract class ToonShaderBase {
     }
 
     private static boolean supportsBatchProfile(String key) {
-        // BSL 只在输出协议已通过 ToonOutputProfile 校验后参与批量变体。
-        return key.equals(ToonOutputProfile.vanilla().id()) || key.startsWith("bsl:");
+        // Shader-pack variants enter only after their MRT/lighting contracts are verified.
+        return key.equals(ToonOutputProfile.vanilla().id()) || key.startsWith("bsl:")
+                || key.startsWith("complementary_modern:");
     }
 
     static String outlineSource(String body, ToonOutputProfile profile) {

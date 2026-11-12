@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.compat.tacz;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.bridge.runtime.NativeRuntimeBridgeHolder;
 import com.shiroha.mmdskin.bridge.runtime.NativeTaczArmTargetPort;
@@ -19,6 +20,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
@@ -89,11 +91,13 @@ public final class TaczFirstPersonPostRenderer {
             FirstPersonManager.preRender(model.getModelHandle(), combinedScale, true);
 
             Vec3 camera = minecraft.gameRenderer.getMainCamera().getPosition();
+            // 1.20.1 手部渲染会把其 PoseStack 重置为 identity；GameRenderer 保存的主相机逆旋转才是稳定来源。
+            Matrix3f cameraViewRotation = new Matrix3f(RenderSystem.getInverseViewRotationMatrix()).invert();
             PoseStack entityRoot = createEntityRootPose(
                     Mth.lerp(safeTickDelta, player.xo, player.getX()),
                     Mth.lerp(safeTickDelta, player.yo, player.getY()),
                     Mth.lerp(safeTickDelta, player.zo, player.getZ()),
-                    camera.x, camera.y, camera.z);
+                    camera.x, camera.y, camera.z, cameraViewRotation);
             defer(player, gunStack, managedModel, model, pose, entityRoot,
                     safeTickDelta, packedLight, outerScale);
             return hasUsableDeferredDraw(player, gunStack);
@@ -197,13 +201,14 @@ public final class TaczFirstPersonPostRenderer {
                                                     TaczFirstPersonFrameSnapshot.Snapshot snapshot) {
         PoseStack rootStack = copyPoseStack(draw.poseStack);
         draw.model.applyModelRootTransform(rootStack, draw.pose.bodyYaw, draw.pose.bodyPitch, draw.pose.translation);
+        // rootStack 已包含相机视图，这里只追加模型根，不能再乘一次相机。
         Matrix4f rootToCamera = new Matrix4f(rootStack.last().pose());
         if (!isFinite(rootToCamera) || Math.abs(rootToCamera.determinant()) < 1.0e-8f) {
             return new TargetPacket(new float[32], 0);
         }
 
         Matrix4f cameraToModel = rootToCamera.invert(new Matrix4f());
-        boolean slimArms = draw.player.getSkin().model() == net.minecraft.client.resources.PlayerSkin.Model.SLIM;
+        boolean slimArms = "slim".equals(draw.player.getModelName());
         float[] matrices = new float[32];
         int mask = 0;
         Optional<TaczFirstPersonFrameSnapshot.HandMatrices> left = snapshot.consume(
@@ -246,10 +251,12 @@ public final class TaczFirstPersonPostRenderer {
         return copy;
     }
 
-    /** 与 LevelRenderer 实体入口一致，只建立“实体插值位置减相机位置”的根平移。 */
+    /** 1.20.1 实体根包含主相机旋转和“实体插值位置减相机位置”的平移。 */
     static PoseStack createEntityRootPose(double entityX, double entityY, double entityZ,
-                                          double cameraX, double cameraY, double cameraZ) {
+                                          double cameraX, double cameraY, double cameraZ,
+                                          Matrix3f cameraViewRotation) {
         PoseStack poseStack = new PoseStack();
+        poseStack.mulPose(cameraViewRotation.getNormalizedRotation(new Quaternionf()));
         poseStack.translate(entityX - cameraX, entityY - cameraY, entityZ - cameraZ);
         return poseStack;
     }

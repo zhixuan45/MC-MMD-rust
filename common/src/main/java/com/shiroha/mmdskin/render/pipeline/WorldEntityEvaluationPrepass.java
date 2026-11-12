@@ -15,7 +15,6 @@ import com.shiroha.mmdskin.render.entity.MobReplacementService;
 import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.scene.MutableRenderPose;
 import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.culling.Frustum;
@@ -51,14 +50,14 @@ public final class WorldEntityEvaluationPrepass {
 
     private WorldEntityEvaluationPrepass() {}
 
-    public static void prepareWorld(Camera camera, Frustum frustum, DeltaTracker delta,
+    public static void prepareWorld(Camera camera, Frustum frustum, float partialTick,
             Predicate<BlockPos> sectionCompiled, Predicate<AbstractClientPlayer> ysmActive,
             MaidEligibility maidEligibility) {
-        prepareWorld(camera, frustum, delta, sectionCompiled, ysmActive, maidEligibility,
+        prepareWorld(camera, frustum, partialTick, sectionCompiled, ysmActive, maidEligibility,
                 (entity, tick) -> net.minecraft.util.Mth.lerp(tick, entity.yRotO, entity.getYRot()));
     }
 
-    public static void prepareWorld(Camera camera, Frustum frustum, DeltaTracker delta,
+    public static void prepareWorld(Camera camera, Frustum frustum, float partialTick,
             Predicate<BlockPos> sectionCompiled, Predicate<AbstractClientPlayer> ysmActive,
             MaidEligibility maidEligibility, MaidYawResolver maidYawResolver) {
         if (!NativeEvaluationBatch.enabled() || frustum == null || IRIS.isShadowPass()
@@ -76,7 +75,7 @@ public final class WorldEntityEvaluationPrepass {
                             position.x, position.y, position.z)) continue;
             if (entity instanceof LivingEntity living && !isCompiled(sectionCompiled, living.blockPosition())) continue;
             addCandidate(entity, mc.player, entity == camera.getEntity(), ysmActive, maidEligibility,
-                    RenderPerformanceProfiler.Scene.WORLD, delta, 0.0f,
+                    partialTick,
                     mc.getEntityRenderDispatcher(), frustum, position.x, position.y, position.z,
                     maidYawResolver, entityIds, handles, candidates);
         }
@@ -86,7 +85,7 @@ public final class WorldEntityEvaluationPrepass {
     /** Iris 已按阴影视锥筛出实体；这里仍用同一个 dispatcher 复核可见性。 */
     public static void prepareShadow(Iterable<? extends Entity> shadowCandidates,
             net.minecraft.client.renderer.entity.EntityRenderDispatcher dispatcher, Frustum frustum,
-            double cameraX, double cameraY, double cameraZ, float frozenPartialTick, float realTickDelta,
+            double cameraX, double cameraY, double cameraZ, float shadowPartialTick, float realTickDelta,
             Predicate<AbstractClientPlayer> ysmActive, MaidEligibility maidEligibility,
             MaidYawResolver maidYawResolver) {
         if (!NativeEvaluationBatch.enabled() || shadowCandidates == null || frustum == null
@@ -100,9 +99,10 @@ public final class WorldEntityEvaluationPrepass {
         for (Entity entity : shadowCandidates) {
             if (entity == null || entity.isSpectator()
                     || !dispatcher.shouldRender(entity, frustum, cameraX, cameraY, cameraZ)) continue;
-            float tick = mc.level.tickRateManager().isEntityFrozen(entity) ? frozenPartialTick : realTickDelta;
+            // 1.20.1 没有 per-entity freeze；Iris 真实 tick delta 优先，缺失时才回退阴影入口值。
+            float tick = Float.isFinite(realTickDelta) ? realTickDelta : shadowPartialTick;
             addCandidate(entity, mc.player, entity == mc.player, ysmActive, maidEligibility,
-                    RenderPerformanceProfiler.Scene.SHADOW, null, tick, dispatcher, frustum,
+                    tick, dispatcher, frustum,
                     cameraX, cameraY, cameraZ, maidYawResolver, entityIds, handles, candidates);
         }
         run(candidates, RenderPerformanceProfiler.Scene.SHADOW, prepareTimer);
@@ -110,16 +110,12 @@ public final class WorldEntityEvaluationPrepass {
 
     private static void addCandidate(Entity entity, Player localPlayer, boolean cameraEntity,
             Predicate<AbstractClientPlayer> ysmActive, MaidEligibility maidEligibility,
-            RenderPerformanceProfiler.Scene scene, DeltaTracker delta, float tickDelta,
+            float tickDelta,
             net.minecraft.client.renderer.entity.EntityRenderDispatcher dispatcher, Frustum frustum,
             double cameraX, double cameraY, double cameraZ, MaidYawResolver maidYawResolver,
             Set<java.util.UUID> entityIds,
             Set<Long> handles, List<Candidate> candidates) {
         if (!(entity instanceof LivingEntity living) || !entityIds.add(entity.getUUID())) return;
-        if (scene == RenderPerformanceProfiler.Scene.WORLD && delta != null) {
-            tickDelta = delta.getGameTimeDeltaPartialTick(
-                    !Minecraft.getInstance().level.tickRateManager().isEntityFrozen(entity));
-        }
         ManagedModel data = null;
         Kind kind;
         float yaw;

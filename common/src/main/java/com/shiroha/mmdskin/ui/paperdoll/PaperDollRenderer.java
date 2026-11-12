@@ -32,7 +32,7 @@ import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
 
 /**
- * 文件职责：管理并执行屏幕角落纸娃娃（Paperdoll）的 3D 模型渲染 (Minecraft 1.21.1 适配)。
+ * 文件职责：管理并执行屏幕角落纸娃娃（Paperdoll）的 3D 模型渲染 (Minecraft 1.20.1 适配)。
  */
 public final class PaperDollRenderer {
 
@@ -221,7 +221,7 @@ public final class PaperDollRenderer {
             }
         }
 
-        // 1.21.1 独立维护 PoseStack，由 composeModelViewMatrix 组合进入 Shader
+        // 1.20.1 独立维护 PoseStack，由 composeModelViewMatrix 组合进入 Shader
         PoseStack modelViewStack = new PoseStack();
         modelViewStack.pushPose();
         modelViewStack.translate(posX, posY, 50.0f);
@@ -299,7 +299,7 @@ public final class PaperDollRenderer {
     }
 
     /**
-     * 当玩家未配置 MMD 模型或模型加载中时，回退到原版 3D 实体渲染 (1.21.1 签名适配)。
+     * 当玩家未配置 MMD 模型或模型加载中时，回退到原版 3D 实体渲染 (1.20.1 签名适配)。
      */
     private static void renderVanillaFallback(GuiGraphics guiGraphics, LocalPlayer player) {
         int screenWidth = guiGraphics.guiWidth();
@@ -350,10 +350,9 @@ public final class PaperDollRenderer {
         try {
             InventoryScreen.renderEntityInInventory(
                     guiGraphics,
-                    posX,
-                    posY,
-                    ConfigManager.getPaperDollScale(),
-                    new Vector3f(),
+                    Math.round(posX),
+                    Math.round(posY),
+                    Math.round(ConfigManager.getPaperDollScale()),
                     bodyPose,
                     cameraOrientation,
                     player

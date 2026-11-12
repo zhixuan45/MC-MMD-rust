@@ -2,6 +2,8 @@
 
 在 Minecraft 1.20.1 中实现 MMD（MikuMikuDance）模型渲染和物理模拟的 Mod。
 
+当前 `codex/port-1.20.1` 分支以 **Forge 1.20.1** 为构建目标，基线为 Forge `47.3.0`、Java 17、Cloth Config `11.1.136`。1.21.1 版本继续保留在 `feat/1.21.1-neoforge` 分支；当前分支只保留 Forge 1.20.1 平台实现，已移除不参与构建的 1.21.1 Fabric/NeoForge 生产源码与配置。迁移范围与本机验证记录见 [迁移验证](plans/minecraft-1.20.1-migration/verification.md)。
+
 [许可：基于 CC BY-NC-SA 4.0 的非商业许可（禁止 R18G）](LICENSE)
 
 ## 功能特性
@@ -22,17 +24,17 @@
    - 物理模拟（Bullet3 C FFI）
    - JNI 绑定用于 Java 交互
 
-2. **Minecraft Mod**（Fabric/Forge）: 基于 Java 的渲染和集成
+2. **Minecraft Mod**（当前分支：Forge 1.20.1）: 基于 Java 的渲染和集成
    - OpenGL 模型渲染
    - Compute Shader 蒙皮
-   - Iris 光影兼容（1.21.1 Toon 支持 Complementary Unbound/Reimagined r5.9.3、BSL 10.1.8；[适配版本与验证](SHADERPACK_COMPATIBILITY.md)）
+   - Oculus/Iris 光影兼容（[光影适配文档](SHADERPACK_COMPATIBILITY.md) 中的 1.21.1 画面验收结论需在 1.20.1 上重新验证）
 
 ## 使用教程
 
 ### 安装
 
 1. 将模组 `.jar` 文件放入 `.minecraft/mods/` 目录
-2. 启动游戏，模组会自动创建 `3d-skin` 资源目录
+2. 安装 Forge 1.20.1 和 Cloth Config 11.x，使用 Java 17 启动游戏，模组会自动创建 `3d-skin` 资源目录
 3. 将自己的模型和动画文件放入对应目录（详见下文）
 
 ### 目录结构
@@ -260,8 +262,8 @@ EntityPlayer/
 ### 前置要求
 
 - Rust 1.70+（用于 rust_engine）
-- JDK 21（用于 Minecraft 1.21.1 的 Fabric / NeoForge mod）
-- Gradle 8.x
+- JDK 17（编译目标和游戏运行）；本机验证使用 JDK 21 启动 Gradle daemon，由 Java 17 toolchain 编译
+- Gradle Wrapper 8.11.1
 
 ### 构建 rust_engine
 
@@ -273,13 +275,15 @@ cargo build --release --lib --manifest-path rust_engine/Cargo.toml
 ### 构建 Minecraft Mod
 
 ```bash
-./gradlew build
+./gradlew :common:test :forge:build
 ```
+
+Windows 使用 `.\gradlew.bat`。发布包位于 `forge/build/libs/mmdskin-forge-1.10alpha-1.20.1.jar`，已包含 common、原生库和重定位后的 jlayer，并完成 SRG 重映射；`-slim.jar` 用于开发，不作为安装包。开发客户端使用 `:forge:runClient`，独立运行目录为 `forge/run/1.20.1-client`。
 
 ### GitHub Actions
 
-- `Build & Release` 在推送到 `feat/1.21.1-neoforge`、提交 PR 或手动运行时按改动选择 Java/Rust 测试批次，并为十个平台分别构建 Fabric / NeoForge 包。各平台只等待自己的原生库；公共测试和其他平台失败不会阻塞可构建平台打包及上传。测试失败仍令整次工作流显示失败，不伪装成验证通过。标签、手动完整构建和每周测试执行完整回归。日常快速检查与领域入口见 [测试分层与分批](doc/TESTING.md)。推送 `v*` 标签时发布已成功的产物。
-- 每个模组 JAR 仅包含文件名标注平台的原生库，例如 `mmdskin-fabric-<版本>-windows-x64.jar`、`mmdskin-neoforge-<版本>-android-arm64.jar`。支持 Windows x64 / ARM64、Linux x64 / ARM64 / LoongArch64 / RISC-V 64、macOS x64 / ARM64、Android ARM64 / x64（文件名使用 `android-amd64`）。Android 包含所需的 `libc++_shared.so`。CI 不再输出通用包；下载时选择与操作系统、CPU 架构和模组加载器匹配的包。原生库的架构、完整性及 JAR 内文件一致性仍会校验；Java 测试报告按领域上传一次。
+- 本分支的 `Build & Release` 在推送到 `codex/port-1.20.1`、提交 PR 或手动运行时按改动选择 Java/Rust 测试批次，并为十个平台分别构建 Forge 包。各平台只等待自己的原生库；公共测试和其他平台失败不会阻塞可构建平台打包及上传。测试失败仍令整次工作流显示失败。标签、手动完整构建和每周测试执行完整回归。日常检查与领域入口见 [测试分层与分批](doc/TESTING.md)。推送 `v*` 标签时发布已成功的产物。
+- CI 每个模组 JAR 仅包含文件名标注平台的原生库，例如 `mmdskin-forge-<版本>-windows-x64.jar`。保留 Windows x64 / ARM64、Linux x64 / ARM64 / LoongArch64 / RISC-V 64、macOS x64 / ARM64、Android ARM64 / x64（文件名使用 `android-amd64`）构建矩阵；本轮仅本机 Windows x64 完成实际验证。Android 包含所需的 `libc++_shared.so`。CI 不输出通用包；下载时选择与操作系统和 CPU 架构匹配的 Forge 包。原生库的架构、完整性及 JAR 内文件一致性仍会校验；Java 测试报告按领域上传一次。
 
 ## 许可证
 
@@ -291,7 +295,7 @@ cargo build --release --lib --manifest-path rust_engine/Cargo.toml
 
 本模组由 **zhixuan45/shengxi** 免费维护与更新。如果你是付费获取请退款，免费源代码地址：<https://github.com/zhixuan45/MC-MMD-rust>。
 
-首次进入世界时，Fabric 和 NeoForge 客户端会显示免费来源及禁止 R18G 的两段提示。确认按启动游戏时的**账号 UUID** 分别保存：当前账号确认后，切换世界、重连或重启不再提示；把其他账号的确认文件打包复制过来，仍需当前账号确认。旧版全局确认记录不会迁移为任意账号已确认。记录位于 `config/mmdskin/usage_notice.json`，仅保存在本地，所有 JAR 打包任务都会排除此文件。
+首次进入世界时，Forge 客户端会显示免费来源及禁止 R18G 的两段提示。确认按启动游戏时的**账号 UUID** 分别保存：当前账号确认后，切换世界、重连或重启不再提示；把其他账号的确认文件打包复制过来，仍需当前账号确认。旧版全局确认记录不会迁移为任意账号已确认。记录位于 `config/mmdskin/usage_notice.json`，仅保存在本地，所有 JAR 打包任务都会排除此文件。
 
 模组设置默认列表首行提供可展开的 **“关于”** 子菜单，常驻展示维护者、免费源代码仓库、完整许可和禁止 R18G 提示，并包含赞助者感谢区域。仓库与许可链接可点击打开；赞助名单暂空时显示“感谢所有支持本项目的赞助者”。名单维护方式见 [SPONSORS.md](SPONSORS.md)。
 

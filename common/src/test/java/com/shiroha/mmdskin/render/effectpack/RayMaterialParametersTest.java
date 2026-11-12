@@ -22,7 +22,7 @@ class RayMaterialParametersTest {
                 """);
         assertEquals(3, parameters.constants().get("emissive").length);
         assertEquals((float) Math.exp(-8), parameters.constants().get("customB")[1], 1e-9f);
-        assertEquals("material_common_2.0.fxsub", parameters.includes().getFirst());
+        assertEquals("material_common_2.0.fxsub", parameters.includes().get(0));
     }
 
     @Test void preservesStaticAlphaDiffuseAndColorSynthesisOptions() throws Exception {

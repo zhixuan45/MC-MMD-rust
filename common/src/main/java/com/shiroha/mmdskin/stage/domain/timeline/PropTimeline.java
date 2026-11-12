@@ -259,11 +259,14 @@ public final class PropTimeline {
             BoneBinding binding = key.value();
             String target = binding.unbind() ? null : binding.bone();
             var childChanges = changes.computeIfAbsent(binding.childBone(), ignored -> new ArrayList<>());
-            if (!childChanges.isEmpty() && childChanges.getLast().frame() == key.frame()) {
+            if (!childChanges.isEmpty()
+                    && childChanges.get(childChanges.size() - 1).frame() == key.frame()) {
                 // A frame-zero key overrides an initial binding at the same frame.
                 childChanges.set(childChanges.size() - 1, new TargetChange(key.frame(), target));
             } else {
-                String previous = childChanges.isEmpty() ? null : childChanges.getLast().target();
+                String previous = childChanges.isEmpty()
+                        ? null
+                        : childChanges.get(childChanges.size() - 1).target();
                 if (!Objects.equals(previous,target)) childChanges.add(new TargetChange(key.frame(), target));
             }
         }

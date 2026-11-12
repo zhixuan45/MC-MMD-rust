@@ -23,6 +23,8 @@ public final class BlockEntityTransparencyGlProbe {
     private static int model, solid, water, source, stage, vao, white;
     private static ToonOutputProfile productionProfile;
     private static float[] nativeWaterPixel, nativeWaterOutside, nativeAuxiliary;
+    private static int[] nativeWaterBuffers = {0, 1};
+    private static int[] nativeWaterTextures;
     private static float testWaterAlpha = .5f;
     private static final float[] CHEST = {.2f, .1f, .05f, 1};
 
@@ -190,6 +192,10 @@ public final class BlockEntityTransparencyGlProbe {
     }
 
     private static void setup() {
+        setup(new int[]{0, 1});
+    }
+
+    private static void setup(int[] buffers) {
         String vertex = """
                 #version 330 core
                 uniform float Depth;
@@ -224,7 +230,7 @@ public final class BlockEntityTransparencyGlProbe {
                     fragColor = SampleScene != 0 ? texelFetch(SceneColor, ivec2(gl_FragCoord.xy), 0) : Color;
                 }
                 """);
-        water = program(vertex, IrisWaterShaderPatcher.patchFragment("""
+        String fixtureFragment = """
                 #version 330 core
                 uniform float Unused;
                 uniform vec4 Color;
@@ -235,7 +241,9 @@ public final class BlockEntityTransparencyGlProbe {
                     fragColor = Color;
                     auxiliary = vec4(.75, .25, .5, 1.0);
                 }
-                """));
+                """;
+        String patchedFixture = IrisWaterShaderPatcher.patchFragment(fixtureFragment);
+        water = program(vertex, patchedFixture == null ? fixtureFragment : patchedFixture);
         vao = GL46C.glGenVertexArrays();
         GL46C.glBindVertexArray(vao);
         int ebo = GL46C.glGenBuffers();
@@ -244,8 +252,8 @@ public final class BlockEntityTransparencyGlProbe {
         white = texture(GL46C.GL_RGBA8, 1);
         GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL46C.GL_RGBA,
                 GL46C.GL_UNSIGNED_BYTE, buffer(4).putInt(0, -1));
-        source = target();
-        stage = target();
+        source = target(buffers);
+        stage = target(buffers);
         shareDepth(stage, source);
     }
 
@@ -657,8 +665,7 @@ public final class BlockEntityTransparencyGlProbe {
         GL46C.glDepthMask(true);
         GL46C.glClearDepth(1);
         GL46C.glClear(GL46C.GL_DEPTH_BUFFER_BIT);
-        GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, CHEST);
-        GL46C.glClearBufferfv(GL46C.GL_COLOR, 1, new float[]{.2f,.3f,.4f,1});
+        clearWaterTargets();
         WorldTransparencyPipeline.beginFrame(false, true, true);
         drawModel(.5f, true, modelBehind ? .4f : -.6f, new float[]{1, 1, 1});
         bind(stage);
@@ -666,9 +673,17 @@ public final class BlockEntityTransparencyGlProbe {
         WorldTransparencyPipeline.afterOpaqueWorld();
         bind(source);
         WorldTransparencyPipeline.beforeWorldTranslucency();
-        GL46C.glDrawBuffers(new int[]{GL46C.GL_COLOR_ATTACHMENT0, GL46C.GL_COLOR_ATTACHMENT1});
+        drawWaterBuffers();
         int waterProgram = sharedReference ? solid : water;
         GL46C.glUseProgram(waterProgram);
+        if (nativeWaterTextures != null) {
+            // Iris reapplies water samplers after entity materials have used the atlas unit.
+            for (int i = 0; i < nativeWaterTextures.length; i++) {
+                GL46C.glActiveTexture(GL46C.GL_TEXTURE0 + i);
+                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, nativeWaterTextures[i]);
+            }
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
+        }
         GL46C.glUniform1i(GL46C.glGetUniformLocation(waterProgram, "SampleScene"), 0);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(waterProgram, "Depth"), -.2f);
         GL46C.glUniform4f(GL46C.glGetUniformLocation(waterProgram, "Color"), 0, 0, 1, testWaterAlpha);
@@ -715,7 +730,7 @@ public final class BlockEntityTransparencyGlProbe {
             GL46C.glBindBufferBase(GL46C.GL_SHADER_STORAGE_BUFFER,slot,0);
             GL46C.glDeleteBuffers(prior);
             expect(source, GL46C.GL_COLOR_ATTACHMENT0, 40, CHEST, "water RGB is not blended twice");
-            expect(source, GL46C.GL_COLOR_ATTACHMENT1, 40,
+            expect(source, auxiliaryAttachment(), 40,
                     nativeAuxiliary == null ? (testWaterAlpha == 0 ? new float[]{.2f,.3f,.4f,1}
                             : new float[]{.75f,.25f,.5f,1}) : nativeAuxiliary,
                     "native water auxiliary MRT remains active");
@@ -751,11 +766,17 @@ public final class BlockEntityTransparencyGlProbe {
         WorldTransparencyPipeline.endFrame();
     }
 
-    /** Real BSL fragment shader with controlled varyings, textures and host uniforms. */
+    /** Real transformed water fragment with controlled varyings, textures and host uniforms. */
     public static void nativeWaterScenario(String fragment) throws Exception {
+        nativeWaterScenario(fragment, new int[]{0, 1}, "generic");
+    }
+
+    public static void nativeWaterScenario(String fragment, int[] buffers, String packName) throws Exception {
+        validateWaterBuffers(buffers);
         WorldTransparencyPipeline.release();
-        setup();
-        water = program("""
+        nativeWaterBuffers = buffers.clone();
+        setup(buffers);
+        String vertex = packName.startsWith("Complementary") ? varyingVertex(fragment) : """
                 #version 330 core
                 uniform float Depth;
                 out float iris_FogFragCoord, mat, dist;
@@ -771,7 +792,8 @@ public final class BlockEntityTransparencyGlProbe {
                     sunVec=vec3(0,1,0); upVec=sunVec; eastVec=tangent; viewVector=normal;
                     color=vec4(.4,.6,.8,1); vTexCoord=vec4(.5,.5,0,0); vTexCoordAM=vec4(0,0,1,1);
                 }
-                """, fragment);
+                """;
+        water = program(vertex, fragment);
         GL46C.glUseProgram(water);
         check(WorldTransparencyPipeline.beginWaterCapture()==null,"no water redirection without a PMX frame queue");
         float[] identity = new float[16]; new Matrix4f().get(identity);
@@ -787,29 +809,120 @@ public final class BlockEntityTransparencyGlProbe {
         GL46C.glUniform2i(GL46C.glGetUniformLocation(water,"eyeBrightnessSmooth"),120,240);
         GL46C.glUniform3f(GL46C.glGetUniformLocation(water,"cameraPosition"),0,64,0);
         GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
-        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D,white);
+        int waterSample = texture(GL46C.GL_RGBA8, 1);
+        GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D,0,0,0,1,1,GL46C.GL_RGBA,GL46C.GL_UNSIGNED_BYTE,
+                buffer(4).put(0,(byte)180).put(1,(byte)210).put(2,(byte)255).put(3,(byte)128));
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D,waterSample);
         GL46C.glActiveTexture(GL46C.GL_TEXTURE1);
         int shadow = texture(GL46C.GL_DEPTH_COMPONENT24, 1);
         GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D,0,0,0,1,1,GL46C.GL_DEPTH_COMPONENT,GL46C.GL_FLOAT,new float[]{1});
         GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D,GL46C.GL_TEXTURE_COMPARE_MODE,GL46C.GL_COMPARE_REF_TO_TEXTURE);
         for (String name : new String[]{"shadowtex0","shadowtex1"})
             GL46C.glUniform1i(GL46C.glGetUniformLocation(water,name),1);
+        // Complementary fetches cloud/depth texels by screen pixel. A 1x1 atlas
+        // cannot stand in for these images: out-of-range cloud reads discard water.
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE2);
+        int cloud = texture(GL46C.GL_RGBA32F, SIZE);
+        float[] cloudPixels = new float[SIZE * SIZE * 4];
+        for (int i = 3; i < cloudPixels.length; i += 4) cloudPixels[i] = 1;
+        GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, SIZE, SIZE,
+                GL46C.GL_RGBA, GL46C.GL_FLOAT, cloudPixels);
+        GL46C.glUniform1i(GL46C.glGetUniformLocation(water, "gaux2"), 2);
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE3);
+        int sceneDepth = texture(GL46C.GL_DEPTH_COMPONENT24, SIZE);
+        float[] sceneDepthPixels = new float[SIZE * SIZE];
+        java.util.Arrays.fill(sceneDepthPixels, 1);
+        GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, SIZE, SIZE,
+                GL46C.GL_DEPTH_COMPONENT, GL46C.GL_FLOAT, sceneDepthPixels);
+        for (String name : new String[]{"depthtex0", "depthtex1"})
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(water, name), 3);
         GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
         bind(source);
-        GL46C.glDrawBuffers(new int[]{GL46C.GL_COLOR_ATTACHMENT0,GL46C.GL_COLOR_ATTACHMENT1});
+        drawWaterBuffers();
         GL46C.glDisable(GL46C.GL_BLEND); GL46C.glDisable(GL46C.GL_DEPTH_TEST);
         GL46C.glUniform1f(GL46C.glGetUniformLocation(water,"Depth"),-.2f);
         GL46C.glDrawArrays(GL46C.GL_TRIANGLES,0,3);
         nativeWaterPixel=pixel(source,40); nativeWaterOutside=pixel(source,60);
-        GL46C.glReadBuffer(GL46C.GL_COLOR_ATTACHMENT1);
+        GL46C.glReadBuffer(auxiliaryAttachment());
         nativeAuxiliary=new float[4];
-        GL46C.glReadPixels(40,32,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,nativeAuxiliary);
-        for(float value:nativeWaterPixel) check(Float.isFinite(value),"finite real BSL water output");
-        check(nativeWaterPixel[3] > .001f && nativeWaterPixel[3] < 1,"nontrivial BSL water alpha");
-        System.out.println("Native BSL raw water="+java.util.Arrays.toString(nativeWaterPixel));
+        GL46C.glReadPixels(40,16,1,1,GL46C.GL_RGBA,GL46C.GL_FLOAT,nativeAuxiliary);
+        for(float value:nativeWaterPixel) check(Float.isFinite(value),"finite real water output");
+        System.out.println("Native " + packName + " raw water=" + java.util.Arrays.toString(nativeWaterPixel)
+                + " aux=" + java.util.Arrays.toString(nativeAuxiliary)
+                + " buffers=" + java.util.Arrays.toString(nativeWaterBuffers));
+        check(nativeWaterPixel[3] > .001f,"nontrivial water alpha");
+        nativeWaterTextures = new int[]{waterSample, shadow, cloud, sceneDepth};
         try { waterOrder(false,false); waterOrder(true,false); }
-        finally { nativeWaterPixel=nativeWaterOutside=nativeAuxiliary=null; GL46C.glDeleteTextures(shadow); }
-        check(GL46C.glGetError()==GL46C.GL_NO_ERROR,"native BSL water GL state");
+        finally {
+            nativeWaterPixel=nativeWaterOutside=nativeAuxiliary=null;
+            nativeWaterTextures = null;
+            nativeWaterBuffers=new int[]{0,1};
+            GL46C.glDeleteTextures(shadow);
+            GL46C.glDeleteTextures(cloud);
+            GL46C.glDeleteTextures(sceneDepth);
+            GL46C.glDeleteTextures(waterSample);
+        }
+        check(GL46C.glGetError()==GL46C.GL_NO_ERROR,"native water GL state");
+    }
+
+    private static void validateWaterBuffers(int[] buffers) {
+        check(buffers != null && buffers.length >= 2 && buffers[0] == 0,
+                "water main output must start at color attachment 0");
+        for (int i = 1; i < buffers.length; i++)
+            check(buffers[i] > 0 && buffers[i] < 9, "unsupported water auxiliary attachment: " + buffers[i]);
+        check(buffers[1] > 0, "water auxiliary attachment missing");
+    }
+
+    private static int auxiliaryAttachment() {
+        return GL46C.GL_COLOR_ATTACHMENT1;
+    }
+
+    private static void drawWaterBuffers() {
+        GL46C.glDrawBuffers(java.util.stream.IntStream.range(0, nativeWaterBuffers.length)
+                .map(slot -> GL46C.GL_COLOR_ATTACHMENT0 + slot).toArray());
+    }
+
+    private static void clearWaterTargets() {
+        GL46C.glClearBufferfv(GL46C.GL_COLOR, 0, CHEST);
+        GL46C.glClearBufferfv(GL46C.GL_COLOR, 1,
+                new float[]{.2f,.3f,.4f,1});
+    }
+
+    private static String varyingVertex(String fragment) {
+        StringBuilder vertex = new StringBuilder("#version 430 core\nuniform float Depth;\n");
+        StringBuilder assignments = new StringBuilder();
+        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        java.util.regex.Matcher declaration = java.util.regex.Pattern.compile(
+                "(?m)^\\s*(flat\\s+)?in\\s+([A-Za-z0-9_]+)\\s+([^;]+);").matcher(fragment);
+        while (declaration.find()) {
+            vertex.append(declaration.group(1) == null ? "" : declaration.group(1))
+                    .append("out ").append(declaration.group(2)).append(' ')
+                    .append(declaration.group(3)).append(";\n");
+            for (String rawName : declaration.group(3).split(",")) {
+                String name = rawName.trim();
+                if (!name.matches("[A-Za-z_][A-Za-z0-9_]*") || !names.add(name)) continue;
+                String value = switch (declaration.group(2)) {
+                    case "int", "uint" -> name.equals("mat") ? "32000" : "1";
+                    case "float" -> name.contains("Fog") ? "0.0" : "1.0";
+                    case "vec2" -> name.equals("texCoord") || name.equals("lmCoord")
+                            ? "vec2(0.5)" : "vec2(0.0)";
+                    case "vec3" -> name.equals("normal") || name.equals("viewVector")
+                            ? "vec3(0.0,0.0,1.0)" : "vec3(1.0,0.0,0.0)";
+                    case "vec4" -> name.equals("glColor")
+                            ? "vec4(0.4,0.6,0.8,1.0)" : "vec4(0.5)";
+                    case "ivec2" -> "ivec2(0)";
+                    default -> null;
+                };
+                if (value != null) {
+                    assignments.append("    ").append(name).append('=').append(value).append(";\n");
+                }
+            }
+        }
+        vertex.append("void main(){\n")
+                .append("vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2)*2.0-1.0;\n")
+                .append("gl_Position=vec4(p,Depth,1.0);\n")
+                .append(assignments).append("}\n");
+        return vertex.toString();
     }
 
     private static void uniformWater(String name,float value) {
@@ -1053,13 +1166,19 @@ public final class BlockEntityTransparencyGlProbe {
     }
 
     private static int target() {
+        return target(new int[]{0, 1});
+    }
+
+    private static int target(int[] buffers) {
         int fbo = GL46C.glGenFramebuffers();
         bind(fbo);
-        for (int i = 0; i < 2; i++) GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER,
+        // Logical colortex IDs are textures; GLSL output locations remain contiguous.
+        for (int i = 0; i < buffers.length; i++) GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER,
                 GL46C.GL_COLOR_ATTACHMENT0 + i, GL46C.GL_TEXTURE_2D, texture(GL46C.GL_RGBA16F, SIZE), 0);
         int depth = texture(GL46C.GL_DEPTH_COMPONENT24, SIZE);
         GL46C.glFramebufferTexture2D(GL46C.GL_FRAMEBUFFER, GL46C.GL_DEPTH_ATTACHMENT, GL46C.GL_TEXTURE_2D, depth, 0);
-        GL46C.glDrawBuffers(new int[]{GL46C.GL_COLOR_ATTACHMENT0, GL46C.GL_COLOR_ATTACHMENT1});
+        GL46C.glDrawBuffers(java.util.stream.IntStream.range(0, buffers.length)
+                .map(slot -> GL46C.GL_COLOR_ATTACHMENT0 + slot).toArray());
         check(GL46C.glCheckFramebufferStatus(GL46C.GL_FRAMEBUFFER) == GL46C.GL_FRAMEBUFFER_COMPLETE, "complete FBO");
         return fbo;
     }

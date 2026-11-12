@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       arch:
-        description: Native platform to include in both mod JARs
+        description: Native platform to include in the Forge JAR
         required: true
         type: string
 
@@ -41,10 +41,10 @@ jobs:
           NATIVE_ARCH: ${{ inputs.arch }}
         run: python tools/ci/native_ci.py stage --arch "$NATIVE_ARCH" --artifact-root native-libs --destination build/ci-native-resources
 
-      - name: Setup JDK 21
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -53,24 +53,17 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Fabric and NeoForge (domain tests run once in validation)
-        run: ./gradlew :fabric:build :neoforge:build -x :common:test --no-daemon --stacktrace -PnativeResourcesPath=build/ci-native-resources
+      - name: Build Forge 1.20.1 (domain tests run once in validation)
+        run: ./gradlew :forge:build -x :common:test --no-daemon --stacktrace -PnativeResourcesPath=build/ci-native-resources
 
-      - name: Verify and name platform JARs
+      - name: Verify and name the Forge JAR
         env:
           NATIVE_ARCH: ${{ inputs.arch }}
-        run: python tools/ci/native_ci.py package --arch "$NATIVE_ARCH" --staged build/ci-native-resources
+        run: python tools/ci/native_ci.py package --arch "$NATIVE_ARCH" --staged build/ci-native-resources --forge-dir forge/build/libs
 
-      - name: Upload Fabric Mod
+      - name: Upload Forge Mod
         uses: actions/upload-artifact@v4
         with:
-          name: mmdskin-fabric-${{ steps.version.outputs.mod_version }}-${{ inputs.arch }}
-          path: fabric/build/libs/*-${{ inputs.arch }}.jar
-          if-no-files-found: error
-
-      - name: Upload NeoForge Mod
-        uses: actions/upload-artifact@v4
-        with:
-          name: mmdskin-neoforge-${{ steps.version.outputs.mod_version }}-${{ inputs.arch }}
-          path: neoforge/build/libs/*-${{ inputs.arch }}.jar
+          name: mmdskin-forge-${{ steps.version.outputs.mod_version }}-${{ inputs.arch }}
+          path: forge/build/libs/*-${{ inputs.arch }}.jar
           if-no-files-found: error

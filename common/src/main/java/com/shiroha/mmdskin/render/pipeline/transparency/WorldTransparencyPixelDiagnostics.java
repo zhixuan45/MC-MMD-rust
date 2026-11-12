@@ -76,10 +76,10 @@ final class WorldTransparencyPixelDiagnostics {
                 GL46C.glGetBufferSubData(GL46C.GL_SHADER_STORAGE_BUFFER, (id - 1L) * 16, node);
                 float z = Float.intBitsToFloat(node.get(2));
                 fragments.append(id).append(":z=").append(z).append(",visible=").append(z <= snapshot)
-                        .append(",rgba=").append(Float.float16ToFloat((short) node.get(0)))
-                        .append(',').append(Float.float16ToFloat((short) (node.get(0) >>> 16)))
-                        .append(',').append(Float.float16ToFloat((short) node.get(1)))
-                        .append(',').append(Float.float16ToFloat((short) (node.get(1) >>> 16))).append(';');
+                        .append(",rgba=").append(halfToFloat((short) node.get(0)))
+                        .append(',').append(halfToFloat((short) (node.get(0) >>> 16)))
+                        .append(',').append(halfToFloat((short) node.get(1)))
+                        .append(',').append(halfToFloat((short) (node.get(1) >>> 16))).append(';');
                 id = node.get(3);
             }
             LogManager.getLogger().info("[MMD transparency pixel] frame={} stage={} model={} pixel={},{}"
@@ -96,5 +96,25 @@ final class WorldTransparencyPixelDiagnostics {
             GL46C.glPixelStorei(GL46C.GL_PACK_SKIP_ROWS, skipRows);
             GL46C.glPixelStorei(GL46C.GL_PACK_ROW_LENGTH, rowLength);
         }
+    }
+
+    private static float halfToFloat(short bits) {
+        int half = bits & 0xFFFF;
+        int sign = (half & 0x8000) << 16;
+        int exponent = (half >>> 10) & 0x1F;
+        int mantissa = half & 0x03FF;
+        if (exponent == 0) {
+            if (mantissa == 0) return Float.intBitsToFloat(sign);
+            exponent = 1;
+            while ((mantissa & 0x0400) == 0) {
+                mantissa <<= 1;
+                exponent--;
+            }
+            mantissa &= 0x03FF;
+        } else if (exponent == 0x1F) {
+            if (mantissa == 0) return Float.intBitsToFloat(sign | 0x7F800000);
+            return Float.intBitsToFloat(sign | 0x7FC00000 | (mantissa << 13));
+        }
+        return Float.intBitsToFloat(sign | ((exponent + 112) << 23) | (mantissa << 13));
     }
 }

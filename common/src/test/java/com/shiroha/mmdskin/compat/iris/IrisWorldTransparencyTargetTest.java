@@ -26,6 +26,35 @@ class IrisWorldTransparencyTargetTest {
         }
     }
 
+    public static class OculusPipeline {
+        private final RenderTargets renderTargets = new RenderTargets();
+        public boolean isBeforeTranslucent = true;
+        public Object getFlippedAfterPrepare() { return Set.of(); }
+        public Object getFlippedAfterTranslucent() { return Set.of(0); }
+    }
+
+    public static class RenderTargets {
+        int mainCount, altCount;
+        final Framebuffer main = new Framebuffer(), alt = new Framebuffer();
+
+        public Framebuffer createFramebufferWritingToMain(int[] outputs) {
+            assertArrayEquals(new int[]{0}, outputs);
+            mainCount++;
+            return main;
+        }
+
+        public Framebuffer createFramebufferWritingToAlt(int[] outputs) {
+            assertArrayEquals(new int[]{0}, outputs);
+            altCount++;
+            return alt;
+        }
+    }
+
+    public static class Framebuffer {
+        int binds;
+        public void bind() { binds++; }
+    }
+
     private IrisWorldTransparencyTarget.Result inspect(Object pipeline) throws Exception {
         return IrisWorldTransparencyTarget.inspectPipeline(pipeline, Pipeline.class,
                 Pipeline.class.getMethod("getFlippedAfterPrepare"),
@@ -99,5 +128,37 @@ class IrisWorldTransparencyTargetTest {
         pipeline.fail = false;
         assertTrue(IrisWorldTransparencyTarget.bindTarget(pipeline, bind));
         assertEquals(2, pipeline.binds);
+    }
+
+    @Test void oculusPipelineSupportsStageFramebufferWithoutBindDefault() {
+        assertNotNull(IrisWorldTransparencyTarget.findBindDefault(Pipeline.class));
+        assertNull(IrisWorldTransparencyTarget.findBindDefault(OculusPipeline.class));
+        assertFalse(IrisWorldTransparencyTarget.usesAltFramebuffer(Set.of()));
+        assertFalse(IrisWorldTransparencyTarget.usesAltFramebuffer(Set.of(4)));
+        assertTrue(IrisWorldTransparencyTarget.usesAltFramebuffer(Set.of(0)));
+    }
+
+    @Test void bindsStageColorAndReusesOwnedTargetsAcrossDimensionSwitchAndReset() throws Exception {
+        var first = new OculusPipeline();
+        var second = new OculusPipeline();
+        var api = IrisWorldTransparencyTarget.FramebufferAccess.resolve(OculusPipeline.class);
+        assertNotNull(api);
+        var before = OculusPipeline.class.getMethod("getFlippedAfterPrepare");
+        var after = OculusPipeline.class.getMethod("getFlippedAfterTranslucent");
+        api.bind(first, before, after);
+        first.isBeforeTranslucent = false;
+        api.bind(first, before, after);
+        api.bind(second, before, after);
+        IrisWorldTransparencyTarget.reset();
+        first.isBeforeTranslucent = true;
+        api.bind(first, before, after);
+        first.isBeforeTranslucent = false;
+        api.bind(first, before, after);
+        assertEquals(1, first.renderTargets.mainCount);
+        assertEquals(1, first.renderTargets.altCount);
+        assertEquals(2, first.renderTargets.main.binds);
+        assertEquals(2, first.renderTargets.alt.binds);
+        assertEquals(1, second.renderTargets.main.binds);
+        assertEquals(0, second.renderTargets.altCount);
     }
 }

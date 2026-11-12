@@ -611,7 +611,7 @@ public final class PropTimelineScreen extends Screen {
         return super.mouseReleased(x,y,button);
     }
 
-    @Override public boolean mouseScrolled(double x,double y,double horizontal,double vertical) {
+    @Override public boolean mouseScrolled(double x,double y,double vertical) {
         if (layout.inspector.contains(x,y)) {
             propertyScroll -= (int)Math.round(vertical*18);
             positionProperties();
@@ -621,7 +621,7 @@ public final class PropTimelineScreen extends Screen {
             zoom = Math.max(.15f,Math.min(5,zoom*(float)Math.pow(1.1,vertical)));
             return true;
         }
-        return super.mouseScrolled(x,y,horizontal,vertical);
+        return super.mouseScrolled(x,y,vertical);
     }
 
     @Override public boolean keyPressed(int key,int scan,int modifiers) {

@@ -34,6 +34,43 @@ class SunlightToonLightingTest {
             }
             void main() {}
             """;
+    private static final String MODERN_TRANSMISSION = """
+            uniform sampler2DShadow shadowtex0;
+            uniform sampler2DShadow shadowtex1;
+            uniform sampler2D shadowcolor0;
+            vec2 texCoord;
+            vec3 ViewToPlayer(vec3 p) { return p; }
+            vec3 SampleShadow(vec3 shadowPos, float colorMult, float colorPow) {
+                float full = shadow2D(shadowtex0, vec3(shadowPos.st, shadowPos.z)).x;
+                vec3 transmission = vec3(0.0);
+                if (full < 1.0) {
+                    float opaque = shadow2D(shadowtex1, vec3(shadowPos.st, shadowPos.z)).x;
+                    if (opaque * 0.9999 > full) {
+                        transmission = texture2D(shadowcolor0, shadowPos.st).rgb * opaque;
+                        transmission *= colorMult;
+                        transmission = pow(transmission, vec3(colorPow));
+                    }
+                }
+                return transmission * (1.0 - full) + full;
+            }
+            vec3 GetShadow(vec3 shadowPos, float lightmapY, vec3 offset, int samples,
+                    bool leaves, vec3 playerPos) {
+                float colorMult = 2.5 + 5.5 * pow(lightmapY, 1.5) + 2.0 * lightmapY * lightmapY;
+                float colorPow = mix(2.0, 0.5, pow(lightmapY, 4.0));
+                return SampleShadow(shadowPos, colorMult, colorPow);
+            }
+            void DoLighting() {
+                float NdotLM = clamp(dot(normal, lightVec), 0.0, 1.0);
+                float shadowTime = 1.0;
+                float subsurface = 0.0;
+                vec3 shadowPos = GetShadowPos(playerPosM);
+                if (NdotLM > 0.0001) {
+                    shadowMult *= GetShadow(shadowPos, lightmap.y, vec3(0.0), 1, false, playerPos);
+                }
+                shadowMult *= max(NdotLM * shadowTime, subsurface);
+            }
+            void main() {}
+            """;
 
     @Test
     void bslSamplesOcclusionBeforeFillingTangentFacesWithoutChangingDiffuseInput() {
@@ -145,6 +182,47 @@ class SunlightToonLightingTest {
         assertFalse(ComplementaryToonLighting.createModern(
                 fragment.replace("shadowMult *= GetShadow(", "shadowMult *= UnknownShadow("), VERTEX)
                 .contains("toonPrepareSunlight("));
+    }
+
+    @Test
+    void modernComplementarySeparatesGlassDepthsAndPreservesNativeDecode() {
+        String lighting = ComplementaryToonLighting.createModern(MODERN_TRANSMISSION, VERTEX);
+        assertTrue(lighting.contains(
+                "ToonTerrainShadowTransmissionEnabled ? texture(ToonTerrainShadowTranslucentDepth, p)"));
+        assertTrue(lighting.contains("toonOpaqueShadow2D(shadowtex1,"));
+        assertTrue(lighting.contains(
+                "if (ToonTerrainShadowEnabled && !ToonTerrainShadowTransmissionEnabled && ToonWorldShadowSoftness > 0.0)"));
+        assertTrue(lighting.contains(
+                "return toonComplementaryFilteredTransmission(shadowPos, colorMult, colorPow);"));
+        assertTrue(lighting.contains(
+                "float full = texture(ToonTerrainShadowTranslucentDepth, vec3(uv, p.z));"));
+        assertTrue(lighting.contains(
+                "float opaque = texture(ToonTerrainShadowDepth, vec3(uv, p.z));"));
+        assertTrue(lighting.contains(
+                "texture(ToonTerrainShadowColor, uv).rgb * opaque * colorMult"));
+        assertTrue(lighting.contains("vec3(colorPow)"));
+        assertTrue(lighting.contains("toonRecordOpaqueSunVisibility(opaque, weight);"));
+        assertTrue(lighting.contains("shadow += (transmission * (1.0 - full) + full) * weight;"));
+        assertTrue(lighting.contains("return shadow * 0.0625;"));
+
+        String withoutSnapshotContract = ComplementaryToonLighting.createModern(
+                MODERN_TRANSMISSION.replace(
+                        "transmission = texture2D(shadowcolor0, shadowPos.st).rgb * opaque;",
+                        "transmission = vec3(0.0);"), VERTEX);
+        assertFalse(withoutSnapshotContract.contains("toonComplementaryFilteredTransmission"));
+        assertTrue(withoutSnapshotContract.contains(
+                "texture(ToonTerrainShadowTranslucentDepth, p) : texture(ToonTerrainShadowDepth, p)"));
+    }
+
+    @Test
+    void lowQualityModernShadowsDoNotActivateUnusedHostColorSamplers() {
+        String lowQuality = MODERN_TRANSMISSION.replace(
+                "return SampleShadow(shadowPos, colorMult, colorPow);",
+                "return vec3(shadow2D(shadowtex0, shadowPos).r);");
+        String lighting = ComplementaryToonLighting.createModern(lowQuality, VERTEX);
+        assertFalse(lighting.contains("toonComplementaryFilteredTransmission"));
+        assertTrue(lighting.contains(
+                "if (ToonTerrainShadowEnabled && ToonWorldShadowSoftness > 0.0) return vec3(toonFilteredTerrainShadow(shadowPos));"));
     }
 
     @Test

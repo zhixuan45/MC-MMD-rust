@@ -1,7 +1,7 @@
 plugins {
 	id 'com.gradleup.shadow' version "${shadow_version}" apply false
 	id 'fabric-loom' version "${fabric_loom_version}" apply false
-	id 'net.neoforged.moddev' version "${moddev_version}" apply false
+	id 'net.neoforged.moddev.legacyforge' version "${moddev_version}" apply false
 }
 
 // 原生 JNI 动态链接库本地构建逻辑
@@ -170,12 +170,12 @@ allprojects {
 
 	tasks.withType(JavaCompile).configureEach {
 		options.encoding = 'UTF-8'
-		options.release = 21
+		options.release = 17
 	}
 
 	java {
 		toolchain {
-			languageVersion = JavaLanguageVersion.of(21)
+			languageVersion = JavaLanguageVersion.of(17)
 		}
 		withSourcesJar()
 	}

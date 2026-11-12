@@ -36,7 +36,7 @@ class EffectBatchPlanTest {
         var plan = TranslucentBatchPlan.singleWindowForCandidates(runs(0,1), 2, new int[]{0,1}, 2,
                 materials, i -> 10, 8, EffectBatchPlanTest::effect);
         assertNotNull(plan); assertArrayEquals(new int[]{0,1}, plan.rowBySubmesh());
-        assertEquals(5, plan.materials().windows.getFirst().textures().length);
+        assertEquals(5, plan.materials().windows.get(0).textures().length);
     }
     @Test void insufficientCapacityRejectsBeforeAnySubmission() {
         var materials = materials();

@@ -101,8 +101,8 @@ public class ActionWheelConfigScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        double delta = scrollY != 0 ? scrollY : scrollX;
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+        double delta = scrollY;
         if (layout.availableList.contains(mouseX, mouseY)) {
             availableTargetScroll = clampScroll(availableTargetScroll - (float) delta * 16.0f, maxAvailableScroll());
             return true;
@@ -111,7 +111,7 @@ public class ActionWheelConfigScreen extends Screen {
             selectedTargetScroll = clampScroll(selectedTargetScroll - (float) delta * 16.0f, maxSelectedScroll());
             return true;
         }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        return super.mouseScrolled(mouseX, mouseY, scrollY);
     }
 
     @Override

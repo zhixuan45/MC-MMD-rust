@@ -25,6 +25,14 @@ class TestSelection(unittest.TestCase):
         self.assertEqual(['model', 'serial'], rust)
         self.assertEqual(['animation', 'model'], select(['rust_engine/src/animation/vpd_file.rs'])[1])
 
+    def test_each_loader_change_schedules_java_regression(self):
+        for path in (
+            'fabric/src/main/java/example/FabricEntrypoint.java',
+            'forge/src/main/java/example/ForgeEntrypoint.java',
+            'neoforge/src/main/java/example/NeoForgeEntrypoint.java',
+        ):
+            self.assertEqual(sorted(JAVA), select([path])[0])
+
     def test_full_mode_and_unknown_files_do_not_silently_skip_tests(self):
         self.assertEqual((sorted(JAVA), sorted(RUST)), select([], full=True))
         self.assertEqual((sorted(JAVA), sorted(RUST)), select(['new-build-tool.py']))

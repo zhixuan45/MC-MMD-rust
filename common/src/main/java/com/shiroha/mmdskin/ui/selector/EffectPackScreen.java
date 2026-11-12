@@ -165,7 +165,7 @@ public final class EffectPackScreen extends Screen {
     }
 
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics, mouseX, mouseY, partialTick);
+        renderBackground(graphics);
         super.render(graphics, mouseX, mouseY, partialTick);
         int left = Math.max(8, (width - 420) / 2), panel = Math.min(420, width - 16);
         graphics.drawCenteredString(font, title, width / 2, 12, 0xffffff);

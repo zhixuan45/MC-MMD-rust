@@ -53,7 +53,7 @@ final class FxGraphGlBackend implements FxRenderGraph.Backend<Integer> {
     }
 
     @Override public void draw(FxRenderGraph.Pass pass, java.util.List<Integer> inputs, Integer output) {
-        copy(inputs.getFirst(), output);
+        copy(inputs.get(0), output);
         FxEffect effect = graph.stages().stream().filter(s -> s.name().equals(pass.name())).findFirst().orElseThrow().effect();
         if (!WorldColorEffect.apply(effect, output, width, height)) throw new IllegalStateException("FX 节点编译失败: " + pass.name());
     }

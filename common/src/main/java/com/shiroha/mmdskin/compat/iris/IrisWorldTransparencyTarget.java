@@ -2,12 +2,15 @@ package com.shiroha.mmdskin.compat.iris;
 
 import net.minecraft.client.renderer.ShaderInstance;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.function.BooleanSupplier;
 
-/** Read-only public Iris access with distinct lookup, pipeline and buffer-switch outcomes. */
+/** Iris target lookup and stage-aware color binding with distinct failure outcomes. */
 final class IrisWorldTransparencyTarget {
     enum Status {
         STABLE, COLOR_BUFFER_SWITCHED, API_LOOKUP_FAILED, API_READ_FAILED,
@@ -24,6 +27,9 @@ final class IrisWorldTransparencyTarget {
     private static Result lookupFailure;
     private static Object cachedPipeline;
     private static Result cachedResult;
+    // Iris owns and destroys these FBOs. Keep per-pipeline entries across verification resets
+    // and dimension switches so a surviving pipeline does not accumulate duplicate FBOs.
+    private static final Map<Object, StageTargets> STAGE_TARGETS = new WeakHashMap<>();
     private static ShaderAccess shaderAccess;
     private static final Set<String> BIND_FAILURES = new java.util.HashSet<>();
 
@@ -101,8 +107,15 @@ final class IrisWorldTransparencyTarget {
     static BooleanSupplier colorTarget() {
         if (access == null || cachedPipeline == null) return null;
         Object pipeline = cachedPipeline;
-        Method bind = access.bindDefault;
-        return () -> bindTarget(pipeline, bind);
+        if (access.bindDefault != null) {
+            Method bind = access.bindDefault;
+            return () -> bindTarget(pipeline, bind);
+        }
+        if (access.framebuffer == null) {
+            bindFailure("Oculus shaderpack framebuffer API unavailable");
+            return null;
+        }
+        return () -> bindOculusStageTarget(pipeline);
     }
 
     static boolean bindTarget(Object pipeline, Method bind) {
@@ -110,11 +123,40 @@ final class IrisWorldTransparencyTarget {
             bind.invoke(pipeline);
             return true;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            String detail = describe(e);
-            if (BIND_FAILURES.add(detail))
-                org.apache.logging.log4j.LogManager.getLogger().warn(
-                        "[MMD transparency] Iris stage color binding failed: {}", detail);
-            return false;
+            return bindFailure(describe(e));
+        }
+    }
+
+    /**
+     * Iris 1.21 bindDefault() binds an Iris-owned framebuffer that writes the fallback
+     * colortex to its main or alternate texture according to the current flip stage.
+     * Oculus 1.8.0 exposes the same target construction API but no bindDefault().
+     */
+    private static boolean bindOculusStageTarget(Object pipeline) {
+        try {
+            access.framebuffer.bind(pipeline, access.before, access.after);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            return bindFailure(describe(e));
+        }
+    }
+
+    static boolean usesAltFramebuffer(Set<?> flipped) {
+        return flipped.contains(0);
+    }
+
+    private static boolean bindFailure(String detail) {
+        if (BIND_FAILURES.add(detail))
+            org.apache.logging.log4j.LogManager.getLogger().warn(
+                    "[MMD transparency] Iris stage color binding failed: {}", detail);
+        return false;
+    }
+
+    static Method findBindDefault(Class<?> pipelineType) {
+        try {
+            return pipelineType.getMethod("bindDefault");
+        } catch (NoSuchMethodException ignored) {
+            return null;
         }
     }
 
@@ -140,6 +182,7 @@ final class IrisWorldTransparencyTarget {
     private static final class Access {
         final Class<?> pipelineType;
         final Method manager, pipeline, before, after, bindDefault;
+        final FramebufferAccess framebuffer;
 
         Access() throws ReflectiveOperationException {
             Class<?> iris = irisClass("Iris");
@@ -149,7 +192,54 @@ final class IrisWorldTransparencyTarget {
             pipeline = managerType.getMethod("getPipelineNullable");
             before = pipelineType.getMethod("getFlippedAfterPrepare");
             after = pipelineType.getMethod("getFlippedAfterTranslucent");
-            bindDefault = pipelineType.getMethod("bindDefault");
+            bindDefault = findBindDefault(pipelineType);
+            framebuffer = bindDefault == null ? FramebufferAccess.resolve(pipelineType) : null;
+        }
+    }
+
+    private static final class StageTargets {
+        Object before, after;
+    }
+
+    static final class FramebufferAccess {
+        final Field renderTargets, beforeTranslucent;
+        final Method createMain, createAlt, bind;
+
+        private FramebufferAccess(Class<?> pipelineType) throws ReflectiveOperationException {
+            renderTargets = pipelineType.getDeclaredField("renderTargets");
+            renderTargets.setAccessible(true);
+            beforeTranslucent = pipelineType.getField("isBeforeTranslucent");
+            Class<?> renderTargetsType = renderTargets.getType();
+            createMain = renderTargetsType.getMethod("createFramebufferWritingToMain", int[].class);
+            createAlt = renderTargetsType.getMethod("createFramebufferWritingToAlt", int[].class);
+            bind = createMain.getReturnType().getMethod("bind");
+        }
+
+        void bind(Object pipeline, Method before, Method after) throws ReflectiveOperationException {
+            StageTargets cached = STAGE_TARGETS.computeIfAbsent(pipeline, ignored -> new StageTargets());
+            boolean early = beforeTranslucent.getBoolean(pipeline);
+            Object target = early ? cached.before : cached.after;
+            if (target == null) {
+                Object flippedValue = (early ? before : after).invoke(pipeline);
+                if (!(flippedValue instanceof Set<?> flipped))
+                    throw new IllegalStateException("Oculus color flip state is not a set");
+                Method create = usesAltFramebuffer(flipped) ? createAlt : createMain;
+                // Oculus has no fallbackTex directive; the verified world color is colortex0.
+                // RenderTargets keeps color IDs and depth attachments valid on resize.
+                target = create.invoke(renderTargets.get(pipeline), (Object) new int[]{0});
+                if (target == null) throw new IllegalStateException("Oculus framebuffer creation returned null");
+                if (early) cached.before = target;
+                else cached.after = target;
+            }
+            bind.invoke(target);
+        }
+
+        static FramebufferAccess resolve(Class<?> pipelineType) {
+            try {
+                return new FramebufferAccess(pipelineType);
+            } catch (ReflectiveOperationException | RuntimeException e) {
+                return null;
+            }
         }
     }
 

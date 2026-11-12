@@ -24,7 +24,7 @@ class PropTimelineEditorTest {
         editor.boneBinding(draft);
         assertEquals(preview,editor.state(),"Confirmation commits exactly the state shown before registration");
         assertTrue(editor.dirty());
-        assertEquals(placed,editor.snapshot().boneKeys().getFirst().value().placement());
+        assertEquals(placed,editor.snapshot().boneKeys().get(0).value().placement());
     }
 
     @Test void hiddenPropsAreVisibleDuringPlacementWithoutChangingTheVisibilityTrack() {

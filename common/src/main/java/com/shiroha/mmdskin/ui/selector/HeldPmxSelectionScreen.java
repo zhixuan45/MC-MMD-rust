@@ -76,7 +76,7 @@ final class HeldPmxSelectionScreen extends Screen {
                 && row<rows() && row+scroll<visible.size()) { choose(visible.get(row+scroll)); return true; }
         return false;
     }
-    @Override public boolean mouseScrolled(double x,double y,double horizontal,double vertical) {
+    @Override public boolean mouseScrolled(double x,double y,double vertical) {
         scroll=Math.max(0,Math.min(Math.max(0,visible.size()-rows()),scroll-(int)Math.signum(vertical)));
         return true;
     }

@@ -81,7 +81,7 @@ public final class MaterialEffectsScreen extends Screen {
     }
 
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics, mouseX, mouseY, partialTick); super.render(graphics, mouseX, mouseY, partialTick);
+        renderBackground(graphics); super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, 12, 0xffffff);
         String name = context == null ? "没有已加载的模型" : context.modelName() + "（" + materials.size() + " 个材质）";
         graphics.drawString(font, font.plainSubstrByWidth(name, panel()), left(), 59, 0xdddddd);
@@ -125,7 +125,7 @@ public final class MaterialEffectsScreen extends Screen {
             owner.runtime.save(); onClose();
         }
         @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            renderBackground(graphics, mouseX, mouseY, partialTick); super.render(graphics, mouseX, mouseY, partialTick);
+            renderBackground(graphics); super.render(graphics, mouseX, mouseY, partialTick);
             graphics.drawCenteredString(font, font.plainSubstrByWidth(title.getString(), width - 20), width / 2, 12, 0xffffff);
         }
         @Override public void onClose() { Minecraft.getInstance().setScreen(owner); }

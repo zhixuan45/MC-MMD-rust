@@ -30,10 +30,12 @@ final class TerrainShadowFrame {
     int transmissionDepth;
     int transmissionColor;
     int transmissionBackupColor;
+    int transmissionBackupAuxColor;
     int transmissionFramebuffer;
     int transmissionSize;
     int transmissionDepthFormat;
     int transmissionColorFormat;
+    int transmissionAuxColorFormat;
 
     String status = "not captured";
     String reason = "";
@@ -42,6 +44,7 @@ final class TerrainShadowFrame {
 
     Object replayProgramSet;
     boolean replaySupported;
+    int replayColorTargets;
     String replayStatus = "not attempted";
     String packStatus = "not checked";
 
@@ -105,7 +108,9 @@ final class TerrainShadowFrame {
         if (transmissionDepth != 0) GL46C.glDeleteTextures(transmissionDepth);
         if (transmissionColor != 0) GL46C.glDeleteTextures(transmissionColor);
         if (transmissionBackupColor != 0) GL46C.glDeleteTextures(transmissionBackupColor);
+        if (transmissionBackupAuxColor != 0) GL46C.glDeleteTextures(transmissionBackupAuxColor);
         transmissionFramebuffer = transmissionDepth = transmissionColor = transmissionBackupColor = 0;
+        transmissionBackupAuxColor = transmissionAuxColorFormat = 0;
         transmissionSize = transmissionDepthFormat = transmissionColorFormat = 0;
         transmission = false;
     }
@@ -113,6 +118,7 @@ final class TerrainShadowFrame {
     void resetReplayState() {
         replayProgramSet = null;
         replaySupported = false;
+        replayColorTargets = 0;
         replayStatus = "not attempted";
         packStatus = "not checked";
     }

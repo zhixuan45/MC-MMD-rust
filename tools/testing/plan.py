@@ -40,7 +40,7 @@ def select(paths, full=False):
             if part in ('jni_bridge', 'lib', 'build'):
                 java.update(JAVA)
             continue
-        if path.startswith(('fabric/', 'neoforge/')):
+        if path.startswith(('fabric/', 'forge/', 'neoforge/')):
             java.update(JAVA)
             continue
         if not path.startswith('common/'):

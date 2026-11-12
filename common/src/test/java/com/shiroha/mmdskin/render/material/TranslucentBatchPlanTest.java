@@ -25,7 +25,7 @@ class TranslucentBatchPlanTest {
         assertArrayEquals(new int[]{0, 1, 0, 1, 0}, plan.triangleRows);
         assertEquals(2, plan.rows.size());
         assertEquals(1, plan.windows.size());
-        assertEquals(15, plan.windows.getFirst().indexCount());
+        assertEquals(15, plan.windows.get(0).indexCount());
     }
     @Test void overflowCreatesContiguousWindowsAndRemapsSlots() {
         int[] ids = {0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 8};
@@ -68,7 +68,7 @@ class TranslucentBatchPlanTest {
         var plan = TranslucentBatchPlan.build(runs(0, 1, 2, 3, 4, 5), 6, mats, i -> i + 100);
         assertEquals(2, plan.windows.size());
         assertEquals(12, plan.windows.get(0).indexCount());
-        assertEquals(plan.rows.getFirst().diffuseSlot(), plan.rows.getFirst().sphereSlot());
+        assertEquals(plan.rows.get(0).diffuseSlot(), plan.rows.get(0).sphereSlot());
     }
     @Test void sameMaterialWithDifferentAlphaOrCullingUsesDifferentRows() {
         var runs = runs(0, 0, 0);
@@ -94,6 +94,6 @@ class TranslucentBatchPlanTest {
         assertEquals(3, plan.materials().rows.size());
         assertEquals(-1, plan.rowBySubmesh()[2]);
         assertEquals(2, plan.rowBySubmesh()[8]);
-        assertArrayEquals(new int[]{100, 101, 108}, plan.materials().windows.getFirst().textures());
+        assertArrayEquals(new int[]{100, 101, 108}, plan.materials().windows.get(0).textures());
     }
 }

@@ -13,22 +13,32 @@ import java.lang.reflect.Proxy;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PaperDollPoseRenderTest {
-    @Test void sharedDrawPreservesWorldPoseAndUsesOnlyTheProvidedDisplayTransform() {
+    @Test void sharedDrawPreservesGuiPoseAndUsesImmutableDisplayTransform() {
         var model = new DrawOnlyModel();
         var stack = new PoseStack();
         stack.translate(20, 75, 50);
         stack.scale(30, 30, -30);
         Matrix4f display = new Matrix4f(stack.last().pose());
+
         model.renderPaperDollPose(null, stack, 0xF000F0);
         model.renderPaperDollPose(null, stack, 0xF000F0);
+
         assertEquals(2, model.draws);
         assertEquals(0, model.getNativeUpdateRevision());
         assertEquals(1, model.getGlobalAlpha());
+        assertTrue(display.equals(model.renderedPose, 0));
+        assertTrue(display.equals(stack.last().pose(), 0));
+
+        Matrix4f destination = new Matrix4f();
+        Matrix4f composed = BaseModelInstance.composeModelViewMatrix(display, destination);
+        assertSame(destination, composed);
+        assertTrue(display.equals(composed, 0));
         assertTrue(display.equals(stack.last().pose(), 0));
     }
 
     private static final class DrawOnlyModel extends BaseModelInstance {
         private int draws;
+        private Matrix4f renderedPose;
 
         DrawOnlyModel() {
             model = 1;
@@ -46,6 +56,7 @@ class PaperDollPoseRenderTest {
             assertEquals(new Vector3f(), translation);
             assertSame(RenderScene.PAPERDOLL, scene);
             assertEquals(0xF000F0, light);
+            renderedPose = new Matrix4f(stack.last().pose());
             draws++;
         }
 

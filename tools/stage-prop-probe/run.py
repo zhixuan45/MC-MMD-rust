@@ -34,7 +34,7 @@ def motion(path, end, actor):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jdk", type=Path, default=Path(r"C:\Program Files\Zulu\zulu-21"))
+    parser.add_argument("--jdk", type=Path, default=Path(r"C:\Program Files\Zulu\zulu-17"))
     parser.add_argument("--dll", type=Path, default=ROOT / "rust_engine/target/release/mmd_engine.dll")
     parser.add_argument("--frame-scale", type=int, default=1, help="Scale authored motion and registration times")
     args = parser.parse_args()

@@ -74,7 +74,7 @@ final class ShadowFxAlphaBinding implements AutoCloseable {
         var entry = Pattern.compile("\\b(?:void|float|int|bool|vec[234]|mat[234])\\s+\\w+\\s*\\([^;{}]*\\)\\s*\\{").matcher(clean);
         if (!entry.find()) throw new IllegalArgumentException("阴影入口不支持");
         int start = entry.start();
-        var calls = Pattern.compile("\\b(texture2D|texture)\\s*\\(\\s*" + Pattern.quote(names.getFirst()) + "\\s*,").matcher(clean);
+        var calls = Pattern.compile("\\b(texture2D|texture)\\s*\\(\\s*" + Pattern.quote(names.get(0)) + "\\s*,").matcher(clean);
         StringBuilder modified = new StringBuilder(); int end = 0, count = 0;
         while (calls.find()) {
             if (calls.start() < start) throw new IllegalArgumentException("阴影全局采样尚未适配");
@@ -86,7 +86,7 @@ final class ShadowFxAlphaBinding implements AutoCloseable {
                 if (c == ',' && depth == 1) throw new IllegalArgumentException("阴影 LOD/bias 采样尚未适配");
             }
             if (depth != 0) throw new IllegalArgumentException("阴影采样语法不完整");
-            modified.append(fragment, end, calls.start()).append("mmdShadowFxSample(").append(names.getFirst()).append(',');
+            modified.append(fragment, end, calls.start()).append("mmdShadowFxSample(").append(names.get(0)).append(',');
             end = calls.end(); count++;
         }
         if (count == 0) throw new IllegalArgumentException("未找到阴影主纹理采样");

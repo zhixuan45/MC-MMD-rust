@@ -60,13 +60,8 @@ public abstract class AbstractWheelScreen extends Screen {
     }
 
     @Override
-    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // 覆盖 1.21.1 原版的菜单背景与高斯模糊着色器，防止游戏画面被全局虚化
-    }
-
-    @Override
-    public void renderMenuBackground(GuiGraphics guiGraphics) {
-        // 覆盖菜单背景
+    public void renderBackground(GuiGraphics guiGraphics) {
+        // 覆盖 1.20.1 原版的菜单背景，保留游戏画面作为轮盘背景。
     }
 
     protected static WheelStyle createTranslucentWheelStyle(float screenRatio, float innerRatio) {
@@ -509,7 +504,8 @@ public abstract class AbstractWheelScreen extends Screen {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         PoseStack.Pose pose = guiGraphics.pose().last();
         Matrix4f matrix = pose.pose();
-        BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+        BufferBuilder builder = Tesselator.getInstance().getBuilder();
+        builder.begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
         for (int i = 0; i <= segments; i++) {
             float angle = startRad + stepRad * i;
             float cos = Mth.cos(angle);
@@ -517,7 +513,7 @@ public abstract class AbstractWheelScreen extends Screen {
             addVertex(builder, matrix, cx + cos * outer, cy + sin * outer, color);
             addVertex(builder, matrix, cx + cos * inner, cy + sin * inner, color);
         }
-        BufferUploader.drawWithShader(builder.buildOrThrow());
+        BufferUploader.drawWithShader(builder.end());
     }
 
     private void drawQuad(GuiGraphics guiGraphics,
@@ -531,17 +527,19 @@ public abstract class AbstractWheelScreen extends Screen {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         PoseStack.Pose pose = guiGraphics.pose().last();
         Matrix4f matrix = pose.pose();
-        BufferBuilder builder = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        BufferBuilder builder = Tesselator.getInstance().getBuilder();
+        builder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         addVertex(builder, matrix, ax, ay, color);
         addVertex(builder, matrix, bx, by, color);
         addVertex(builder, matrix, cx, cy, color);
         addVertex(builder, matrix, dx, dy, color);
-        BufferUploader.drawWithShader(builder.buildOrThrow());
+        BufferUploader.drawWithShader(builder.end());
     }
 
     private void addVertex(BufferBuilder builder, Matrix4f matrix, float x, float y, int color) {
-        builder.addVertex(matrix, x, y, 0.0f)
-                .setColor(red(color), green(color), blue(color), alpha(color));
+        builder.vertex(matrix, x, y, 0.0f)
+                .color(red(color), green(color), blue(color), alpha(color))
+                .endVertex();
     }
 
     private int roundedInset(int radius, int row) {

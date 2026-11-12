@@ -14,7 +14,7 @@ final class RayMaterialImporter {
         var parameters = RayMaterialParameters.parse(source);
         if (parameters.includes().isEmpty()) throw new IOException("缺少 Ray 2.0 公共实现");
         if (parameters.includes().size() != 1) throw new IOException("额外 include 尚未适配");
-        Path common = FxPaths.resolve(root, file.getParent(), parameters.includes().getFirst());
+        Path common = FxPaths.resolve(root, file.getParent(), parameters.includes().get(0));
         if (Files.size(common) > 1024 * 1024) throw new IOException("Ray 公共源码超过 1 MiB");
         String commonSource = Files.readString(common).replace("\r", "");
         if (!FxSource.sha256(commonSource).equals(COMMON_HASH))

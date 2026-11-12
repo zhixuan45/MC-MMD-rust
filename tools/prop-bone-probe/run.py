@@ -74,7 +74,7 @@ def vmd_fixture(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--jdk", type=Path, default=Path(r"C:\Program Files\Zulu\zulu-21"))
+    parser.add_argument("--jdk", type=Path, default=Path(r"C:\Program Files\Zulu\zulu-17"))
     parser.add_argument("--dll", type=Path, default=ROOT / "rust_engine/target/release/mmd_engine.dll")
     args = parser.parse_args()
     output = ROOT / "build/prop-bone-probe"

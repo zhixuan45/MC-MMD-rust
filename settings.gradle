@@ -37,7 +37,6 @@ dependencyResolutionManagement {
 
 rootProject.name = 'mmdskin'
 
-// 包含三个核心子模块
+// 此维护分支先交付 Forge；Fabric 留待完成 1.20.1 平台适配后重新加入。
 include 'common'
-include 'fabric'
-include 'neoforge'
+include 'forge'

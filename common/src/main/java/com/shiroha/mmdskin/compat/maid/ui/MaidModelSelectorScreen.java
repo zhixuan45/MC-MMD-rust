@@ -143,9 +143,9 @@ public class MaidModelSelectorScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (!layout.listBox.contains(mouseX, mouseY)) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
-        double delta = scrollY != 0 ? scrollY : scrollX;
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+        if (!layout.listBox.contains(mouseX, mouseY)) return super.mouseScrolled(mouseX, mouseY, scrollY);
+        double delta = scrollY;
         targetScroll = Mth.clamp(targetScroll - (float) delta * 12.0f, 0.0f, maxScroll());
         return true;
     }
@@ -278,7 +278,7 @@ public class MaidModelSelectorScreen extends Screen {
     private void reloadModels() {
         allModels.clear();
         allModels.addAll(selectionService.loadAvailableModels());
-        if (!allModels.contains(UIConstants.DEFAULT_MODEL_NAME)) allModels.addFirst(UIConstants.DEFAULT_MODEL_NAME);
+        if (!allModels.contains(UIConstants.DEFAULT_MODEL_NAME)) allModels.add(0, UIConstants.DEFAULT_MODEL_NAME);
         currentModel = selectionService.getCurrentModel(maidUUID);
         saveFailed = false;
         applyFilter();

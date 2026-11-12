@@ -19,6 +19,8 @@ public final class SunlightGlProbe {
         boolean normalBias = args.length > 1 && args[1].equals("normal-bias");
         boolean core = args.length > 1 && args[1].equals("core");
         boolean lightingOnly = args.length > 1 && args[1].equals("lighting-only");
+        String minecraftVersion = args.length > 2 ? args[2] : "12001";
+        String irisVersion = args.length > 3 ? args[3] : "10800";
         if (!GLFW.glfwInit()) throw new IllegalStateException("GLFW initialization");
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, core ? 4 : 3);
@@ -35,14 +37,15 @@ public final class SunlightGlProbe {
                 com.shiroha.mmdskin.compat.iris.TransmissionGlProbe.run();
             }
             int checked = 0;
+            int shadowChecked = 0;
             for (String pack : List.of("BSL_v10.1.8.zip", "BSL_v8.4.02.2.zip", "ComplementaryShaders_v4.7.1.zip",
                     "ComplementaryReimagined_r5.9.3.zip", "ComplementaryUnbound_r5.9.3.zip")) {
                 if (normalBias && !pack.startsWith("BSL")) continue;
                 Path path = Path.of(args[0], pack);
                 var options = new java.util.HashMap<>(Probe.options(Path.of(path + ".txt")));
                 if (normalBias) options.put("SHADOW_BIAS", "1");
-                var defines = List.of(new StringPair("MC_VERSION", "12101"), new StringPair("IS_IRIS", "1"),
-                        new StringPair("IRIS_VERSION", "10814"));
+                var defines = List.of(new StringPair("MC_VERSION", minecraftVersion), new StringPair("IS_IRIS", "1"),
+                        new StringPair("IRIS_VERSION", irisVersion));
                 try (var zip = new ZipFile(path.toFile())) {
                     if (pack.startsWith("BSL")) {
                         String shadow = zip.getEntry("shaders/world0/shadow.fsh") == null ? "shaders/shadow" : "shaders/world0/shadow";
@@ -52,6 +55,10 @@ public final class SunlightGlProbe {
                         if (pack.equals("BSL_v10.1.8.zip") && !colored) throw new AssertionError("Missing BSL glass color protocol");
                         com.shiroha.mmdskin.compat.iris.TransmissionGlProbe.checkProtocol(fragment, vertex, colored);
                         System.out.println("PASS shadow replay contract " + pack + ": colored=" + colored);
+                    }
+                    if (pack.endsWith("_r5.9.3.zip")) {
+                        checkModernShadow(Path.of(args[0]), pack, zip, defines);
+                        shadowChecked += 2;
                     }
                     for (String dimension : List.of("world0", "world-1", "world1")) {
                         for (String program : List.of("gbuffers_entities", "gbuffers_hand")) {
@@ -89,10 +96,44 @@ public final class SunlightGlProbe {
             }
             if (GL46C.glGetError() != GL46C.GL_NO_ERROR) throw new AssertionError("Final GL error");
             System.out.println("PASS sunlight validation: " + checked + " real pack main/outline variants"
+                    + ", " + shadowChecked + " modern low/medium shadow contracts"
                     + (normalBias ? " (BSL SHADOW_BIAS=1)" : ""));
         } finally {
             GLFW.glfwDestroyWindow(window);
             GLFW.glfwTerminate();
         }
+    }
+
+    private static void checkModernShadow(Path shaderpacks, String pack, ZipFile zip,
+                                          List<StringPair> defines) throws Exception {
+        Path packPath = shaderpacks.resolve(pack);
+        var baseOptions = new java.util.HashMap<>(Probe.options(Path.of(packPath + ".txt")));
+        for (int quality : new int[]{0, 2}) {
+            var options = new java.util.HashMap<>(baseOptions);
+            options.put("SHADOW_QUALITY", Integer.toString(quality));
+            String fragment = JcppProcessor.glslPreprocessSource(
+                    Probe.include(zip, "shaders/world0/shadow.fsh", options), defines);
+            String vertex = JcppProcessor.glslPreprocessSource(
+                    Probe.include(zip, "shaders/world0/shadow.vsh", options), defines);
+            Path output = Path.of("build/sunlight-probe");
+            java.nio.file.Files.createDirectories(output);
+            java.nio.file.Files.writeString(output.resolve(pack + ".shadow-q" + quality + ".frag.glsl"), fragment);
+            java.nio.file.Files.writeString(output.resolve(pack + ".shadow-q" + quality + ".vert.glsl"), vertex);
+            int targets = shadowTargetCount(fragment, vertex);
+            int expected = quality == 0 ? 1 : 2;
+            if (targets != expected) {
+                throw new AssertionError(pack + " SHADOW_QUALITY=" + quality
+                        + " replay targets=" + targets + ", expected=" + expected);
+            }
+            System.out.println("PASS modern shadow " + pack + " SHADOW_QUALITY=" + quality
+                    + " replayTargets=" + targets);
+        }
+    }
+
+    private static int shadowTargetCount(String fragment, String vertex) throws Exception {
+        Class<?> replay = Class.forName("com.shiroha.mmdskin.compat.iris.IrisTerrainShadowReplay");
+        var method = replay.getDeclaredMethod("colorTargetCount", String.class, String.class);
+        method.setAccessible(true);
+        return (int) method.invoke(null, fragment, vertex);
     }
 }

@@ -69,7 +69,7 @@ final class UsageNoticeScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, width, height, 0xE0101010);
-        // 1.21 的基类会处理背景模糊，必须在绘制标题、正文和错误提示之前执行。
+        // 1.20.1 基类只绘制控件；先铺遮罩，再执行控件和正文绘制。
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawCenteredString(font, title, width / 2, Math.max(8, messageY - 24), 0xFFFFFF);
         message.renderCentered(graphics, width / 2, messageY, 10, 0xFFFFFF);

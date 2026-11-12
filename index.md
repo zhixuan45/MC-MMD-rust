@@ -5,7 +5,7 @@
 
 index:
   project: "mc-mmd-rust"
-  tech_stack: ["Rust 2021 / C++ Bullet3", "Java 21 (Fabric / NeoForge)", "OpenGL 3.3+ / Direct ByteBuffer"]
+  tech_stack: ["Rust 2021 / C++ Bullet3", "Java 17 (Minecraft 1.20.1 / Forge)", "OpenGL 3.3+ / Direct ByteBuffer"]
   entrypoints: ["rust_engine/src/lib.rs", "common/src/main/java/com/shiroha/mmdskin/MmdSkin.java"]
   summary: "Minecraft 高性能 MMD/VRM 渲染与物理模组。Rust+Bullet3 零拷贝物理解算与蒙皮，Java 调度渲染与加载器适配。"
   modules_map:
@@ -27,8 +27,8 @@ index:
       summary: "第一人称视锥几何裁切、同帧双眼相机解算、玩家独立模型替换与多层动画状态机"
     - id: "platform"
       tag: "@platform"
-      path: "fabric,neoforge,forge"
-      summary: "Fabric/NeoForge 加载器生命周期装配、网络 Payload 注册、事件监听与 Mixin 接管"
+      path: "forge"
+      summary: "本分支只构建 Forge 1.20.1；1.21.1 Fabric/NeoForge 生产源码与配置已清理。Forge 生命周期、网络、事件与 Mixin 接管"
     - id: "compat"
       tag: "@compat"
       path: "common/src/main/java/com/shiroha/mmdskin/compat"
@@ -158,22 +158,17 @@ modules:
 
   - id: "platform"
     tag: "@platform"
-    path: "fabric,neoforge,forge"
-    summary: "Fabric/NeoForge 加载器生命周期装配、网络 Payload 注册、事件监听与 Mixin 接管"
+    path: "forge"
+    summary: "当前只构建 Forge 1.20.1；已移除不参与本分支构建的 1.21.1 Fabric/NeoForge 生产源码与配置"
     files:
-      - file: "fabric/src/main/java/com/shiroha/mmdskin/fabric/MmdSkinFabricClient.java"
-        desc: "Fabric 客户端总入口，挂载生命周期钩子、按键映射与实体渲染器替换"
-        symbols:
-          - "onInitializeClient(): void - 注册 ClientTick、HudRender 与生物渲染委托"
-      - file: "neoforge/src/main/java/com/shiroha/mmdskin/neoforge/MmdSkinNeoForgeClient.java"
-        desc: "NeoForge 客户端总线注册，接管生物渲染与客户端事件"
-        symbols:
-          - "onClientSetup(FMLClientSetupEvent): void - 初始化客户端环境与按键"
-          - "onRenderLiving(RenderLivingEvent.Pre): void - 拦截原版玩家与生物绘制并重定向至 MMD 管线"
+      - file: "forge/src/main/java/com/shiroha/mmdskin/forge/MmdSkinForge.java"
+        desc: "Forge 1.20.1 通用入口，按运行侧装配客户端与 SimpleChannel 网络"
+      - file: "forge/src/main/java/com/shiroha/mmdskin/forge/MmdSkinForgeClient.java"
+        desc: "Forge 客户端总线、按键、HUD、渲染和兼容模块装配"
       - file: "common/src/main/java/com/shiroha/mmdskin/player/sync/ClientNetworkBindings.java"
-        desc: "1.21.1 跨平台统一 CustomPacketPayload 网络协议编解码分发"
+        desc: "公共客户端网络绑定；Forge 平台以 FriendlyByteBuf / SimpleChannel 编解码分发"
         symbols:
-          - "registerClientPayloads(): void - 编解码模型切换与物理状态同步载荷"
+          - "bind(ClientNetworkSender sender): void - 绑定模型切换、动作、物理、表情、舞台与骨骼同步发送端口"
 
   - id: "compat"
     tag: "@compat"

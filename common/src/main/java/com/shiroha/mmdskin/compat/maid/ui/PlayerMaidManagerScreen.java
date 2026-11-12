@@ -122,9 +122,9 @@ public final class PlayerMaidManagerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (!layout.list.contains(mouseX, mouseY)) return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
-        double amount = scrollY != 0 ? scrollY : scrollX;
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+        if (!layout.list.contains(mouseX, mouseY)) return super.mouseScrolled(mouseX, mouseY, scrollY);
+        double amount = scrollY;
         targetScroll = Math.max(0, Math.min(maxScroll(), targetScroll - amount * 12));
         return true;
     }

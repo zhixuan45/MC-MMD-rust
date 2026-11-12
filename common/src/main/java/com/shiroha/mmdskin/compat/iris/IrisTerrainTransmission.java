@@ -25,15 +25,25 @@ public final class IrisTerrainTransmission {
         return TerrainShadowFrame.current().replayStatus;
     }
 
-    /** The caller has already verified that replay writes only sourceColor and source depth. */
+    /** Single-color BSL compatibility entry point. */
     public static boolean capture(int sourceDepthFbo, int sourceColor, int opaqueFbo,
+                                  int resolution, int opaqueFormat, Runnable replay) {
+        return capture(sourceDepthFbo, new int[]{sourceColor}, opaqueFbo, resolution, opaqueFormat, replay);
+    }
+
+    /** Every color written by the verified shadow program must be backed up before replay. */
+    public static boolean capture(int sourceDepthFbo, int[] sourceColors, int opaqueFbo,
                                   int resolution, int opaqueFormat, Runnable replay) {
         TerrainShadowFrame frame = TerrainShadowFrame.current();
         frame.transmission = false;
-        if (!GL.getCapabilities().OpenGL43 || sourceDepthFbo <= 0 || sourceColor <= 0
+        if (!GL.getCapabilities().OpenGL43 || sourceDepthFbo <= 0 || sourceColors == null
+                || sourceColors.length < 1 || sourceColors.length > 2
+                || java.util.Arrays.stream(sourceColors).anyMatch(id -> id <= 0)
+                || (sourceColors.length == 2 && sourceColors[0] == sourceColors[1])
                 || opaqueFbo <= 0 || resolution <= 0
                 || (long) resolution * resolution * 12 > 256L * 1024 * 1024)
             return unavailable("unsupported context, invalid transmission target, or allocation budget exceeded");
+        int sourceColor = sourceColors[0];
         try (var state = new ShadowReplayGlState()) {
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, sourceColor);
             int sourceFormat = GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_INTERNAL_FORMAT);
@@ -54,16 +64,25 @@ public final class IrisTerrainTransmission {
                     || (format != GL46C.GL_RGBA8 && format != GL46C.GL_RGBA16F
                     && format != GL46C.GL_RGBA32F))
                 return unavailable("unsupported transmission color format " + sourceFormat + " or extent mismatch");
-            // Account for the two color copies as well as the depth snapshot.
+            int auxFormat = 0;
+            if (sourceColors.length == 2) {
+                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, sourceColors[1]);
+                auxFormat = colorFormat(resolution);
+                if (auxFormat == 0) return unavailable("unsupported auxiliary shadow color format or extent");
+            }
+            // The auxiliary light-shaft target is restored, but is not a receiver texture.
             int colorBytes = format == GL46C.GL_RGBA32F ? 16 : format == GL46C.GL_RGBA16F ? 8 : 4;
-            if ((long) resolution * resolution * (4 + colorBytes * 2) > 256L * 1024 * 1024)
+            int auxBytes = auxFormat == 0 ? 0 : auxFormat == GL46C.GL_RGBA32F ? 16
+                    : auxFormat == GL46C.GL_RGBA16F ? 8 : 4;
+            if ((long) resolution * resolution * (4 + colorBytes * 2 + auxBytes) > 256L * 1024 * 1024)
                 return unavailable("terrain transmission allocation budget exceeded");
-            allocate(resolution, opaqueFormat, format);
+            allocate(resolution, opaqueFormat, format, auxFormat);
             GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, frame.transmissionColor);
             GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER,
                     minFilter == GL46C.GL_NEAREST ? GL46C.GL_NEAREST : GL46C.GL_LINEAR);
             GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MAG_FILTER, magFilter);
             copyColor(sourceColor, frame.transmissionBackupColor);
+            if (sourceColors.length == 2) copyColor(sourceColors[1], frame.transmissionBackupAuxColor);
             state.restore();
             try {
                 GL46C.glViewport(0, 0, frame.transmissionSize, frame.transmissionSize);
@@ -76,6 +95,7 @@ public final class IrisTerrainTransmission {
                 GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
                 copyDepth(opaqueFbo, sourceDepthFbo);
                 copyColor(frame.transmissionBackupColor, sourceColor);
+                if (sourceColors.length == 2) copyColor(frame.transmissionBackupAuxColor, sourceColors[1]);
             }
             frame.transmission = true;
             frame.replayStatus = "ready: sourceFormat=" + sourceFormat + ", storedFormat=" + format;
@@ -88,15 +108,30 @@ public final class IrisTerrainTransmission {
         return false;
     }
 
-    private static void allocate(int resolution, int opaqueFormat, int format) {
+    private static int colorFormat(int resolution) {
+        if (GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_WIDTH) != resolution
+                || GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_HEIGHT) != resolution)
+            return 0;
+        int format = GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_TEXTURE_INTERNAL_FORMAT);
+        if (format == GL46C.GL_RGBA) {
+            for (int channel : new int[]{GL46C.GL_TEXTURE_RED_SIZE, GL46C.GL_TEXTURE_GREEN_SIZE,
+                    GL46C.GL_TEXTURE_BLUE_SIZE, GL46C.GL_TEXTURE_ALPHA_SIZE})
+                if (GL46C.glGetTexLevelParameteri(GL46C.GL_TEXTURE_2D, 0, channel) != 8) return 0;
+            format = GL46C.GL_RGBA8;
+        }
+        return format == GL46C.GL_RGBA8 || format == GL46C.GL_RGBA16F || format == GL46C.GL_RGBA32F ? format : 0;
+    }
+
+    private static void allocate(int resolution, int opaqueFormat, int format, int auxFormat) {
         TerrainShadowFrame frame = TerrainShadowFrame.current();
         if (frame.transmissionDepth != 0 && frame.transmissionSize == resolution
                 && frame.transmissionDepthFormat == opaqueFormat
-                && frame.transmissionColorFormat == format) return;
+                && frame.transmissionColorFormat == format && frame.transmissionAuxColorFormat == auxFormat) return;
         frame.releaseTransmissionStorage();
         frame.transmissionSize = resolution;
         frame.transmissionDepthFormat = opaqueFormat;
         frame.transmissionColorFormat = format;
+        frame.transmissionAuxColorFormat = auxFormat;
         int unpack = GL46C.glGetInteger(GL46C.GL_PIXEL_UNPACK_BUFFER_BINDING);
         GL46C.glBindBuffer(GL46C.GL_PIXEL_UNPACK_BUFFER, 0);
         try {
@@ -105,6 +140,7 @@ public final class IrisTerrainTransmission {
             GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_COMPARE_FUNC, GL46C.GL_LEQUAL);
             frame.transmissionColor = texture(format, GL46C.GL_RGBA);
             frame.transmissionBackupColor = texture(format, GL46C.GL_RGBA);
+            if (auxFormat != 0) frame.transmissionBackupAuxColor = texture(auxFormat, GL46C.GL_RGBA);
         } finally {
             GL46C.glBindBuffer(GL46C.GL_PIXEL_UNPACK_BUFFER, unpack);
         }

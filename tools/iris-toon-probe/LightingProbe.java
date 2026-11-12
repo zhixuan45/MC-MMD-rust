@@ -419,7 +419,8 @@ public final class LightingProbe {
         checkMixedLightSurface(shader, source, identity, light);
         checkWorldShadowSoftness(shader, source, identity, left, right);
         checkTerrainColorIsolation(shader, source, identity, shadowTexture, opaqueShadowTexture);
-        if (profile.lightingSource().contains("toonBslFilteredTransmission"))
+        if (profile.lightingSource().contains("toonBslFilteredTransmission")
+                || profile.lightingSource().contains("toonComplementaryFilteredTransmission"))
             checkGlassReception(shader, profile, source, identity, normals, normal, light, terrainFbo, terrainTexture);
         shader.useMain();
         com.shiroha.mmdskin.compat.iris.IrisTerrainShadow.beginFrame(renderer, true);
@@ -534,21 +535,26 @@ public final class LightingProbe {
                 uniform vec3 Transmission;
                 layout(location=0) out vec4 Color;
                 void main() { Color=vec4(Transmission,1.0); }
-                """, "glass caster for production BSL lighting");
+                """, "glass caster for production pack lighting");
         try {
             // Start with terrain only; the original host map can subsequently contain every PMX caster.
             GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, opaque);
             GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, terrainFbo);
             GL46C.glDisable(GL46C.GL_SCISSOR_TEST);
             GL46C.glBlitFramebuffer(0,0,16,16,0,0,16,16,GL46C.GL_DEPTH_BUFFER_BIT,GL46C.GL_NEAREST);
+            boolean modern = profile.lightingSource().contains("toonComplementaryFilteredTransmission");
+            float storageScale = modern ? .1f : 1f;
             for (float[] transmission : new float[][]{{.65f,.65f,.65f}, {.85f,.15f,.1f}}) {
+                float[] storedTransmission = Arrays.copyOf(transmission, transmission.length);
+                for (int channel = 0; channel < storedTransmission.length; channel++)
+                    storedTransmission[channel] *= storageScale;
                 GL46C.glBindFramebuffer(GL46C.GL_DRAW_FRAMEBUFFER, draw);
                 GL46C.glBindFramebuffer(GL46C.GL_READ_FRAMEBUFFER, read);
                 check(com.shiroha.mmdskin.compat.iris.IrisTerrainTransmission.capture(
                         terrainFbo, color, opaque, 16, GL46C.GL_DEPTH_COMPONENT24, () -> {
                             GL46C.glBindFramebuffer(GL46C.GL_FRAMEBUFFER, glass);
                             GL46C.glUseProgram(caster);
-                            GL46C.glUniform3fv(GL46C.glGetUniformLocation(caster, "Transmission"), transmission);
+                            GL46C.glUniform3fv(GL46C.glGetUniformLocation(caster, "Transmission"), storedTransmission);
                             GL46C.glEnable(GL46C.GL_DEPTH_TEST);
                             GL46C.glDepthFunc(GL46C.GL_LESS);
                             GL46C.glDepthMask(true);
@@ -556,13 +562,16 @@ public final class LightingProbe {
                             GL46C.glDrawArrays(GL46C.GL_TRIANGLES, 0, 3);
                         }), "Production glass snapshot");
                 check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "Production glass replay GL state");
+                System.out.printf("Glass storage: source=%s, physical=%s, stored=%s, scale=%.1f%n",
+                        modern ? "complementary-modern" : "bsl", Arrays.toString(transmission),
+                        Arrays.toString(storedTransmission), storageScale);
                 checkGlassSunCoverage(shader, profile, source, identity, normals, light);
                 float[] original = null;
                 for (float softness : new float[]{0, 1.5f, 4}) {
                     shader.useMain();
                     shader.setBaseBrightness(0);
                     shader.setWorldShadowSoftness(softness);
-                    check(shader.setEnvironmentLighting(source, identity, 0, 15), "Glass BSL environment");
+                    check(shader.setEnvironmentLighting(source, identity, 0, 15), "Glass pack environment");
                     GL46C.glValidateProgram(shader.getMainProgram());
                     check(GL46C.glGetProgrami(shader.getMainProgram(), GL46C.GL_VALIDATE_STATUS) != 0,
                             "Glass sampler validation: " + GL46C.glGetProgramInfoLog(shader.getMainProgram()));
@@ -682,7 +691,10 @@ public final class LightingProbe {
                     float[] lit = readPixel(12, 8), blocked = readPixel(3, 8);
                     System.out.printf("Glass coverage: sky=%d, softness=%.1f, visibility=%.6f, direct=%.6f, strength=%.6f%n",
                             sky, softness, lit[0], lit[1], lit[2]);
-                    check(lit[1] > baseline[1] + .6f,
+                    // Native Complementary remaps NdotL before Toon, so the unfilled
+                    // ramp is nonzero. Measure the available headroom, then verify the
+                    // exact coverage interpolation below for every sampled pixel.
+                    check(baseline[1] < .9f && lit[1] > baseline[1] + (1 - baseline[1]) * .6f,
                             "Verified sun coverage behind glass must enable fill even with low block skylight");
                     check(Math.abs(blocked[1] - baseline[1]) < .0001f, "Wall-covered fragments receive no fill");
                     for (int x = 1; x < 15; x++) {
@@ -697,6 +709,7 @@ public final class LightingProbe {
             check(maximumError < .0001f, "Sunlight fill must follow fragment coverage continuously: " + maximumError);
             diagnostic.useMain();
             diagnostic.setWorldShadowSoftness(0);
+            diagnostic.setTerrainShadowReceiver(false);
             diagnostic.setEnvironmentLighting(source, identity, 0, 0);
             diagnostic.setShaderStyle(0, 0);
             sampleNormal(diagnostic, normals, normal);
@@ -704,7 +717,8 @@ public final class LightingProbe {
             diagnostic.setShaderStyle(.7f, 0);
             sampleNormal(diagnostic, normals, normal);
             check(readPixel(12, 8)[2] == 0 && Math.abs(readPixel(12, 8)[1] - noSampleDirect) < .0001f,
-                    "An early-return shadow fallback cannot claim verified sunlight coverage");
+                    "A classic receiver without terrain samples cannot claim verified sunlight coverage");
+            diagnostic.setTerrainShadowReceiver(true);
             prepareScene(source, new LightingCase("glass-coverage-night", .75f, 0, 0, 15, 1));
             diagnostic.useMain();
             diagnostic.setWorldShadowSoftness(0);
@@ -1010,7 +1024,8 @@ public final class LightingProbe {
     private static int uniformSource(List<Uniform> uniforms) {
         StringBuilder fragment = new StringBuilder("#version 330 core\nlayout(location=0) out vec4 c;\n");
         StringBuilder sink = new StringBuilder("void main(){ float s=0.0;\n");
-        for (Uniform uniform : uniforms.reversed()) {
+        for (int index = uniforms.size() - 1; index >= 0; index--) {
+            Uniform uniform = uniforms.get(index);
             fragment.append("uniform ").append(uniform.type()).append(' ').append(uniform.name()).append(";\n");
             String expression = switch (uniform.type()) {
                 case "mat4" -> uniform.name() + "[0][0]";

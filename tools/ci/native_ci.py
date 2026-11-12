@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import struct
 import tomllib
@@ -25,6 +26,19 @@ ARTIFACTS = {
     "android-amd64": ("native-android-amd64", "libmmd_engine.so", "elf", 62),
 }
 ROOT = Path(__file__).resolve().parents[2]
+PLATFORMS = ("fabric", "neoforge", "forge")
+FORGE_REFMAP = "mmdskin-forge-refmap.json"
+FORGE_MIXIN_CONFIG = "mmdskin-forge.mixins.json"
+FORGE_CLASS_MAJOR = 61
+FORGE_LICENSES = {
+    "META-INF/licenses/mmdskin/LICENSE",
+    "META-INF/licenses/mmdskin/LICENSE-CC-BY-NC-SA-4.0",
+    "META-INF/licenses/mmdskin/LICENSE-MIT",
+    "META-INF/licenses/mmdskin/LICENSE-Ray-MMD",
+    "META-INF/licenses/mmdskin/NOTICE",
+}
+SRG_METHOD = re.compile(r"(?:^|;)m_\d+_\(")
+SRG_TOKEN = re.compile(rb"m_\d+_")
 
 
 def digest(data: bytes) -> bytes:
@@ -119,7 +133,7 @@ def jar_candidates(directory: Path, prefix: str) -> list[Path]:
     candidates = [
         path
         for path in directory.glob(f"{prefix}*.jar")
-        if not any(token in path.name for token in ("-dev", "-sources", "-universal"))
+        if not any(token in path.name for token in ("-dev", "-sources", "-universal", "-slim"))
         and not any(path.stem.endswith(f"-{arch}") for arch in ARTIFACTS)
     ]
     if len(candidates) != 1:
@@ -127,7 +141,96 @@ def jar_candidates(directory: Path, prefix: str) -> list[Path]:
     return candidates
 
 
+def manifest_attributes(payload: bytes) -> dict[str, str]:
+    lines = payload.decode("utf-8").replace("\r\n", "\n").splitlines()
+    unfolded: list[str] = []
+    for line in lines:
+        if line.startswith(" "):
+            if not unfolded:
+                raise ValueError("Manifest starts with a continuation line")
+            unfolded[-1] += line[1:]
+        else:
+            unfolded.append(line)
+    attributes = {}
+    for line in unfolded:
+        if not line:
+            continue
+        if ":" not in line:
+            raise ValueError(f"Malformed manifest line: {line}")
+        key, value = line.split(":", 1)
+        attributes[key.lower()] = value.strip()
+    return attributes
+
+
+def class_major(payload: bytes, member: str) -> int:
+    if len(payload) < 8 or payload[:4] != b"\xca\xfe\xba\xbe":
+        raise ValueError(f"{member} is not a valid Java class file")
+    return int.from_bytes(payload[6:8], "big")
+
+
+def forge_refmap_targets(refmap: object, path: Path) -> list[str]:
+    if not isinstance(refmap, dict):
+        raise ValueError(f"{path} Forge refmap is not a JSON object")
+    mappings = refmap.get("mappings")
+    if not isinstance(mappings, dict) or not mappings:
+        raise ValueError(f"{path} Forge refmap has no class mappings")
+    targets = []
+    for class_name, class_mappings in mappings.items():
+        if not isinstance(class_mappings, dict) or not class_mappings:
+            raise ValueError(f"{path} Forge refmap has no mappings for {class_name}")
+        for source_name, target in class_mappings.items():
+            if not isinstance(target, str) or not target:
+                raise ValueError(f"{path} Forge refmap mapping is empty: {class_name}.{source_name}")
+            targets.append(target)
+    if not any(SRG_METHOD.search(target) for target in targets):
+        raise ValueError(f"{path} Forge refmap contains no production SRG method mappings")
+    return targets
+
+
+def verify_forge_jar(jar: zipfile.ZipFile, path: Path, members: set[str]) -> None:
+    manifest = manifest_attributes(jar.read("META-INF/MANIFEST.MF"))
+    mixin_configs = {
+        item.strip() for item in manifest.get("mixinconfigs", "").split(",") if item.strip()
+    }
+    if FORGE_MIXIN_CONFIG not in mixin_configs:
+        raise ValueError(f"{path} manifest MixinConfigs does not list {FORGE_MIXIN_CONFIG}")
+
+    mixin_config = json.loads(jar.read(FORGE_MIXIN_CONFIG))
+    if not isinstance(mixin_config, dict):
+        raise ValueError(f"{path} Forge Mixin config is not a JSON object")
+    if mixin_config.get("refmap") != FORGE_REFMAP:
+        raise ValueError(f"{path} Forge Mixin config does not reference {FORGE_REFMAP}")
+    if mixin_config.get("compatibilityLevel") != "JAVA_17":
+        raise ValueError(f"{path} Forge Mixin config must target JAVA_17")
+
+    tomllib.loads(jar.read("META-INF/mods.toml").decode("utf-8"))
+    forge_refmap_targets(json.loads(jar.read(FORGE_REFMAP)), path)
+
+    owned_classes = [
+        name
+        for name in members
+        if name.endswith(".class")
+        and name.startswith("com/shiroha/mmdskin/")
+        and not name.startswith("com/shiroha/mmdskin/shadow/")
+    ]
+    if not owned_classes:
+        raise ValueError(f"{path} contains no MMD Skin class files")
+    class_payloads = {name: jar.read(name) for name in owned_classes}
+    wrong_major = {
+        name: major
+        for name, payload in class_payloads.items()
+        if (major := class_major(payload, name)) != FORGE_CLASS_MAJOR
+    }
+    if wrong_major:
+        sample = ", ".join(f"{name}={major}" for name, major in sorted(wrong_major.items())[:3])
+        raise ValueError(f"{path} Forge classes are not Java 17 (major 61): {sample}")
+    if not any(SRG_TOKEN.search(payload) for payload in class_payloads.values()):
+        raise ValueError(f"{path} Forge classes contain no production SRG method references")
+
+
 def verify_jar(path: Path, platform: str, staged: Path, arch: str | None = None) -> None:
+    if platform not in PLATFORMS:
+        raise ValueError(f"Unknown platform: {platform}")
     artifacts = ARTIFACTS if arch is None else {arch: ARTIFACTS[arch]}
     with zipfile.ZipFile(path) as jar:
         members = set(jar.namelist())
@@ -140,11 +243,13 @@ def verify_jar(path: Path, platform: str, staged: Path, arch: str | None = None)
             "assets/mmdskin/default_anim/idle.vmd",
             "com/shiroha/mmdskin/render/shader/ShaderProvider.class",
             "com/shiroha/mmdskin/render/shader/SkinningComputeShader.class",
-        }
+        } | FORGE_LICENSES
         if platform == "fabric":
             required.update({"fabric.mod.json", "mmdskin-fabric-refmap.json"})
-        else:
+        elif platform == "neoforge":
             required.add("META-INF/neoforge.mods.toml")
+        else:
+            required.update({"META-INF/MANIFEST.MF", "META-INF/mods.toml", FORGE_REFMAP, FORGE_MIXIN_CONFIG})
         missing = sorted(required - members)
         if missing:
             raise ValueError(f"{path} is missing required mod content: {', '.join(missing)}")
@@ -164,7 +269,7 @@ def verify_jar(path: Path, platform: str, staged: Path, arch: str | None = None)
                 for class_mappings in mappings.values()
             ):
                 raise ValueError(f"{path} Fabric refmap is empty")
-        else:
+        elif platform == "neoforge":
             tomllib.loads(jar.read("META-INF/neoforge.mods.toml").decode("utf-8"))
             class_files = [name for name in members if name.endswith(".class") and name.startswith("com/shiroha/mmdskin/")]
             if not any(
@@ -173,11 +278,18 @@ def verify_jar(path: Path, platform: str, staged: Path, arch: str | None = None)
                 for name in class_files
             ):
                 raise ValueError(f"{path} contains no recognizable NeoForge Mojmap class reference")
+        else:
+            verify_forge_jar(jar, path, members)
 
         relocated = [name for name in members if name.startswith("com/shiroha/mmdskin/shadow/javazoom/jl/") and name.endswith(".class")]
         bare = [name for name in members if name.startswith("javazoom/") and name.endswith(".class")]
         if not relocated or bare:
             raise ValueError(f"{path} jlayer relocation invalid: relocated={len(relocated)}, bare={len(bare)}")
+        private_members = [
+            name for name in members if name.rsplit("/", 1)[-1].lower() == "usage_notice.json"
+        ]
+        if private_members:
+            raise ValueError(f"{path} contains private user data: {', '.join(sorted(private_members))}")
 
         expected_natives = {
             f"natives/{arch}/{filename}"
@@ -223,6 +335,25 @@ def verify_jar(path: Path, platform: str, staged: Path, arch: str | None = None)
                     temp.unlink(missing_ok=True)
 
 
+def selected_packages(args: argparse.Namespace) -> list[tuple[str, Path]]:
+    directories = {
+        "fabric": args.fabric_dir,
+        "neoforge": args.neoforge_dir,
+        "forge": args.forge_dir,
+    }
+    selected = [
+        (platform, Path(directory))
+        for platform, directory in directories.items()
+        if directory is not None
+    ]
+    if selected:
+        return selected
+    return [
+        ("fabric", Path("fabric/build/libs")),
+        ("neoforge", Path("neoforge/build/libs")),
+    ]
+
+
 def package(args: argparse.Namespace) -> None:
     staged = Path(args.staged).resolve()
     artifacts = ARTIFACTS if args.arch is None else {args.arch: ARTIFACTS[args.arch]}
@@ -230,12 +361,9 @@ def package(args: argparse.Namespace) -> None:
         check_binary(staged / "natives" / arch / filename, kind, expected)
 
     outputs = []
-    for directory, prefix in (
-        (Path(args.fabric_dir), "mmdskin-fabric-"),
-        (Path(args.neoforge_dir), "mmdskin-neoforge-"),
-    ):
+    for platform, directory in selected_packages(args):
+        prefix = f"mmdskin-{platform}-"
         jar = jar_candidates(directory, prefix)[0]
-        platform = "fabric" if prefix == "mmdskin-fabric-" else "neoforge"
         verify_jar(jar, platform, staged, args.arch)
         classifier = args.arch or "universal"
         packaged = jar.with_name(f"{jar.stem}-{classifier}{jar.suffix}")
@@ -263,8 +391,9 @@ def main() -> None:
     stage_parser.set_defaults(func=stage)
     package_parser = commands.add_parser("package")
     package_parser.add_argument("--staged", default="build/ci-native-resources")
-    package_parser.add_argument("--fabric-dir", default="fabric/build/libs")
-    package_parser.add_argument("--neoforge-dir", default="neoforge/build/libs")
+    package_parser.add_argument("--fabric-dir")
+    package_parser.add_argument("--neoforge-dir")
+    package_parser.add_argument("--forge-dir")
     package_parser.add_argument("--arch", choices=ARTIFACTS, help="Package only this platform (default: universal)")
     package_parser.set_defaults(func=package)
     args = parser.parse_args()

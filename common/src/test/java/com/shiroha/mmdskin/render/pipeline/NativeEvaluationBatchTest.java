@@ -23,7 +23,8 @@ class NativeEvaluationBatchTest {
     }
 
     @Test void overlapsJobsAndCompletesOnlyAfterAllJoinOnCaller() {
-        try (var executor = Executors.newFixedThreadPool(2)) {
+        var executor = Executors.newFixedThreadPool(2);
+        try {
             Thread caller = Thread.currentThread();
             var entered = new CountDownLatch(3);
             var finished = new AtomicInteger();
@@ -39,11 +40,14 @@ class NativeEvaluationBatchTest {
             assertEquals(2, stats.requestedWorkers());
             assertEquals(2, stats.peakWorkers());
             assertEquals(3, stats.peakActive());
+        } finally {
+            executor.shutdown();
         }
     }
 
     @Test void failureOnCallerStillJoinsWorkerAndCompletesSuccessfulJobs() {
-        try (var executor = Executors.newSingleThreadExecutor()) {
+        var executor = Executors.newSingleThreadExecutor();
+        try {
             var callerFailed = new CountDownLatch(1);
             var finished = new AtomicInteger();
             var completed = new AtomicInteger();
@@ -56,11 +60,14 @@ class NativeEvaluationBatchTest {
             ), executor, 4)); // 此用例验证并行异常收尾，不依赖 CI 主机的逻辑 CPU 数。
             assertSame(failure, error.getCause());
             assertEquals(1, completed.get());
+        } finally {
+            executor.shutdown();
         }
     }
 
     @Test void workerFailureAndCompletionFailureDoNotSkipRemainingCompletion() {
-        try (var executor = Executors.newSingleThreadExecutor()) {
+        var executor = Executors.newSingleThreadExecutor();
+        try {
             var completed = new AtomicInteger();
             var failure = new IllegalArgumentException("worker failure");
             var error = assertThrows(CompletionException.class, () -> NativeEvaluationBatch.run(List.of(
@@ -70,6 +77,8 @@ class NativeEvaluationBatchTest {
             ), executor));
             assertSame(failure, error.getCause());
             assertEquals(1, completed.get());
+        } finally {
+            executor.shutdown();
         }
     }
 

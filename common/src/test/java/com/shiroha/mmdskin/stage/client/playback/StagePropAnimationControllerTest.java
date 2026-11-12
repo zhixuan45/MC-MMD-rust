@@ -324,7 +324,7 @@ class StagePropAnimationControllerTest {
     @Test void independentModelSpaceIsStableBeforeTheFirstBoneKeyAndAfterUnbind() throws Exception {
         fixture("prop.vmd"); boneTimeline();
         var files=com.shiroha.mmdskin.asset.catalog.PropTimelineFiles.open(dir.resolve("prop.vmd"),"fan.pmx");
-        var binding=files.timeline().boneKeys().getFirst().value();
+        var binding=files.timeline().boneKeys().get(0).value();
         var timeline=new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline(
                 com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.State.DEFAULT,List.of(),List.of(),
                 List.of(new com.shiroha.mmdskin.stage.domain.timeline.PropTimeline.Key<>(10,binding),

@@ -27,7 +27,7 @@ import org.joml.Vector3f;
 public class MmdSkinRenderer<T extends Entity> extends EntityRenderer<T> {
 
     private static final ResourceLocation PLACEHOLDER_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(MmdSkin.MOD_ID, "textures/entity/placeholder.png");
+            new ResourceLocation(MmdSkin.MOD_ID, "textures/entity/placeholder.png");
 
     protected final String modelName;
 
