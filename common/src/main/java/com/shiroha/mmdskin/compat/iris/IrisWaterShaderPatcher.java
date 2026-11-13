@@ -29,7 +29,10 @@ public final class IrisWaterShaderPatcher {
             new OutputLayout("03", new int[]{0, 3}),
             new OutputLayout("036", new int[]{0, 3, 6}),
             new OutputLayout("0348", new int[]{0, 3, 4, 8}),
-            new OutputLayout("03648", new int[]{0, 3, 6, 4, 8})
+            new OutputLayout("03648", new int[]{0, 3, 6, 4, 8}),
+            new OutputLayout("031", new int[]{0, 3, 1}),
+            new OutputLayout("0318", new int[]{0, 3, 1, 8}),
+            new OutputLayout("038", new int[]{0, 3, 8})
     };
 
     private IrisWaterShaderPatcher() {}
@@ -104,7 +107,7 @@ public final class IrisWaterShaderPatcher {
         String clean = COMMENTS.matcher(source).replaceAll(" ");
         String code = compact(clean);
         if (hasUnsafeSideEffects(clean) || !hasSingleMain(clean)) return null;
-        if (looksLikeModernComplementary(code)) {
+        if (looksLikeModernComplementary(code) || looksLikeComplementaryR511(code)) {
             OutputLayout layout = findActiveLayout(source);
             if (layout == null || !hasModernAssignments(code, layout)) return null;
             return new WaterContract(WaterFamily.COMPLEMENTARY_MODERN, layout);
@@ -140,6 +143,18 @@ public final class IrisWaterShaderPatcher {
                 && code.contains("color.a=prevalpha*(1.0-skyfade)");
     }
 
+    private static boolean looksLikeComplementaryR511(String code) {
+        return code.contains("vec4translucentmult=vec4(1.0)")
+                && code.contains("vec3normalm=vdotn>0.0?-normal:normal")
+                && code.contains("translucentmult=vec4(mix(vec3(0.666),color.rgb*(1.0-pow2(pow2(color.a))),color.a),1.0)")
+                && code.contains("translucentmult.rgb=mix(translucentmult.rgb,vec3(1.0),min1(pow2(pow2(lviewpos/far))))")
+                && code.contains("dolighting(color,shadowmult,playerpos,viewpos,lviewpos,normalm,lmcoordm,")
+                && code.contains("floatskylightfactor=pow2(max(lmcoordm.y-0.7,0.0)*3.33333)")
+                && code.contains("floatsky=0.0")
+                && code.contains("dofog(color.rgb,sky,")
+                && code.contains("color.a*=1.0-sky");
+    }
+
     private static boolean hasModernAssignments(String code, OutputLayout layout) {
         Map<Integer, List<String>> assignments = assignments(code);
         if (assignments == null || assignments.size() != layout.targets.length) return false;
@@ -168,9 +183,12 @@ public final class IrisWaterShaderPatcher {
         if (slot == 0) return "color";
         if (slot == 1) return "vec4(1.0-translucentmult.rgb,translucentmult.a)";
         return switch (layout.targets[slot]) {
+            case 1 -> "vec4(0.0,materialmask,0.0,1.0)";
             case 6 -> "vec4(1.0,materialmask,skylightfactor,1.0)";
             case 4 -> "vec4(mat3(gbuffermodelviewinverse)*normalm,sqrt(fresnelm*color.a*fogalpha))";
-            case 8 -> "vec4(reflection.rgb*fresnelm*color.a*fogalpha,reflection.a)";
+            case 8 -> layout.id().equals("038") || layout.id().equals("0318")
+                    ? "vec4(lightalbedo,1.0)"
+                    : "vec4(reflection.rgb*fresnelm*color.a*fogalpha,reflection.a)";
             default -> "";
         };
     }

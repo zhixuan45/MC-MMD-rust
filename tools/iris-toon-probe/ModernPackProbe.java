@@ -41,7 +41,8 @@ public final class ModernPackProbe {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            throw new IllegalArgumentException("usage: ModernPackProbe <shaderpacks> [mcVersion] [irisVersion]");
+            throw new IllegalArgumentException(
+                    "usage: ModernPackProbe <shaderpacks> [mcVersion] [irisVersion] [packFile] [optionsFile]");
         }
         String minecraftVersion = args.length > 1 ? args[1] : "12001";
         String irisVersion = args.length > 2 ? args[2] : "10800";
@@ -57,7 +58,15 @@ public final class ModernPackProbe {
             GL.createCapabilities();
             RenderSystem.initRenderThread();
             System.out.println("GL=" + GL46C.glGetString(GL46C.GL_VERSION));
-            run(Path.of(args[0]), minecraftVersion, irisVersion);
+            if (args.length >= 4) {
+                Path pack = Path.of(args[3]).toAbsolutePath().normalize();
+                Path optionsFile = args.length >= 5
+                        ? Path.of(args[4]).toAbsolutePath().normalize()
+                        : Path.of(pack + ".txt");
+                runPack(pack, minecraftVersion, irisVersion, options(optionsFile));
+            } else {
+                run(Path.of(args[0]), minecraftVersion, irisVersion);
+            }
         } finally {
             GLFW.glfwDestroyWindow(window);
             GLFW.glfwTerminate();
@@ -72,7 +81,12 @@ public final class ModernPackProbe {
                                 String irisVersion) throws Exception {
         Path pack = shaderpacks.resolve(packName);
         if (!Files.isRegularFile(pack)) throw new AssertionError("缺少真实包: " + pack);
-        Map<String, String> options = options(Path.of(pack + ".txt"));
+        runPack(pack, minecraftVersion, irisVersion, options(Path.of(pack + ".txt")));
+    }
+
+    private static void runPack(Path pack, String minecraftVersion, String irisVersion,
+                                Map<String, String> options) throws Exception {
+        if (!Files.isRegularFile(pack)) throw new AssertionError("缺少真实包: " + pack);
         List<StringPair> defines = List.of(new StringPair("MC_VERSION", minecraftVersion),
                 new StringPair("IS_IRIS", "1"), new StringPair("IRIS_VERSION", irisVersion));
         int checked = 0;
@@ -89,6 +103,10 @@ public final class ModernPackProbe {
                             program, fragment, vertex, buffers);
                     if (!profile.isSupported()) {
                         throw new AssertionError(dimension + "/" + program + " 契约不支持: " + profile.reason());
+                    }
+                    if (profile.lightingSource().isEmpty()) {
+                        throw new AssertionError(dimension + "/" + program
+                                + " 未提取真实 Toon lighting: " + profile.id());
                     }
 
                     ToonShaderCpu shader = new ToonShaderCpu();
@@ -191,6 +209,13 @@ public final class ModernPackProbe {
         if (zip.getEntry(dimensional) != null) return dimensional;
         String shared = "shaders/" + program + "." + extension;
         if (zip.getEntry(shared) != null) return shared;
+        if (program.equals("gbuffers_entities_translucent")) {
+            String fallback = program.replace("_translucent", "");
+            String dimensionalFallback = "shaders/" + dimension + "/" + fallback + "." + extension;
+            if (zip.getEntry(dimensionalFallback) != null) return dimensionalFallback;
+            String sharedFallback = "shaders/" + fallback + "." + extension;
+            if (zip.getEntry(sharedFallback) != null) return sharedFallback;
+        }
         throw new AssertionError("包中缺少程序源码: " + dimensional);
     }
 

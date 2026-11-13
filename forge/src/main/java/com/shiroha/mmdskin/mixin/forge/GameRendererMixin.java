@@ -17,7 +17,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -64,17 +63,6 @@ public abstract class GameRendererMixin {
                                                        PoseStack poseStack, CallbackInfo ci) {
         // 在 Camera.setup 前准备本帧第一人称双眼锚点。
         FirstPersonManager.prepareCameraFrame(partialTick);
-    }
-
-    @Inject(method = "renderLevel", at = @At(value = "INVOKE",
-            target = "Lcom/mojang/blaze3d/vertex/PoseStack;mulPose(Lorg/joml/Quaternionf;)V", ordinal = 1,
-            shift = At.Shift.AFTER))
-    private void mmdskin$applyCameraRoll(float partialTick, long finishTimeNano,
-                                         PoseStack poseStack, CallbackInfo ci) {
-        MMDCameraController controller = MMDCameraController.getInstance();
-        if (controller.isActive() && controller.getCameraRoll() != 0.0f) {
-            poseStack.mulPose(new Quaternionf().rotationZ(controller.getCameraRoll()));
-        }
     }
 
     @Inject(method = "pick", at = @At("RETURN"), require = 0)

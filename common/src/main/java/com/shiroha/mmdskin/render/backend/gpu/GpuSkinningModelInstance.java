@@ -619,8 +619,8 @@ public class GpuSkinningModelInstance extends BaseModelInstance {
         I_colorLocation = GlStateManager._glGetAttribLocation(program, "iris_Color");
     }
 
-    void setUniforms(ShaderInstance shader, PoseStack deliverStack) {
-        setupShaderUniforms(shader, deliverStack, light0Direction, light1Direction, lightMapMaterial.tex);
+    void setUniforms(ShaderInstance shader, PoseStack deliverStack, RenderScene scene) {
+        setupShaderUniforms(shader, deliverStack, scene, light0Direction, light1Direction, lightMapMaterial.tex);
     }
 
     NativeRenderBackendPort nativeBackendPort() {

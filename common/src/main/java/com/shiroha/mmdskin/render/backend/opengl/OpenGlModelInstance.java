@@ -221,8 +221,8 @@ public class OpenGlModelInstance extends BaseModelInstance {
         I_colorLocation = GlStateManager._glGetAttribLocation(shaderProgram, "iris_Color");
     }
 
-    public void setUniforms(ShaderInstance shader, PoseStack deliverStack) {
-        setupShaderUniforms(shader, deliverStack, light0Direction, light1Direction, lightMapMaterial.tex);
+    public void setUniforms(ShaderInstance shader, PoseStack deliverStack, RenderScene scene) {
+        setupShaderUniforms(shader, deliverStack, scene, light0Direction, light1Direction, lightMapMaterial.tex);
     }
 
     NativeRenderBackendPort nativeBackendPort() {

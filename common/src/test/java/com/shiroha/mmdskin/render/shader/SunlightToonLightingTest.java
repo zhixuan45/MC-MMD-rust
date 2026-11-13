@@ -59,7 +59,11 @@ class SunlightToonLightingTest {
                 float colorPow = mix(2.0, 0.5, pow(lightmapY, 4.0));
                 return SampleShadow(shadowPos, colorMult, colorPow);
             }
-            void DoLighting() {
+            void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                    float lViewPos, vec3 geoNormal, vec3 normalM, float dither, vec3 worldGeoNormal,
+                    vec2 lightmap, bool noSmoothLighting, bool noDirectionalShading, bool noVanillaAO,
+                    bool centerShadowBias, int subsurfaceMode, float smoothnessG, float highlightMult,
+                    float emission) {
                 float NdotLM = clamp(dot(normal, lightVec), 0.0, 1.0);
                 float shadowTime = 1.0;
                 float subsurface = 0.0;
@@ -163,7 +167,11 @@ class SunlightToonLightingTest {
         String fragment = """
                 vec2 texCoord;
                 vec3 ViewToPlayer(vec3 p) { return p; }
-                void DoLighting() {
+                void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                        float lViewPos, vec3 geoNormal, vec3 normalM, float dither, vec3 worldGeoNormal,
+                        vec2 lightmap, bool noSmoothLighting, bool noDirectionalShading, bool noVanillaAO,
+                        bool centerShadowBias, int subsurfaceMode, float smoothnessG, float highlightMult,
+                        float emission) {
                     if (NdotLM > 0.0001) {
                         shadowMult *= GetShadow(shadowPos, lightmap.y, offset, samples, false, playerPos);
                     }
@@ -212,6 +220,61 @@ class SunlightToonLightingTest {
         assertFalse(withoutSnapshotContract.contains("toonComplementaryFilteredTransmission"));
         assertTrue(withoutSnapshotContract.contains(
                 "texture(ToonTerrainShadowTranslucentDepth, p) : texture(ToonTerrainShadowDepth, p)"));
+    }
+
+    @Test
+    void modernDoLightingCallsFollowTheActiveParameterList() {
+        String common = """
+                vec2 texCoord;
+                vec3 ViewToPlayer(vec3 p) { return p; }
+                void main() {}
+                """;
+        String modern15 = """
+                void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                        float lViewPos, vec3 normalM, vec2 lightmap, bool noSmoothLighting,
+                        bool noDirectionalShading, bool noVanillaAO, bool centerShadowBias,
+                        int subsurfaceMode, float smoothnessG, float highlightMult, float emission) {}
+                """ + common;
+        String modern18 = """
+                void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                        float lViewPos, vec3 geoNormal, vec3 normalM, float dither, vec3 worldGeoNormal,
+                        vec2 lightmap, bool noSmoothLighting, bool noDirectionalShading, bool noVanillaAO,
+                        bool centerShadowBias, int subsurfaceMode, float smoothnessG, float highlightMult,
+                        float emission) {}
+                """ + common;
+
+        String r511 = ComplementaryToonLighting.createModern(modern15, VERTEX);
+        assertTrue(r511.contains("DoLighting(lit, shadow, player, p, length(p), sampleNormal, lmCoord,"
+                + " false, true, true, true, 0, 0.0, 0.0, 0.0);"));
+        String r593 = ComplementaryToonLighting.createModern(modern18, VERTEX);
+        assertTrue(r593.contains("DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal,"
+                + " 0.5, worldNormal, lmCoord, false, true, true, true, 0, 0.0, 0.0, 0.0);"));
+    }
+
+    @Test
+    void modernCopiesVertexOnlySunVectorHelperIntoLightingFragment() {
+        String fragment = """
+                vec2 texCoord;
+                vec3 ViewToPlayer(vec3 p) { return p; }
+                void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                        float lViewPos, vec3 normalM, vec2 lightmap, bool noSmoothLighting,
+                        bool noDirectionalShading, bool noVanillaAO, bool centerShadowBias,
+                        int subsurfaceMode, float smoothnessG, float highlightMult, float emission) {}
+                void main() {}
+                """;
+        String vertex = """
+                vec3 GetSunVector() {
+                    return normalize((gbufferModelView * vec4(0.0, 1.0, 0.0, 1.0)).xyz);
+                }
+                void main() {
+                    sunVec = GetSunVector();
+                }
+                """;
+
+        String lighting = ComplementaryToonLighting.createModern(fragment, vertex);
+        assertTrue(lighting.contains("vec3 GetSunVector() {"));
+        assertTrue(lighting.contains("sunVec = GetSunVector();"));
+        assertTrue(lighting.contains("DoLighting(lit, shadow, player, p, length(p), sampleNormal, lmCoord,"));
     }
 
     @Test

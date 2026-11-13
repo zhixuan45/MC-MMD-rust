@@ -9,6 +9,8 @@ param(
     [string]$ClasspathFile = '',
     [string]$Classes = '',
     [string]$OutputDirectory = '',
+    [string]$PackFile = '',
+    [string]$OptionFile = '',
     [string]$McVersion = '12001',
     [string]$IrisVersion = '10800',
     [string]$EyeAssetData = '',
@@ -91,6 +93,9 @@ $taskOutput = if ($OutputDirectory) {
 }
 $taskHost = Join-Path $taskOutput 'host'
 New-Item -ItemType Directory -Force -Path $taskOutput, $taskHost | Out-Null
+$taskPackFile = if ($PackFile) { (Resolve-Path -LiteralPath $PackFile).Path } else { '' }
+$taskOptionFile = if ($OptionFile) { (Resolve-Path -LiteralPath $OptionFile).Path } else { '' }
+if ($taskOptionFile -and !$taskPackFile) { throw '-OptionFile requires -PackFile' }
 
 # Oculus/Iris bundles JCPP; extract only probe dependencies without touching the instance.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -216,16 +221,26 @@ try {
     $taskRunCp = "$taskHost;$taskOutput;$taskCp"
 
     if ($Probe -in @('modern', 'all')) {
-        & $taskJava -cp $taskRunCp ModernPackProbe $taskShaderpacks $McVersion $IrisVersion
+        $taskModernArgs = @($taskShaderpacks, $McVersion, $IrisVersion)
+        if ($taskPackFile) { $taskModernArgs += $taskPackFile }
+        if ($taskOptionFile) { $taskModernArgs += $taskOptionFile }
+        & $taskJava -cp $taskRunCp ModernPackProbe @taskModernArgs
         if ($LASTEXITCODE -ne 0) { throw 'Modern Complementary probe failed' }
     }
     if ($Probe -in @('water', 'all')) {
         $taskAdapterPolicy = if ($RequireWaterAdapter) { 'required' } else { 'auto' }
-        foreach ($taskPack in @('ComplementaryReimagined_r5.9.3.zip', 'ComplementaryUnbound_r5.9.3.zip')) {
-            $taskPackPath = Join-Path $taskShaderpacks $taskPack
+        $taskWaterPacks = if ($taskPackFile) {
+            @($taskPackFile)
+        } else {
+            @('ComplementaryReimagined_r5.9.3.zip', 'ComplementaryUnbound_r5.9.3.zip') |
+                ForEach-Object { Join-Path $taskShaderpacks $_ }
+        }
+        foreach ($taskPackPath in $taskWaterPacks) {
             if (!(Test-Path -LiteralPath $taskPackPath)) { throw "Missing real shader pack: $taskPackPath" }
-            & $taskJava -cp $taskRunCp WaterShaderProbe $taskPackPath $McVersion $IrisVersion $taskAdapterPolicy
-            if ($LASTEXITCODE -ne 0) { throw "Water probe failed: $taskPack" }
+            $taskWaterArgs = @($taskPackPath, $McVersion, $IrisVersion, $taskAdapterPolicy)
+            if ($taskOptionFile) { $taskWaterArgs += $taskOptionFile }
+            & $taskJava "-Dmmdskin.waterProbe.output=$taskOutput" -cp $taskRunCp WaterShaderProbe @taskWaterArgs
+            if ($LASTEXITCODE -ne 0) { throw "Water probe failed: $taskPackPath" }
         }
     }
     if ($Probe -in @('shadow', 'all')) {

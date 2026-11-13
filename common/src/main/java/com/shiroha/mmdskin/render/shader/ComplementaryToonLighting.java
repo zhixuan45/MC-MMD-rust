@@ -9,6 +9,9 @@ import java.util.regex.Pattern;
 final class ComplementaryToonLighting {
     private static final Pattern COMMENTS = Pattern.compile("/\\*.*?\\*/|//[^\\r\\n]*", Pattern.DOTALL);
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*\\)\\s*\\{");
+    private static final Pattern DO_LIGHTING = Pattern.compile("\\bvoid\\s+DoLighting\\s*\\(([^)]*)\\)");
+    private static final Pattern GET_SUN_VECTOR = Pattern.compile(
+            "\\bvec3\\s+GetSunVector\\s*\\(\\s*\\)\\s*\\{");
     private static final Pattern INITIALIZER = Pattern.compile("(?s)\\s*(float|vec[234]|int|mat[234])\\s+(.+);\\s*");
     private static final Pattern MODERN_DIFFUSE = Pattern.compile("shadowMult\\s*\\*=\\s*max\\(\\s*NdotLM\\s*\\*\\s*shadowTime\\s*,");
     private static final Pattern MODERN_SHADOW_GATE = Pattern.compile("if\\s*\\(\\s*NdotLM\\s*>\\s*0\\.0001\\s*\\)");
@@ -22,9 +25,14 @@ final class ComplementaryToonLighting {
         if (vertex == null) return "";
         String source = clean(fragment);
         Matcher main = MAIN.matcher(source);
-        Matcher sun = Pattern.compile("\\bsunVec\\s*=\\s*([^;]+);").matcher(clean(vertex));
-        if (!main.find() || !sun.find() || !source.contains("void DoLighting(")
-                || !source.contains("vec3 ViewToPlayer(")) return "";
+        String vertexSource = clean(vertex);
+        Matcher sun = Pattern.compile("\\bsunVec\\s*=\\s*([^;]+);").matcher(vertexSource);
+        if (!main.find() || !sun.find() || !source.contains("vec3 ViewToPlayer(")) return "";
+        String lightingCall = doLightingCall(source);
+        if (lightingCall.isEmpty()) return "";
+        String sunFunction = sun.group(1).trim().equals("GetSunVector()")
+                ? extractFunction(vertexSource, GET_SUN_VECTOR) : "";
+        if (sun.group(1).trim().equals("GetSunVector()") && sunFunction.isEmpty()) return "";
         source = source.substring(0, main.start())
                 .replaceAll("(?m)^\\s*#(?:version|extension|line)[^\\n]*", "")
                 // 去掉片段输入限定符，但保留函数参数的 in/inout。
@@ -72,7 +80,7 @@ final class ComplementaryToonLighting {
                 ? "shadowMult *= max(toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime,"
                 : "shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
         return shadowSamplerWrapper(true) + (transmission ? modernTransmissionFilter() : "")
-                + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
+                + head + sunFunction + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + "\nupVec = normalize(gbufferModelView[1].xyz);\n"
                 + "northVec = normalize(gbufferModelView[2].xyz); eastVec = normalize(gbufferModelView[0].xyz);\n"
                 + "sunVec = " + sun.group(1) + ";\n"
@@ -84,8 +92,7 @@ final class ComplementaryToonLighting {
                 + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
                 + "vec3 sampleNormal = n;\n"
                 + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * sampleNormal);\n"
-                + "DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal, 0.5, worldNormal, lmCoord,\n"
-                + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
+                + lightingCall
                 + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), "
                 + "band);\n}\n";
     }
@@ -268,5 +275,50 @@ final class ComplementaryToonLighting {
         }
         parts.add(declarations.substring(start));
         return parts;
+    }
+
+    private static String doLightingCall(String source) {
+        Matcher signature = DO_LIGHTING.matcher(source);
+        if (!signature.find()) return "";
+        String[] parameters = signature.group(1).split(",");
+        List<String> arguments = new ArrayList<>(parameters.length);
+        for (String parameter : parameters) {
+            String[] tokens = parameter.trim().split("\\s+");
+            String name = tokens[tokens.length - 1].toLowerCase(java.util.Locale.ROOT);
+            String argument = switch (name) {
+                case "color" -> "lit";
+                case "shadowmult" -> "shadow";
+                case "playerpos" -> "player";
+                case "viewpos" -> "p";
+                case "lviewpos" -> "length(p)";
+                case "geonormal", "normalm" -> "sampleNormal";
+                case "dither" -> "0.5";
+                case "worldgeonormal" -> "worldNormal";
+                case "lightmap" -> "lmCoord";
+                case "nosmoothlighting" -> "false";
+                case "nodirectionalshading", "novanillaao", "centershadowbias" -> "true";
+                case "subsurfacemode" -> "0";
+                case "smoothnessg", "highlightmult", "emission" -> "0.0";
+                default -> null;
+            };
+            if (argument == null) return "";
+            arguments.add(argument);
+        }
+        return "DoLighting(" + String.join(", ", arguments) + ");\n";
+    }
+
+    private static String extractFunction(String source, Pattern signature) {
+        Matcher matcher = signature.matcher(source);
+        if (!matcher.find()) return "";
+        int open = source.indexOf('{', matcher.start());
+        int depth = 0;
+        for (int index = open; index < source.length(); index++) {
+            char character = source.charAt(index);
+            if (character == '{') depth++;
+            else if (character == '}' && --depth == 0) {
+                return source.substring(matcher.start(), index + 1) + "\n";
+            }
+        }
+        return "";
     }
 }

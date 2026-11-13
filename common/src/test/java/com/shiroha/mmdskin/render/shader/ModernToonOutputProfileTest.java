@@ -8,7 +8,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class ModernToonOutputProfileTest {
     private static final String MODERN_CONTRACT = """
             const float OSIEBCA = 1.0 / 255.0;
-            void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos) {
+            void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                    float lViewPos, vec3 geoNormal, vec3 normalM, float dither, vec3 worldGeoNormal,
+                    vec2 lightmap, bool noSmoothLighting, bool noDirectionalShading, bool noVanillaAO,
+                    bool centerShadowBias, int subsurfaceMode, float smoothnessG, float highlightMult,
+                    float emission) {
                 vec3 finalDiffuse = vec3(1.0);
                 finalDiffuse = sqrt(max(finalDiffuse, vec3(0.0)));
                 color.rgb *= finalDiffuse;
@@ -21,6 +25,32 @@ class ModernToonOutputProfileTest {
             gl_FragData[1] = vec4(1.0 - translucentMult, 1.0);
             gl_FragData[2] = vec4(smoothnessD, materialMask, skyLightFactor, 1.0);
             gl_FragData[3] = vec4(mat3(gbufferModelViewInverse) * normalM, 1.0);
+            """;
+    private static final String EUPHORIA_R511_CONTRACT = """
+            const float OSIEBCA = 1.0 / 255.0;
+            vec2 texCoord;
+            vec3 ViewToPlayer(vec3 p) { return p; }
+            void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                    float lViewPos, vec3 normalM, vec2 lightmap, bool noSmoothLighting,
+                    bool noDirectionalShading, bool noVanillaAO, bool centerShadowBias,
+                    int subsurfaceMode, float smoothnessG, float highlightMult, float emission) {
+                vec3 finalDiffuse = vec3(1.0);
+                finalDiffuse = sqrt(max(finalDiffuse, vec3(0.0)));
+                color.rgb *= finalDiffuse;
+            }
+            float smoothnessD = 0.0, skyLightFactor = 0.0, materialMask = OSIEBCA * 254.0;
+            skyLightFactor = pow2(max(lmCoord.y - 0.7, 0.0) * 3.33333);
+            vec3 translucentMult = vec3(1.0);
+            /* DRAWBUFFERS:065 */
+            gl_FragData[0] = color;
+            gl_FragData[1] = vec4(smoothnessD, materialMask, skyLightFactor, 1.0);
+            gl_FragData[2] = vec4(mat3(gbufferModelViewInverse) * normalM, 1.0);
+            void main() {}
+            """;
+    private static final String VERTEX = """
+            void main() {
+                sunVec = normalize(vec3(0.0, 1.0, 0.0));
+            }
             """;
     private static final String BSL_COLOR = """
             albedo.rgb = pow(albedo.rgb, vec3(2.2));
@@ -101,6 +131,51 @@ class ModernToonOutputProfileTest {
         assertTrue(alpha.isSupported(), alpha.reason());
         assertNotEquals(opaque.id(), alpha.id());
         assertTrue(alpha.fragmentWriter().contains("pow(alpha, 4.0)"));
+    }
+
+    @Test
+    void acceptsEuphoriaR511DirectSkyLightAndBlocklightLayouts() {
+        var opaque = ToonOutputProfile.resolve("ComplementaryUnbound_r5.1.1 + EuphoriaPatches_1.2.zip",
+                "gbuffers_entities", EUPHORIA_R511_CONTRACT, VERTEX, new int[]{0, 6, 5});
+        assertTrue(opaque.isSupported(), opaque.reason());
+        assertTrue(opaque.id().startsWith("complementary_modern:"));
+        assertFalse(opaque.lightingSource().isEmpty());
+        assertTrue(opaque.lightingSource().contains(
+                "DoLighting(lit, shadow, player, p, length(p), sampleNormal, lmCoord,"));
+        assertTrue(opaque.fragmentWriter().contains("toonOutput1 = vec4(0.0, 254.0 / 255.0, 0.0, 1.0)"));
+        assertTrue(opaque.fragmentWriter().contains("toonOutput2 = vec4(normalize(mat3(ToonViewToWorld) * normal), 1.0)"));
+
+        String coloredLight = EUPHORIA_R511_CONTRACT
+                .replace("DRAWBUFFERS:065", "DRAWBUFFERS:0658")
+                + "gl_FragData[3] = vec4(0.0, 0.0, 0.0, 1.0);\n";
+        var profile = ToonOutputProfile.resolve("ComplementaryUnbound_r5.1.1 + EuphoriaPatches_1.2.zip",
+                "gbuffers_entities", coloredLight, VERTEX, new int[]{0, 6, 5, 8});
+        assertTrue(profile.isSupported(), profile.reason());
+        assertTrue(profile.fragmentWriter().contains("toonOutput3 = vec4(0.0, 0.0, 0.0, 1.0)"));
+    }
+
+    @Test
+    void acceptsEuphoriaR511HandBlocklightAndRejectsChangedSemantics() {
+        String hand = EUPHORIA_R511_CONTRACT
+                .replace("DRAWBUFFERS:065", "DRAWBUFFERS:0658")
+                .replace("vec3 translucentMult = vec3(1.0);",
+                        "vec3 translucentMult = vec3(1.0); vec3 lightAlbedo = vec3(0.0);")
+                + "gl_FragData[3] = vec4(lightAlbedo, 1.0);\n";
+        var profile = ToonOutputProfile.resolve("ComplementaryUnbound_r5.1.1 + EuphoriaPatches_1.2.zip",
+                "gbuffers_hand", hand, VERTEX, new int[]{0, 6, 5, 8});
+        assertTrue(profile.isSupported(), profile.reason());
+        assertFalse(profile.lightingSource().isEmpty());
+        assertTrue(profile.fragmentWriter().contains("toonOutput3 = vec4(0.0, 0.0, 0.0, 1.0)"));
+
+        assertFalse(ToonOutputProfile.resolve("ComplementaryUnbound_r5.1.1 + EuphoriaPatches_1.2.zip",
+                "gbuffers_entities", EUPHORIA_R511_CONTRACT.replace(
+                        "float smoothnessD = 0.0, skyLightFactor = 0.0, materialMask = OSIEBCA * 254.0",
+                        "float smoothnessD = 0.0, skyLightFactor = 0.0, materialMask = 1.0"),
+                new int[]{0, 6, 5}).isSupported());
+        assertFalse(ToonOutputProfile.resolve("ComplementaryUnbound_r5.1.1 + EuphoriaPatches_1.2.zip",
+                "gbuffers_entities", EUPHORIA_R511_CONTRACT
+                        .replace("DRAWBUFFERS:065", "DRAWBUFFERS:0658")
+                        + "gl_FragData[3] = mystery;\n", new int[]{0, 6, 5, 8}).isSupported());
     }
 
     @Test

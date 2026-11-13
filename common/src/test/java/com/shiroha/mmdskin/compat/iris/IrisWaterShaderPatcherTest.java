@@ -38,6 +38,23 @@ class IrisWaterShaderPatcherTest {
                 color.a = prevAlpha * (1.0 - skyFade);
                 if (color.a < 0.001) discard;
             """;
+    private static final String EUPHORIA_R511_CONTRACT = """
+            void main() {
+                vec4 color = texture2D(tex, texCoord) * vec4(glColor.rgb, 1.0);
+                vec4 translucentMult = vec4(1.0);
+                float materialMask = 0.0;
+                vec3 normalM = VdotN > 0.0 ? -normal : normal;
+                translucentMult = vec4(mix(vec3(0.666), color.rgb * (1.0 - pow2(pow2(color.a))), color.a), 1.0);
+                translucentMult.rgb = mix(translucentMult.rgb, vec3(1.0), min1(pow2(pow2(lViewPos / far))));
+                DoLighting(color, shadowMult, playerPos, viewPos, lViewPos, normalM, lmCoordM,
+                           noSmoothLighting, noDirectionalShading, false, false,
+                           subsurfaceMode, smoothnessG, highlightMult, emission);
+                float fresnelM = (pow3(fresnel) * 0.85 + 0.15) * reflectMult;
+                float skyLightFactor = pow2(max(lmCoordM.y - 0.7, 0.0) * 3.33333);
+                float sky = 0.0;
+                DoFog(color.rgb, sky, lViewPos, playerPos, VdotU, VdotS, dither);
+                color.a *= 1.0 - sky;
+            """;
     private static final String FRAGMENT = """
             #version 330 core
             #extension GL_ARB_shader_texture_lod : enable
@@ -103,6 +120,23 @@ class IrisWaterShaderPatcherTest {
         assertTrue(IrisWaterShaderPatcher.supports("gbuffers_water", contract));
         var original = transformed(5);
         assertNotSame(original, IrisWaterShaderPatcher.patch("gbuffers_water", contract, original));
+    }
+
+    @Test void acceptsEuphoriaR511WaterLayouts() {
+        for (String layout : new String[]{"03", "031", "0318", "038"}) {
+            String contract = euphoriaR511Contract(layout);
+            int outputs = euphoriaOutputCount(layout);
+            var original = transformed(outputs);
+            var result = IrisWaterShaderPatcher.patch("gbuffers_water", contract, original);
+
+            assertNotSame(original, result, layout);
+            assertTrue(IrisWaterShaderPatcher.supports("gbuffers_water", contract), layout);
+            String source = result.get("FRAGMENT");
+            assertTrue(source.contains("if (MmdWaterCapture) { mmdStore(iris_FragData0)"), layout);
+            for (int slot = 0; slot < outputs; slot++) {
+                assertTrue(source.contains("iris_FragData" + slot + " = vec4(float(" + slot + "));"), layout);
+            }
+        }
     }
 
     @Test void unrelatedProgramsAndUnknownContractsRemainUntouched() {
@@ -212,6 +246,41 @@ class IrisWaterShaderPatcherTest {
                     + "gl_FragData[0] = color;\n";
         };
         return MODERN_CONTRACT + tails + "}\n";
+    }
+
+    private static String euphoriaR511Contract(String layout) {
+        String tails = switch (layout) {
+            case "03" -> """
+                    /* DRAWBUFFERS:03 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    """;
+            case "031" -> """
+                    /* DRAWBUFFERS:031 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    gl_FragData[2] = vec4(0.0, materialMask, 0.0, 1.0);
+                    """;
+            case "0318" -> """
+                    /* DRAWBUFFERS:0318 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    gl_FragData[2] = vec4(0.0, materialMask, 0.0, 1.0);
+                    gl_FragData[3] = vec4(lightAlbedo, 1.0);
+                    """;
+            case "038" -> """
+                    /* DRAWBUFFERS:038 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    gl_FragData[2] = vec4(lightAlbedo, 1.0);
+                    """;
+            default -> throw new IllegalArgumentException(layout);
+        };
+        return EUPHORIA_R511_CONTRACT + tails + "}\n";
+    }
+
+    private static int euphoriaOutputCount(String layout) {
+        return layout.length();
     }
 
     private static Map<String, String> transformed(int outputs) {

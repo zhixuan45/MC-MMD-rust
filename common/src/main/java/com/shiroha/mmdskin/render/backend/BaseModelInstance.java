@@ -92,7 +92,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         if (!swimmingVeil || scene == null || !scene.isWorldScene() || scene.isFirstPerson()
                 || IRIS.isShadowPass()) return;
         if (swimmingVeilRenderer == null) swimmingVeilRenderer = new SwimmingVeilRenderer(backendPort(), model);
-        swimmingVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack), swimmingVeilSeconds);
+        swimmingVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack, scene), swimmingVeilSeconds);
     }
 
     public void setGlobalAlpha(float alpha) {
@@ -606,21 +606,26 @@ public abstract class BaseModelInstance implements ModelInstance {
     }
 
     /**
-     * 1.20.1 的 world/shadow 栈已含相机或光源视图，GUI 预览栈已处于屏幕空间；
-     * 两种来源都只应用一次，不能再乘当前相机视图。
+     * 1.20.1 的世界栈已含相机视图，GUI 栈则只含屏幕空间变换。
+     * GUI 投影使用 1000..21000 的 Z 范围，必须额外组合 GameRenderer 预置的 Z 基线。
      */
-    public final Matrix4f composeModelViewMatrix(PoseStack deliverStack) {
-        return composeModelViewMatrix(deliverStack.last().pose(), composedModelViewMatrix);
+    public final Matrix4f composeModelViewMatrix(PoseStack deliverStack, RenderScene scene) {
+        Matrix4f baseView = scene != null && scene.isInventoryScene()
+                ? RenderSystem.getModelViewMatrix() : null;
+        return composeModelViewMatrix(baseView, deliverStack.last().pose(), composedModelViewMatrix);
     }
 
-    static Matrix4f composeModelViewMatrix(Matrix4f entityPose, Matrix4f destination) {
-        return destination.set(entityPose);
+    static Matrix4f composeModelViewMatrix(Matrix4f baseView,
+                                                      Matrix4f entityPose,
+                                                      Matrix4f destination) {
+        return baseView == null ? destination.set(entityPose) : baseView.mul(entityPose, destination);
     }
 
     protected void setupShaderUniforms(ShaderInstance shader, PoseStack deliverStack,
-                                       Vector3f light0Dir, Vector3f light1Dir, int lightMapTex) {
+                                       RenderScene scene, Vector3f light0Dir, Vector3f light1Dir,
+                                       int lightMapTex) {
         if (shader.MODEL_VIEW_MATRIX != null)
-            shader.MODEL_VIEW_MATRIX.set(composeModelViewMatrix(deliverStack));
+            shader.MODEL_VIEW_MATRIX.set(composeModelViewMatrix(deliverStack, scene));
         if (shader.PROJECTION_MATRIX != null)
             shader.PROJECTION_MATRIX.set(RenderSystem.getProjectionMatrix());
         if (shader.COLOR_MODULATOR != null)

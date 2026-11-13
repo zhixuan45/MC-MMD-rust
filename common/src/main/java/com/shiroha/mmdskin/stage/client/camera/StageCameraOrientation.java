@@ -13,11 +13,11 @@ public final class StageCameraOrientation {
         if (rollDegrees == 0.0f) {
             return;
         }
-        // 后乘局部 Z 旋转，与 NeoForge 三轴 Camera.setRotation 保持一致。
-        rotation.rotateZ(-(float) Math.toRadians(rollDegrees));
-        // 使用原版相机基向量，保证视锥、粒子与视图矩阵一致。
-        forwards.set(0.0f, 0.0f, -1.0f).rotate(rotation);
+        // 1.20.1 Camera 使用 rotationYXZ(-yaw, pitch, 0)，局部 +Z 是前方。
+        // 与 Forge 的视图 Rz(roll) * Rx(pitch) * Ry(yaw + 180°) 对应。
+        rotation.rotateZ((float) Math.toRadians(rollDegrees));
+        forwards.set(0.0f, 0.0f, 1.0f).rotate(rotation);
         up.set(0.0f, 1.0f, 0.0f).rotate(rotation);
-        left.set(-1.0f, 0.0f, 0.0f).rotate(rotation);
+        left.set(1.0f, 0.0f, 0.0f).rotate(rotation);
     }
 }

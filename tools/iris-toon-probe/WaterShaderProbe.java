@@ -33,7 +33,8 @@ public final class WaterShaderProbe {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            throw new IllegalArgumentException("usage: WaterShaderProbe <pack.zip> [mcVersion] [irisVersion]");
+            throw new IllegalArgumentException(
+                    "usage: WaterShaderProbe <pack.zip> [mcVersion] [irisVersion] [adapterPolicy] [optionsFile]");
         }
         String minecraftVersion = args.length > 1 ? args[1] : "12001";
         String irisVersion = args.length > 2 ? args[2] : "10800";
@@ -54,8 +55,9 @@ public final class WaterShaderProbe {
                     + patchSodium.getParameterCount());
             List<StringPair> defines = List.of(new StringPair("MC_VERSION", minecraftVersion),
                     new StringPair("IS_IRIS", "1"), new StringPair("IRIS_VERSION", irisVersion));
-            Map<String, String> options = options(Path.of(args[0] + ".txt"));
-            Path output = Path.of("build/iris-toon-probe");
+            Path optionsFile = args.length > 4 ? Path.of(args[4]).toAbsolutePath().normalize() : Path.of(args[0] + ".txt");
+            Map<String, String> options = options(optionsFile);
+            Path output = Path.of(System.getProperty("mmdskin.waterProbe.output", "build/iris-toon-probe"));
             Files.createDirectories(output);
             for (String dimension : List.of("world0", "world-1", "world1")) {
                 String base = "shaders/" + dimension + "/gbuffers_water.";

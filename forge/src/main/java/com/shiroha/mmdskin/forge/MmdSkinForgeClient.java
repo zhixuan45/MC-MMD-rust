@@ -7,11 +7,14 @@ import com.shiroha.mmdskin.forge.maid.MaidRenderEventHandler;
 import com.shiroha.mmdskin.forge.register.MmdSkinRegisterClient;
 import com.shiroha.mmdskin.render.bootstrap.ClientRenderRuntime;
 import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
+import com.shiroha.mmdskin.stage.client.camera.MMDCameraController;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.client.event.ViewportEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
 /**
@@ -24,7 +27,18 @@ public class MmdSkinForgeClient {
         MmdSkinRegisterClient.init(modEventBus);
         // The public stage is supported by loaders even when chunk submission is replaced.
         MinecraftForge.EVENT_BUS.addListener(MmdSkinForgeClient::onRenderLevelStage);
+        MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, MmdSkinForgeClient::onComputeCameraAngles);
         modEventBus.addListener(MmdSkinForgeClient::clientSetup);
+    }
+
+    private static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        MMDCameraController controller = MMDCameraController.getInstance();
+        if (controller.isActive()) {
+            // Forge 在 Camera.setup 后按 Z/X/Y 顺序构造视图；事件的三轴角度均为度。
+            event.setYaw(controller.getCameraYaw());
+            event.setPitch(controller.getCameraPitch());
+            event.setRoll(controller.getCameraRoll());
+        }
     }
 
     private static void onRenderLevelStage(RenderLevelStageEvent event) {

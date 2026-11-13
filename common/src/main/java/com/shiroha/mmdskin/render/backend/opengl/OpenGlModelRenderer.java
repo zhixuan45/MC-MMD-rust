@@ -95,7 +95,7 @@ final class OpenGlModelRenderer {
         target.applyModelRootTransform(deliverStack, entityYaw, entityPitch, entityTrans);
 
         boolean firstPersonIndexReady = firstPersonView
-                && refreshFirstPersonIndices(target, nativeBackend, modelHandle, deliverStack);
+                && refreshFirstPersonIndices(target, nativeBackend, modelHandle, deliverStack, context);
         target.currentTranslucentOrder = target.translucentOrders.get(isGuiScene, firstPersonIndexReady);
         // EBO 与子网格范围必须来自同一份布局；本帧刷新失败时一起回退。
         target.activeIndexBufferObject = firstPersonIndexReady
@@ -122,7 +122,7 @@ final class OpenGlModelRenderer {
         if (OutlineRenderDiagnostics.shouldSample(diagnosticFlags, modelHandle, context, System.nanoTime())) {
             target.modelViewMatBuff.clear();
             target.projMatBuff.clear();
-            target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
+            target.composeModelViewMatrix(deliverStack, context).get(target.modelViewMatBuff);
             RenderSystem.getProjectionMatrix().get(target.projMatBuff);
             target.modelViewMatBuff.position(0);
             target.projMatBuff.position(0);
@@ -147,7 +147,7 @@ final class OpenGlModelRenderer {
 
         long drawTimer = RenderPerformanceProfiler.get().startTimer();
         try {
-            renderStandard(target, minecraft, light, deliverStack, isGuiScene);
+            renderStandard(target, minecraft, light, deliverStack, isGuiScene, context);
         } finally {
             if (drawQueryStarted) GpuTimerQueryPool.draw().end();
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
@@ -157,7 +157,8 @@ final class OpenGlModelRenderer {
     private static boolean refreshFirstPersonIndices(OpenGlModelInstance target,
                                                      com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort nativeBackend,
                                                      long modelHandle,
-                                                     PoseStack deliverStack) {
+                                                     PoseStack deliverStack,
+                                                     RenderScene context) {
         if (target.firstPersonIndexBufferObject <= 0 || target.firstPersonIndexBuffer == null
                 || target.firstPersonMatrixBuffer == null) {
             return false;
@@ -165,7 +166,7 @@ final class OpenGlModelRenderer {
         // 传入的矩阵与随后 shader 使用的矩阵完全相同，避免重新推导实体/相机坐标。
         target.firstPersonMatrixFloatBuffer.position(0);
         // 裁剪计算必须与最终着色器使用同一套相机视图矩阵。
-        target.composeModelViewMatrix(deliverStack).get(target.firstPersonMatrixFloatBuffer);
+        target.composeModelViewMatrix(deliverStack, context).get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonMatrixFloatBuffer.position(16);
         RenderSystem.getProjectionMatrix().get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonIndexBuffer.clear();
@@ -255,7 +256,8 @@ final class OpenGlModelRenderer {
 
     private static void renderStandard(OpenGlModelInstance target, Minecraft minecraft,
                                        LightingHelper.LightData light, PoseStack deliverStack,
-                                       boolean guiScene) {
+                                       boolean guiScene,
+                                       RenderScene context) {
         boolean irisActive = IRIS.isShaderPackActive();
         float colorFactor = irisActive ? 1.0f : light.intensity();
         float alphaFactor = target.getGlobalAlpha();
@@ -275,7 +277,7 @@ final class OpenGlModelRenderer {
         ShaderInstance activeShader = null;
         try {
             // 普通混合先设置，随后由 Iris 应用各 G-buffer 的覆盖规则。
-            if (!bindActiveShader(target, deliverStack)) return;
+            if (!bindActiveShader(target, deliverStack, context)) return;
             ShaderInstance currentShader = RenderSystem.getShader();
             if (currentShader != null && currentShader.getId() == target.shaderProgram) {
                 activeShader = currentShader;
@@ -288,7 +290,7 @@ final class OpenGlModelRenderer {
             }
             target.updateLocation(target.shaderProgram);
             uploadDynamicBuffers(target, light.blockLight(), light.skyLight(), light.skyDarken(), irisActive);
-            uploadMatrixUniforms(target, deliverStack);
+            uploadMatrixUniforms(target, deliverStack, context);
             bindStandardAttributes(target);
             bindCustomShaderAttributes(target);
             // GUI/纸娃娃使用原版实体 shader，不能注入 Iris 世界实体属性。
@@ -304,7 +306,8 @@ final class OpenGlModelRenderer {
         }
     }
 
-    private static boolean bindActiveShader(OpenGlModelInstance target, PoseStack deliverStack) {
+    private static boolean bindActiveShader(OpenGlModelInstance target, PoseStack deliverStack,
+                                            RenderScene context) {
         int shaderPipelineMode = ClientRenderRuntime.get().renderBackendRegistry().shaderPipelineMode();
         // 自定义 MMD shader 模式也不能覆盖 Iris 的阴影程序。
         if (IRIS.isShadowPass() || shaderPipelineMode == 0) {
@@ -313,7 +316,7 @@ final class OpenGlModelRenderer {
                 return false;
             }
             target.shaderProgram = mcShader.getId();
-            target.setUniforms(mcShader, deliverStack);
+            target.setUniforms(mcShader, deliverStack, context);
             mcShader.apply();
             GlStateManager._glUseProgram(target.shaderProgram);
             return true;
@@ -390,10 +393,11 @@ final class OpenGlModelRenderer {
         target.lastSkyBrightness = skyBrightness;
     }
 
-    private static void uploadMatrixUniforms(OpenGlModelInstance target, PoseStack deliverStack) {
+    private static void uploadMatrixUniforms(OpenGlModelInstance target, PoseStack deliverStack,
+                                             RenderScene context) {
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
-        target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
+        target.composeModelViewMatrix(deliverStack, context).get(target.modelViewMatBuff);
         RenderSystem.getProjectionMatrix().get(target.projMatBuff);
 
         if (target.modelViewLocation != -1) {
@@ -655,7 +659,7 @@ final class OpenGlModelRenderer {
         ShaderInstance hostShader = irisShader != null ? irisShader : RenderSystem.getShader();
         try {
             if (irisShader != null) {
-                target.setUniforms(irisShader, deliverStack);
+                target.setUniforms(irisShader, deliverStack, context);
                 irisShader.apply();
             }
 
@@ -694,7 +698,7 @@ final class OpenGlModelRenderer {
 
             target.modelViewMatBuff.clear();
             target.projMatBuff.clear();
-            target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
+            target.composeModelViewMatrix(deliverStack, context).get(target.modelViewMatBuff);
             RenderSystem.getProjectionMatrix().get(target.projMatBuff);
             GL46C.glBindBuffer(GL46C.GL_ELEMENT_ARRAY_BUFFER, target.activeIndexBufferObject);
 

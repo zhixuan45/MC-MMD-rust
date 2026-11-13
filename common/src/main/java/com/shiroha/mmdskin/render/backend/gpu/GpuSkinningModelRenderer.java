@@ -108,7 +108,7 @@ final class GpuSkinningModelRenderer {
         updateGpuStateIfDirty(target, nativeBackend, modelHandle);
         boolean firstPersonView = context != null && context.isFirstPerson();
         boolean firstPersonIndexReady = firstPersonView
-                && refreshFirstPersonIndices(target, nativeBackend, modelHandle, deliverStack);
+                && refreshFirstPersonIndices(target, nativeBackend, modelHandle, deliverStack, context);
         refreshSubMeshData(target, nativeBackend, modelHandle, firstPersonIndexReady);
         target.currentTranslucentOrder = target.translucentOrders.get(isGuiScene, firstPersonIndexReady);
 
@@ -122,7 +122,7 @@ final class GpuSkinningModelRenderer {
 
         target.modelViewMatBuff.clear();
         target.projMatBuff.clear();
-        target.composeModelViewMatrix(deliverStack).get(target.modelViewMatBuff);
+        target.composeModelViewMatrix(deliverStack, context).get(target.modelViewMatBuff);
         RenderSystem.getProjectionMatrix().get(target.projMatBuff);
 
         if (OutlineRenderDiagnostics.shouldSample(ConfigManager.getIssueDiagnosticFlags(), modelHandle,
@@ -145,7 +145,7 @@ final class GpuSkinningModelRenderer {
             if (useToon && GpuSkinningModelInstance.toonShaderCpu != null && GpuSkinningModelInstance.toonShaderCpu.isInitialized()) {
                 renderToon(target, minecraft, light, toonIntensity, firstPersonIndexReady, !isGuiScene, context);
             } else {
-                renderNormal(target, minecraft, light, firstPersonIndexReady, deliverStack, isGuiScene);
+                renderNormal(target, minecraft, light, firstPersonIndexReady, deliverStack, isGuiScene, context);
             }
         } finally {
             if (drawQueryStarted) GpuTimerQueryPool.draw().end();
@@ -156,7 +156,8 @@ final class GpuSkinningModelRenderer {
     private static boolean refreshFirstPersonIndices(GpuSkinningModelInstance target,
                                                      NativeRenderBackendPort nativeBackend,
                                                      long modelHandle,
-                                                     PoseStack deliverStack) {
+                                                     PoseStack deliverStack,
+                                                     RenderScene context) {
         if (target.firstPersonIndexBufferObject <= 0 || target.firstPersonIndexBuffer == null
                 || target.firstPersonMatrixBuffer == null) {
             return false;
@@ -164,7 +165,7 @@ final class GpuSkinningModelRenderer {
         // Rust 只局部蒙皮预计算的头颈候选，避免 GPU readback。
         target.firstPersonMatrixFloatBuffer.position(0);
         // 裁剪计算必须与最终着色器使用同一套相机视图矩阵。
-        target.composeModelViewMatrix(deliverStack).get(target.firstPersonMatrixFloatBuffer);
+        target.composeModelViewMatrix(deliverStack, context).get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonMatrixFloatBuffer.position(16);
         RenderSystem.getProjectionMatrix().get(target.firstPersonMatrixFloatBuffer);
         target.firstPersonIndexBuffer.clear();
@@ -318,7 +319,8 @@ final class GpuSkinningModelRenderer {
                                      LightingHelper.LightData light,
                                      boolean firstPersonIndexReady,
                                      PoseStack deliverStack,
-                                     boolean guiScene) {
+                                     boolean guiScene,
+                                     RenderScene context) {
         ShaderInstance shader = RenderSystem.getShader();
         if (shader == null) {
             logger.error("[GPU skinning] RenderSystem.getShader() returned null; skipping render");
@@ -344,7 +346,7 @@ final class GpuSkinningModelRenderer {
         int shadowRead = shadowPass ? GL46C.glGetInteger(GL46C.GL_READ_FRAMEBUFFER_BINDING) : -1;
         try {
             // 保留 Iris 按缓冲设置的混合状态，不能在 apply 后重置。
-            target.setUniforms(shader, deliverStack);
+            target.setUniforms(shader, deliverStack, context);
             shader.apply();
             GlStateManager._glUseProgram(target.shaderProgram);
             if (!IRIS.isIrisProgram(shader)) {
@@ -503,7 +505,7 @@ final class GpuSkinningModelRenderer {
         try {
             // 先设普通混合，再让 Iris 应用每个缓冲的混合规则。
             if (irisShader != null) {
-                target.setUniforms(irisShader, target.currentDeliverStack);
+                target.setUniforms(irisShader, target.currentDeliverStack, context);
                 irisShader.apply();
             }
 

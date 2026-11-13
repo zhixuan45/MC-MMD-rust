@@ -824,10 +824,14 @@ public final class BlockEntityTransparencyGlProbe {
         GL46C.glActiveTexture(GL46C.GL_TEXTURE2);
         int cloud = texture(GL46C.GL_RGBA32F, SIZE);
         float[] cloudPixels = new float[SIZE * SIZE * 4];
-        for (int i = 3; i < cloudPixels.length; i += 4) cloudPixels[i] = 1;
+        for (int i = 0; i < cloudPixels.length; i += 4) {
+            cloudPixels[i] = 1;
+            cloudPixels[i + 3] = 1;
+        }
         GL46C.glTexSubImage2D(GL46C.GL_TEXTURE_2D, 0, 0, 0, SIZE, SIZE,
                 GL46C.GL_RGBA, GL46C.GL_FLOAT, cloudPixels);
-        GL46C.glUniform1i(GL46C.glGetUniformLocation(water, "gaux2"), 2);
+        for (String name : new String[]{"gaux1", "gaux2"})
+            GL46C.glUniform1i(GL46C.glGetUniformLocation(water, name), 2);
         GL46C.glActiveTexture(GL46C.GL_TEXTURE3);
         int sceneDepth = texture(GL46C.GL_DEPTH_COMPONENT24, SIZE);
         float[] sceneDepthPixels = new float[SIZE * SIZE];

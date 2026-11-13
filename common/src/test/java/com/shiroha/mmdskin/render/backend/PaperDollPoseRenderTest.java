@@ -30,7 +30,7 @@ class PaperDollPoseRenderTest {
         assertTrue(display.equals(stack.last().pose(), 0));
 
         Matrix4f destination = new Matrix4f();
-        Matrix4f composed = BaseModelInstance.composeModelViewMatrix(display, destination);
+        Matrix4f composed = BaseModelInstance.composeModelViewMatrix(null, display, destination);
         assertSame(destination, composed);
         assertTrue(display.equals(composed, 0));
         assertTrue(display.equals(stack.last().pose(), 0));

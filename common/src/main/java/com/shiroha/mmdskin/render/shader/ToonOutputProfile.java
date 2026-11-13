@@ -174,10 +174,10 @@ public final class ToonOutputProfile {
             return switch (target) {
                 case 3 -> compact.equals("vec4(1.0-translucentmult,1.0)") && hasModernTranslucencyContract(source);
                 case 6 -> compact.equals("vec4(smoothnessd,materialmask,skylightfactor,1.0)")
-                        && compact(source).contains("smoothnessd=0.0,materialmask=osiebca*254.0")
-                        && compact(source).contains("constfloatosiebca=1.0/255.0;")
-                        && compact(source).contains("skylightfactor=getskylightfactor(lmcoordm,shadowmult)");
+                        && hasModernMaterialBufferContract(source);
                 case 4 -> compact.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,1.0)");
+                case 5 -> compact.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,1.0)");
+                case 8 -> hasModernColoredLightAssignment(program, compact, source);
                 case 13 -> compact.equals("vec4(entitylineardepth,1.0,1.0,1.0)")
                         && compact(source).contains("entitylineardepth=sqrt(lviewpos/far)")
                         && compact(source).contains("lviewpos=length(viewpos)");
@@ -220,6 +220,26 @@ public final class ToonOutputProfile {
         String code = compact(source);
         return code.contains("vec3translucentmult=vec3(1.0)")
                 || code.contains("vec3translucentmult=mix(vec3(0.666),color.rgb*(1.0-pow2(pow2(color.a))),color.a)");
+    }
+
+    private static boolean hasModernMaterialBufferContract(String source) {
+        String code = compact(source);
+        if (!code.contains("constfloatosiebca=1.0/255.0;")) return false;
+        boolean strictSkyLightFactor = code.contains("smoothnessd=0.0,materialmask=osiebca*254.0")
+                && code.contains("skylightfactor=getskylightfactor(lmcoordm,shadowmult)");
+        boolean directSkyLightFactor =
+                code.contains("smoothnessd=0.0,skylightfactor=0.0,materialmask=osiebca*254.0")
+                && (code.contains("skylightfactor=pow2(max(lmcoord.y-0.7,0.0)*3.33333)")
+                || code.contains("skylightfactor=dot(shadowmult,shadowmult)/3.0"));
+        return strictSkyLightFactor || directSkyLightFactor;
+    }
+
+    private static boolean hasModernColoredLightAssignment(Program program, String assignment, String source) {
+        if (program == Program.HAND) {
+            return assignment.equals("vec4(lightalbedo,1.0)")
+                    && compact(source).contains("vec3lightalbedo=vec3(0.0)");
+        }
+        return assignment.equals("vec4(0.0,0.0,0.0,1.0)");
     }
 
     private static boolean hasBslTranslucencyContract(String source) {
@@ -283,6 +303,8 @@ public final class ToonOutputProfile {
                 // 非 PBR 模型沿用原包实体的中性材质标记，禁用 SSAO/TAA 和镜面反射。
                 case 6 -> "vec4(0.0, 254.0 / 255.0, 0.0, 1.0)";
                 case 4 -> "vec4(normalize(mat3(ToonViewToWorld) * normal), 1.0)";
+                case 5 -> "vec4(normalize(mat3(ToonViewToWorld) * normal), 1.0)";
+                case 8 -> "vec4(0.0, 0.0, 0.0, 1.0)";
                 case 13 -> "vec4(sqrt(length(viewPos) / max(ToonFar, 1.0)), 1.0, 1.0, 1.0)";
                 default -> throw new IllegalArgumentException("unsupported target");
             };

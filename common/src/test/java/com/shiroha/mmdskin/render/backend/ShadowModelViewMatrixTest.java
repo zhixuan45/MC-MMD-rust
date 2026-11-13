@@ -19,7 +19,7 @@ class ShadowModelViewMatrixTest {
         Matrix4f destination = new Matrix4f();
         Vector3f vertex = new Vector3f(2, 0, 0);
 
-        Matrix4f result = BaseModelInstance.composeModelViewMatrix(shadowPose, destination);
+        Matrix4f result = BaseModelInstance.composeModelViewMatrix(null, shadowPose, destination);
         assertSame(destination, result);
         assertTrue(result.equals(shadowPose, EPSILON));
         assertTrue(shadowPose.equals(originalShadowPose, EPSILON));
@@ -34,7 +34,8 @@ class ShadowModelViewMatrixTest {
         Matrix4f worldPose = cameraView.mul(entity, new Matrix4f());
         Matrix4f originalWorldPose = new Matrix4f(worldPose);
 
-        Matrix4f result = BaseModelInstance.composeModelViewMatrix(worldPose, new Matrix4f());
+        Matrix4f result = BaseModelInstance.composeModelViewMatrix(
+                null, worldPose, new Matrix4f());
         assertTrue(result.equals(worldPose, EPSILON));
         assertTrue(worldPose.equals(originalWorldPose, EPSILON));
         assertTrue(result.transformPosition(new Vector3f(2, 0, 0), new Vector3f())
@@ -51,12 +52,26 @@ class ShadowModelViewMatrixTest {
         Matrix4f originalShadowPose = new Matrix4f(shadowPose);
         Matrix4f destination = new Matrix4f();
 
-        BaseModelInstance.composeModelViewMatrix(worldPose, destination);
-        BaseModelInstance.composeModelViewMatrix(shadowPose, destination);
-        BaseModelInstance.composeModelViewMatrix(worldPose, destination);
+        BaseModelInstance.composeModelViewMatrix(null, worldPose, destination);
+        BaseModelInstance.composeModelViewMatrix(null, shadowPose, destination);
+        BaseModelInstance.composeModelViewMatrix(null, worldPose, destination);
 
         assertTrue(worldPose.equals(originalWorldPose, EPSILON));
         assertTrue(shadowPose.equals(originalShadowPose, EPSILON));
         assertTrue(destination.equals(originalWorldPose, EPSILON));
+    }
+
+    @Test
+    void guiPoseShouldIncludeGuiBaseZTranslationExactlyOnce() {
+        Matrix4f guiBase = new Matrix4f().translate(0.0f, 0.0f, -11000.0f);
+        Matrix4f displayPose = new Matrix4f()
+                .translate(20.0f, 75.0f, 50.0f)
+                .scale(30.0f, 30.0f, -30.0f);
+
+        Matrix4f result = BaseModelInstance.composeModelViewMatrix(
+                guiBase, displayPose, new Matrix4f());
+
+        Vector3f origin = result.transformPosition(new Vector3f(), new Vector3f());
+        assertTrue(origin.equals(new Vector3f(20.0f, 75.0f, -10950.0f), EPSILON));
     }
 }
