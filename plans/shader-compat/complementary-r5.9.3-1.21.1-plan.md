@@ -6,7 +6,7 @@
 
 先行实现分支：`codex/port-1.20.1`。两个版本属于不同分支，按功能逐项移植；禁止把 1.20 分支的整套平台清理、构建配置、Java 17 API 迁移或未提交的其他业务改动整体合并到本分支。
 
-本提交只增加计划，尚未在 1.21.1 实施、构建、安装或游戏验收。
+本计划初建时只增加计划；后续实施同时纳入第 6 节用户提供的 Euphoria 历史版本。构建、探针及游戏验收状态分别记录于实施报告。
 
 ## 1. 目标与输入
 
@@ -136,3 +136,30 @@ invokeRenderSectionLayer(
 5. 分别交付 Fabric / NeoForge 包、哈希与验证范围；原生库若未变化，记录复用来源及哈希。
 
 不得用 1.20.1 的测试结果代替 1.21.1 验收，也不得把隐藏 GL 探针称为完整游戏视觉验收。
+
+## 6. 追加范围：Euphoria Patches 1.2 / Complementary r5.1.1
+
+2026-11-13 用户追加指定实际输入：
+
+- `C:/Users/JuziD/Downloads/ComplementaryUnbound_r5.1.1 + EuphoriaPatches_1.2.zip`。
+- ZIP SHA-256：`88d60dbd6297e89c6483639988ed371de9901fd76da9a9b81d613d79941cb9d7`。
+- 用户报错：`colortex6 的写入语义未知或源码证据不完整`。在 1.21 JCPP 宏 `MC_VERSION=12101` / `IRIS_VERSION=10814` 下，三维度 × 四程序共 12 个变体均已复现。
+
+这个输入使用早期 Complementary 5.x 协议，应与 r5.9.3 分别校验：
+
+1. colortex6 仍写 `smoothnessD / materialMask / skyLightFactor`，但初始化顺序和天空光计算不同；验证零默认及已知后续赋值，不能只删除准入条件。
+2. 法线附件为 colortex5；可选 colortex8 表示屏幕空间彩色光照。旧 `DoLighting` 为 15 参数，新版为 18 参数。旧顶点太阳方向还依赖 `GetSunVector` 辅助函数。
+3. 旧包缺少 `gbuffers_entities_translucent` 文件，按 Iris 的实体程序回退验证，不跳过该变体。
+4. 旧水协议为 `03 / 031 / 038 / 0318`，使用旧雾调用；真实水材质编号为 31000。r5.9.3 的 32000 和反射附件布局不适用于这个输入。
+5. 自然阴影颜色存储缩放为 0.2，接收沿用旧包动态解码。共同柔化保留旧 `opaque > 0.9999` 的透射条件。
+6. 旧 shadow 不声明 DRAWBUFFERS；Iris 1.8.14 在 `hasUnknownDrawBuffers()` 时实际创建 `{0,1}` 阴影 framebuffer，不能把 metadata 默认 `{0}` 当成实际宿主布局。
+7. 在同一 1.21 工具链中覆盖旧包实体、手部、描边、合批、水面、阴影和玻璃，并同时保留两个 r5.9.3 包及 BSL 回归。通过 `tools/iris-toon-probe/run.ps1 -Probe all -ExtraPack <ZIP 路径>` 加入实际包。
+
+## 7. 当前实施与验证记录（2026-11-13）
+
+- 所有 1.21.1 改动位于独立 worktree `C:/tmp/mc-mmd-rust/build/worktrees/complementary-1.21.1-plan`，分支 `feat/1.21.1-neoforge`；根 worktree 保持 `codex/port-1.20.1`。本分支改动尚未提交。
+- Euphoria ZIP SHA-256：`88d60dbd6297e89c6483639988ed371de9901fd76da9a9b81d613d79941cb9d7`。Iris 1.8.14 / Minecraft 1.21.1 / JDK 21，OpenGL 4.6，NVIDIA GeForce RTX 5070 Ti Laptop GPU。
+- `run.ps1 -Probe all -ExtraPack <Euphoria ZIP>` 通过，输出位于 `build/iris-toon-probe/all-euphoria-final`。覆盖 Iris hook、BSL、两个 r5.9.3 包、Euphoria 三维度 × 四程序主体/描边/合批、4 种水布局、阴影/玻璃透射和透明队列。Euphoria 对缺失的半透明实体程序按实体程序回退验证。
+- Euphoria 的 `ToonControlsProbe` 已改为以多个法线方向的总照度跨度验证二维化，并检查柔化开关对局部变化的影响；旧 DoLighting 环境照明在单一近暗部采样仍保留小幅连续差异，不能要求它完全归零。实际日照/阴影和 GLSL 像素探针通过。
+- Gradle：`:common:test :fabric:build :neoforge:build` 成功；117 个测试套件、523 tests、0 failures、0 errors、1 skipped。Fabric JAR SHA-256：`F98D5096D56BE7C4BE1EA7A34D7BC9B074652EEC2A14634C97891C551D74375C`；NeoForge JAR SHA-256：`2ADA5D42BD3DA6C8CC195C24D574AF38BEE8D202CF967CB1F9D943E372B745C0`。两个 JAR 内嵌的 `natives/windows-x64/mmd_engine.dll` SHA-256 均为 `3F592A29E6E9A99AB2A627613EAD1A214DB064D7F757E1885C80988589A57334`。
+- GL 隐藏窗口验证不等于游戏内视觉验收。水/玻璃/阴影、三个维度和实际场景仍需按第 5 节完成游戏验收；当前没有安装或覆盖游戏实例中的模组 JAR。

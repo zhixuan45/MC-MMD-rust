@@ -1,6 +1,7 @@
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
@@ -11,6 +12,10 @@ import java.util.zip.ZipFile;
 
 /** Checks compiled injection descriptors against the installed Iris bytecode, without loading Minecraft. */
 public final class ShadowHookProbe {
+    private static final String WATER_TRANSFORM = "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;"
+            + "Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;"
+            + "Lnet/irisshaders/iris/gl/blending/AlphaTest;"
+            + "Lit/unimi/dsi/fastutil/objects/Object2ObjectMap;)Ljava/util/Map;";
     public static void main(String[] args) throws Exception {
         ClassNode iris = new ClassNode();
         try (ZipFile zip = new ZipFile(args[0])) {
@@ -26,6 +31,30 @@ public final class ShadowHookProbe {
             checkMethod(zip, "net/irisshaders/iris/shadows/ShadowRenderTargets", "isFlipped", "(I)Z");
             checkMethod(zip, "net/irisshaders/iris/gl/framebuffer/GlFramebuffer", "getId", "()I");
             checkMethod(zip, "net/irisshaders/iris/targets/DepthTexture", "getTextureId", "()I");
+            checkMethod(zip, "net/irisshaders/iris/shaderpack/programs/ProgramSet", "get",
+                    "(Lnet/irisshaders/iris/shaderpack/loading/ProgramId;)Ljava/util/Optional;");
+            checkMethod(zip, "net/irisshaders/iris/pipeline/transform/TransformPatcher", "patchSodium",
+                    WATER_TRANSFORM);
+            checkMethod(zip, "net/irisshaders/iris/pipeline/programs/SodiumShader", "setupState", "()V");
+            checkMethod(zip, "net/irisshaders/iris/pipeline/programs/SodiumShader", "resetState", "()V");
+            ClassNode pipeline = new ClassNode();
+            new ClassReader(zip.getInputStream(zip.getEntry(
+                    "net/irisshaders/iris/pipeline/IrisRenderingPipeline.class"))).accept(pipeline, 0);
+            boolean nativeShadowSource = false;
+            for (MethodNode constructor : pipeline.methods) {
+                if (!constructor.name.equals("<init>")) continue;
+                String selected = null;
+                for (var instruction : constructor.instructions) {
+                    if (instruction instanceof FieldInsnNode field && field.owner.endsWith("/ProgramId"))
+                        selected = field.name;
+                    if (instruction instanceof MethodInsnNode call && call.name.equals("<init>")
+                            && call.owner.endsWith("/ShadowRenderer")) {
+                        check("ShadowSolid".equals(selected), "native shadow renderer uses ShadowSolid fallback");
+                        nativeShadowSource = true;
+                    }
+                }
+            }
+            check(nativeShadowSource, "native shadow source selection inspected");
         }
         MethodNode shadow = iris.methods.stream().filter(method -> method.name.equals("renderShadows")).findFirst().orElseThrow();
         int index = 0, capture = -1, firstEntity = Integer.MAX_VALUE, count = 0;
@@ -72,8 +101,46 @@ public final class ShadowHookProbe {
                     && value(location, "shift") instanceof String[] shift && shift[1].equals("AFTER")), "runtime terrain descriptor and ordinal: " + path);
             System.out.println("PASS shadow hook descriptor: " + path + " -> " + terrainTarget);
         }
+        for (String platform : List.of("fabric", "neoforge")) {
+            String base = platform + "/build/classes/java/main/com/shiroha/mmdskin/mixin/"
+                    + platform + "/compat/";
+            ClassNode sourceMixin = readClass(base + "IrisWaterShaderMixin.class");
+            MethodNode source = sourceMixin.methods.stream().filter(method ->
+                    method.name.equals("mmdskin$waterSource")).findFirst().orElseThrow();
+            check(source.desc.equals("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;"
+                            + "Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;"
+                            + "Lit/unimi/dsi/fastutil/objects/Object2ObjectMap;"
+                            + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V"),
+                    "compiled 1.21 water transform callback descriptor: " + platform);
+            checkInjection(source, "patchSodium" + WATER_TRANSFORM, "RETURN");
+            ClassNode stateMixin = readClass(base + "IrisWaterStateMixin.class");
+            for (String[] hook : new String[][]{
+                    {"mmdskin$closePreviousWater", "setupState", "HEAD"},
+                    {"mmdskin$beginWater", "setupState", "RETURN"},
+                    {"mmdskin$endWater", "resetState", "HEAD"}}) {
+                MethodNode state = stateMixin.methods.stream().filter(method ->
+                        method.name.equals(hook[0])).findFirst().orElseThrow();
+                checkInjection(state, hook[1], hook[2]);
+            }
+            System.out.println("PASS compiled water transform/setup/reset hooks: " + platform);
+        }
         System.out.println("PASS installed Iris hook ordering: terrain capture before entities; lifecycle methods exist (bytecode check, not a game launch)");
         System.out.println("PASS installed Iris owned-source API: targets -> source framebuffer, main depth texture, shadow resolution");
+    }
+
+    private static ClassNode readClass(String path) throws Exception {
+        ClassNode node = new ClassNode();
+        new ClassReader(Files.readAllBytes(Path.of(path))).accept(node, 0);
+        return node;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void checkInjection(MethodNode method, String target, String at) {
+        AnnotationNode inject = method.visibleAnnotations.stream().filter(annotation ->
+                annotation.desc.endsWith("/Inject;")).findFirst().orElseThrow();
+        check(((List<String>) value(inject, "method")).contains(target), "compiled injection target: " + target);
+        check(((List<AnnotationNode>) value(inject, "at")).stream().anyMatch(location ->
+                at.equals(value(location, "value"))), "compiled injection location: " + target + "/" + at);
     }
 
     private static void checkMethod(ZipFile zip, String type, String name, String descriptor) throws Exception {

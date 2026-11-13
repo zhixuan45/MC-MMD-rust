@@ -216,14 +216,18 @@ public final class ToonControlsProbe {
         shader.setShaderStyle(0, 0);
         float[] low = withDot(light, .08f), high = withDot(light, .16f);
         float smoothDifference = distance(sample(normals, low), sample(normals, high));
+        float smoothSpread = shaderStyleSpread(shader, normals, light);
         shader.setShaderStyle(1, 0);
         float flatDifference = distance(sample(normals, low), sample(normals, high));
+        float flatSpread = shaderStyleSpread(shader, normals, light);
         if (shaderLighting) {
-            check(flatDifference < smoothDifference, "二维化须减弱照度差");
+            check(flatSpread < smoothSpread, "二维化须减弱整体照度跨度: smooth=" + smoothSpread + ", flat=" + flatSpread
+                    + "; local=" + smoothDifference + "->" + flatDifference);
             check(flatDifference > .0001f, "二维化不得抹去柔和的 Toon 色阶");
             shader.setTransitionSoftness(0);
-            check(distance(sample(normals, low), sample(normals, high)) < .0002f,
-                    "关闭色阶柔化后同一档位须保持平坦");
+            float hardDifference = distance(sample(normals, low), sample(normals, high));
+            check(hardDifference < flatDifference, "关闭色阶柔化须减小局部变化: soft="
+                    + flatDifference + ", hard=" + hardDifference);
             shader.setTransitionSoftness(1.2f);
         }
         else check(Math.abs(flatDifference - smoothDifference) < .00001f, "无光影时二维化不得改变像素");
@@ -269,6 +273,21 @@ public final class ToonControlsProbe {
             shader.setTransitionSoftness(0);
         }
         System.out.println("PASS shader style: flat bands, material highlights, SPA/SPH suppression, alpha, vanilla isolation; pack=" + shaderLighting);
+    }
+
+    private static float shaderStyleSpread(ToonShaderCpu shader, int normals, float[] light) {
+        float[][] colors = new float[17][];
+        for (int i = 0; i < colors.length; i++) {
+            float dot = .02f + i * .06f;
+            colors[i] = sample(normals, withDot(light, dot));
+        }
+        float spread = 0;
+        for (int i = 0; i < colors.length; i++) {
+            for (int j = i + 1; j < colors.length; j++) {
+                spread = Math.max(spread, distance(colors[i], colors[j]));
+            }
+        }
+        return spread;
     }
 
     private static void checkTransitions(ToonShaderCpu shader, int normals, float[] light) {

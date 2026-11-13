@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 final class ComplementaryToonLighting {
     private static final Pattern COMMENTS = Pattern.compile("/\\*.*?\\*/|//[^\\r\\n]*", Pattern.DOTALL);
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*\\)\\s*\\{");
+    private static final Pattern DO_LIGHTING = Pattern.compile("\\bvoid\\s+DoLighting\\s*\\(([^)]*)\\)");
     private static final Pattern INITIALIZER = Pattern.compile("(?s)\\s*(float|vec[234]|int|mat[234])\\s+(.+);\\s*");
     private static final Pattern MODERN_DIFFUSE = Pattern.compile("shadowMult\\s*\\*=\\s*max\\(\\s*NdotLM\\s*\\*\\s*shadowTime\\s*,");
     private static final Pattern MODERN_SHADOW_GATE = Pattern.compile("if\\s*\\(\\s*NdotLM\\s*>\\s*0\\.0001\\s*\\)");
@@ -19,12 +20,28 @@ final class ComplementaryToonLighting {
 
     /** 5.x 直接以纹理颜色调用 DoLighting，不能沿用 4.x 的线性 GetLighting 协议。 */
     static String createModern(String fragment, String vertex) {
+        return createModern(fragment, vertex, false);
+    }
+
+    /** r5.1.x 的 DoLighting 只有 15 个参数，不能复用新版 18 参数调用。 */
+    static String createModernLegacy(String fragment, String vertex) {
+        return createModern(fragment, vertex, true);
+    }
+
+    private static String createModern(String fragment, String vertex, boolean legacy) {
         if (vertex == null) return "";
         String source = clean(fragment);
+        String vertexSource = clean(vertex);
         Matcher main = MAIN.matcher(source);
-        Matcher sun = Pattern.compile("\\bsunVec\\s*=\\s*([^;]+);").matcher(clean(vertex));
-        if (!main.find() || !sun.find() || !source.contains("void DoLighting(")
-                || !source.contains("vec3 ViewToPlayer(")) return "";
+        Matcher sun = Pattern.compile("\\bsunVec\\s*=\\s*([^;]+);").matcher(vertexSource);
+        if (!main.find() || !sun.find() || !source.contains("vec3 ViewToPlayer(")) return "";
+        String lightingCall = doLightingCall(source, legacy);
+        if (lightingCall.isEmpty()) return "";
+        String sunHelper = "";
+        if (sun.group(1).contains("GetSunVector(")) {
+            sunHelper = extractSafeSunVectorFunction(vertexSource);
+            if (sunHelper.isEmpty()) return "";
+        }
         source = source.substring(0, main.start())
                 .replaceAll("(?m)^\\s*#(?:version|extension|line)[^\\n]*", "")
                 // 去掉片段输入限定符，但保留函数参数的 in/inout。
@@ -32,6 +49,24 @@ final class ComplementaryToonLighting {
                 .replaceAll("\\btexture2D\\b", "texture")
                 .replaceAll("\\btexture2DLod\\b", "textureLod");
         source = adaptShadowSampler(source);
+        source = source.replaceAll("\\btoonShadow2D\\(\\s*shadowtex1\\s*,", "toonOpaqueShadow2D(shadowtex1,")
+                .replaceAll("\\btoonTerrainShadow\\(\\s*shadowtex1\\s*,", "toonTerrainOpaqueShadow(shadowtex1,");
+        // 原包颜色解码依赖逐片段光图参数；等 colorMult/colorPow
+        // 就绪后只做一次 3x3 过滤，避免在每次原生采样里嵌套 PCF。
+        boolean transmission = source.contains("toonShadowColor(shadowcolor0,")
+                && source.contains("toonOpaqueShadow2D(shadowtex1,")
+                && Pattern.compile("(?:\\bshadow\\s*=\\s*Sample(?:TAA)?FilteredShadow\\s*\\(|\\breturn\\s+SampleShadow\\s*\\()")
+                        .matcher(source).find();
+        if (transmission) {
+            source = source.replace(
+                    "if (ToonTerrainShadowEnabled && ToonWorldShadowSoftness > 0.0) return vec3(toonFilteredTerrainShadow(shadowPos));",
+                    "if (ToonTerrainShadowEnabled && !ToonTerrainShadowTransmissionEnabled && ToonWorldShadowSoftness > 0.0)"
+                            + " return vec3(toonFilteredTerrainShadow(shadowPos));");
+            source = source.replaceAll("(float\\s+colorPow\\s*=\\s*[^;]+;)",
+                    "$1\nif (ToonTerrainShadowEnabled && ToonTerrainShadowTransmissionEnabled"
+                            + " && ToonWorldShadowSoftness > 0.0)"
+                            + " return toonComplementaryFilteredTransmission(shadowPos, colorMult, colorPow);\n");
+        }
         // 半透明程序包含旧固定管线雾函数；即使调用被优化掉，也须能在 core GLSL 中解析。
         if (source.contains("gl_Fog.")) {
             source = "uniform float iris_FogStart;\nuniform float iris_FogEnd;\n" + source
@@ -53,7 +88,8 @@ final class ComplementaryToonLighting {
         tail = MODERN_DIFFUSE.matcher(tail).replaceAll(sunlight
                 ? "shadowMult *= max(toonSunDiffuseRamp(NdotLM, shadowMult) * shadowTime,"
                 : "shadowMult *= max(toonDiffuseRamp(NdotLM) * shadowTime,");
-        return shadowSamplerWrapper() + head + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
+        return shadowSamplerWrapper(true) + (transmission ? modernTransmissionFilter(legacy) : "")
+                + head + sunHelper + tail + "\nvec3 applyPackLighting(vec3 raw, vec3 n, vec3 p) {\n"
                 + before + "\nupVec = normalize(gbufferModelView[1].xyz);\n"
                 + "northVec = normalize(gbufferModelView[2].xyz); eastVec = normalize(gbufferModelView[0].xyz);\n"
                 + "sunVec = " + sun.group(1) + ";\n"
@@ -65,10 +101,31 @@ final class ComplementaryToonLighting {
                 + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
                 + "vec3 sampleNormal = n;\n"
                 + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * sampleNormal);\n"
-                + "DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal, 0.5, worldNormal, lmCoord,\n"
-                + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
+                + (lightingCall.contains("purkinjeOverwrite") ? "float purkinjeOverwrite = 0.0;\n" : "")
+                + (lightingCall.contains("enderDragonDead") ? "float enderDragonDead = 1.0;\n" : "")
+                + lightingCall
                 + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), "
                 + "band);\n}\n";
+    }
+
+    private static String extractSafeSunVectorFunction(String vertexSource) {
+        Matcher definition = Pattern.compile("\\bvec3\\s+GetSunVector\\s*\\(\\s*\\)\\s*\\{").matcher(vertexSource);
+        if (!definition.find()) return "";
+        int depth = 1, index = definition.end();
+        while (index < vertexSource.length() && depth > 0) {
+            char ch = vertexSource.charAt(index++);
+            if (ch == '{') depth++;
+            else if (ch == '}') depth--;
+        }
+        if (depth != 0) return "";
+        String function = vertexSource.substring(definition.start(), index);
+        if (definition.find(index)) return "";
+        String compact = function.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        if (!compact.contains("sunpathrotation")
+                || (!compact.contains("returnnormalize(") && !compact.contains("returnvec3(0.0);"))
+                || Pattern.compile("\\b(?:texture|imagetexel|atomic|buffer|shadow|gl_fragdata)\\b")
+                        .matcher(function.toLowerCase(java.util.Locale.ROOT)).find()) return "";
+        return function + "\n";
     }
 
     static String create(String fragment, String vertex) {
@@ -168,10 +225,37 @@ final class ComplementaryToonLighting {
                 + "    return visibility;\n"
                 + "}\n"
                 + "vec4 toonShadow2D(sampler2DShadow s, vec3 p) { return vec4(toonTerrainShadow(s, p)); }\n"
+                + "vec4 toonOpaqueShadow2D(sampler2DShadow s, vec3 p) { return vec4(toonTerrainOpaqueShadow(s, p)); }\n"
                 + "vec4 toonShadowColor(sampler2D s, vec2 p) {\n"
                 + "    return ToonTerrainShadowEnabled ? (ToonTerrainShadowTransmissionEnabled"
                 + " ? texture(ToonTerrainShadowColor, p) : vec4(0.0)) : texture(s, p);\n"
                 + "}\n";
+    }
+
+    private static String modernTransmissionFilter(boolean legacy) {
+        String opaqueCondition = legacy
+                ? "if (full < 1.0 && opaque > 0.9999)"
+                : "if (opaque * 0.9999 > full)";
+        return """
+                vec3 toonComplementaryFilteredTransmission(vec3 p, float colorMult, float colorPow) {
+                    vec2 radius = clamp(ToonWorldShadowSoftness, 0.0, 4.0)
+                            / vec2(textureSize(ToonTerrainShadowDepth, 0));
+                    vec3 shadow = vec3(0.0);
+                    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+                        vec2 uv = p.xy + vec2(x, y) * radius;
+                        float full = texture(ToonTerrainShadowTranslucentDepth, vec3(uv, p.z));
+                        float opaque = texture(ToonTerrainShadowDepth, vec3(uv, p.z));
+                        vec3 transmission = vec3(0.0);
+                        %s
+                            transmission = pow(max(texture(ToonTerrainShadowColor, uv).rgb * opaque * colorMult,
+                                    vec3(0.0)), vec3(colorPow));
+                        float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0);
+                        toonRecordOpaqueSunVisibility(opaque, weight);
+                        shadow += (transmission * (1.0 - full) + full) * weight;
+                    }
+                    return shadow * 0.0625;
+                }
+                """.formatted(opaqueCondition);
     }
 
     static String clean(String source) {
@@ -209,6 +293,52 @@ final class ComplementaryToonLighting {
             start = i + 1;
         }
         return output.append(source.substring(start)).toString();
+    }
+
+    private static String doLightingCall(String source, boolean legacy) {
+        Matcher signature = DO_LIGHTING.matcher(source);
+        if (!signature.find()) return "";
+        String rawParams = signature.group(1).trim();
+        if (rawParams.isEmpty()) {
+            return legacy
+                    ? "DoLighting(lit, shadow, player, p, length(p), sampleNormal, lmCoord,\n"
+                    + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n"
+                    : "DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal, 0.5, worldNormal, lmCoord,\n"
+                    + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n";
+        }
+        String[] parameters = rawParams.split(",");
+        if (legacy && parameters.length == 15) {
+            return "DoLighting(lit, shadow, player, p, length(p), sampleNormal, lmCoord,\n"
+                    + "           false, true, true, true, 0, 0.0, 0.0, 0.0);\n";
+        }
+        List<String> arguments = new ArrayList<>(parameters.length);
+        for (String parameter : parameters) {
+            String[] tokens = parameter.trim().split("\\s+");
+            String name = tokens[tokens.length - 1].toLowerCase(java.util.Locale.ROOT);
+            String argument = switch (name) {
+                case "color" -> "lit";
+                case "shadowmult" -> "shadow";
+                case "playerpos" -> "player";
+                case "viewpos" -> "p";
+                case "lviewpos" -> "length(p)";
+                case "geonormal", "normalm" -> "sampleNormal";
+                case "dither" -> "0.5";
+                case "worldgeonormal" -> "worldNormal";
+                case "lightmap" -> "lmCoord";
+                case "nosmoothlighting" -> "false";
+                case "nodirectionalshading", "novanillaao", "centershadowbias" -> "true";
+                case "subsurfacemode" -> "0";
+                case "smoothnessg", "highlightmult", "emission" -> "0.0";
+                case "purkinjeoverwrite" -> "purkinjeOverwrite";
+                case "islightsource" -> "false";
+                case "enderdragondead" -> "enderDragonDead";
+                case "metalhighlighttint" -> "vec3(1.0)";
+                default -> null;
+            };
+            if (argument == null) return "";
+            arguments.add(argument);
+        }
+        return "DoLighting(" + String.join(", ", arguments) + ");\n";
     }
 
     private static List<String> splitVariables(String declarations) {

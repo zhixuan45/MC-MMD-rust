@@ -19,6 +19,7 @@ class TerrainShadowFrameTest {
         assertEquals("terrain capture not reached", frame.status);
 
         frame.texture = 7;
+        frame.replayColorTargets = 2;
         frame.captured("ready");
         assertTrue(frame.captureValid());
         assertFalse(frame.transmissionValid());
@@ -32,6 +33,7 @@ class TerrainShadowFrameTest {
         frame.texture = frame.transmissionDepth = frame.transmissionColor = 0;
         frame.releaseAll();
         assertFalse(frame.requested);
+        assertEquals(0, frame.replayColorTargets);
         assertEquals("not captured", frame.status);
     }
 }

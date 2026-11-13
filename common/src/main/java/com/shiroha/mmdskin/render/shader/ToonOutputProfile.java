@@ -59,7 +59,7 @@ public final class ToonOutputProfile {
         if (drawBuffers.length == 0 || java.util.Arrays.stream(drawBuffers).noneMatch(value -> value == 0)) {
             return unsupported("DRAWBUFFERS 缺少 colortex0 主颜色槽");
         }
-        boolean[] requestedTargets = new boolean[16];
+        boolean[] requestedTargets = new boolean[32];
         for (int target : drawBuffers) {
             if (target < 0 || target >= requestedTargets.length || requestedTargets[target]) {
                 return unsupported("DRAWBUFFERS 包含重复或无效的 colortex 槽");
@@ -103,12 +103,18 @@ public final class ToonOutputProfile {
 
         String layout = String.join(",", java.util.Arrays.stream(drawBuffers).mapToObj(String::valueOf).toList());
         if (java.util.Arrays.stream(drawBuffers).allMatch(value -> value < 10)) layout = layout.replace(",", "");
-        String colorEncoding = family == Family.COMPLEMENTARY_MODERN ? "gamma"
+        String colorEncoding = family == Family.COMPLEMENTARY_MODERN
+                || family == Family.COMPLEMENTARY_MODERN_LEGACY ? "gamma"
                 : family == Family.BSL && hasSqrtColorEncoding(source) ? "sqrt-linear" : "linear";
-        String id = family.name().toLowerCase(Locale.ROOT) + ":" + kind.name().toLowerCase(Locale.ROOT)
+        String familyId = family == Family.COMPLEMENTARY_MODERN_LEGACY
+                ? "complementary_modern" : family.name().toLowerCase(Locale.ROOT);
+        String id = familyId + ":" + kind.name().toLowerCase(Locale.ROOT)
                 + ":" + colorEncoding + ":" + layout;
+        if (family == Family.COMPLEMENTARY_MODERN_LEGACY) id += ":protocol-r511";
         String lighting = family == Family.COMPLEMENTARY_MODERN
                 ? ComplementaryToonLighting.createModern(fragmentSource, vertexSource)
+                : family == Family.COMPLEMENTARY_MODERN_LEGACY
+                ? ComplementaryToonLighting.createModernLegacy(fragmentSource, vertexSource)
                 : family == Family.COMPLEMENTARY ? ComplementaryToonLighting.create(fragmentSource, vertexSource)
                 : BslToonLighting.create(fragmentSource, vertexSource, kind == Program.HAND);
         // 输出协议已确认时，光照提取失败只降级照明，不丢弃 Toon 风格。
@@ -116,7 +122,8 @@ public final class ToonOutputProfile {
         id += ":out-" + Integer.toUnsignedString(outputs.hashCode(), 16);
         if (!lighting.isEmpty()) id += ":light-" + Integer.toUnsignedString(lighting.hashCode(), 16);
         String outputDeclarations = declarations(drawBuffers.length);
-        if (family == Family.COMPLEMENTARY_MODERN) {
+        if (family == Family.COMPLEMENTARY_MODERN
+                || family == Family.COMPLEMENTARY_MODERN_LEGACY) {
             outputDeclarations += "uniform mat4 ToonViewToWorld;\n";
             if (requestedTargets[13]) outputDeclarations += "uniform float ToonFar;\n";
         }
@@ -126,7 +133,8 @@ public final class ToonOutputProfile {
     /** 包名只用于上层显示；选择适配器必须有活动光照/输出协议的证据。 */
     private static Family detectFamily(String source, String vertex, Program program,
                                        int[] targets, List<List<String>> assignments) {
-        if (hasModernComplementaryContract(source)) return Family.COMPLEMENTARY_MODERN;
+        if (hasModernComplementaryContract(source)) return hasModernLegacyComplementaryContract(source)
+                ? Family.COMPLEMENTARY_MODERN_LEGACY : Family.COMPLEMENTARY_MODERN;
         if (!hasVerifiedColorSource(source)) return null;
         // GetLighting 的入参契约不同，不能根据目录名选择不同的调用或颜色编码。
         Matcher lighting = Pattern.compile("voidgetlighting\\(([^)]*)\\)").matcher(compact(source));
@@ -169,18 +177,31 @@ public final class ToonOutputProfile {
 
     private static boolean knownAssignment(Family family, Program program, int target, String value, String source) {
         String compact = value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
-        if (target == 0) return compact.equals(family == Family.COMPLEMENTARY_MODERN ? "color" : "albedo");
+        if (target == 0) return compact.equals(family == Family.COMPLEMENTARY_MODERN
+                || family == Family.COMPLEMENTARY_MODERN_LEGACY ? "color" : "albedo");
         if (family == Family.COMPLEMENTARY_MODERN) {
             return switch (target) {
                 case 3 -> compact.equals("vec4(1.0-translucentmult,1.0)") && hasModernTranslucencyContract(source);
-                case 6 -> compact.equals("vec4(smoothnessd,materialmask,skylightfactor,1.0)")
-                        && compact(source).contains("smoothnessd=0.0,materialmask=osiebca*254.0")
-                        && compact(source).contains("constfloatosiebca=1.0/255.0;")
-                        && compact(source).contains("skylightfactor=getskylightfactor(lmcoordm,shadowmult)");
-                case 4 -> compact.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,1.0)");
-                case 13 -> compact.equals("vec4(entitylineardepth,1.0,1.0,1.0)")
+                case 6 -> hasModernTargetSixAssignment(program, compact, source)
+                        && hasModernMaterialBufferContract(source);
+                case 4 -> hasModernNormalAssignment(program, compact, source);
+                case 9 -> hasModernSsblAssignment(program, compact, source);
+                case 13 -> (compact.equals("vec4(entitylineardepth,1.0,1.0,1.0)")
+                        || compact.equals("vec4(0.0,1.0,1.0,entitylineardepth)"))
                         && compact(source).contains("entitylineardepth=sqrt(lviewpos/far)")
                         && compact(source).contains("lviewpos=length(viewpos)");
+                default -> false;
+            };
+        }
+        if (family == Family.COMPLEMENTARY_MODERN_LEGACY) {
+            return switch (target) {
+                case 5 -> compact.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,1.0)")
+                        && compact(source).contains("vec3normalm=normal;");
+                case 6 -> compact.equals("vec4(smoothnessd,materialmask,skylightfactor,1.0)")
+                        && hasModernLegacyTargetSixContract(source);
+                case 8 -> compact.equals("vec4(0.0,0.0,0.0,1.0)")
+                        || (program == Program.HAND && compact.equals("vec4(lightalbedo,1.0)")
+                        && hasModernLegacyColoredLightContract(source));
                 default -> false;
             };
         }
@@ -214,6 +235,113 @@ public final class ToonOutputProfile {
         return code.contains("voiddolighting(inoutvec4color,inoutvec3shadowmult,")
                 && code.contains("color.rgb*=finaldiffuse") && code.contains("finaldiffuse=sqrt(max(finaldiffuse,vec3(0.0)))")
                 && Pattern.compile("gl_FragData\\s*\\[\\s*\\d+\\s*]\\s*=\\s*color\\s*;").matcher(source).find();
+    }
+
+    private static boolean hasModernLegacyComplementaryContract(String source) {
+        String code = compact(source);
+        return lightingParameterCount(code, "voiddolighting(") == 15
+                && code.contains("smoothnessd=0.0,skylightfactor=0.0,materialmask=osiebca*254.0")
+                && hasModernLegacySkyLightContract(code)
+                && !code.contains("skylightfactor=getskylightfactor(")
+                && code.contains("gl_fragdata[1]=vec4(smoothnessd,materialmask,skylightfactor,1.0);");
+    }
+
+    private static boolean hasModernLegacyTargetSixContract(String source) {
+        String code = compact(source);
+        return code.contains("constfloatosiebca=1.0/255.0;")
+                && code.contains("floatsmoothnessd=0.0,skylightfactor=0.0,materialmask=osiebca*254.0")
+                && hasModernLegacySkyLightContract(code);
+    }
+
+    private static boolean hasModernLegacySkyLightContract(String source) {
+        String mutations = source.replace(
+                "floatsmoothnessd=0.0,skylightfactor=0.0,materialmask=osiebca*254.0;",
+                "floatsmoothnessd=0.0;");
+        if (Pattern.compile("(?<![a-z0-9_])(?:\\+\\+|--)skylightfactor\\b")
+                .matcher(mutations).find()) return false;
+        Matcher assignments = Pattern.compile(
+                "(?<![a-z0-9_])skylightfactor(\\+\\+|--|[+\\-*/%]?=)([^;]*);").matcher(mutations);
+        while (assignments.find()) {
+            String operator = assignments.group(1);
+            String value = assignments.group(2);
+            if (!operator.equals("=")
+                    || (!value.equals("pow2(max(lmcoord.y-0.7,0.0)*3.33333)")
+                    && !value.equals("dot(shadowmult,shadowmult)/3.0"))) return false;
+        }
+        // The zero-initialized value is the complete contract when the active
+        // program has no later sky-light assignment (for example PBR disabled).
+        return true;
+    }
+
+    private static boolean hasModernLegacyColoredLightContract(String source) {
+        String code = compact(source);
+        return code.contains("vec3lightalbedo=vec3(0.0);")
+                && code.contains("lightalbedo=normalize(color.rgb)*min1(emission);");
+    }
+
+    private static int lightingParameterCount(String compactSource, String signature) {
+        int start = compactSource.indexOf(signature);
+        if (start < 0) return -1;
+        int parametersStart = start + signature.length();
+        int end = compactSource.indexOf(')', parametersStart);
+        if (end < 0) return -1;
+        return compactSource.substring(parametersStart, end).split(",").length;
+    }
+
+    private static boolean hasModernMaterialBufferContract(String source) {
+        String code = compact(source);
+        if (!code.contains("constfloatosiebca=1.0/255.0;")) return false;
+        boolean modernDefaults = code.contains("smoothnessd=0.0,materialmask=osiebca*254.0")
+                || code.contains("floatsmoothnessd=0.0,enderdragondead=1.0,materialmask=osiebca*254.0");
+        return modernDefaults && code.contains("skylightfactor=getskylightfactor(lmcoordm,shadowmult)");
+    }
+
+    private static boolean hasModernTargetSixAssignment(Program program, String assignment, String source) {
+        if (assignment.equals("vec4(smoothnessd,materialmask,skylightfactor,1.0)")) return true;
+        String code = compact(source);
+        if (program == Program.HAND) {
+            return assignment.equals("vec4(smoothnessd,materialmask,skylightfactor,purkinjedata)")
+                    && code.contains("floatpurkinjedata=1.0;");
+        }
+        return assignment.equals(
+                "vec4(smoothnessd,materialmask,skylightfactor,lmcoord.x+clamp01(purkinjeoverwrite)+clamp01(emissionold)+maxof(entitycolor))")
+                && code.contains("purkinjeoverwrite=0.0")
+                && code.contains("emissionold=0.0");
+    }
+
+    private static boolean hasModernPurkinjeTargetSix(String source) {
+        String code = compact(source);
+        return code.contains("vec4(smoothnessd,materialmask,skylightfactor,purkinjedata)")
+                || code.contains("vec4(smoothnessd,materialmask,skylightfactor,lmcoord.x+clamp01(purkinjeoverwrite)+clamp01(emissionold)+maxof(entitycolor))");
+    }
+
+    private static boolean hasModernNormalAssignment(Program program, String assignment, String source) {
+        if (assignment.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,1.0)")) return true;
+        String code = compact(source);
+        if (program == Program.HAND) {
+            return assignment.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,albedodata)")
+                    && code.contains("floatalbedodata=1.0;");
+        }
+        return assignment.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,reflectnormalalpha)")
+                && code.contains("floatreflectnormalalpha=1.0;");
+    }
+
+    private static boolean hasModernReflectiveAlbedoAlpha(String source) {
+        String code = compact(source);
+        return !code.contains("vec4(mat3(gbuffermodelviewinverse)*normalm,1.0)")
+                && (code.contains("reflectnormalalpha=clamp(maxof(rawalbedom),0.02,0.99)*2.0-1.0")
+                || code.contains("albedodata=clamp(maxof(rawalbedom),0.02,0.99)*2.0-1.0"));
+    }
+
+    private static boolean hasModernSsblAssignment(Program program, String assignment, String source) {
+        String code = compact(source);
+        if (!code.contains("vec3lightalbedo=vec3(0.0)")) return false;
+        if (program == Program.HAND) {
+            return assignment.equals("vec4(lightalbedo,handssblmask)")
+                    && code.contains("floathandssblmask=0.0;");
+        }
+        return assignment.equals("vec4(lightalbedo,entityssblmask)")
+                && code.contains("floatentityssblmask=1.0;");
     }
 
     private static boolean hasModernTranslucencyContract(String source) {
@@ -281,9 +409,24 @@ public final class ToonOutputProfile {
                         ? "vec4(0.0, 0.0, 0.0, 1.0)"
                         : "vec4(vec3(1.0) - mix(vec3(0.666), color * (1.0 - pow(alpha, 4.0)), alpha), 1.0)";
                 // 非 PBR 模型沿用原包实体的中性材质标记，禁用 SSAO/TAA 和镜面反射。
+                case 6 -> hasModernPurkinjeTargetSix(source)
+                        ? "vec4(0.0, 254.0 / 255.0, 0.0, clamp(ToonLightmap.x, 0.0, 0.9))"
+                        : "vec4(0.0, 254.0 / 255.0, 0.0, 1.0)";
+                case 4 -> hasModernReflectiveAlbedoAlpha(source)
+                        ? "vec4(normalize(mat3(ToonViewToWorld) * normal), clamp(max(rawAlbedo.r, max(rawAlbedo.g, rawAlbedo.b)), 0.02, 0.99) * 2.0 - 1.0)"
+                        : "vec4(normalize(mat3(ToonViewToWorld) * normal), 1.0)";
+                case 9 -> program == Program.HAND ? "vec4(0.0, 0.0, 0.0, 0.0)" : "vec4(0.0, 0.0, 0.0, 1.0)";
+                case 13 -> compact(source).contains("vec4(0.0,1.0,1.0,entitylineardepth)")
+                        ? "vec4(0.0, 1.0, 1.0, sqrt(length(viewPos) / max(ToonFar, 1.0)))"
+                        : "vec4(sqrt(length(viewPos) / max(ToonFar, 1.0)), 1.0, 1.0, 1.0)";
+                default -> throw new IllegalArgumentException("unsupported target");
+            };
+        }
+        if (family == Family.COMPLEMENTARY_MODERN_LEGACY) {
+            return switch (target) {
+                case 5 -> "vec4(normalize(mat3(ToonViewToWorld) * normal), 1.0)";
                 case 6 -> "vec4(0.0, 254.0 / 255.0, 0.0, 1.0)";
-                case 4 -> "vec4(normalize(mat3(ToonViewToWorld) * normal), 1.0)";
-                case 13 -> "vec4(sqrt(length(viewPos) / max(ToonFar, 1.0)), 1.0, 1.0, 1.0)";
+                case 8 -> "vec4(0.0, 0.0, 0.0, 1.0)";
                 default -> throw new IllegalArgumentException("unsupported target");
             };
         }
@@ -373,6 +516,6 @@ public final class ToonOutputProfile {
                 fragmentDeclarations, fragmentWriter, "");
     }
 
-    private enum Family { COMPLEMENTARY, COMPLEMENTARY_MODERN, BSL }
+    private enum Family { COMPLEMENTARY, COMPLEMENTARY_MODERN, COMPLEMENTARY_MODERN_LEGACY, BSL }
     private enum Program { ENTITIES, HAND, GLOWING }
 }

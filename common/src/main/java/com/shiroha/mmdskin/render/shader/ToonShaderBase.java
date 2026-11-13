@@ -187,8 +187,9 @@ public abstract class ToonShaderBase {
     }
 
     private static boolean supportsBatchProfile(String key) {
-        // BSL 只在输出协议已通过 ToonOutputProfile 校验后参与批量变体。
-        return key.equals(ToonOutputProfile.vanilla().id()) || key.startsWith("bsl:");
+        // 光影变体只有在 MRT/照明契约通过校验后才能参与材质合批。
+        return key.equals(ToonOutputProfile.vanilla().id()) || key.startsWith("bsl:")
+                || key.startsWith("complementary_modern:");
     }
 
     static String outlineSource(String body, ToonOutputProfile profile) {
