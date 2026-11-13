@@ -92,6 +92,8 @@ final class ComplementaryToonLighting {
                 + "vec3 shadow = vec3(1.0); vec3 player = ViewToPlayer(p);\n"
                 + "vec3 sampleNormal = n;\n"
                 + "vec3 worldNormal = normalize(mat3(gbufferModelViewInverse) * sampleNormal);\n"
+                + (lightingCall.contains("purkinjeOverwrite") ? "float purkinjeOverwrite = 0.0;\n" : "")
+                + (lightingCall.contains("enderDragonDead") ? "float enderDragonDead = 1.0;\n" : "")
                 + lightingCall
                 + "return shadeToonSurface(raw, n, lightVec, p, max(lit.rgb, vec3(0.0)), "
                 + "band);\n}\n";
@@ -299,6 +301,10 @@ final class ComplementaryToonLighting {
                 case "nodirectionalshading", "novanillaao", "centershadowbias" -> "true";
                 case "subsurfacemode" -> "0";
                 case "smoothnessg", "highlightmult", "emission" -> "0.0";
+                case "purkinjeoverwrite" -> "purkinjeOverwrite";
+                case "islightsource" -> "false";
+                case "enderdragondead" -> "enderDragonDead";
+                case "metalhighlighttint" -> "vec3(1.0)";
                 default -> null;
             };
             if (argument == null) return "";

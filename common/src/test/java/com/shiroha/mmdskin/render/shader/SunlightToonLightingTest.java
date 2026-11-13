@@ -315,4 +315,25 @@ class SunlightToonLightingTest {
                 """;
         assertEquals(source, ComplementaryToonLighting.adaptShadowSampler(source));
     }
+
+    @Test
+    void modernDoLightingSupportsTwentyTwoArgumentEuphoriaSignature() {
+        String modern22 = """
+                vec2 texCoord;
+                vec3 ViewToPlayer(vec3 p) { return p; }
+                void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                        float lViewPos, vec3 geoNormal, vec3 normalM, float dither, vec3 worldGeoNormal,
+                        vec2 lightmap, bool noSmoothLighting, bool noDirectionalShading, bool noVanillaAO,
+                        bool centerShadowBias, int subsurfaceMode, float smoothnessG, float highlightMult,
+                        float emission, inout float purkinjeOverwrite, bool isLightSource,
+                        inout float enderDragonDead, vec3 metalHighlightTint) {}
+                void main() {}
+                """;
+        String lighting = ComplementaryToonLighting.createModern(modern22, VERTEX);
+        assertTrue(lighting.contains("float purkinjeOverwrite = 0.0;"));
+        assertTrue(lighting.contains("float enderDragonDead = 1.0;"));
+        assertTrue(lighting.contains("DoLighting(lit, shadow, player, p, length(p), sampleNormal, sampleNormal,"
+                + " 0.5, worldNormal, lmCoord, false, true, true, true, 0, 0.0, 0.0, 0.0,"
+                + " purkinjeOverwrite, false, enderDragonDead, vec3(1.0));"));
+    }
 }

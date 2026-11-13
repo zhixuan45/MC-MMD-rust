@@ -35,7 +35,7 @@ final class IrisTerrainShadowReplay {
                 && code.contains("color1.rgb*=1.0-pow(color1.a,64.0);")
                 && code.contains("color1.rgb*=0.1;")
                 && code.contains("color2.rgb=normalize(color1.rgb)*0.5;")
-                && code.contains("gl_FragData[0]=color1;");
+                && (code.contains("gl_FragData[0]=color1;") || code.contains("gl_FragData[0]=vec4(saturateColors(color1.rgb,"));
         if (!bsl && !modern) return 0;
         String effects = clean + "\n" + cleanVertex;
         if (modern) {
@@ -48,11 +48,18 @@ final class IrisTerrainShadowReplay {
         if (UNSAFE.matcher(effects).find()) return 0;
         var outputs = Pattern.compile("gl_FragData\\[(\\d+)]\\s*=\\s*([^;]+);").matcher(code);
         int count = 0, matched = 0;
+        boolean hasSaturate = code.contains("vec3saturateColors(vec3col,floatsaturationMult)");
         while (outputs.find()) {
             matched++;
             int slot = Integer.parseInt(outputs.group(1));
-            String expected = bsl ? "albedo" : slot == 0 ? "color1" : "color2";
-            if (slot > (bsl ? 0 : 1) || !outputs.group(2).equals(expected)) return 0;
+            if (slot > (bsl ? 0 : 1)) return 0;
+            String value = outputs.group(2);
+            boolean valid = bsl ? value.equals("albedo")
+                    : slot == 0 ? (value.equals("color1")
+                    || (hasSaturate && value.matches("vec4\\(saturateColors\\(color1\\.rgb,[0-9.]+\\),color1\\.a\\)")))
+                    : (value.equals("color2")
+                    || (hasSaturate && value.matches("vec4\\(saturateColors\\(color2\\.rgb,pow\\([0-9.]+,0\\.8\\)\\),color2\\.a\\)")));
+            if (!valid) return 0;
             count = Math.max(count, slot + 1);
         }
         if (cleanVertex.contains("gl_FragData")

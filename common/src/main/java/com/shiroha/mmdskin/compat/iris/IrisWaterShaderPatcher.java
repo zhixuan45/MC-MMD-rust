@@ -30,6 +30,8 @@ public final class IrisWaterShaderPatcher {
             new OutputLayout("036", new int[]{0, 3, 6}),
             new OutputLayout("0348", new int[]{0, 3, 4, 8}),
             new OutputLayout("03648", new int[]{0, 3, 6, 4, 8}),
+            new OutputLayout("0369", new int[]{0, 3, 6, 9}),
+            new OutputLayout("036489", new int[]{0, 3, 6, 4, 8, 9}),
             new OutputLayout("031", new int[]{0, 3, 1}),
             new OutputLayout("0318", new int[]{0, 3, 1, 8}),
             new OutputLayout("038", new int[]{0, 3, 8})
@@ -161,7 +163,7 @@ public final class IrisWaterShaderPatcher {
         for (int slot = 0; slot < layout.targets.length; slot++) {
             List<String> values = assignments.get(slot);
             if (values == null || values.size() != 1
-                    || !values.get(0).equals(expectedAssignment(layout, slot))) return false;
+                    || !matchesAssignment(layout, slot, values.get(0))) return false;
         }
         return true;
     }
@@ -179,17 +181,19 @@ public final class IrisWaterShaderPatcher {
         return matched == occurrences ? result : null;
     }
 
-    private static String expectedAssignment(OutputLayout layout, int slot) {
-        if (slot == 0) return "color";
-        if (slot == 1) return "vec4(1.0-translucentmult.rgb,translucentmult.a)";
+    private static boolean matchesAssignment(OutputLayout layout, int slot, String actual) {
+        if (slot == 0) return actual.equals("color");
+        if (slot == 1) return actual.equals("vec4(1.0-translucentmult.rgb,translucentmult.a)");
         return switch (layout.targets[slot]) {
-            case 1 -> "vec4(0.0,materialmask,0.0,1.0)";
-            case 6 -> "vec4(1.0,materialmask,skylightfactor,1.0)";
-            case 4 -> "vec4(mat3(gbuffermodelviewinverse)*normalm,sqrt(fresnelm*color.a*fogalpha))";
-            case 8 -> layout.id().equals("038") || layout.id().equals("0318")
+            case 1 -> actual.equals("vec4(0.0,materialmask,0.0,1.0)");
+            case 6 -> actual.equals("vec4(1.0,materialmask,skylightfactor,1.0)")
+                    || actual.equals("vec4(1.0,materialmask,skylightfactor,lmcoord.x+clamp01(purkinjeoverwrite)+clamp01(emission))");
+            case 4 -> actual.equals("vec4(mat3(gbuffermodelviewinverse)*normalm,sqrt(fresnelm*color.a*fogalpha))");
+            case 8 -> actual.equals(layout.id().equals("038") || layout.id().equals("0318")
                     ? "vec4(lightalbedo,1.0)"
-                    : "vec4(reflection.rgb*fresnelm*color.a*fogalpha,reflection.a)";
-            default -> "";
+                    : "vec4(reflection.rgb*fresnelm*color.a*fogalpha,reflection.a)");
+            case 9 -> actual.equals("vec4(lightalbedo,ssblalpha)");
+            default -> false;
         };
     }
 

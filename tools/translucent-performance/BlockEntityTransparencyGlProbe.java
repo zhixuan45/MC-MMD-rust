@@ -873,7 +873,7 @@ public final class BlockEntityTransparencyGlProbe {
         check(buffers != null && buffers.length >= 2 && buffers[0] == 0,
                 "water main output must start at color attachment 0");
         for (int i = 1; i < buffers.length; i++)
-            check(buffers[i] > 0 && buffers[i] < 9, "unsupported water auxiliary attachment: " + buffers[i]);
+            check(buffers[i] > 0 && buffers[i] < 16, "unsupported water auxiliary attachment: " + buffers[i]);
         check(buffers[1] > 0, "water auxiliary attachment missing");
     }
 

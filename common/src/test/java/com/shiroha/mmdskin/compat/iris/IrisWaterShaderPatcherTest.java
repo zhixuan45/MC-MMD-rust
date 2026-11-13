@@ -300,4 +300,53 @@ class IrisWaterShaderPatcherTest {
         result.put("FRAGMENT", source.toString());
         return result;
     }
+
+    @Test void acceptsEuphoriaR593Patch1105WaterLayoutsAndRejectsMismatchedOrder() {
+        for (String layout : new String[]{"036", "03648", "0369", "036489"}) {
+            String contract = euphoria1105WaterContract(layout);
+            var original = transformed(layout.length());
+            var result = IrisWaterShaderPatcher.patch("gbuffers_water", contract, original);
+            assertNotSame(original, result, layout);
+            assertTrue(IrisWaterShaderPatcher.supports("gbuffers_water", contract), layout);
+        }
+        String badOrder = euphoria1105WaterContract("03648").replace("DRAWBUFFERS:03648", "DRAWBUFFERS:06348");
+        assertFalse(IrisWaterShaderPatcher.supports("gbuffers_water", badOrder));
+    }
+
+    private static String euphoria1105WaterContract(String layout) {
+        String tails = switch (layout) {
+            case "036" -> """
+                    /* DRAWBUFFERS:036 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    gl_FragData[2] = vec4(1.0, materialMask, skyLightFactor, lmCoord.x + clamp01(purkinjeOverwrite) + clamp01(emission));
+                    """;
+            case "03648" -> """
+                    /* DRAWBUFFERS:03648 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    gl_FragData[2] = vec4(1.0, materialMask, skyLightFactor, lmCoord.x + clamp01(purkinjeOverwrite) + clamp01(emission));
+                    gl_FragData[3] = vec4(mat3(gbufferModelViewInverse) * normalM, sqrt(fresnelM * color.a * fogAlpha));
+                    gl_FragData[4] = vec4(reflection.rgb * fresnelM * color.a * fogAlpha, reflection.a);
+                    """;
+            case "0369" -> """
+                    /* DRAWBUFFERS:0369 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    gl_FragData[2] = vec4(1.0, materialMask, skyLightFactor, lmCoord.x + clamp01(purkinjeOverwrite) + clamp01(emission));
+                    gl_FragData[3] = vec4(lightAlbedo, SSBLAlpha);
+                    """;
+            case "036489" -> """
+                    /* DRAWBUFFERS:036489 */
+                    gl_FragData[0] = color;
+                    gl_FragData[1] = vec4(1.0 - translucentMult.rgb, translucentMult.a);
+                    gl_FragData[2] = vec4(1.0, materialMask, skyLightFactor, lmCoord.x + clamp01(purkinjeOverwrite) + clamp01(emission));
+                    gl_FragData[3] = vec4(mat3(gbufferModelViewInverse) * normalM, sqrt(fresnelM * color.a * fogAlpha));
+                    gl_FragData[4] = vec4(reflection.rgb * fresnelM * color.a * fogAlpha, reflection.a);
+                    gl_FragData[5] = vec4(lightAlbedo, SSBLAlpha);
+                    """;
+            default -> throw new IllegalArgumentException(layout);
+        };
+        return MODERN_CONTRACT + tails + "}\n";
+    }
 }

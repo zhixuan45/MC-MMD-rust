@@ -105,4 +105,26 @@ class IrisTerrainShadowReplayTest {
             return Optional.ofNullable(shadow);
         }
     }
+
+    @Test void acceptsEuphoria1105SaturatedShadowOutputs() {
+        String helper = """
+                vec3 saturateColors(vec3 col, float saturationMult) {
+                    if (saturationMult == 1.0) return col;
+                    float brightness = maxOf(col);
+                    return max0((col - brightness) * saturationMult + brightness);
+                }
+                """;
+        String oneTarget = helper + MODERN_FORMULA + """
+                /* DRAWBUFFERS:0 */
+                gl_FragData[0] = vec4(saturateColors(color1.rgb, 1.0), color1.a);
+                """;
+        String twoTarget = helper + MODERN_FORMULA + """
+                /* DRAWBUFFERS:01 */
+                gl_FragData[0] = vec4(saturateColors(color1.rgb, 1.25), color1.a);
+                gl_FragData[1] = vec4(saturateColors(color2.rgb, pow(1.25, 0.8)), color2.a);
+                """;
+        assertContract(oneTarget, 1);
+        assertContract(twoTarget, 2);
+        assertContract(oneTarget.replace("vec3 saturateColors(vec3 col, float saturationMult)", "vec3 other(vec3 col, float s)"), 0);
+    }
 }

@@ -264,4 +264,71 @@ class ModernToonOutputProfileTest {
         assertTrue(profile.lightingSource().isEmpty());
         assertTrue(profile.fragmentWriter().contains("254.0 / 255.0"));
     }
+
+    @Test
+    void acceptsEuphoriaR593Patch1105EntitiesHandReflectionDepthAndSsblLayouts() {
+        String base = """
+                const float OSIEBCA = 1.0 / 255.0;
+                vec2 texCoord;
+                vec3 ViewToPlayer(vec3 p) { return p; }
+                void DoLighting(inout vec4 color, inout vec3 shadowMult, vec3 playerPos, vec3 viewPos,
+                        float lViewPos, vec3 geoNormal, vec3 normalM, float dither, vec3 worldGeoNormal,
+                        vec2 lightmap, bool noSmoothLighting, bool noDirectionalShading, bool noVanillaAO,
+                        bool centerShadowBias, int subsurfaceMode, float smoothnessG, float highlightMult,
+                        float emission, inout float purkinjeOverwrite, bool isLightSource,
+                        inout float enderDragonDead, vec3 metalHighlightTint) {
+                    vec3 finalDiffuse = vec3(1.0);
+                    finalDiffuse = sqrt(max(finalDiffuse, vec3(0.0)));
+                    color.rgb *= finalDiffuse;
+                }
+                float purkinjeOverwrite = 0.0, emissionOld = 0.0;
+                float smoothnessD = 0.0, enderDragonDead = 1.0, materialMask = OSIEBCA * 254.0, materialAO = 1.0;
+                float skyLightFactor = GetSkyLightFactor(lmCoordM, shadowMult);
+                vec3 translucentMult = vec3(1.0);
+                vec3 lightAlbedo = vec3(0.0);
+                float entitySSBLMask = 1.0;
+                float reflectNormalAlpha = 1.0;
+                reflectNormalAlpha = clamp(maxOf(rawAlbedoM), 0.02, 0.99) * 2.0 - 1.0;
+                /* DRAWBUFFERS:03649 */
+                gl_FragData[0] = color;
+                gl_FragData[1] = vec4(1.0 - translucentMult, 1.0);
+                gl_FragData[2] = vec4(smoothnessD, materialMask, skyLightFactor, lmCoord.x + clamp01(purkinjeOverwrite) + clamp01(emissionOld) + maxOf(entityColor));
+                gl_FragData[3] = vec4(mat3(gbufferModelViewInverse) * normalM, reflectNormalAlpha);
+                gl_FragData[4] = vec4(lightAlbedo, entitySSBLMask);
+                void main() {}
+                """;
+        var entities = ToonOutputProfile.resolve("ComplementaryUnbound_r5.9.3 + EuphoriaPatches_1.10.5",
+                "gbuffers_entities", base, VERTEX, new int[]{0, 3, 6, 4, 9});
+        assertTrue(entities.isSupported(), entities.reason());
+        assertTrue(entities.fragmentWriter().contains("clamp(ToonLightmap.x, 0.0, 0.9)"));
+        assertTrue(entities.fragmentWriter().contains("clamp(max(rawAlbedo.r, max(rawAlbedo.g, rawAlbedo.b)), 0.02, 0.99) * 2.0 - 1.0"));
+        assertTrue(entities.fragmentWriter().contains("toonOutput4 = vec4(0.0, 0.0, 0.0, 1.0);"));
+        assertFalse(entities.lightingSource().isEmpty());
+        assertTrue(entities.lightingSource().contains("purkinjeOverwrite, false, enderDragonDead, vec3(1.0)"));
+
+        String translucent = base
+                .replace("reflectNormalAlpha = clamp(maxOf(rawAlbedoM), 0.02, 0.99) * 2.0 - 1.0;", "")
+                .replace("DRAWBUFFERS:03649", "RENDERTARGETS: 0,3,6,4,13,9")
+                .replace("gl_FragData[3] = vec4(mat3(gbufferModelViewInverse) * normalM, reflectNormalAlpha);",
+                        "gl_FragData[3] = vec4(mat3(gbufferModelViewInverse) * normalM, 1.0);")
+                .replace("gl_FragData[4] = vec4(lightAlbedo, entitySSBLMask);",
+                        "float lViewPos = length(viewPos);\nfloat entityLinearDepth = sqrt(lViewPos / far);\ngl_FragData[4] = vec4(0.0, 1.0, 1.0, entityLinearDepth);\ngl_FragData[5] = vec4(lightAlbedo, entitySSBLMask);");
+        var transProfile = ToonOutputProfile.resolve("ComplementaryReimagined_r5.9.3 + EuphoriaPatches_1.10.5",
+                "gbuffers_entities_translucent", translucent, VERTEX, new int[]{0, 3, 6, 4, 13, 9});
+        assertTrue(transProfile.isSupported(), transProfile.reason());
+        assertTrue(transProfile.fragmentWriter().contains("vec4(0.0, 1.0, 1.0, sqrt(length(viewPos) / max(ToonFar, 1.0)))"));
+
+        String hand = base
+                .replace("float entitySSBLMask = 1.0;", "float handSSBLMask = 0.0;\nfloat purkinjeData = 1.0;\nfloat albedoData = 1.0;")
+                .replace("reflectNormalAlpha = clamp(maxOf(rawAlbedoM), 0.02, 0.99) * 2.0 - 1.0;",
+                        "albedoData = clamp(maxOf(rawAlbedoM), 0.02, 0.99) * 2.0 - 1.0;")
+                .replace("lmCoord.x + clamp01(purkinjeOverwrite) + clamp01(emissionOld) + maxOf(entityColor)",
+                        "purkinjeData")
+                .replace("reflectNormalAlpha", "albedoData")
+                .replace("entitySSBLMask", "handSSBLMask");
+        var handProfile = ToonOutputProfile.resolve("ComplementaryUnbound_r5.9.3 + EuphoriaPatches_1.10.5",
+                "gbuffers_hand", hand, VERTEX, new int[]{0, 3, 6, 4, 9});
+        assertTrue(handProfile.isSupported(), handProfile.reason());
+        assertTrue(handProfile.fragmentWriter().contains("toonOutput4 = vec4(0.0, 0.0, 0.0, 0.0);"));
+    }
 }
