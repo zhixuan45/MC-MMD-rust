@@ -54,6 +54,8 @@ public class ConfigData {
     public float toonTransitionSoftness = 1.2f;
     /** Minimum visible material base color, independent of directional lighting. */
     public float baseBrightness = 0.0f;
+    /** Brightens only the character's shadowed areas without lifting lit surfaces. */
+    public float toonShadowBrightness = 0.0f;
     public float toonShaderFlatness = 0.0f;
     public float toonShaderSphereSuppression = 0.0f;
     /** Terrain-only per-fragment receiver. */
@@ -65,6 +67,7 @@ public class ConfigData {
     public float toonRimPower = 5.6f;
     public float toonRimIntensity = 0.02f;
     public float toonEyeEmission = 0.0f;
+    public float toonSkinEmission = 0.0f;
     public float toonShadowR = 0.78f;
     public float toonShadowG = 0.84f;
     public float toonShadowB = 0.94f;
@@ -227,6 +230,8 @@ public class ConfigData {
                 ? clamp(toonTransitionSoftness, 0.0f, 2.0f) : 1.2f;
         baseBrightness = Float.isFinite(baseBrightness)
                 ? clamp(baseBrightness, 0.0f, 1.0f) : 0.0f;
+        toonShadowBrightness = Float.isFinite(toonShadowBrightness)
+                ? clamp(toonShadowBrightness, 0.0f, 1.0f) : 0.0f;
         toonShaderFlatness = Float.isFinite(toonShaderFlatness)
                 ? clamp(toonShaderFlatness, 0.0f, 1.0f) : 0.0f;
         toonShaderSphereSuppression = Float.isFinite(toonShaderSphereSuppression)
@@ -236,6 +241,7 @@ public class ConfigData {
         toonRimPower = clamp(toonRimPower, 0.1f, 10.0f);
         toonRimIntensity = clamp(toonRimIntensity, 0.0f, 1.0f);
         toonEyeEmission = Float.isFinite(toonEyeEmission) ? clamp(toonEyeEmission, 0.0f, 3.0f) : 0.0f;
+        toonSkinEmission = Float.isFinite(toonSkinEmission) ? clamp(toonSkinEmission, 0.0f, 1.0f) : 0.0f;
         toonShadowR = clamp(toonShadowR, 0.0f, 1.0f);
         toonShadowG = clamp(toonShadowG, 0.0f, 1.0f);
         toonShadowB = clamp(toonShadowB, 0.0f, 1.0f);

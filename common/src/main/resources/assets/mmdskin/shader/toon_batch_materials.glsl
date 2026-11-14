@@ -8,7 +8,7 @@ struct MmdBatchMaterial {
     vec4 sphereMul;
     vec4 sphereAdd;
     vec4 shading; // eye mask, sphere mode, diffuse slot, sphere slot
-    vec4 flags;   // double sided, hair
+    vec4 flags;   // double sided, bitmask(1: hair, 2: skin)
 #ifdef MMD_FX_COMBINED
     MmdFxChannel effects[12];
 #endif
@@ -23,7 +23,7 @@ vec4 mmdColor, mmdSphereMul, mmdSphereAdd;
 vec3 mmdSpecular;
 float mmdPower, mmdEyeMask;
 int mmdSphereMode, mmdDiffuseSlot, mmdSphereSlot;
-bool mmdCull, mmdHairMaterial;
+bool mmdCull, mmdHairMaterial, mmdSkinMaterial;
 #ifdef MMD_FX_COMBINED
 int mmdFxKind, mmdFxSelection;
 MmdFxChannel mmdFxChannels[12];
@@ -66,7 +66,9 @@ void mmdLoadMaterial() {
         mmdSphereMul = row.sphereMul;
         mmdSphereAdd = row.sphereAdd;
         mmdEyeMask = row.shading.x;
-        mmdHairMaterial = row.flags.y != 0.0;
+        int materialFlags = int(row.flags.y);
+        mmdHairMaterial = (materialFlags & 1) != 0;
+        mmdSkinMaterial = (materialFlags & 2) != 0;
 #ifdef MMD_FX_COMBINED
         mmdFxKind = int(row.flags.z);
         mmdFxSelection = int(row.flags.w);
@@ -86,6 +88,7 @@ void mmdLoadMaterial() {
         mmdSphereMode = SphereMode;
         mmdEyeMask = EyeMaterialMask;
         mmdHairMaterial = HairMaterial;
+        mmdSkinMaterial = SkinMaterial;
     }
 }
 vec4 mmdDiffuse(vec2 uv) {
@@ -115,3 +118,4 @@ void mmdPrepareSphere(vec3 normal) {
 #define SphereMode mmdSphereMode
 #define EyeMaterialMask mmdEyeMask
 #define HairMaterial mmdHairMaterial
+#define SkinMaterial mmdSkinMaterial

@@ -14,9 +14,11 @@ public final class MaterialRenderState {
     public float fxSpecularPower;
     public float alpha;
     public boolean hair;
+    public boolean skin;
 
     public void resolve(ModelMaterial material, ByteBuffer morphs, int materialId, float effectiveAlpha) {
         hair = material.isHair();
+        skin = material.isSkin();
         for (int channel = 0; channel < 3; channel++) {
             float diffuse = morph(material.diffuse[channel], morphs, materialId, channel);
             float ambient = morph(material.ambient[channel], morphs, materialId, 8 + channel);

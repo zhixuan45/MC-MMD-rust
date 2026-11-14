@@ -41,6 +41,7 @@ public class ToonRenderHelper {
         shader.setToonLevels(toonConfig.getToonLevels());
         shader.setTransitionSoftness(toonConfig.getTransitionSoftness());
         shader.setBaseBrightness(toonConfig.getBaseBrightness());
+        shader.setShadowBrightness(toonConfig.getShadowBrightness());
         shader.setShaderStyle(toonConfig.getShaderFlatness(), toonConfig.getShaderSphereSuppression());
         shader.setWorldShadowSoftness(toonConfig.getWorldShadowSoftness());
         shader.setRimLight(toonConfig.getRimPower(), toonConfig.getRimIntensity());
@@ -54,6 +55,7 @@ public class ToonRenderHelper {
         shader.setGlobalAlpha(globalAlpha);
         shader.setEyeEmission(0.0f);
         shader.setEyeMaterialMask(0.0f);
+        shader.setSkinEmission(toonConfig.getSkinEmission());
     }
 
     public static void prepareRenderState(int vao) {

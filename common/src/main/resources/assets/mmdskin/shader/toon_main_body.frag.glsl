@@ -15,6 +15,7 @@ uniform float ToonShaderSphereSuppression;
 uniform float AlphaCutoff;
 uniform float HairAlphaCutoff;
 uniform bool HairMaterial;
+uniform bool SkinMaterial;
 uniform bool DisableTransparency;
 uniform int ToonTransparencyMode; // 0 普通，1 取深度，2 深层余量，3 选中层
 uniform bool ToonTransparencyHasPrevious;
@@ -27,6 +28,7 @@ uniform int AlphaPass; // 0: 全部（阴影），1: 实心，2: 半透明
 #define TOON_MATERIAL_LIGHTING
 uniform float EyeEmission;
 uniform float EyeMaterialMask;
+uniform float SkinEmission;
 
 /* TOON_BATCH_MATERIALS */
 /* MMD_FX_COLOR */
@@ -122,6 +124,14 @@ void main() {
         // 发光在线性空间相加，避免被输出的 gamma 转换再次指数放大，影响自动曝光。
         vec3 linearColor = pow(max(finalColor, vec3(0.0)), vec3(2.2));
         linearColor += pow(max(albedo, vec3(0.0)), vec3(2.2)) * emission;
+        finalColor = pow(linearColor, vec3(1.0 / 2.2));
+    }
+    if (SkinMaterial && SkinEmission > 0.0) {
+        float skinGlow = clamp(SkinEmission, 0.0, 1.0);
+        vec3 linearColor = pow(max(finalColor, vec3(0.0)), vec3(2.2));
+        vec3 linearAlbedo = pow(max(albedo, vec3(0.0)), vec3(2.2));
+        vec3 softHeadroom = 1.0 / (1.0 + 0.65 * linearColor);
+        linearColor += linearAlbedo * (0.65 * skinGlow) * softHeadroom;
         finalColor = pow(linearColor, vec3(1.0 / 2.2));
     }
     if (finalAlpha < 0.001) {

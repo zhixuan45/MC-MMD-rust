@@ -11,6 +11,7 @@ final class MaterialShaderBinding implements AutoCloseable {
     private final int fxAmbient, fxSpecular;
     private final int alphaPass;
     private final int hairMaterial;
+    private final int skinMaterial;
     private final boolean disableTransparency;
     private final boolean toon;
     private final int colorModulator;
@@ -23,6 +24,7 @@ final class MaterialShaderBinding implements AutoCloseable {
     private float lastPower;
     private int lastPass = -1;
     private int lastHair = -1;
+    private int lastSkin = -1;
     private boolean colorValid, specularValid, powerValid;
     private boolean modulatorValid;
 
@@ -36,6 +38,7 @@ final class MaterialShaderBinding implements AutoCloseable {
         fxSpecular = GL46C.glGetUniformLocation(program, "FxMaterialSpecular");
         alphaPass = GL46C.glGetUniformLocation(program, "AlphaPass");
         hairMaterial = GL46C.glGetUniformLocation(program, "HairMaterial");
+        skinMaterial = GL46C.glGetUniformLocation(program, "SkinMaterial");
         int opaque = GL46C.glGetUniformLocation(program, "DisableTransparency");
         toon = materialColor >= 0 && opaque >= 0;
         disableTransparency = materialColor >= 0 && opaque >= 0 && GL46C.glGetUniformi(program, opaque) != 0;
@@ -73,6 +76,11 @@ final class MaterialShaderBinding implements AutoCloseable {
         if (hairMaterial >= 0 && lastHair != hair) {
             GL46C.glUniform1i(hairMaterial, hair);
             lastHair = hair;
+        }
+        int skin = state.skin ? 1 : 0;
+        if (skinMaterial >= 0 && lastSkin != skin) {
+            GL46C.glUniform1i(skinMaterial, skin);
+            lastSkin = skin;
         }
         boolean colorChanged = !colorValid || lastColor[0] != state.color[0]
                 || lastColor[1] != state.color[1] || lastColor[2] != state.color[2] || lastColor[3] != alpha;
@@ -131,5 +139,6 @@ final class MaterialShaderBinding implements AutoCloseable {
                 previousModulator[0], previousModulator[1], previousModulator[2], previousModulator[3]);
         if (alphaPass >= 0) GL46C.glUniform1i(alphaPass, 0);
         if (hairMaterial >= 0) GL46C.glUniform1i(hairMaterial, 0);
+        if (skinMaterial >= 0) GL46C.glUniform1i(skinMaterial, 0);
     }
 }

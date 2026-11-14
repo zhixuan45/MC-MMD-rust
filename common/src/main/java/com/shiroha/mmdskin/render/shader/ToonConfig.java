@@ -43,6 +43,8 @@ public class ToonConfig {
 
     public float getBaseBrightness() { return ConfigManager.getToonBaseBrightness(); }
 
+    public float getShadowBrightness() { return ConfigManager.getToonShadowBrightness(); }
+
     public float getShaderSphereSuppression() { return ConfigManager.getToonShaderSphereSuppression(); }
 
     public float getWorldShadowSoftness() { return ConfigManager.getToonWorldShadowSoftness(); }
@@ -53,6 +55,10 @@ public class ToonConfig {
 
     public float getEyeEmission() {
         return ConfigManager.getToonEyeEmission();
+    }
+
+    public float getSkinEmission() {
+        return ConfigManager.getToonSkinEmission();
     }
 
     public float getRimIntensity() {

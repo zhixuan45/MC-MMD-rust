@@ -84,7 +84,7 @@ final class TranslucentBatchSubmission implements AutoCloseable {
             rows.putFloat(material.eyeEmissionMaskMode()).putFloat(row.sphereSlot() < 0 ? 0 : material.sphereMode)
                     .putFloat(row.diffuseSlot()).putFloat(row.sphereSlot());
             // 复用空闲标记，不增加材质表大小或拆分批次。
-            rows.putFloat(key.bothFace() ? 1 : 0).putFloat(state.hair ? 1 : 0)
+            rows.putFloat(key.bothFace() ? 1 : 0).putFloat((state.hair ? 1 : 0) | (state.skin ? 2 : 0))
                     .putFloat(row.effect().kind()).putFloat(row.effect().selection());
             if (stride > ROW_BYTES) row.effect().writeChannels(rows, row.effectSlots(), state.fxSpecularPower, state.fxAmbient, state.specular);
         }

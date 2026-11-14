@@ -28,6 +28,8 @@ public interface IToonConfig {
 
     default float getToonBaseBrightness() { return 0.0f; }
 
+    default float getToonShadowBrightness() { return 0.0f; }
+
     default float getToonShaderFlatness() { return 0.0f; }
 
     default float getToonShaderSphereSuppression() { return 0.0f; }
@@ -51,6 +53,7 @@ public interface IToonConfig {
     default float getToonRimPower() { return 5.6f; }
     default float getToonRimIntensity() { return 0.02f; }
     default float getToonEyeEmission() { return 0.0f; }
+    default float getToonSkinEmission() { return 0.0f; }
 
     default float getToonShadowR() { return 0.78f; }
     default float getToonShadowG() { return 0.84f; }

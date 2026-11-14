@@ -138,6 +138,10 @@ public class ConfigManager {
         return provider != null ? provider.getToonBaseBrightness() : 0.0f;
     }
 
+    public static float getToonShadowBrightness() {
+        return provider != null ? provider.getToonShadowBrightness() : 0.0f;
+    }
+
     public static float getToonShaderFlatness() {
         return provider != null ? provider.getToonShaderFlatness() : 0.0f;
     }
@@ -169,6 +173,10 @@ public class ConfigManager {
 
     public static float getToonEyeEmission() {
         return provider != null ? provider.getToonEyeEmission() : 0.0f;
+    }
+
+    public static float getToonSkinEmission() {
+        return provider != null ? provider.getToonSkinEmission() : 0.0f;
     }
 
     public static float getToonRimIntensity() {

@@ -4,6 +4,7 @@ uniform int ToonLevels;
 uniform float ToonTransitionSoftness;
 uniform float ToonShaderFlatness;
 uniform float ToonBaseBrightness;
+uniform float ToonShadowBrightness;
 uniform float RimPower;
 uniform float RimIntensity;
 uniform vec3 ShadowColor;
@@ -153,6 +154,7 @@ vec3 toonApplyBaseBrightness(vec3 shaded, vec3 albedo) {
 }
 
 vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination, float ramp) {
+    float shadowMask = 1.0 - saturate(toonHasShadowVisibility ? toonDirectLightWeight : ramp);
     if (ToonTerrainShadowEnabled && toonHasShadowVisibility) {
         // The sun-facing band must not darken ambient-only surfaces along PMX normal seams.
         // Weight by available direct light: visibility alone would darken ambient in the
@@ -164,14 +166,22 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
     toonDebugBand = ramp;
     toonDebugIllumination = max(illumination, vec3(0.0));
 #endif
+    float shadowLift = clamp(ToonShadowBrightness, 0.0, 1.0);
+    vec3 liftedShadowColor = mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), shadowLift);
+    vec3 surfaceIllumination = max(illumination, vec3(0.0));
+    if (UsePackLighting && shadowLift > 0.0) {
+        // 仅抬升角色自身或地形遮挡造成的阴影暗部照度，亮部（shadowMask = 0）保持不变。
+        float liftFactor = 1.0 + shadowMask * shadowLift * 1.5;
+        surfaceIllumination = min(surfaceIllumination * liftFactor, max(surfaceIllumination, vec3(1.0)));
+    }
 #ifdef MMD_FX_RAY
     if (mmdFxRayEnabled()) {
-        toonSurfaceIllumination = max(illumination, vec3(0.0));
+        toonSurfaceIllumination = surfaceIllumination;
         return toonApplyBaseBrightness(
-                albedo * mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp) * toonSurfaceIllumination, albedo);
+                albedo * mix(liftedShadowColor, vec3(1.0), ramp) * toonSurfaceIllumination, albedo);
     }
 #endif
-    vec3 tint = mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp);
+    vec3 tint = mix(liftedShadowColor, vec3(1.0), ramp);
     vec3 surface = albedo * tint;
     vec3 view = normalize(-p);
     vec3 halfVector = light + view;
@@ -201,7 +211,6 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
     surface = mix(surface, vec3(1.0), saturate(rimBand * RimIntensity * detailStrength));
 #endif
     // 光照只乘一次；高光与边缘光在暗处同样衰减。
-    vec3 surfaceIllumination = max(illumination, vec3(0.0));
 #ifdef TOON_MATERIAL_LIGHTING
     toonSurfaceIllumination = surfaceIllumination;
 #endif
