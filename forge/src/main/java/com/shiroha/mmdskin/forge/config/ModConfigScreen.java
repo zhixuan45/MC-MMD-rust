@@ -299,6 +299,16 @@ public class ModConfigScreen {
             .build());
 
         toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_shadow_brightness"),
+                (int) Math.round(data.toonShadowBrightness * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTextGetter(value -> Component.literal(value + "%"))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_shadow_brightness.tooltip"))
+            .setSaveConsumer(value -> data.toonShadowBrightness = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
             .startBooleanToggle(
                 Component.translatable("gui.mmdskin.mod_settings.toon_receive_terrain_shadow"),
                 data.receiveTerrainShadow)
@@ -351,6 +361,16 @@ public class ModConfigScreen {
             .setDefaultValue(0)
             .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_eye_emission.tooltip"))
             .setSaveConsumer(value -> data.toonEyeEmission = value / 100.0f)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_skin_emission"),
+                (int) Math.round(data.toonSkinEmission * 100), 0, 100)
+            .setDefaultValue(0)
+            .setTextGetter(value -> Component.literal(value + "%"))
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_skin_emission.tooltip"))
+            .setSaveConsumer(value -> data.toonSkinEmission = value / 100.0f)
             .build());
 
         toonCategory.addEntry(entryBuilder

@@ -42,6 +42,8 @@ public abstract class ToonShaderBase {
     private int mainOutputMatrixLocation = -1, mainOutputFarLocation = -1;
     private int eyeEmissionLocation = -1;
     private int eyeMaterialMaskLocation = -1;
+    private int skinEmissionLocation = -1;
+    private float skinEmission = 0.0f;
     private int outlinePremultipliedLocation = -1;
     private int outlineOcclusionLocation = -1;
     private int outlineColorSlot;
@@ -65,6 +67,7 @@ public abstract class ToonShaderBase {
     protected int toonTransitionSoftnessLocation = -1;
     private int shaderFlatnessLocation = -1;
     private int baseBrightnessLocation = -1;
+    private int shadowBrightnessLocation = -1;
     private int shaderSphereSuppressionLocation = -1;
     protected int rimPowerLocation = -1;
     protected int rimIntensityLocation = -1;
@@ -225,6 +228,11 @@ public abstract class ToonShaderBase {
         if (eyeMaterialMaskLocation >= 0) GL46C.glUniform1f(eyeMaterialMaskLocation, value);
     }
 
+    public void setSkinEmission(float value) {
+        skinEmission = finiteUnit(value);
+        if (skinEmissionLocation >= 0) GL46C.glUniform1f(skinEmissionLocation, skinEmission);
+    }
+
     private void trimVariants() {
         // 限制不同布局占用的 GPU 程序数，保留无光影变体。
         var iterator = variants.entrySet().iterator();
@@ -252,6 +260,7 @@ public abstract class ToonShaderBase {
         toonTransitionSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonTransitionSoftness");
         shaderFlatnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderFlatness");
         baseBrightnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonBaseBrightness");
+        shadowBrightnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShadowBrightness");
         shaderSphereSuppressionLocation = GL46C.glGetUniformLocation(mainProgram, "ToonShaderSphereSuppression");
         worldShadowSoftnessLocation = GL46C.glGetUniformLocation(mainProgram, "ToonWorldShadowSoftness");
         rimPowerLocation = GL46C.glGetUniformLocation(mainProgram, "RimPower");
@@ -270,6 +279,7 @@ public abstract class ToonShaderBase {
         mainOutputMatrixLocation = GL46C.glGetUniformLocation(mainProgram, "ToonViewToWorld");
         mainOutputFarLocation = GL46C.glGetUniformLocation(mainProgram, "ToonFar");
         eyeEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "EyeEmission");
+        skinEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "SkinEmission");
         genericLighting.select(mainProgram);
         eyeMaterialMaskLocation = GL46C.glGetUniformLocation(mainProgram, "EyeMaterialMask");
         outlinePremultipliedLocation = GL46C.glGetUniformLocation(outlineProgram, "Premultiplied");
@@ -307,6 +317,8 @@ public abstract class ToonShaderBase {
             GL46C.glUseProgram(mainProgram);
             GL46C.glUniform1f(worldShadowSoftnessLocation, worldShadowSoftness);
             GL46C.glUniform1f(baseBrightnessLocation, outlineLighting.baseBrightness);
+            if (shadowBrightnessLocation >= 0) GL46C.glUniform1f(shadowBrightnessLocation, outlineLighting.shadowBrightness);
+            if (skinEmissionLocation >= 0) GL46C.glUniform1f(skinEmissionLocation, skinEmission);
             terrainShadow.bind(mainProgram, terrainReceiver && packLightingReady, worldShadowSoftness);
             ToonConfig config = ToonConfig.getInstance();
             setAlphaCutoff(config.getAlphaCutoff());
@@ -436,6 +448,11 @@ public abstract class ToonShaderBase {
     public void setBaseBrightness(float brightness) {
         outlineLighting.baseBrightness = finiteUnit(brightness);
         GL46C.glUniform1f(baseBrightnessLocation, outlineLighting.baseBrightness);
+    }
+
+    public void setShadowBrightness(float brightness) {
+        outlineLighting.shadowBrightness = finiteUnit(brightness);
+        if (shadowBrightnessLocation >= 0) GL46C.glUniform1f(shadowBrightnessLocation, outlineLighting.shadowBrightness);
     }
 
     public void setTerrainShadowReceiver(boolean enabled) {

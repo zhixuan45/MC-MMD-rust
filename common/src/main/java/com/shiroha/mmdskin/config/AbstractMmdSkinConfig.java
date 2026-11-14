@@ -36,6 +36,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public int getToonLevels() { return data.toonLevels; }
     @Override public float getToonTransitionSoftness() { return data.toonTransitionSoftness; }
     @Override public float getToonBaseBrightness() { return data.baseBrightness; }
+    @Override public float getToonShadowBrightness() { return data.toonShadowBrightness; }
     @Override public float getToonShaderFlatness() { return data.toonShaderFlatness; }
     @Override public float getToonShaderSphereSuppression() { return data.toonShaderSphereSuppression; }
     @Override public boolean isReceiveTerrainShadowEnabled() { return data.receiveTerrainShadow; }
@@ -44,6 +45,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public float getToonRimPower() { return data.toonRimPower; }
     @Override public float getToonRimIntensity() { return data.toonRimIntensity; }
     @Override public float getToonEyeEmission() { return data.toonEyeEmission; }
+    @Override public float getToonSkinEmission() { return data.toonSkinEmission; }
     @Override public float getToonShadowR() { return data.toonShadowR; }
     @Override public float getToonShadowG() { return data.toonShadowG; }
     @Override public float getToonShadowB() { return data.toonShadowB; }

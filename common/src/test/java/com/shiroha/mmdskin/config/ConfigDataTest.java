@@ -374,6 +374,37 @@ class ConfigDataTest {
     }
 
     @Test
+    void shadowBrightnessAndSkinEmissionDefaultPersistAndClamp(@TempDir Path configDir) throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{\"toonRenderingEnabled\":true}");
+        ConfigData data = ConfigData.load(configDir);
+        assertEquals(0.0f, data.toonShadowBrightness, 0.0001f);
+        assertEquals(0.0f, data.toonSkinEmission, 0.0001f);
+
+        data.toonShadowBrightness = 0.45f;
+        data.toonSkinEmission = 0.65f;
+        data.save(configDir);
+        ConfigData loaded = ConfigData.load(configDir);
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            assertEquals(0.45f, ConfigManager.getToonShadowBrightness(), 0.0001f);
+            assertEquals(0.65f, ConfigManager.getToonSkinEmission(), 0.0001f);
+        } finally {
+            ConfigManager.init(null);
+        }
+
+        var normalize = ConfigData.class.getDeclaredMethod("normalize");
+        normalize.setAccessible(true);
+        for (float[] pair : new float[][]{{-1, 0}, {0, 0}, {0.35f, 0.35f}, {1, 1}, {2, 1},
+                {Float.NaN, 0}, {Float.POSITIVE_INFINITY, 0}, {Float.NEGATIVE_INFINITY, 0}}) {
+            data.toonShadowBrightness = pair[0];
+            data.toonSkinEmission = pair[0];
+            normalize.invoke(data);
+            assertEquals(pair[1], data.toonShadowBrightness, 0.0001f);
+            assertEquals(pair[1], data.toonSkinEmission, 0.0001f);
+        }
+    }
+
+    @Test
     void toonTransitionSoftnessDefaultsAndClampsToRange(@TempDir Path configDir) throws Exception {
         Files.writeString(configDir.resolve("config.json"), "{\"toonLevels\":4}");
         ConfigData loaded = ConfigData.load(configDir);

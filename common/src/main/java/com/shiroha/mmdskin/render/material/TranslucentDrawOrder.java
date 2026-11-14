@@ -144,7 +144,8 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             float sg,
             float sb,
             float power,
-            float eye) {}
+            float eye,
+            boolean skin) {}
 
     public int indexBuffer() {
         return deviceActive ? device.indexBuffer() : indexBuffer;
@@ -224,6 +225,8 @@ public final class TranslucentDrawOrder implements AutoCloseable {
             boolean specular = GL46C.glGetUniformLocation(program, "MaterialSpecular") >= 0;
             int eyeLocation = GL46C.glGetUniformLocation(program, "EyeEmission");
             boolean eye = eyeLocation >= 0 && GL46C.glGetUniformf(program, eyeLocation) > 0;
+            int skinLocation = GL46C.glGetUniformLocation(program, "SkinEmission");
+            boolean skin = skinLocation >= 0 && GL46C.glGetUniformf(program, skinLocation) > 0;
             boolean splitPixels = GL46C.glGetUniformLocation(program, "AlphaPass") >= 0;
             boolean sphere = GL46C.glGetUniformLocation(program, "SphereMode") >= 0;
             boolean effects = GL46C.glGetUniformLocation(program, "FxSelection") >= 0;
@@ -269,7 +272,8 @@ public final class TranslucentDrawOrder implements AutoCloseable {
                                 specular ? state.specular[1] : 0,
                                 specular ? state.specular[2] : 0,
                                 power ? state.specularPower : 0,
-                                eye ? material.eyeEmissionMaskMode() : 0);
+                                eye ? material.eyeEmissionMaskMode() : 0,
+                                skin && material.isSkin());
                 batches[s] = batchIds.computeIfAbsent(batch, k -> batchIds.size());
                 // 材质透明时，贴图实心像素也必须进入透明排序。
                 includeOpaque[s] = !splitPixels || state.alpha < MaterialRenderState.OPAQUE_ALPHA

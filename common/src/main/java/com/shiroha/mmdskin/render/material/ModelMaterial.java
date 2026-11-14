@@ -30,6 +30,7 @@ public class ModelMaterial {
     private Boolean cachedIsFacialFeature;
     private Boolean cachedIsEye;
     private Boolean cachedIsHair;
+    private Boolean cachedIsSkin;
     private Float cachedEyeEmissionMaskMode;
 
     public float eyeEmissionMaskMode() {
@@ -41,6 +42,13 @@ public class ModelMaterial {
         // 只看材质名，避免共用图集把衣料归入发片。
         if (cachedIsHair == null) cachedIsHair = HairMaterialClassifier.matches(name);
         return cachedIsHair;
+    }
+
+    public boolean isSkin() {
+        if (cachedIsSkin == null) {
+            cachedIsSkin = !isHair() && eyeEmissionMaskMode() == 0.0f && SkinMaterialClassifier.matches(name);
+        }
+        return cachedIsSkin;
     }
 
     public boolean isEye() {

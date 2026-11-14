@@ -7,6 +7,7 @@ final class ToonOutlineLighting {
     float intensity = 1, softness = 1.2f;
     float flatness;
     float baseBrightness;
+    float shadowBrightness;
     float worldShadowSoftness = 1.5f;
     int levels = 4;
     float shadowR = .78f, shadowG = .84f, shadowB = .94f;
@@ -16,6 +17,7 @@ final class ToonOutlineLighting {
     private int specPower, specIntensity, rimPower, rimIntensity;
     private int shaderFlatness;
     private int baseBrightnessLocation;
+    private int shadowBrightnessLocation;
     private int worldShadowSoftnessLocation;
     private final GenericToonLighting generic = new GenericToonLighting();
     private ToonUniformBridge bridge;
@@ -28,6 +30,7 @@ final class ToonOutlineLighting {
         transition = location("ToonTransitionSoftness");
         shaderFlatness = location("ToonShaderFlatness");
         baseBrightnessLocation = location("ToonBaseBrightness");
+        shadowBrightnessLocation = location("ToonShadowBrightness");
         worldShadowSoftnessLocation = location("ToonWorldShadowSoftness");
         shadow = location("ShadowColor");
         direction = location("LightDir");
@@ -61,6 +64,7 @@ final class ToonOutlineLighting {
         GL46C.glUniform1f(transition, softness);
         GL46C.glUniform1f(shaderFlatness, flatness);
         GL46C.glUniform1f(baseBrightnessLocation, baseBrightness);
+        if (shadowBrightnessLocation >= 0) GL46C.glUniform1f(shadowBrightnessLocation, shadowBrightness);
         GL46C.glUniform1f(worldShadowSoftnessLocation, worldShadowSoftness);
         GL46C.glUniform3f(shadow, shadowR, shadowG, shadowB);
         GL46C.glUniform3f(direction, lightX, lightY, lightZ);
