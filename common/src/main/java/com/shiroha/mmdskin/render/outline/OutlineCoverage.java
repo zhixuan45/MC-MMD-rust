@@ -220,6 +220,7 @@ public final class OutlineCoverage implements AutoCloseable {
     /** 必须在渲染线程释放；关闭选项与 shader 清理共用。 */
     public static void release() {
         deleteAttachments();
+        OutlineBodyMask.release();
         if (geometryVao != 0) GL46C.glDeleteVertexArrays(geometryVao);
         if (compositeVao != 0) GL46C.glDeleteVertexArrays(compositeVao);
         if (program != 0) GL46C.glDeleteProgram(program);

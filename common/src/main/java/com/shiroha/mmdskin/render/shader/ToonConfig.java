@@ -101,6 +101,10 @@ public class ToonConfig {
         return ConfigManager.getToonOutlineWidth();
     }
 
+    public int getInnerOutlinePercent() {
+        return ConfigManager.getToonInnerOutlinePercent();
+    }
+
     public float getOutlineColorR() {
         return ConfigManager.getToonOutlineR();
     }

@@ -43,6 +43,8 @@ public abstract class ToonShaderBase {
     private int eyeMaterialMaskLocation = -1;
     private int skinEmissionLocation = -1;
     private float skinEmission = 0.0f;
+    private int skinGlowCaptureLocation = -1;
+    private int colorOutputEncoding;
     private int outlinePremultipliedLocation = -1;
     private int outlineOcclusionLocation = -1;
     private int outlineColorSlot;
@@ -88,6 +90,10 @@ public abstract class ToonShaderBase {
     protected int outlineUseTextureAlphaLocation = -1;
     protected int outlineAutoMaterialColorLocation = -1;
     protected int outlineMaterialDiffuseLocation = -1;
+    private int outlineSkinMaterialLocation = -1;
+    private int outlineRegionLocation = -1;
+    private int outlineBodyMaskLocation = -1;
+    private int outlineMaskOriginLocation = -1;
 
     protected int positionLocation = -1;
     protected int normalLocation = -1;
@@ -159,6 +165,8 @@ public abstract class ToonShaderBase {
             activeProfile = key;
             if (LIGHTING_DEBUG_MODE > 0) logger.info("Toon lighting debug={} ToonOutputProfile={}", LIGHTING_DEBUG_MODE, key);
             outlineColorSlot = profile.colorOutputSlot();
+            colorOutputEncoding = profile.id().contains(":sqrt-linear:") ? 1
+                    : profile.id().contains(":gamma:") || profile.id().equals("vanilla") ? 0 : 2;
             lightingBridge = profile.lightingSource().isEmpty() ? null : new ToonUniformBridge(profile.lightingSource());
             lightingSyncWarned = false;
             // 每个变体的 uniform 位置独立，切换后重新绑定。
@@ -232,6 +240,12 @@ public abstract class ToonShaderBase {
         if (skinEmissionLocation >= 0) GL46C.glUniform1f(skinEmissionLocation, skinEmission);
     }
 
+    public void setSkinGlowCapture(int pass) {
+        if (skinGlowCaptureLocation >= 0) GL46C.glUniform1i(skinGlowCaptureLocation, pass);
+    }
+
+    public int getColorOutputEncoding() { return colorOutputEncoding; }
+
     private void trimVariants() {
         // 限制不同布局占用的 GPU 程序数，保留无光影变体。
         var iterator = variants.entrySet().iterator();
@@ -279,6 +293,7 @@ public abstract class ToonShaderBase {
         mainOutputFarLocation = GL46C.glGetUniformLocation(mainProgram, "ToonFar");
         eyeEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "EyeEmission");
         skinEmissionLocation = GL46C.glGetUniformLocation(mainProgram, "SkinEmission");
+        skinGlowCaptureLocation = GL46C.glGetUniformLocation(mainProgram, "SkinGlowCapture");
         genericLighting.select(mainProgram);
         eyeMaterialMaskLocation = GL46C.glGetUniformLocation(mainProgram, "EyeMaterialMask");
         outlinePremultipliedLocation = GL46C.glGetUniformLocation(outlineProgram, "Premultiplied");
@@ -294,6 +309,10 @@ public abstract class ToonShaderBase {
         outlineUseTextureAlphaLocation = GL46C.glGetUniformLocation(outlineProgram, "UseTextureAlpha");
         outlineAutoMaterialColorLocation = GL46C.glGetUniformLocation(outlineProgram, "AutoMaterialColor");
         outlineMaterialDiffuseLocation = GL46C.glGetUniformLocation(outlineProgram, "MaterialDiffuse");
+        outlineSkinMaterialLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineSkinMaterial");
+        outlineRegionLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineRegion");
+        outlineBodyMaskLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineBodyMask");
+        outlineMaskOriginLocation = GL46C.glGetUniformLocation(outlineProgram, "OutlineMaskOrigin");
     }
 
     private void initCommonAttributes() {
@@ -314,6 +333,7 @@ public abstract class ToonShaderBase {
     public void useMain() {
         if (mainProgram > 0) {
             GL46C.glUseProgram(mainProgram);
+            setSkinGlowCapture(0);
             GL46C.glUniform1f(worldShadowSoftnessLocation, worldShadowSoftness);
             GL46C.glUniform1f(baseBrightnessLocation, outlineLighting.baseBrightness);
             if (shadowBrightnessLocation >= 0) GL46C.glUniform1f(shadowBrightnessLocation, outlineLighting.shadowBrightness);
@@ -567,6 +587,23 @@ public abstract class ToonShaderBase {
         }
     }
 
+    public void setOutlineSkinMaterial(boolean skin) {
+        GL46C.glUniform1i(outlineSkinMaterialLocation, skin ? 1 : 0);
+    }
+
+    public void setOutlineRegion(int region) {
+        GL46C.glUniform1i(outlineRegionLocation, region);
+    }
+
+    public int getOutlineBodyMaskLocation() {
+        return outlineBodyMaskLocation;
+    }
+
+    public void setOutlineBodyMask(int unit, int viewportX, int viewportY) {
+        GL46C.glUniform1i(outlineBodyMaskLocation, unit);
+        GL46C.glUniform2i(outlineMaskOriginLocation, viewportX, viewportY);
+    }
+
     public void setDisableTransparency(boolean disabled) {
         if (disableTransparencyLocation >= 0) GL46C.glUniform1i(disableTransparencyLocation, disabled ? 1 : 0);
     }
@@ -594,6 +631,7 @@ public abstract class ToonShaderBase {
         terrainShadow.release();
         com.shiroha.mmdskin.render.material.ToonTransparencyLayers.cleanup();
         com.shiroha.mmdskin.render.outline.OutlineCoverage.release();
+        com.shiroha.mmdskin.render.outline.SkinGlowPass.release();
         com.shiroha.mmdskin.ui.paperdoll.PaperDollRenderer.releaseCache();
         variants.values().forEach(ToonShaderBase::deletePrograms);
         variants.clear();

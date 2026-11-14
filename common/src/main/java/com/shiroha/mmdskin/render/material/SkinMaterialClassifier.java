@@ -29,17 +29,17 @@ final class SkinMaterialClassifier {
             "タイツ", "ストッキング", "ニーソ", "ソックス", "リボン", "アクセ", "饰", "飾",
             "金属", "甲", "铠", "鎧", "帽", "袋", "帯", "带", "领", "領", "袖", "羽",
             "翼", "尾", "角", "剣", "剑", "銃", "枪", "槍", "紅暈", "红晕", "腮红",
-            "腮紅", "頬染", "チーク", "涙", "泪", "影", "輪", "轮", "描边", "描邊",
+            "腮紅", "頬染", "顏赤", "颜赤", "顔赤", "チーク", "涙", "泪", "影", "輪", "轮", "描边", "描邊",
             "当て", "章", "耳机", "耳機", "環", "环", "镯", "鐲", "链", "鏈", "紐",
             "ひも", "绳", "繩", "套", "覆", "具", "护", "護"
     };
     private static final Pattern ENGLISH_SKIN = Pattern.compile(
-            "(?:^|[^a-z])(?:skin|flesh|face|body|neck|arm|arms|hand|hands|leg|legs|thigh|thighs|foot|feet|finger|fingers|shoulder|shoulders|torso)(?:[^a-z]|$)");
+            "(?:^|[^a-z])(?:skin|flesh|face|head|body|neck|arm|arms|hand|hands|leg|legs|thigh|thighs|foot|feet|finger|fingers|shoulder|shoulders|torso)(?:[^a-z]|$)");
     private static final String[] CJK_SKIN = {
             "皮膚", "皮肤", "肌肤", "肌膚", "素肌", "肌", "はだ",
-            "顔", "脸", "臉", "面部", "脸部", "臉部", "かお",
+            "顔", "顏", "颜", "脸", "臉", "面部", "脸部", "臉部", "かお",
             "素体", "身体", "身體", "躯干", "軀幹", "からだ", "体",
-            "腕", "手", "足", "脚", "腳", "腿", "太もも", "首"
+            "腕", "臂", "手", "足", "脚", "腳", "腿", "太もも", "首"
     };
 
     private SkinMaterialClassifier() {}

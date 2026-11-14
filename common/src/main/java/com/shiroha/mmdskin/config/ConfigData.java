@@ -79,6 +79,7 @@ public class ConfigData {
     /** 描边使用材质与贴图自适应颜色。 */
     public boolean outlineMaterialColor = false;
     public float toonOutlineWidth = 0.0022f;
+    public int toonInnerOutlinePercent = 0;
     public float toonOutlineR = 0.06f;
     public float toonOutlineG = 0.08f;
     public float toonOutlineB = 0.12f;
@@ -248,6 +249,7 @@ public class ConfigData {
         toonSpecularPower = clamp(toonSpecularPower, 1.0f, 128.0f);
         toonSpecularIntensity = clamp(toonSpecularIntensity, 0.0f, 1.0f);
         toonOutlineWidth = clamp(toonOutlineWidth, 0.001f, 0.02f);
+        toonInnerOutlinePercent = Math.max(0, Math.min(100, toonInnerOutlinePercent));
         toonOutlineR = clamp(toonOutlineR, 0.0f, 1.0f);
         toonOutlineG = clamp(toonOutlineG, 0.0f, 1.0f);
         toonOutlineB = clamp(toonOutlineB, 0.0f, 1.0f);

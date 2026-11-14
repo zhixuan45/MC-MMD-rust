@@ -130,6 +130,10 @@ public class ConfigManager {
         return provider != null ? provider.getToonOutlineWidth() : 0.0022f;
     }
 
+    public static int getToonInnerOutlinePercent() {
+        return provider != null ? provider.getToonInnerOutlinePercent() : 0;
+    }
+
     public static float getToonTransitionSoftness() {
         return provider != null ? provider.getToonTransitionSoftness() : 1.2f;
     }

@@ -16,7 +16,6 @@ import com.shiroha.mmdskin.render.pipeline.GpuTimerQueryPool;
 import com.shiroha.mmdskin.render.pipeline.TranslucentDiagnostics;
 import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler.TransferKind;
-import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
 import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
@@ -129,7 +128,7 @@ final class OpenGlModelRenderer {
             OutlineRenderDiagnostics.log(modelHandle, target.getModelName(), "CPU/OpenGL", context,
                     useToon, target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue(),
                     target.subMeshDataBuf, target.subMeshCount,
-                    (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha));
+                    (materialId, baseAlpha) -> diagnosticOutlineAlpha(target, materialId, baseAlpha));
         }
         float toonIntensity = isGuiScene ? 1.0f
                 : (IRIS.isShaderPackActive() ? light.intensity() * 0.8f : light.intensity());
@@ -730,15 +729,13 @@ final class OpenGlModelRenderer {
     private static void renderOutlinePass(OpenGlModelInstance target) {
         long timer = RenderPerformanceProfiler.get().startTimer();
         try {
-        OutlineRenderPass.draw(OpenGlModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
+        OutlineRenderPass.drawModel(OpenGlModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
                 target.vertexBufferObject, target.normalBufferObject, target.texcoordBufferObject, target.subMeshDataBuf,
                 target.subMeshCount, target.indexElementSize, target.indexType,
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
-                (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
-                materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex,
-                materialId -> target.mats[materialId] != null && target.mats[materialId].isHair(),
-                materialId -> target.mats[materialId] == null ? "" : target.mats[materialId].name,
-                materialId -> target.mats[materialId] == null ? null : target.mats[materialId].diffuse);
+                (materialId, baseAlpha) -> materialId >= 0 && materialId < target.mats.length
+                        ? target.effectiveMaterialAlpha(materialId, baseAlpha) : 0.0f,
+                materialId -> materialId >= 0 && materialId < target.mats.length ? target.mats[materialId] : null);
         } finally {
             RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
         }
@@ -778,6 +775,11 @@ final class OpenGlModelRenderer {
             target.bindEyeEmission(OpenGlModelInstance.toonShaderCpu, target.vertexCount,
                     OpenGlModelInstance.toonConfig.getEyeEmission());
             drawSubMeshes(target, minecraft, OpenGlModelInstance.toonShaderCpu);
+            if (OpenGlModelInstance.toonConfig.getSkinEmission() > 0.0f) {
+                com.shiroha.mmdskin.render.outline.SkinGlowPass.draw(OpenGlModelInstance.toonShaderCpu,
+                        () -> drawSkinGlow(target, minecraft, true),
+                        () -> drawSkinGlow(target, minecraft, false));
+            }
         } finally {
             try {
                 target.clearEyeEmission(OpenGlModelInstance.toonShaderCpu);
@@ -789,14 +791,16 @@ final class OpenGlModelRenderer {
         }
     }
 
-    private static float effectiveOutlineAlpha(OpenGlModelInstance target, int materialId, float baseAlpha) {
-        if (materialId < 0 || materialId >= target.mats.length) {
-            return 0.0f;
-        }
-        ModelMaterial material = target.mats[materialId];
-        if (material != null && material.isFacialFeature()) {
-            return 0.0f;
-        }
-        return target.effectiveMaterialAlpha(materialId, baseAlpha);
+    private static void drawSkinGlow(OpenGlModelInstance target, Minecraft minecraft, boolean depthOnly) {
+        int missing = minecraft.getTextureManager().getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE).getId();
+        SubMeshDrawHelper.drawSkinGlow(target.subMeshDataBuf, target.subMeshCount, target.indexElementSize,
+                target.indexType, id -> target.mats[id].tex == 0 ? missing : target.mats[id].tex,
+                target::effectiveMaterialAlpha, target.mats, target.materialMorphData(), depthOnly);
+    }
+
+    private static float diagnosticOutlineAlpha(OpenGlModelInstance target, int id, float baseAlpha) {
+        if (id < 0 || id >= target.mats.length) return 0.0f;
+        var material = target.mats[id];
+        return material != null && material.isFacialFeature() ? 0.0f : target.effectiveMaterialAlpha(id, baseAlpha);
     }
 }

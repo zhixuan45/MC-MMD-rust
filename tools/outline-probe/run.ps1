@@ -32,6 +32,7 @@ public final class ToonConfig {
     private static final ToonConfig INSTANCE = new ToonConfig();
     public static ToonConfig getInstance() { return INSTANCE; }
     public float getOutlineWidth() { return 0.0022f; }
+    public int getInnerOutlinePercent() { return 0; }
     public float getOutlineColorR() { return 0; }
     public float getOutlineColorG() { return 0; }
     public float getOutlineColorB() { return 0; }
@@ -61,6 +62,11 @@ public class ToonShaderBase {
     public void setOutlineAlpha(float value) {}
     public void setOutlineAutoMaterialColor(boolean value) {}
     public void setOutlineMaterialDiffuse(float r, float g, float b) {}
+    public void setOutlineSkinMaterial(boolean value) {}
+    public void setOutlineRegion(int value) {}
+    public int getOutlineProgram() { return 0; }
+    public int getOutlineBodyMaskLocation() { return -1; }
+    public void setOutlineBodyMask(int unit, int x, int y) {}
 }
 '@
     'com/shiroha/mmdskin/render/material/ToonTransparencySettings.java' = @'
@@ -126,7 +132,14 @@ try {
     $taskStateSources = @($taskStubFiles) + @(
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineRenderPass.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineCoverage.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineBodyMask.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineGlState.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/ProgramSamplerLayout.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/ModelMaterial.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/EyeMaterialMask.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/HairMaterialClassifier.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/SkinMaterialClassifier.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/texture/runtime/TextureAlphaCoverage.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ShaderCompiler.java'),
         (Join-Path $PSScriptRoot 'PassStateProbe.java')
     )

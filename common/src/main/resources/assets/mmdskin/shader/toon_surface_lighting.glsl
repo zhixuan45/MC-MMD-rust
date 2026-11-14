@@ -42,6 +42,7 @@ float toonFilteredTerrainShadow(vec3 p) {
 #ifdef TOON_MATERIAL_LIGHTING
 // 复用本片段照明，供 SPA 加色衰减，避免重复阴影采样。
 vec3 toonSurfaceIllumination = vec3(1.0);
+float toonSurfaceShadowMask = 0.0;
 #endif
 
 float saturate(float value) {
@@ -153,8 +154,16 @@ vec3 toonApplyBaseBrightness(vec3 shaded, vec3 albedo) {
     return max(shaded, max(albedo, vec3(0.0)) * clamp(ToonBaseBrightness, 0.0, 1.0));
 }
 
+vec3 toonApplyShadowBrightness(vec3 shaded, vec3 albedo, float shadowMask) {
+    float amount = clamp(ToonShadowBrightness, 0.0, 1.0) * saturate(shadowMask);
+    return mix(shaded, max(shaded, max(albedo, vec3(0.0))), amount);
+}
+
 vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination, float ramp) {
     float shadowMask = 1.0 - saturate(toonHasShadowVisibility ? toonDirectLightWeight : ramp);
+#ifdef TOON_MATERIAL_LIGHTING
+    toonSurfaceShadowMask = shadowMask;
+#endif
     if (ToonTerrainShadowEnabled && toonHasShadowVisibility) {
         // The sun-facing band must not darken ambient-only surfaces along PMX normal seams.
         // Weight by available direct light: visibility alone would darken ambient in the
@@ -166,22 +175,15 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
     toonDebugBand = ramp;
     toonDebugIllumination = max(illumination, vec3(0.0));
 #endif
-    float shadowLift = clamp(ToonShadowBrightness, 0.0, 1.0);
-    vec3 liftedShadowColor = mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), shadowLift);
     vec3 surfaceIllumination = max(illumination, vec3(0.0));
-    if (UsePackLighting && shadowLift > 0.0) {
-        // 仅抬升角色自身或地形遮挡造成的阴影暗部照度，亮部（shadowMask = 0）保持不变。
-        float liftFactor = 1.0 + shadowMask * shadowLift * 1.5;
-        surfaceIllumination = min(surfaceIllumination * liftFactor, max(surfaceIllumination, vec3(1.0)));
-    }
 #ifdef MMD_FX_RAY
     if (mmdFxRayEnabled()) {
         toonSurfaceIllumination = surfaceIllumination;
         return toonApplyBaseBrightness(
-                albedo * mix(liftedShadowColor, vec3(1.0), ramp) * toonSurfaceIllumination, albedo);
+                albedo * mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp) * toonSurfaceIllumination, albedo);
     }
 #endif
-    vec3 tint = mix(liftedShadowColor, vec3(1.0), ramp);
+    vec3 tint = mix(clamp(ShadowColor, 0.0, 1.0), vec3(1.0), ramp);
     vec3 surface = albedo * tint;
     vec3 view = normalize(-p);
     vec3 halfVector = light + view;
@@ -214,7 +216,12 @@ vec3 shadeToonSurface(vec3 albedo, vec3 n, vec3 light, vec3 p, vec3 illumination
 #ifdef TOON_MATERIAL_LIGHTING
     toonSurfaceIllumination = surfaceIllumination;
 #endif
-    return toonApplyBaseBrightness(surface * surfaceIllumination, albedo);
+    vec3 shaded = toonApplyBaseBrightness(surface * surfaceIllumination, albedo);
+#ifdef TOON_MATERIAL_LIGHTING
+    return shaded;
+#else
+    return toonApplyShadowBrightness(shaded, albedo, shadowMask);
+#endif
 }
 
 #ifdef TOON_LIGHTING_DEBUG

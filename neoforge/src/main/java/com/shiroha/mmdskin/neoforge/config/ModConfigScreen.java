@@ -472,6 +472,15 @@ public class ModConfigScreen {
 
         toonCategory.addEntry(entryBuilder
             .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_inner_outline_percent"),
+                data.toonInnerOutlinePercent, 0, 100)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_inner_outline_percent.tooltip"))
+            .setSaveConsumer(value -> data.toonInnerOutlinePercent = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_outline_r"),
                 (int) (data.toonOutlineR * 100), 0, 100)
             .setDefaultValue(6)

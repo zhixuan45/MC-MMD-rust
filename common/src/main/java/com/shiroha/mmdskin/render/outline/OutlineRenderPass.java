@@ -1,6 +1,7 @@
 package com.shiroha.mmdskin.render.outline;
 
 import com.shiroha.mmdskin.render.shader.ToonConfig;
+import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.material.ToonTransparencySettings;
 import com.shiroha.mmdskin.render.shader.ToonShaderBase;
 import com.shiroha.mmdskin.render.pipeline.transparency.WorldTransparencyPipeline;
@@ -16,6 +17,12 @@ import com.shiroha.mmdskin.render.effectpack.FxEffect;
 /** 集中执行 CPU 与 GPU 蒙皮共用的描边绘制。 */
 public final class OutlineRenderPass {
     private static final int SUB_MESH_STRIDE = 20;
+    private static final int WHOLE_OUTLINE = 0;
+    private static final int BODY_MASK = 1;
+    private static final int OUTER_OUTLINE = 2;
+    private static final int INNER_OUTLINE = 3;
+
+    private enum DrawPhase { OCCLUSION, BODY_MASK, COLOR }
 
     @FunctionalInterface
     public interface AlphaResolver {
@@ -50,18 +57,23 @@ public final class OutlineRenderPass {
 
     public static void draw(ToonShaderBase shader, Inputs inputs,
                             AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver) {
-        draw(shader, inputs, alphaResolver, textureResolver, hairResolver, id -> "");
+        draw(shader, inputs, alphaResolver, textureResolver, hairResolver, id -> null, false);
     }
 
-    public static void draw(ToonShaderBase shader, Inputs inputs,
-                            AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver,
-                            IntFunction<String> materialNames) {
-        draw(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, id -> null);
+    public static void drawModel(ToonShaderBase shader, Inputs inputs,
+                                 AlphaResolver alphaResolver, IntFunction<ModelMaterial> materials) {
+        draw(shader, inputs, alphaResolver, id -> {
+            ModelMaterial material = materials.apply(id);
+            return material == null ? 0 : material.tex;
+        }, id -> {
+            ModelMaterial material = materials.apply(id);
+            return material != null && material.isHair();
+        }, materials, true);
     }
 
-    public static void draw(ToonShaderBase shader, Inputs inputs,
-                            AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver,
-                            IntFunction<String> materialNames, IntFunction<float[]> diffuseResolver) {
+    private static void draw(ToonShaderBase shader, Inputs inputs,
+                             AlphaResolver alphaResolver, TextureResolver textureResolver, IntPredicate hairResolver,
+                             IntFunction<ModelMaterial> materials, boolean splitOutline) {
         int positionLocation = shader.getOutlinePositionLocation();
         int normalLocation = shader.getOutlineNormalLocation();
         int uvLocation = shader.getOutlineUvLocation();
@@ -72,6 +84,7 @@ public final class OutlineRenderPass {
         boolean sharedWorld = WorldTransparencyPipeline.hasWorldQueue();
         try (OutlineCoverage pass = OutlineCoverage.begin(shader.getOutlineColorSlot(), sharedWorld)) {
             shader.useOutline();
+            shader.setOutlineRegion(WHOLE_OUTLINE);
             shader.setOutlinePremultiplied(pass.isSampled());
             shader.setOutlineAlphaCutoff(0.1f);
             if (positionLocation != -1) {
@@ -91,8 +104,7 @@ public final class OutlineRenderPass {
             }
 
             ToonConfig config = ToonConfig.getInstance();
-            float width = config.getOutlineWidth();
-            if (orthographic) width = orthographicWidth(width, inputs);
+            float width = orthographic ? orthographicWidth(config.getOutlineWidth(), inputs) : config.getOutlineWidth();
             shader.setOutlineProjectionMatrix(inputs.projection());
             shader.setOutlineModelViewMatrix(inputs.modelView());
             if (pass.isSampled() && ToonTransparencySettings.disableDepthSeal()) {
@@ -101,13 +113,13 @@ public final class OutlineRenderPass {
                 shader.setOutlineOcclusion(true);
                 shader.setOutlineAutoMaterialColor(false);
                 try {
-                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, diffuseResolver, config, true, false);
+                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materials,
+                            config, DrawPhase.OCCLUSION, false);
                 } finally {
                     shader.setOutlineOcclusion(false);
                     pass.endOcclusion();
                 }
             }
-            shader.setOutlineWidth(width);
             boolean autoColor = config.isOutlineMaterialColor();
             shader.setOutlineAutoMaterialColor(autoColor);
             shader.setOutlineColor(config.getOutlineColorR(), config.getOutlineColorG(), config.getOutlineColorB());
@@ -116,8 +128,30 @@ public final class OutlineRenderPass {
             GL46C.glDepthFunc(GL46C.GL_LESS);
             GL46C.glCullFace(GL46C.GL_FRONT);
             GL46C.glEnable(GL46C.GL_CULL_FACE);
-            boolean capture = sharedWorld && WorldTransparencyPipeline.prepareModel();
-            drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materialNames, diffuseResolver, config, false, capture);
+            try (OutlineBodyMask mask = splitOutline ? OutlineBodyMask.open(shader) : null) {
+                float innerScale = config.getInnerOutlinePercent() / 100.0f;
+                boolean masked = false;
+                if (mask != null && innerScale < 1.0f) {
+                    shader.setOutlineWidth(0);
+                    shader.setOutlineRegion(BODY_MASK);
+                    masked = mask.capture(shader, () -> drawSubMeshes(shader, inputs, alphaResolver,
+                            textureResolver, hairResolver, materials, config, DrawPhase.BODY_MASK, false));
+                }
+                boolean capture = sharedWorld && WorldTransparencyPipeline.prepareModel();
+                shader.setOutlineWidth(width);
+                shader.setOutlineRegion(masked ? OUTER_OUTLINE : WHOLE_OUTLINE);
+                drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materials,
+                        config, DrawPhase.COLOR, capture);
+                if (masked && innerScale > 0.0f) {
+                    shader.setOutlineWidth(width * innerScale);
+                    shader.setOutlineRegion(INNER_OUTLINE);
+                    drawSubMeshes(shader, inputs, alphaResolver, textureResolver, hairResolver, materials,
+                            config, DrawPhase.COLOR, capture);
+                }
+            } finally {
+                shader.setOutlineRegion(WHOLE_OUTLINE);
+                shader.setOutlineBodyMask(0, 0, 0);
+            }
             pass.composite();
         }
     }
@@ -134,37 +168,42 @@ public final class OutlineRenderPass {
     }
 
     private static void drawSubMeshes(ToonShaderBase shader, Inputs inputs, AlphaResolver alphaResolver,
-                                      TextureResolver textureResolver, IntPredicate hairResolver, IntFunction<String> materialNames,
-                                      IntFunction<float[]> diffuseResolver, ToonConfig config,
-                                      boolean occlusion, boolean sharedWorld) {
+                                      TextureResolver textureResolver, IntPredicate hairResolver,
+                                      IntFunction<ModelMaterial> materials, ToonConfig config,
+                                      DrawPhase phase, boolean sharedWorld) {
         ByteBuffer data = inputs.subMeshData();
-        boolean autoColor = !occlusion && config.isOutlineMaterialColor();
+        boolean autoColor = phase == DrawPhase.COLOR && config.isOutlineMaterialColor();
+        var runtime = EffectPackRuntime.active();
         for (int i = 0; i < inputs.subMeshCount(); i++) {
             int base = i * SUB_MESH_STRIDE;
             // 私有遮挡缓冲也只能收集当前可见的子网格；offset 16 是 Rust 侧 isVisible。
             if (data.get(base + 16) == 0) continue;
             // Toon 是模型级外壳描边；部分模型的所有材质都没有 PMX edge 标志。
-            if (occlusion) {
+            if (phase == DrawPhase.OCCLUSION) {
                 if (data.get(base + 17) != 0) GL46C.glDisable(GL46C.GL_CULL_FACE);
                 else { GL46C.glEnable(GL46C.GL_CULL_FACE); GL46C.glCullFace(GL46C.GL_BACK); }
             }
             int materialId = data.getInt(base);
+            ModelMaterial material = materials.apply(materialId);
+            if (phase != DrawPhase.BODY_MASK && material != null && material.isFacialFeature()) continue;
             float alpha = alphaResolver.resolve(materialId, data.getFloat(base + 12));
-            var runtime = EffectPackRuntime.active();
             var coverage = coverage(alpha, runtime == null ? null
-                    : runtime.materialEffect(materialId, materialNames.apply(materialId)));
+                    : runtime.materialEffect(materialId, material == null ? "" : material.name));
             alpha = coverage.alpha();
             if (alpha < 0.001f) continue;
             float cutoff = hairResolver.test(materialId) ? config.getHairAlphaCutoff() : config.getAlphaCutoff();
             // 主体裁掉的像素不留下描边；保留原贴图遮罩的 0.1 下限。
-            shader.setOutlineAlphaCutoff(occlusion ? Math.max(0.001f, cutoff) / alpha
-                    : Math.max(0.1f, cutoff / alpha));
+            shader.setOutlineAlphaCutoff(phase == DrawPhase.COLOR ? Math.max(0.1f, cutoff / alpha)
+                    : Math.max(0.001f, cutoff) / alpha);
             // 无纹理材质沿用实心遮罩，不采样上一材质的残留绑定。
             int texture = coverage.textureAlpha() ? textureResolver.resolve(materialId) : 0;
             shader.setOutlineUseTextureAlpha(texture > 0);
             if (texture > 0) GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
+            if (phase == DrawPhase.COLOR) {
+                shader.setOutlineSkinMaterial(material != null && material.isSkin());
+            }
             if (autoColor) {
-                float[] diff = diffuseResolver != null ? diffuseResolver.apply(materialId) : null;
+                float[] diff = material == null ? null : material.diffuse;
                 if (diff != null && diff.length >= 3) {
                     shader.setOutlineMaterialDiffuse(diff[0], diff[1], diff[2]);
                 } else {

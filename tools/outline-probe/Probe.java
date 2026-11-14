@@ -77,10 +77,23 @@ public final class Probe {
             GL46C.glUniform1i(autoLoc, 1);
             GL46C.glUniform3f(diffLoc, 1.0f, 0.5f, 0.2f);
             float[] autoSample = sample(program, new float[]{1,1,1,1}, 1.0f);
-            check(autoSample[0] > autoSample[1] && autoSample[1] > autoSample[2],
-                    "自动描边颜色必须保留暖色相梯度: " + Arrays.toString(autoSample));
+            near(autoSample, new float[]{0.65f,0.325f,0.13f,1});
+            GL46C.glUniform3f(diffLoc, 1, 1, 1);
+            float[] paleBlue = sample(program, new float[]{0.8f,0.9f,1,1}, 1);
+            near(paleBlue, new float[]{0.52f,0.585f,0.65f,1});
+            near(sample(program, new float[]{1,1,1,1}, 1), new float[]{0.65f,0.65f,0.65f,1});
+            GL46C.glUniform3f(GL46C.glGetUniformLocation(program, "OutlineColor"), 1, 0, 1);
+            near(sample(program, new float[]{0.8f,0.9f,1,1}, 1), paleBlue);
+            int skinLoc = GL46C.glGetUniformLocation(program, "OutlineSkinMaterial");
+            GL46C.glUniform1i(skinLoc, 1);
+            GL46C.glUniform3f(diffLoc, 1, .85f, .74f);
+            near(sample(program, new float[]{.97f,.945f,.94f,1}, 1),
+                    new float[]{.530f,.313f,.262f,1});
+            GL46C.glUniform3f(GL46C.glGetUniformLocation(program, "OutlineColor"), 0.2f, 0.3f, 0.4f);
             GL46C.glUniform1i(autoLoc, 0);
             near(sample(program, new float[]{0,1,0,1}, 0.4f), opaque);
+            checkMaskRegions(program);
+            checkFlippedSkinTriangle(program, positions, normals);
             GL46C.glDeleteTextures(texture);
             GL46C.glDeleteBuffers(positions);
             GL46C.glDeleteBuffers(normals);
@@ -90,7 +103,7 @@ public final class Probe {
             GL46C.glDeleteShader(vs);
             GL46C.glDeleteShader(fs);
             check(GL46C.glGetError() == GL46C.GL_NO_ERROR, "OpenGL 状态错误");
-            System.out.println("PASS outline: GLSL link, pure color, optional alpha mask, cutoff, final alpha applied once");
+            System.out.println("PASS outline: GLSL link, pure color, optional alpha mask, cutoff, final alpha applied once, auto color preserves RGB ratios and ignores global color");
         } finally {
             if (window != 0) GLFW.glfwDestroyWindow(window);
             GLFW.glfwTerminate();
@@ -103,6 +116,53 @@ public final class Probe {
         GL46C.glCompileShader(shader);
         check(GL46C.glGetShaderi(shader, GL46C.GL_COMPILE_STATUS) != 0, GL46C.glGetShaderInfoLog(shader));
         return shader;
+    }
+
+    private static void checkMaskRegions(int program) {
+        int region = GL46C.glGetUniformLocation(program, "OutlineRegion");
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE3);
+        int mask = GL46C.glGenTextures();
+        GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, mask);
+        GL46C.glTexParameteri(GL46C.GL_TEXTURE_2D, GL46C.GL_TEXTURE_MIN_FILTER, GL46C.GL_NEAREST);
+        GL46C.glTexImage2D(GL46C.GL_TEXTURE_2D, 0, GL46C.GL_R8, 2, 1, 0,
+                GL46C.GL_RED, GL46C.GL_FLOAT, new float[]{0, 1});
+        GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
+        GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "OutlineBodyMask"), 3);
+        int origin = GL46C.glGetUniformLocation(program, "OutlineMaskOrigin");
+        GL46C.glUniform2i(origin, 31, 32);
+        float[] texel = {1, 1, 1, 1};
+        float[] expected = {.2f, .3f, .4f, 1};
+        GL46C.glUniform1i(region, 2);
+        near(sample(program, texel, 1), new float[4]);
+        GL46C.glUniform1i(region, 3);
+        near(sample(program, texel, 1), expected);
+        GL46C.glUniform2i(origin, 32, 32);
+        near(sample(program, texel, 1), new float[4]);
+        GL46C.glUniform1i(region, 2);
+        near(sample(program, texel, 1), expected);
+        GL46C.glUniform1i(region, 1);
+        near(sample(program, texel, 1), texel);
+        near(sample(program, new float[]{1,1,1,0}, 1), new float[4]);
+        GL46C.glDeleteTextures(mask);
+        System.out.println("PASS outline skin tint and disjoint inner/outer mask with nonzero viewport origin");
+    }
+
+    private static void checkFlippedSkinTriangle(int program, int positions, int normals) {
+        GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, positions);
+        GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0,
+                new float[]{-.4f,-.6f,0, .4f,-.6f,0, 0,.6f,0});
+        GL46C.glBindBuffer(GL46C.GL_ARRAY_BUFFER, normals);
+        GL46C.glBufferSubData(GL46C.GL_ARRAY_BUFFER, 0,
+                new float[]{1,0,-.1f, -1,0,-.1f, 0,0,-1});
+        GL46C.glUniform1i(GL46C.glGetUniformLocation(program, "OutlineRegion"), 0);
+        GL46C.glUniform1f(GL46C.glGetUniformLocation(program, "OutlineWidth"), .8f);
+        int skin = GL46C.glGetUniformLocation(program, "OutlineSkinMaterial");
+        float[] white = {1,1,1,1};
+        GL46C.glUniform1i(skin, 0);
+        near(sample(program, white, 1), new float[]{.2f,.3f,.4f,1});
+        GL46C.glUniform1i(skin, 1);
+        near(sample(program, white, 1), new float[4]);
+        System.out.println("PASS expanded front-facing skin triangle cannot become an outline");
     }
 
     private static int buffer(int location, float[] data) {

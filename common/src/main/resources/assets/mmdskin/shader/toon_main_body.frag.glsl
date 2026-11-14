@@ -29,6 +29,7 @@ uniform int AlphaPass; // 0: 全部（阴影），1: 实心，2: 半透明
 uniform float EyeEmission;
 uniform float EyeMaterialMask;
 uniform float SkinEmission;
+uniform int SkinGlowCapture;
 
 /* TOON_BATCH_MATERIALS */
 /* MMD_FX_COLOR */
@@ -82,6 +83,14 @@ void main() {
     }
 
     vec3 albedo = mmdFxAlbedo(texColor.rgb * MaterialColor.rgb, texCoord0);
+    if (SkinGlowCapture != 0) {
+        if (SkinGlowCapture == 1 && finalAlpha < 0.5) discard;
+        if (SkinGlowCapture == 2 && !SkinMaterial) discard;
+        vec3 glow = pow(max(albedo, vec3(0.0)), vec3(2.2)) * clamp(SkinEmission, 0.0, 1.0) * finalAlpha;
+        float weight = dot(glow, vec3(0.2126, 0.7152, 0.0722));
+        toonOutput0 = vec4(glow, weight * gl_FragCoord.z);
+        return;
+    }
     vec3 normal = mmdFxNormal(normalize(viewNormal), viewPos, texCoord0);
     vec3 lightDir = normalize(viewLightDir);
     float ramp = toonDiffuseRamp(saturate(dot(normal, lightDir)));
@@ -117,6 +126,7 @@ void main() {
                 : finalColor + sphereColor * toonSurfaceIllumination;
         finalColor = mix(finalColor, sphereResult, sphereStrength);
     }
+    finalColor = toonApplyShadowBrightness(finalColor, albedo, toonSurfaceShadowMask);
     // 合并眼瞳遮罩与线性空间发光。
     float emissionMask = EyeMaterialMask < 0.0 ? 0.0 : max(saturate(eyeMask), saturate(EyeMaterialMask));
     float emission = emissionMask * clamp(EyeEmission, 0.0, 3.0);

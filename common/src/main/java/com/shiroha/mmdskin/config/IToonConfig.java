@@ -50,6 +50,8 @@ public interface IToonConfig {
 
     default float getToonOutlineWidth() { return 0.0022f; }
 
+    default int getToonInnerOutlinePercent() { return 0; }
+
     default float getToonRimPower() { return 5.6f; }
     default float getToonRimIntensity() { return 0.02f; }
     default float getToonEyeEmission() { return 0.0f; }

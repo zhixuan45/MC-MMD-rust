@@ -7,7 +7,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.render.port.IrisBackend;
-import com.shiroha.mmdskin.render.material.ModelMaterial;
 import com.shiroha.mmdskin.render.material.SubMeshDrawHelper;
 import com.shiroha.mmdskin.render.material.TranslucentDrawOrder;
 import com.shiroha.mmdskin.render.outline.OutlineRenderPass;
@@ -134,7 +133,7 @@ final class GpuSkinningModelRenderer {
                             && GpuSkinningModelInstance.toonShaderCpu.isInitialized(),
                     target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue(),
                     target.subMeshDataBuf, target.subMeshCount,
-                    (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha));
+                    (materialId, baseAlpha) -> diagnosticOutlineAlpha(target, materialId, baseAlpha));
         }
 
         target.currentDeliverStack = deliverStack;
@@ -545,6 +544,11 @@ final class GpuSkinningModelRenderer {
                 target.bindEyeEmission(GpuSkinningModelInstance.toonShaderCpu, target.vertexCount,
                         GpuSkinningModelInstance.toonConfig.getEyeEmission());
                 drawAllSubMeshes(target, minecraft, GpuSkinningModelInstance.toonShaderCpu);
+                if (GpuSkinningModelInstance.toonConfig.getSkinEmission() > 0.0f) {
+                    com.shiroha.mmdskin.render.outline.SkinGlowPass.draw(GpuSkinningModelInstance.toonShaderCpu,
+                            () -> drawSkinGlow(target, minecraft, true),
+                            () -> drawSkinGlow(target, minecraft, false));
+                }
             } finally {
                 try {
                     target.clearEyeEmission(GpuSkinningModelInstance.toonShaderCpu);
@@ -574,16 +578,14 @@ final class GpuSkinningModelRenderer {
     private static void renderOutlinePass(GpuSkinningModelInstance target) {
         long timer = RenderPerformanceProfiler.get().startTimer();
         try {
-        OutlineRenderPass.draw(GpuSkinningModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
+        OutlineRenderPass.drawModel(GpuSkinningModelInstance.toonShaderCpu, new OutlineRenderPass.Inputs(
                 target.skinnedPositionsBuffer, target.skinnedNormalsBuffer,
                 target.skinnedUvBuffer > 0 ? target.skinnedUvBuffer : target.uv0BufferObject, target.subMeshDataBuf,
                 target.subMeshCount, target.indexElementSize, target.indexType,
                 target.projMatBuff, target.modelViewMatBuff, target.modelScaleValue()),
-                (materialId, baseAlpha) -> effectiveOutlineAlpha(target, materialId, baseAlpha),
-                materialId -> target.mats[materialId] == null ? 0 : target.mats[materialId].tex,
-                materialId -> target.mats[materialId] != null && target.mats[materialId].isHair(),
-                materialId -> target.mats[materialId] == null ? "" : target.mats[materialId].name,
-                materialId -> target.mats[materialId] == null ? null : target.mats[materialId].diffuse);
+                (materialId, baseAlpha) -> materialId >= 0 && materialId < target.mats.length
+                        ? target.effectiveMaterialAlpha(materialId, baseAlpha) : 0.0f,
+                materialId -> materialId >= 0 && materialId < target.mats.length ? target.mats[materialId] : null);
         } finally {
             RenderPerformanceProfiler.get().endTimer(target.currentProfileScene.outlineSection, timer);
         }
@@ -629,14 +631,16 @@ final class GpuSkinningModelRenderer {
         }
     }
 
-    private static float effectiveOutlineAlpha(GpuSkinningModelInstance target, int materialId, float baseAlpha) {
-        if (materialId < 0 || materialId >= target.mats.length) {
-            return 0.0f;
-        }
-        ModelMaterial material = target.mats[materialId];
-        if (material != null && material.isFacialFeature()) {
-            return 0.0f;
-        }
-        return target.effectiveMaterialAlpha(materialId, baseAlpha);
+    private static void drawSkinGlow(GpuSkinningModelInstance target, Minecraft minecraft, boolean depthOnly) {
+        int missing = minecraft.getTextureManager().getTexture(TextureManager.INTENTIONAL_MISSING_TEXTURE).getId();
+        SubMeshDrawHelper.drawSkinGlow(target.subMeshDataBuf, target.subMeshCount, target.indexElementSize,
+                target.indexType, id -> target.mats[id].tex == 0 ? missing : target.mats[id].tex,
+                target::effectiveMaterialAlpha, target.mats, target.materialMorphData(), depthOnly);
+    }
+
+    private static float diagnosticOutlineAlpha(GpuSkinningModelInstance target, int id, float baseAlpha) {
+        if (id < 0 || id >= target.mats.length) return 0.0f;
+        var material = target.mats[id];
+        return material != null && material.isFacialFeature() ? 0.0f : target.effectiveMaterialAlpha(id, baseAlpha);
     }
 }
