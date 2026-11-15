@@ -198,7 +198,8 @@ public final class OutlineRenderPass {
             // 无纹理材质沿用实心遮罩，不采样上一材质的残留绑定。
             int texture = coverage.textureAlpha() ? textureResolver.resolve(materialId) : 0;
             shader.setOutlineUseTextureAlpha(texture > 0);
-            if (texture > 0) GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, texture);
+            GL46C.glActiveTexture(GL46C.GL_TEXTURE0);
+            GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, Math.max(0, texture));
             if (phase == DrawPhase.COLOR) {
                 shader.setOutlineSkinMaterial(material != null && material.isSkin());
             }

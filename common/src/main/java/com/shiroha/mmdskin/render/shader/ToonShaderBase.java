@@ -588,11 +588,11 @@ public abstract class ToonShaderBase {
     }
 
     public void setOutlineSkinMaterial(boolean skin) {
-        GL46C.glUniform1i(outlineSkinMaterialLocation, skin ? 1 : 0);
+        if (outlineSkinMaterialLocation >= 0) GL46C.glUniform1i(outlineSkinMaterialLocation, skin ? 1 : 0);
     }
 
     public void setOutlineRegion(int region) {
-        GL46C.glUniform1i(outlineRegionLocation, region);
+        if (outlineRegionLocation >= 0) GL46C.glUniform1i(outlineRegionLocation, region);
     }
 
     public int getOutlineBodyMaskLocation() {
@@ -600,8 +600,8 @@ public abstract class ToonShaderBase {
     }
 
     public void setOutlineBodyMask(int unit, int viewportX, int viewportY) {
-        GL46C.glUniform1i(outlineBodyMaskLocation, unit);
-        GL46C.glUniform2i(outlineMaskOriginLocation, viewportX, viewportY);
+        if (outlineBodyMaskLocation >= 0) GL46C.glUniform1i(outlineBodyMaskLocation, unit);
+        if (outlineMaskOriginLocation >= 0) GL46C.glUniform2i(outlineMaskOriginLocation, viewportX, viewportY);
     }
 
     public void setDisableTransparency(boolean disabled) {
