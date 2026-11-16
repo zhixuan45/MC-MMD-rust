@@ -202,6 +202,14 @@ impl MmdModel {
             );
         }
 
+        // 1.5. 同步环境地面与方块碰撞体
+        physics.sync_environment_colliders(
+            model_transform,
+            self.env_model_scale,
+            self.env_ground_y,
+            &self.env_block_aabbs,
+        );
+
         // 2. Bullet3 步进
         physics.step_simulation(delta_time);
 

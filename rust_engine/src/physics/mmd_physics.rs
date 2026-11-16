@@ -852,6 +852,16 @@ impl MMDPhysics {
         self.pending_debug_diagnostic.take()
     }
 
+    /// 同步环境碰撞体（legacy-physics 兼容空桩）
+    pub fn sync_environment_colliders(
+        &mut self,
+        _model_transform: Mat4,
+        _total_scale: f32,
+        _ground_y: Option<f32>,
+        _block_aabbs: &[[f32; 6]],
+    ) {
+    }
+
     /// 获取 C++ 侧存活对象计数（调试用）
     pub fn alloc_stats() -> bullet_ffi::BulletAllocStats {
         bullet_ffi::get_alloc_stats()

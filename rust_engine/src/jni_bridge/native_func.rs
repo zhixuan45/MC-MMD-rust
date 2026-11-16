@@ -3897,6 +3897,9 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
             static_collider_scale: clamped_scale,
             auto_upper_body_colliders: previous.auto_upper_body_colliders,
             auto_lower_body_colliders: previous.auto_lower_body_colliders,
+            ground_collision_enabled: previous.ground_collision_enabled,
+            block_collision_enabled: previous.block_collision_enabled,
+            foot_ik_enabled: previous.foot_ik_enabled,
             debug_log: debug_log != 0,
         };
 
@@ -3961,6 +3964,90 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetBodyColliderFillCo
                 .lock()
                 .unwrap_or_else(super::boundary::reject_poison)
                 .request_physics_rebuild();
+        }
+    })
+}
+
+/// 设置环境碰撞与台阶双足自适应 IK 开关（不触发物理世界重建）
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetEnvironmentCollisionConfig(
+    _env: JNIEnv,
+    _class: JClass,
+    ground_enabled: jboolean,
+    block_enabled: jboolean,
+    foot_ik_enabled: jboolean,
+) {
+    jni_guard!(_env, {
+        let mut config = crate::physics::config::get_config();
+        config.ground_collision_enabled = ground_enabled != 0;
+        config.block_collision_enabled = block_enabled != 0;
+        config.foot_ik_enabled = foot_ik_enabled != 0;
+        crate::physics::config::set_config(config);
+    })
+}
+
+/// 设置单模型的环境地面、方块 AABB（DirectByteBuffer，最多 16 块）与双足支撑面高度
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetModelEnvironmentColliders(
+    env: JNIEnv,
+    _class: JClass,
+    model: jlong,
+    ground_y: jfloat,
+    model_scale: jfloat,
+    allow_foot_ik: jboolean,
+    left_foot_y: jfloat,
+    right_foot_y: jfloat,
+    block_aabbs: JByteBuffer,
+    block_count: jint,
+) {
+    jni_guard!(env, {
+        let mut aabbs = [[0.0f32; 6]; 16];
+        let requested = (block_count.max(0) as usize).min(16);
+        let mut count = 0usize;
+
+        if requested > 0 && !block_aabbs.is_null() {
+            if let (Ok(addr), Ok(cap)) = (
+                env.get_direct_buffer_address(&block_aabbs),
+                env.get_direct_buffer_capacity(&block_aabbs),
+            ) {
+                const STRIDE_BYTES: usize = 24;
+                count = requested.min(cap / STRIDE_BYTES);
+                if count > 0 {
+                    let bytes =
+                        unsafe { std::slice::from_raw_parts(addr as *const u8, count * STRIDE_BYTES) };
+                    for (i, dst) in aabbs[..count].iter_mut().enumerate() {
+                        let base = i * STRIDE_BYTES;
+                        for j in 0..6 {
+                            let off = base + j * 4;
+                            dst[j] = f32::from_le_bytes([
+                                bytes[off],
+                                bytes[off + 1],
+                                bytes[off + 2],
+                                bytes[off + 3],
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+
+        let ground_y = ground_y.is_finite().then_some(ground_y);
+        let left_foot_y = left_foot_y.is_finite().then_some(left_foot_y);
+        let right_foot_y = right_foot_y.is_finite().then_some(right_foot_y);
+
+        let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
+        if let Some(model_arc) = models.get(&model) {
+            let mut m = model_arc
+                .lock()
+                .unwrap_or_else(super::boundary::reject_poison);
+            m.set_environment_colliders(
+                ground_y,
+                model_scale,
+                allow_foot_ik != 0,
+                left_foot_y,
+                right_foot_y,
+                &aabbs[..count],
+            );
         }
     })
 }

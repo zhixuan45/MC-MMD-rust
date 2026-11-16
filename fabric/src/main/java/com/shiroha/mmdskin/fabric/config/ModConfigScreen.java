@@ -754,6 +754,33 @@ public class ModConfigScreen {
 
         physicsCategory.addEntry(entryBuilder
             .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_ground_collision_enabled"),
+                data.physicsGroundCollisionEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_ground_collision_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsGroundCollisionEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_block_collision_enabled"),
+                data.physicsBlockCollisionEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_block_collision_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsBlockCollisionEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_foot_ik_enabled"),
+                data.physicsFootIkEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_foot_ik_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsFootIkEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
                 Component.translatable("gui.mmdskin.mod_settings.physics_debug_log"),
                 data.physicsDebugLog)
             .setDefaultValue(false)

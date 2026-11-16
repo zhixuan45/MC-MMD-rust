@@ -77,6 +77,9 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public PhysicsCollisionStabilityMode getPhysicsCollisionStabilityMode() {
         return data.physicsCollisionStabilityMode;
     }
+    @Override public boolean isPhysicsGroundCollisionEnabled() { return data.physicsGroundCollisionEnabled; }
+    @Override public boolean isPhysicsBlockCollisionEnabled() { return data.physicsBlockCollisionEnabled; }
+    @Override public boolean isPhysicsFootIkEnabled() { return data.physicsFootIkEnabled; }
     @Override public boolean isPhysicsDebugLog() { return data.physicsDebugLog; }
     @Override public int getMaxPhysicsModelsPerFrame() { return data.maxPhysicsModelsPerFrame; }
     @Override public float getPhysicsLodMaxDistance() { return data.physicsLodMaxDistance; }

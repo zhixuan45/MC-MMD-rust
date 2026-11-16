@@ -4,6 +4,7 @@ use glam::{Mat4, Vec3};
 
 pub mod bullet_ffi;
 pub mod config;
+pub mod environment_colliders;
 mod mmd_joint;
 mod mmd_physics;
 mod mmd_rigid_body;

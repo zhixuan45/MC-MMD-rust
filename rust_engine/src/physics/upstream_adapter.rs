@@ -79,6 +79,17 @@ impl MMDPhysics {
         self.inner.set_tail_bone_names(bone_names, bone_parents);
     }
 
+    pub fn sync_environment_colliders(
+        &mut self,
+        model_transform: Mat4,
+        total_scale: f32,
+        ground_y: Option<f32>,
+        block_aabbs: &[[f32; 6]],
+    ) {
+        self.inner
+            .sync_environment_colliders(model_transform, total_scale, ground_y, block_aabbs);
+    }
+
     pub fn configure_solver_diagnostic(
         &mut self,
         iterations: Option<i32>,

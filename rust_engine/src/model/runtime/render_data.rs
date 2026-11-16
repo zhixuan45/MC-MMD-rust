@@ -25,6 +25,30 @@ impl MmdModel {
         self.model_transform
     }
 
+    /// 设置环境地面、方块碰撞体与双足支撑面采样数据
+    pub fn set_environment_colliders(
+        &mut self,
+        ground_y: Option<f32>,
+        model_scale: f32,
+        allow_foot_ik: bool,
+        left_foot_y: Option<f32>,
+        right_foot_y: Option<f32>,
+        block_aabbs: &[[f32; 6]],
+    ) {
+        self.env_ground_y = ground_y.filter(|y| y.is_finite());
+        self.env_model_scale = if model_scale.is_finite() && model_scale > 1e-4 {
+            model_scale
+        } else {
+            1.0
+        };
+        self.env_allow_foot_ik = allow_foot_ik;
+        self.env_left_foot_y = left_foot_y.filter(|y| y.is_finite());
+        self.env_right_foot_y = right_foot_y.filter(|y| y.is_finite());
+        self.env_block_aabbs.clear();
+        let count = block_aabbs.len().min(16);
+        self.env_block_aabbs.extend_from_slice(&block_aabbs[..count]);
+    }
+
     /// 设置 VRM 模型标志
     pub fn set_vrm(&mut self, is_vrm: bool) {
         self.is_vrm = is_vrm;

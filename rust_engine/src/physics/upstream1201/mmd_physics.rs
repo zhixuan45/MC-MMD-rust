@@ -12,6 +12,7 @@ use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
 
 use super::bullet_ffi::{self, BulletWorld};
 use super::config::get_config;
+use super::environment_colliders::EnvironmentColliders;
 use super::mmd_joint::MmdJointData;
 use super::mmd_rigid_body::{MmdRigidBodyData, PhysicsMode};
 use crate::physics::tail_forces::TailForceState;
@@ -45,6 +46,8 @@ pub struct MMDPhysics {
     tail_forces: TailForceState,
     tail_blocks_per_model_unit: f32,
     tail_motion: Vec<TailIdleMotion>,
+    /// 环境碰撞体（地面厚盒体 + 周围方块池）
+    env_colliders: EnvironmentColliders,
 }
 
 impl MMDPhysics {
@@ -73,6 +76,7 @@ impl MMDPhysics {
             tail_forces: TailForceState::default(),
             tail_blocks_per_model_unit: 0.09,
             tail_motion: Vec::new(),
+            env_colliders: EnvironmentColliders::default(),
         })
     }
 
@@ -561,6 +565,34 @@ impl MMDPhysics {
         &self.dynamic_bone_indices
     }
 
+    /// 同步地面与周围方块环境碰撞体到 Bullet3 世界
+    pub fn sync_environment_colliders(
+        &mut self,
+        model_transform: Mat4,
+        total_scale: f32,
+        ground_y: Option<f32>,
+        block_aabbs: &[[f32; 6]],
+    ) {
+        let cfg = crate::physics::config::get_config();
+        let effective_ground = if cfg.ground_collision_enabled {
+            ground_y
+        } else {
+            None
+        };
+        let effective_blocks = if cfg.block_collision_enabled {
+            block_aabbs
+        } else {
+            &[]
+        };
+        self.env_colliders.sync(
+            &self.world,
+            model_transform,
+            total_scale,
+            effective_ground,
+            effective_blocks,
+        );
+    }
+
     /// 获取 C++ 侧存活对象计数（调试用）
     pub fn alloc_stats() -> bullet_ffi::BulletAllocStats {
         bullet_ffi::get_alloc_stats()
@@ -582,6 +614,7 @@ impl Drop for MMDPhysics {
                 self.world.remove_rigid_body(body);
             }
         }
+        self.env_colliders.clear(&self.world);
         // 之后 Rust 自动 drop 各字段（约束/刚体/世界），此时世界已为空，安全释放
 
         // 泄漏检测日志（仅在当前实例释放后检查全局计数）

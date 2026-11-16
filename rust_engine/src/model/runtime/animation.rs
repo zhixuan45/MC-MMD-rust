@@ -470,6 +470,21 @@ impl MmdModel {
         }
     }
 
+    fn apply_foot_terrain_ik(&mut self, dt: f32) {
+        let foot_ik_enabled = crate::physics::config::get_config().foot_ik_enabled;
+        let model_pos_y = self.model_transform.w_axis.y;
+        self.foot_ik_state.update_and_apply(
+            &mut self.bone_manager,
+            dt,
+            foot_ik_enabled,
+            self.env_allow_foot_ik,
+            model_pos_y,
+            self.env_model_scale,
+            self.env_left_foot_y,
+            self.env_right_foot_y,
+        );
+    }
+
     /// 仅更新动画（不执行 CPU 蒙皮，用于 GPU 蒙皮模式）
     pub fn tick_animation_no_skinning(&mut self, elapsed: f32) {
         self.tick_animation_internal(elapsed, false, None);
@@ -543,6 +558,7 @@ impl MmdModel {
 
         crate::evaluation_profile::stage(animation_timer, 0);
         let ik_timer = crate::evaluation_profile::timer();
+        self.apply_foot_terrain_ik(elapsed);
         self.update_node_animation(false);
 
         if self.vr_enabled {

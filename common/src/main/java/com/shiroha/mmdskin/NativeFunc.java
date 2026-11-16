@@ -382,6 +382,25 @@ public class NativeFunc {
     /** 修改补充刚体设置，并让已加载模型在下一帧重建物理。 */
     public native void SetBodyColliderFillConfig(boolean upperEnabled, boolean lowerEnabled);
 
+    /** 配置环境地面碰撞、方块碰撞与台阶双足 IK 开关。 */
+    public native void SetEnvironmentCollisionConfig(
+        boolean groundEnabled,
+        boolean blockEnabled,
+        boolean footIkEnabled
+    );
+
+    /** 下发实体周边地面高度、双足支撑面高度与方块 AABB（DirectByteBuffer，最多 16 块）。 */
+    public native void SetModelEnvironmentColliders(
+        long modelHandle,
+        float groundY,
+        float modelScale,
+        boolean allowFootIk,
+        float leftFootSurfaceY,
+        float rightFootSurfaceY,
+        java.nio.ByteBuffer blockAabbs,
+        int blockCount
+    );
+
     public native void SetFirstPersonMode(long model, boolean enabled);
 
     public native boolean IsFirstPersonMode(long model);

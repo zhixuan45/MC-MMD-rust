@@ -1,5 +1,7 @@
 package com.shiroha.mmdskin.bridge.runtime;
 
+import java.nio.ByteBuffer;
+
 /** 文件职责：定义场景姿态与空间定位相关的 native 能力边界。 */
 public interface NativeScenePort {
 
@@ -19,4 +21,15 @@ public interface NativeScenePort {
     void setTailPhysicsOptions(long modelHandle, boolean idleLift, boolean movementBoost);
 
     void setEyeAngle(long modelHandle, float eyeX, float eyeY);
+
+    /** 下发实体环境地面、方块 AABB 与双足支撑面高度。 */
+    default void setModelEnvironmentColliders(long modelHandle,
+                                              float groundY,
+                                              float modelScale,
+                                              boolean allowFootIk,
+                                              float leftFootSurfaceY,
+                                              float rightFootSurfaceY,
+                                              ByteBuffer blockAabbs,
+                                              int blockCount) {
+    }
 }

@@ -107,6 +107,12 @@ public class ConfigData {
             PhysicsCollisionStabilityMode.STABLE;
     /** 跟随骨骼的人体/下半身碰撞体厚度缩放倍率（默认 0.8f，范围 0.1f~1.0f） */
     public float physicsStaticColliderScale = 0.8f;
+    /** 启用地面高度探测与地面刚体碰撞。 */
+    public boolean physicsGroundCollisionEnabled = true;
+    /** 启用实体周边方块碰撞采集与刚体碰撞。 */
+    public boolean physicsBlockCollisionEnabled = true;
+    /** 启用台阶双足地形自适应 IK。 */
+    public boolean physicsFootIkEnabled = true;
     public boolean physicsDebugLog = false;
     public int maxPhysicsModelsPerFrame = 10;
     public float physicsLodMaxDistance = 24.0f;

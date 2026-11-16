@@ -1,7 +1,10 @@
 package com.shiroha.mmdskin.render.pipeline;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeScenePort;
+import com.shiroha.mmdskin.config.ModelConfigManager;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
+import com.shiroha.mmdskin.player.render.InventoryRenderScope;
+import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
@@ -94,9 +97,18 @@ public final class LivingEntityModelStateHelper {
         float bodyYaw = entity instanceof Player player
                 ? resolveBodyYaw(player, tickDelta)
                 : Mth.rotLerp(tickDelta, entity.yBodyRotO, entity.yBodyRot) * ((float) Math.PI / 180F);
-        scenePort.setTailPhysicsScale(modelHandle, MODEL_SCALE
-                * com.shiroha.mmdskin.config.ModelConfigManager.getConfig(modelName).modelScale);
+        float entityScale = ModelConfigManager.getConfig(modelName).modelScale;
+        float totalScale = MODEL_SCALE * entityScale;
+        scenePort.setTailPhysicsScale(modelHandle, totalScale);
         scenePort.setModelPositionAndYaw(modelHandle, posX, posY, posZ, bodyYaw);
+
+        if (!InventoryRenderScope.isActive() && !PaperDollRenderScope.isActive()) {
+            boolean allowFootIk = !stagePlaying && !vrActive
+                    && !entity.isPassenger() && !entity.isSwimming() && !entity.isFallFlying();
+            EntityEnvironmentCollisionHelper.syncEnvironmentColliders(
+                    scenePort, modelHandle, entity, posX, posY, posZ, bodyYaw,
+                    entityScale, totalScale, allowFootIk);
+        }
     }
 
     private static Vec3 resolveRenderOrigin(Player player, float tickDelta) {

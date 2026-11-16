@@ -19,6 +19,9 @@ public record PhysicsConfigSnapshot(
         float staticColliderScale,
         boolean autoUpperBodyColliders,
         boolean autoLowerBodyColliders,
+        boolean groundCollisionEnabled,
+        boolean blockCollisionEnabled,
+        boolean footIkEnabled,
         boolean debugLog) {
 
     public static PhysicsConfigSnapshot from(ConfigData data) {
@@ -41,6 +44,9 @@ public record PhysicsConfigSnapshot(
                 data.physicsStaticColliderScale,
                 data.physicsAutoUpperBodyColliders,
                 data.physicsAutoLowerBodyColliders,
+                data.physicsGroundCollisionEnabled,
+                data.physicsBlockCollisionEnabled,
+                data.physicsFootIkEnabled,
                 data.physicsDebugLog);
     }
 
@@ -62,6 +68,9 @@ public record PhysicsConfigSnapshot(
                 ConfigManager.getPhysicsStaticColliderScale(),
                 ConfigManager.isPhysicsAutoUpperBodyColliders(),
                 ConfigManager.isPhysicsAutoLowerBodyColliders(),
+                ConfigManager.isPhysicsGroundCollisionEnabled(),
+                ConfigManager.isPhysicsBlockCollisionEnabled(),
+                ConfigManager.isPhysicsFootIkEnabled(),
                 ConfigManager.isPhysicsDebugLog());
     }
 }

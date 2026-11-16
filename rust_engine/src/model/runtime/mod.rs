@@ -27,8 +27,10 @@ use crate::model::first_person_mesh::{
 };
 use crate::model::VrmExtensions;
 use crate::model::{MmdMaterial, RuntimeVertex, SubMesh, VertexWeight};
+use foot_ik::FootTerrainIkState;
 
 mod animation;
+mod foot_ik;
 mod head_eye;
 mod issue_diagnostics;
 mod material_visibility;
@@ -148,6 +150,15 @@ pub struct MmdModel {
     // 模型全局变换
     model_transform: Mat4,
     prop_physics_frame: Option<prop_physics::PropPhysicsFrame>,
+
+    // ======== 环境碰撞与台阶双足自适应 IK ========
+    env_ground_y: Option<f32>,
+    env_model_scale: f32,
+    env_block_aabbs: Vec<[f32; 6]>,
+    env_allow_foot_ik: bool,
+    env_left_foot_y: Option<f32>,
+    env_right_foot_y: Option<f32>,
+    foot_ik_state: FootTerrainIkState,
 
     // 物理系统
     physics: Option<MMDPhysics>,
@@ -317,6 +328,13 @@ impl MmdModel {
             vrm_runtime_state: None,
             model_transform: Mat4::IDENTITY,
             prop_physics_frame: None,
+            env_ground_y: None,
+            env_model_scale: 1.0,
+            env_block_aabbs: Vec::new(),
+            env_allow_foot_ik: false,
+            env_left_foot_y: None,
+            env_right_foot_y: None,
+            foot_ik_state: FootTerrainIkState::default(),
             physics: None,
             physics_enabled: false,
             tail_idle_lift: true,
