@@ -2,9 +2,9 @@
 
 基于 `feat/1.21.1-neoforge`，适用于 Fabric 与 NeoForge 共用的 Iris Toon 路径。
 
-## 已核查的最新正式版
+## 已核查的光影包版本
 
-2026-10-11 从 Modrinth 版本 API 获取各项目最新 `release`，下载并与 API 的 SHA-512 校验值比较。用户上传的 Unbound 和 BSL 与下载文件逐字节一致。
+下表是 2026-10-11 回归使用的三个原版光影包。下载文件与当时 Modrinth API 提供的 SHA-512 校验值一致。
 
 | 光影 | 版本 | 发布日期 | 下载来源 |
 | --- | --- | --- | --- |
@@ -20,13 +20,15 @@ ComplementaryReimagined_r5.9.3.zip  fed6c879e732cf7fc7bc6570ebb1def43235aa7e96f6
 BSL_v10.1.8.zip                    36b0a50ff7918bf10e9422c401d93779f9d0088a26acea975b435243f96930b5
 ```
 
+另有隐藏窗口 GL 回归记录的组合包括 Complementary Unbound r5.1.1 + Euphoria Patches 1.2，以及 Complementary Unbound 和 Reimagined r5.9.3 各自搭配 Euphoria Patches 1.10.5。具体覆盖范围见下文。
+
 ## 适配依据
 
 原实现根据 Complementary/BSL 包名和固定版本号决定是否适配。现在包名仅供上层显示，不参与适配器选择；根据 Iris 预处理后的活动 GLSL 光照函数参数契约、颜色编码和各缓冲的写入语义识别协议。同样的源码即使改名、缺少名称或使用误导性名称，也得到相同结果。未知输出、缺失源码证据、布局错位或未确认的光照函数仍会回退。
 
 - 保留 Complementary 4.x 和 BSL 8.x 的已验证协议。
 - Complementary 5.x 使用 `DoLighting`，其颜色没有 4.x 的 `pow(albedo, 2.2)` 编码。复用当前程序中的光照函数、设置和太阳方向。接入 PR #7 的统一 Toon 色阶、高光和边缘光函数，保持眼部发光及描边抗锯齿功能。
-- 5.x 的 colortex3 是 `1 - translucentMult`，colortex6 是材质数据，colortex4 是世界空间法线。非 PBR 的 Toon 模型输出原包中性的实体材质标记 254/255、零光滑度与零反射天空因子。
+- r5.9.3 基础协议的 colortex3 是 `1 - translucentMult`，colortex6 是材质数据，colortex4 是世界空间法线。Euphoria Patches 的材质写入会随包版本和选项变化，按活动源码识别。非 PBR 的 Toon 模型输出原包中性的实体材质标记 254/255、零光滑度与零反射天空因子。
 - 半透明实体的 colortex13 为 `sqrt(length(viewPos) / far)`。解析同时支持 `DRAWBUFFERS` 和带多位目标编号的 `RENDERTARGETS`；主体同步视图逆矩阵和远平面；沿用 PR #7 的独立颜色描边 pass，避免修改材质缓冲。描边颜色采用与主体相同的编码，并支持覆盖率合成的预乘 alpha。
 - BSL 10.x 的 `entityMask` 随 alpha 变化，发光实体使用独立标记；保留混合模式的线性/平方根编码和 colortex1 体积光颜色。
 - BSL 的 `GetLighting` 复用原包的阴影坐标变形、日夜/天气/维度颜色、动态手持灯与彩色方块光，直射光在阴影采样后应用 Toon 色阶。下界不要求原程序已优化掉的太阳 uniform。
@@ -36,32 +38,31 @@ BSL_v10.1.8.zip                    36b0a50ff7918bf10e9422c401d93779f9d0088a26ace
 
 ## 验证与复现
 
-Java 回归测试覆盖新旧协议、任意/空/误导包名、未知写入、多位目标的描边定位、透明度缓存、实体标记和未确认光照的拒绝路径。
+### 已有验证记录
 
-可选探针读取用户自行下载的 ZIP，不在仓库内分发光影。使用 Iris 的 Jcpp 预处理器，在主世界、下界、末地验证 entities、hand、entities_translucent 和 entities_glowing：
+- **Java 回归**覆盖新旧协议、未知缓冲写入、多位渲染目标、透明度缓存、实体材质标记和光照回退。运行方式见[测试分层与分批](../TESTING.md)。
+- **2026-10-11 源码与 Mesa GL 基线**使用 Iris 1.8.14-beta.1 预处理三个原版包。三维度内，每个 Complementary 包覆盖 4 组设置、48 个程序，BSL 覆盖 17 组设置、204 个程序。共 300 个程序通过主体与描边的编译链接，并检查了颜色、alpha、法线、材质标记和深度输出。此结果对应当时的代码和设置。
+- **2026-11-13 至 14 日隐藏窗口 GL 回归**使用 Minecraft 1.21.1 / Iris 1.8.14，覆盖原版包和 Euphoria Patches 组合。Unbound r5.1.1 + EP 1.2、Unbound r5.9.3 + EP 1.10.5 各运行了 `all`。Reimagined r5.9.3 + EP 1.10.5 分别运行了 `modern`、`water`、`shadow`。这些模式分别检查主体与描边、水面顺序和 MRT、阴影与玻璃透射。原版包和 EP 1.2 的用例细节见 [1.21.1 适配记录](../../plans/shader-compat/complementary-r5.9.3-1.21.1-plan.md)。
+- **2026-11-19 Windows 复跑**在 Iris 1.8.14-beta.1 和 NVIDIA OpenGL 环境中通过下文的 `-Probe all`。覆盖五个原版 ZIP 的对应探针，本次运行未传入 Euphoria Patches 组合。
 
-- 每个 Complementary 版本 4 组选项，共 48 个程序：默认、关闭反射和细节、自定义 PBR、IPBR 与高反射/细节。
-- BSL 17 组选项，共 204 个程序：默认以及 ALPHA_BLEND、ADVANCED_MATERIALS、MCBL_SS、TAA_SELECTIVE 的 16 个组合。
-- 合计 300 个程序。Mesa OpenGL 4.5 下，主着色器及描边均编译、链接成功；独立输出程序回读验证颜色、alpha、法线极点与旋转、材质标记、体积光颜色、半透明深度；活动光照 uniform 与原包一致。同一程序还以四种改名/空名重复解析；描边的直通/预乘颜色也通过回读验证。
+### 在 Windows 上复现 1.21.1 探针
 
-探针用 Iris 1.8.14-beta.1 的预处理器。原包来源程序在链接比较前将 GLSL 版本提升为 330 compatibility，以支持旧声明版本下的新选项语法；这不是完整的 Iris 游戏运行测试。
+使用 JDK 21 和安装了 Iris 1.8.14 的 Minecraft 1.21.1 实例。将表中的三个原版 ZIP 和旧协议回归用的 [`ComplementaryShaders_v4.7.1.zip`](https://www.curseforge.com/minecraft/shaders/complementary-unbound/files/4367398)、[`BSL_v8.4.02.2.zip`](https://www.curseforge.com/minecraft/shaders/bsl-shaders/files/6251106) 放在实例的 `shaderpacks/` 下，保留原文件名。若需验证 Euphoria Patches，请将对应 ZIP 的实际路径传给 `-ExtraPack`，每次运行使用一个组合。
 
-Linux 复现需要 JDK 21、Python 3、libEGL/libGL 与 Mesa surfaceless 支持。`PROBE_CP` 包含 Iris JAR、Iris 内嵌的 jcpp JAR，以及 log4j-api、slf4j-api、Guava；这些可以从现有 Minecraft 安装或 Gradle 缓存取得。执行：
+从仓库根目录执行。将路径替换为本机的 JDK 和 Minecraft 实例目录。
 
-```bash
-PROBE_CP='/absolute/path/iris.jar:/absolute/path/jcpp.jar:/absolute/path/log4j-api.jar:/absolute/path/slf4j-api.jar:/absolute/path/guava.jar' \
-  bash tools/shaderpack-probe/run.sh \
-  /absolute/path/ComplementaryUnbound_r5.9.3.zip \
-  /absolute/path/ComplementaryReimagined_r5.9.3.zip \
-  /absolute/path/BSL_v10.1.8.zip
+```powershell
+$jdk = 'C:\Path\To\JDK-21'
+$env:JAVA_HOME = $jdk
+$instance = 'C:\Path\To\Minecraft-1.21.1'
+$packs = Join-Path $instance 'shaderpacks'
+
+.\gradlew.bat -I tools/translucent-performance/validation.gradle :common:classes :fabric:classes :neoforge:classes :common:writeTranslucentProbeClasspath
+.\tools\iris-toon-probe\run.ps1 -Probe all -Instance $instance -Shaderpacks $packs -Jdk $jdk
 ```
 
-生成的预处理源码和验证文件仅写入忽略的 `build/shaderpack-probe/`。这些检查不覆盖真实 Minecraft 场景、所有光影设置、GPU 驱动及第三方模组组合。MMD 模型继续使用中性的 PBR 输出；未为其添加光影材质贴图解析。
+探针默认从实例的 `mods/` 中查找 Iris，并从构建 classpath 中查找映射后的 Minecraft JAR。自动查找不到时，运行[探针脚本](../../tools/iris-toon-probe/run.ps1)时可传入 `-IrisJar` 和 `-MinecraftJar` 指定路径。如果探针报 `Production class is stale`，重新执行 `.\gradlew.bat :common:compileJava --rerun` 后再运行探针。默认输出在 `build/iris-toon-probe/` 下。
 
-通用照明回退的实际 Java/GL 路由可单独复现：
+### 游戏内验收
 
-```bash
-bash tools/iris-toon-probe/run.sh --environment /absolute/path/iris.jar /absolute/path/lwjgl-egl-3.3.3.jar
-```
-
-该探针验证可选输入和错误类型、缺失参数、照明编译失败、变体缓存、GUI 与发光控制。设置 `PROBE_BSL_SOURCES` 为上述 BSL 源码探针生成的 `sources` 目录，还会验证生产 BSL 照明的白天、夜晚、洞穴、火把、雨天及不透明遮挡；遮挡时同步设置两张阴影深度图，避免把不透明方块误模拟成透光材质。`PROBE_NATIVE_DIR` 可指定未放入 Gradle 缓存的 LWJGL Linux 原生 JAR 目录。
+上述记录来自 Java 测试和离屏或隐藏窗口的 GL 检查。真实游戏验收仍需在目标加载器和驱动上检查模型在水面、玻璃和阴影前后的表现，以及切换维度、切换光影和重载资源后的画面。反馈时请提供光影包版本（含补丁版本）、Iris 版本、触发场景、截图或录像，以及相关日志。

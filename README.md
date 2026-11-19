@@ -1,8 +1,25 @@
 # MC-MMD-rust
 
-在 Minecraft 1.20.1 中实现 MMD（MikuMikuDance）模型渲染和物理模拟的 Mod。
+简体中文 · [English](README.en.md)
+
+在 Minecraft 中加载 MMD（MikuMikuDance）模型和动作，支持实时物理模拟。
 
 [许可：基于 CC BY-NC-SA 4.0 的非商业许可（禁止 R18G）](LICENSE)
+
+## 版本与下载
+
+| Minecraft | 加载器 | Java |
+| --- | --- | --- |
+| 1.21.1 | Fabric / NeoForge | 21 |
+| 1.20.1 | Forge | 17 |
+
+公开发布包见 [GitHub Releases](https://github.com/zhixuan45/MC-MMD-rust/releases)。维护分支、Actions 构建入口和 JAR 选择方法见[版本与下载说明](doc/VERSIONS.md)。
+
+## 新功能申请
+
+想增加功能或适配其他模组，可以先看[功能申请指南](doc/FEATURE_REQUESTS.md)，再[提交功能申请](https://github.com/zhixuan45/MC-MMD-rust/issues/new?template=feature-request.yml)。
+
+可以在表单中注明赞助意向，和维护者讨论优先排期或加快开发。
 
 ## 功能特性
 
@@ -22,10 +39,10 @@
    - 物理模拟（Bullet3 C FFI）
    - JNI 绑定用于 Java 交互
 
-2. **Minecraft Mod**（Fabric/Forge）: 基于 Java 的渲染和集成
+2. **Minecraft Mod**（Fabric / NeoForge / Forge）: 基于 Java 的渲染和集成
    - OpenGL 模型渲染
    - Compute Shader 蒙皮
-   - Iris 光影兼容（1.21.1 Toon 支持 Complementary Unbound/Reimagined r5.9.3、BSL 10.1.8；[适配版本与验证](SHADERPACK_COMPATIBILITY.md)）
+   - Iris 光影兼容（1.21.1 Toon 的适配版本、Euphoria Patches 组合及验证范围见[光影适配说明](doc/render/SHADERPACK_COMPATIBILITY.md)）
 
 ## 使用教程
 
@@ -318,7 +335,7 @@ cargo build --release --lib --manifest-path rust_engine/Cargo.toml
 | [nphysics](https://github.com/dimforge/nphysics) | Apache-2.0 | 骨骼层次设计 |
 | [mdanceio](https://github.com/ReaNAiveD/mdanceio) | MIT | 动画系统 |
 
-完整的第三方许可证信息请参阅 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
+第三方许可与归属信息见 [NOTICE](NOTICE) 和各依赖附带的许可证。Ray-MMD 的许可正文见 [LICENSE-Ray-MMD](LICENSE-Ray-MMD)。
 
 ## 相关项目
 
