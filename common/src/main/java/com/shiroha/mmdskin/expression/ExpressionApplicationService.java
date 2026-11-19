@@ -113,7 +113,25 @@ public final class ExpressionApplicationService {
         }
 
         clearPresetMorphs(modelHandle);
-        int result = morphPort.applyVpdMorph(modelHandle, filePath);
+        return vpdResult(morphPort.applyVpdMorph(modelHandle, filePath), filePath, playerName);
+    }
+
+    public static PreparedVpd prepareVpd(String filePath) {
+        NativeMorphPort port = morphPort;
+        long handle = port.prepareVpdPose(filePath);
+        return handle == 0 ? null : new PreparedVpd(port, handle, filePath);
+    }
+
+    public record PreparedVpd(NativeMorphPort port, long handle, String path) implements AutoCloseable {
+        public VpdResult apply(long modelHandle, String playerName) {
+            clearPresetMorphs(modelHandle);
+            return vpdResult(port.applyPreparedVpdPose(modelHandle, handle), path, playerName);
+        }
+
+        @Override public void close() { port.deletePreparedVpdPose(handle); }
+    }
+
+    private static VpdResult vpdResult(int result, String filePath, String playerName) {
         if (result < 0) {
             logger.warn("[Expression] Failed to apply VPD for {}: {} ({})", playerName, filePath, result);
             return new VpdResult(result == -2 ? VpdStatus.MODEL_MISSING : VpdStatus.LOAD_FAILED, 0, 0);

@@ -2,7 +2,6 @@ package com.shiroha.mmdskin.render.effectpack;
 
 import com.google.gson.JsonParser;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,16 +10,24 @@ import java.util.Set;
 
 /** 显式的世界颜色 pass 适配格式；每个节点引用一个已支持的 MME 颜色 FX。 */
 public record FxWorldGraph(List<Stage> stages, String output) {
+    private static final long MAX_TARGET_BYTES = 256L * 1024 * 1024;
     public record Stage(String name, String input, String output, FxEffect effect) { }
     public FxWorldGraph { stages = List.copyOf(stages); }
 
     FxRenderGraph compile(int width, int height) {
+        // One more RGBA16F texture is used to sample the current target.
+        if (width <= 0 || height <= 0 || (long) width * height > MAX_TARGET_BYTES / (8 * (stages.size() + 1)))
+            throw new IllegalArgumentException("世界 FX 图显存预算超限（256 MiB）");
         var resources = stages.stream().map(s -> new FxRenderGraph.Resource(s.output(), width, height, "RGBA16F")).toList();
         var passes = stages.stream().map(s -> new FxRenderGraph.Pass(s.name(), List.of(s.input()), s.output(), s.name())).toList();
         return FxRenderGraph.compile(resources, passes, Set.of("scene"), output);
     }
 
     static FxEffect parse(Path root, Path file, String source, String id) throws IOException {
+        return parse(root, file, source, id, new FxSource.Budget());
+    }
+
+    static FxEffect parse(Path root, Path file, String source, String id, FxSource.Budget budget) throws IOException {
         try {
             var json = JsonParser.parseString(source).getAsJsonObject();
             if (!Set.of("format", "output", "passes").containsAll(json.keySet())) throw new IOException("FX 图包含未支持的字段");
@@ -32,8 +39,7 @@ public record FxWorldGraph(List<Stage> stages, String output) {
                 var pass = entry.getAsJsonObject();
                 if (!Set.of("name", "input", "output", "effect").containsAll(pass.keySet())) throw new IOException("FX 节点包含未支持的字段");
                 Path fx = FxPaths.resolve(root, file.getParent(), pass.get("effect").getAsString());
-                if (!Files.isRegularFile(fx) || Files.size(fx) > 1024 * 1024) throw new IOException("FX 节点文件不存在或过大");
-                FxEffect effect = MmeColorImporter.parse(root, fx, Files.readString(fx), id + "/" + stages.size());
+                FxEffect effect = MmeColorImporter.parse(root, fx, budget.read(fx), id + "/" + stages.size());
                 stages.add(new Stage(pass.get("name").getAsString(), pass.get("input").getAsString(),
                         pass.get("output").getAsString(), effect));
             }

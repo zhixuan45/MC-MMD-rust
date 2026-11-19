@@ -2,6 +2,7 @@ package com.shiroha.mmdskin.render.effectpack;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +14,11 @@ final class MmeColorImporter {
     private static final Set<String> FUNCTIONS = Set.of("dot", "lerp", "saturate", "pow", "clamp", "min", "max", "abs",
             "sqrt", "exp", "log", "sin", "cos", "floor", "ceil", "frac", "normalize", "length", "step", "smoothstep");
     private static final Pattern TOKEN = Pattern.compile("[A-Za-z_]\\w*|(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?[fF]?|[.(),;=+*/{}\\-]");
+    private static final int MAX_COLOR_TOKENS = 4096;
+    private static final Pattern SAMPLER = Pattern.compile("\\bsampler(?:2D)?\\s+(\\w+)\\s*=\\s*sampler_state\\s*\\{([^}]+)}");
+    private static final Pattern TEXTURE_BINDING = Pattern.compile("(?i)Texture\\s*=\\s*<\\s*(\\w+)\\s*>");
+    private static final Pattern SCENE_TEXTURE = Pattern.compile("\\btexture(?:2D)?\\s+(\\w+)\\s*:\\s*RENDERCOLORTARGET\\b");
+    private static final Pattern TYPE = Pattern.compile("(?:float|half)[234]?");
     static final String HELPERS = """
             float mmdFxSaturate(float x) { return clamp(x, 0.0, 1.0); }
             vec2 mmdFxSaturate(vec2 x) { return clamp(x, 0.0, 1.0); }
@@ -42,16 +48,24 @@ final class MmeColorImporter {
         int begin = function.end(), end = source.indexOf('}', begin);
         if (end < 0 || source.substring(begin, end).contains("{")) throw new IOException("颜色适配器仅支持顺序的逐像素表达式");
         String body = source.substring(begin, end);
+        if (body.length() > 64 * 1024) throw new IOException("颜色入口源码超过 64 KiB");
         var samples = Pattern.compile("tex2D\\s*\\(\\s*(\\w+)\\s*,\\s*" + Pattern.quote(uv) + "\\s*\\)").matcher(body);
         StringBuffer replaced = new StringBuffer();
+        var sceneTextures = new HashSet<String>();
+        var texture = SCENE_TEXTURE.matcher(source);
+        while (texture.find()) sceneTextures.add(texture.group(1));
+        var samplerBindings = new HashMap<String, Boolean>();
+        var sampler = SAMPLER.matcher(source);
+        var binding = TEXTURE_BINDING.matcher(source);
+        while (sampler.find()) {
+            binding.region(sampler.start(2), sampler.end(2));
+            samplerBindings.putIfAbsent(sampler.group(1), binding.find() && sceneTextures.contains(binding.group(1)));
+        }
+        int sampleCount = 0;
         while (samples.find()) {
+            if (++sampleCount > MAX_COLOR_TOKENS) throw new IOException("颜色采样数量超限");
             String samplerName = samples.group(1);
-            var sampler = Pattern.compile("\\bsampler(?:2D)?\\s+" + Pattern.quote(samplerName)
-                    + "\\s*=\\s*sampler_state\\s*\\{([^}]+)}").matcher(source);
-            if (!sampler.find()) throw new IOException("无法识别源画面 sampler: " + samplerName);
-            var texture = Pattern.compile("(?i)Texture\\s*=\\s*<\\s*(\\w+)\\s*>").matcher(sampler.group(1));
-            if (!texture.find() || !Pattern.compile("\\btexture(?:2D)?\\s+" + Pattern.quote(texture.group(1))
-                    + "\\s*:\\s*RENDERCOLORTARGET\\b").matcher(source).find())
+            if (!Boolean.TRUE.equals(samplerBindings.get(samplerName)))
                 throw new IOException("颜色效果仅支持 RENDERCOLORTARGET 源画面采样");
             samples.appendReplacement(replaced, "mmdInput");
         }
@@ -60,7 +74,9 @@ final class MmeColorImporter {
         variables.add("mmdInput");
         StringBuilder constants = new StringBuilder();
         var globals = Pattern.compile("(?:static\\s+)?const\\s+float([234]?)\\s+(\\w+)\\s*=\\s*([^;]+);").matcher(source.substring(0, function.start()));
+        int constantCount = 0;
         while (globals.find()) {
+            if (++constantCount > 256) throw new IOException("颜色常量数量超限");
             int width = globals.group(1).isEmpty() ? 1 : Integer.parseInt(globals.group(1));
             float[] values = RayMaterialImporter.numbers(globals.group(3), width);
             String name = globals.group(2);
@@ -80,19 +96,24 @@ final class MmeColorImporter {
     private static String translate(String source, Set<String> variables) throws IOException {
         var tokens = TOKEN.matcher(source);
         StringBuilder out = new StringBuilder();
-        int offset = 0, returns = 0;
+        int offset = 0, returns = 0, tokenCount = 0, depth = 0;
         String previous = "";
         boolean declaration = false;
         while (tokens.find()) {
+            if (++tokenCount > MAX_COLOR_TOKENS || tokens.end() - tokens.start() > 128)
+                throw new IOException("颜色表达式长度超限");
             if (!source.substring(offset, tokens.start()).isBlank()) throw new IOException("不支持的颜色表达式: " + source.substring(offset, tokens.start()).trim());
             String token = tokens.group(), next = token;
+            if (token.equals("(") && ++depth > 64) throw new IOException("颜色表达式嵌套层数超限");
+            if (token.equals(")") && --depth < 0) throw new IOException("颜色表达式括号不匹配");
             if (Character.isLetter(token.charAt(0)) || token.charAt(0) == '_') {
-                boolean type = token.matches("(?:float|half)[234]?");
+                boolean type = TYPE.matcher(token).matches();
                 if (type) {
                     next = token.equals("float") || token.equals("half") ? "float" : "vec" + token.charAt(token.length() - 1);
                     // 类型后是标识符时为局部声明，后是左括号时为构造器。
-                    String tail = source.substring(tokens.end()).stripLeading();
-                    declaration = !tail.startsWith("(");
+                    int nextIndex = tokens.end();
+                    while (nextIndex < source.length() && Character.isWhitespace(source.charAt(nextIndex))) nextIndex++;
+                    declaration = nextIndex == source.length() || source.charAt(nextIndex) != '(';
                 } else if (declaration) {
                     if (token.startsWith("mmd") || !variables.add(token)) throw new IOException("重复或保留局部变量: " + token);
                     declaration = false;
@@ -111,7 +132,7 @@ final class MmeColorImporter {
             previous = token;
             offset = tokens.end();
         }
-        if (!source.substring(offset).isBlank() || returns != 1 || !source.stripTrailing().endsWith(";"))
+        if (!source.substring(offset).isBlank() || depth != 0 || returns != 1 || !source.stripTrailing().endsWith(";"))
             throw new IOException("颜色入口要求一个 return 和完整语句");
         return out.toString();
     }

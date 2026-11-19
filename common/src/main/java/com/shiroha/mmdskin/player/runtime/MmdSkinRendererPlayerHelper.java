@@ -31,6 +31,8 @@ public final class MmdSkinRendererPlayerHelper {
     }
 
     public static void ResetPhysics(Player player) {
+        if (player == null) return;
+        RemoteVpdActions.cancel(player.getUUID());
         PlayerModelResolver.Result resolved = PlayerModelResolver.resolve(player);
         if (resolved == null) return;
 
@@ -93,6 +95,7 @@ public final class MmdSkinRendererPlayerHelper {
 
     public static void startStageAnimation(ManagedModel modelData, long animHandle) {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null || animHandle == 0) return;
+        modelData.entityState().stageActionRevision++;
 
         VpdPosePlayback.leave(modelData);
         ModelInstance model = modelData.modelInstance();
@@ -114,6 +117,7 @@ public final class MmdSkinRendererPlayerHelper {
 
     public static void resetModelAnimationState(Player player, ManagedModel modelData) {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null) return;
+        modelData.entityState().stageActionRevision++;
 
         VpdPosePlayback.leave(modelData);
         ModelInstance model = modelData.modelInstance();
@@ -132,6 +136,7 @@ public final class MmdSkinRendererPlayerHelper {
 
     public static void suppressDefaultAnimationState(ManagedModel modelData) {
         if (modelData == null || modelData.modelInstance() == null || modelData.entityState() == null) return;
+        modelData.entityState().stageActionRevision++;
 
         VpdPosePlayback.leave(modelData);
         ModelInstance model = modelData.modelInstance();

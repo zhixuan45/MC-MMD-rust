@@ -47,6 +47,7 @@ public class EntityAnimState {
     public boolean playCustomAnim;
     public boolean playVpdPose;
     public boolean playStageAnim;
+    long stageActionRevision;
     public long rightHandMat;
     public long leftHandMat;
     public State[] stateLayers;

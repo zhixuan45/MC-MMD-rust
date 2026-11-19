@@ -311,6 +311,9 @@ public class NativeFunc {
     public native boolean IsGpuMorphInitialized(long model);
 
     public native int ApplyVpdMorph(long model, String filename);
+    public native long PrepareVpdPose(String filename);
+    public native int ApplyPreparedVpdPose(long model, long pose);
+    public native void DeletePreparedVpdPose(long pose);
     public native void ClearVpdPose(long model);
     public native boolean GetBoneMatByName(long model, long matrix, String boneName);
     public native float GetCameraEndFrame(long animation);

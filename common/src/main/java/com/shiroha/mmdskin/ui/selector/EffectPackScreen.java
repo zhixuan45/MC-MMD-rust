@@ -22,6 +22,7 @@ public final class EffectPackScreen extends Screen {
     private String importText = "";
     private final java.util.Set<String> expanded = new java.util.HashSet<>();
     private java.util.List<TreeRow> visibleRows = java.util.List.of();
+    private FxPackLibrary.Scan displayedScan;
 
     private record TreeRow(String path, int depth, boolean directory,
                            com.shiroha.mmdskin.render.effectpack.FxEffect effect, String failure) { }
@@ -65,6 +66,7 @@ public final class EffectPackScreen extends Screen {
     public EffectPackScreen(Screen parent) { super(Component.literal("MMD 效果包")); this.parent = parent; }
 
     @Override protected void init() {
+        displayedScan = runtime.scan();
         int left = Math.max(8, (width - 420) / 2), panel = Math.min(420, width - 16);
         addRenderableWidget(Button.builder(Component.literal("材质组合"), b -> {
             applySelectors(); runtime.save(); Minecraft.getInstance().setScreen(new MaterialEffectsScreen(this));
@@ -126,7 +128,10 @@ public final class EffectPackScreen extends Screen {
         int cell = (panel - 20) / 6;
         addRenderableWidget(Button.builder(Component.literal("上一页"), b -> { applySelectors(); page = Math.max(0, page - 1); rebuildWidgets(); }).bounds(left, bottom, cell, 20).build());
         addRenderableWidget(Button.builder(Component.literal("下一页"), b -> { applySelectors(); if ((page + 1) * rows() < visibleRows.size()) page++; rebuildWidgets(); }).bounds(left + cell + 4, bottom, cell, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("重载"), b -> { applySelectors(); runtime.reload(); com.shiroha.mmdskin.render.effectpack.WorldColorEffect.release(); status = "已重载；兼容性报告位于效果包内 import-report.json"; rebuildWidgets(); }).bounds(left + (cell + 4) * 2, bottom, cell, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("重载"), b -> {
+            applySelectors();
+            reloadLibrary("已重载；兼容性报告位于效果包内 import-report.json");
+        }).bounds(left + (cell + 4) * 2, bottom, cell, 20).build());
         addRenderableWidget(Button.builder(Component.literal("诊断"), b -> {
             var lines = new java.util.ArrayList<>(runtime.problems());
             for (var failure : runtime.scan().failures()) lines.add(failure.file() + ": " + failure.reason());
@@ -140,6 +145,14 @@ public final class EffectPackScreen extends Screen {
     }
 
     private int rows() { return Math.max(1, (height - 178) / 24); }
+
+    @Override public void tick() {
+        super.tick();
+        if (displayedScan != runtime.scan()) {
+            applySelectors();
+            rebuildWidgets();
+        }
+    }
     private void applySelectors() {
         if (characters != null) runtime.settings().characterModel = characters.getValue().trim();
         if (scenes != null) runtime.settings().sceneModel = scenes.getValue().trim();
@@ -158,10 +171,18 @@ public final class EffectPackScreen extends Screen {
         }).thenAccept(message -> Minecraft.getInstance().execute(() -> {
             importing = false;
             if (Minecraft.getInstance().screen == this) applySelectors();
-            runtime.reload();
-            status = message + "；支持 " + runtime.scan().effects().size() + " 个效果，未适配 " + runtime.scan().failures().size() + " 个。";
-            if (Minecraft.getInstance().screen == this) rebuildWidgets();
+            reloadLibrary(message);
         }));
+    }
+
+    private void reloadLibrary(String message) {
+        status = message + "；正在扫描效果库…";
+        runtime.reload(success -> {
+            status = success
+                    ? message + "；支持 " + runtime.scan().effects().size() + " 个效果，未适配 " + runtime.scan().failures().size() + " 个。"
+                    : message + "；扫描失败，详见诊断。";
+            if (Minecraft.getInstance().screen == this) rebuildWidgets();
+        });
     }
 
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {

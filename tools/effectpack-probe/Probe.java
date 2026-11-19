@@ -52,7 +52,7 @@ public final class Probe {
             FxPackLibrary.importPack(Path.of(args[0]), library);
             Path colors = library.resolve("colors"); Files.createDirectories(colors);
             Files.writeString(colors.resolve("gray.fx"), colorFx());
-            runtime = new EffectPackRuntime(library, run.resolve("settings.json"));
+            runtime = new EffectPackRuntime(library, run.resolve("settings.json"), Runnable::run, Runnable::run);
             check(runtime.scan().failures().isEmpty(), "导入诊断: " + runtime.scan().failures());
             var singleton = EffectPackRuntime.class.getDeclaredField("instance");
             singleton.setAccessible(true); singleton.set(null, runtime);

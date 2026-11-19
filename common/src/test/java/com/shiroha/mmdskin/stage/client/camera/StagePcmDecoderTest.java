@@ -61,6 +61,19 @@ class StagePcmDecoderTest {
         assertThrows(java.io.IOException.class, () -> StagePcmDecoder.decode(new AudioInputStream(new ByteArrayInputStream(new byte[12]),format,1)));
     }
 
+    @Test void boundsDeclaredAndStreamedFrames() throws Exception {
+        AudioFormat format = new AudioFormat(10, 8, 1, true, false);
+        int maxFrames = StagePcmDecoder.pcmBudget(10, 1) / Float.BYTES;
+        try (var accepted = new AudioInputStream(new ByteArrayInputStream(new byte[maxFrames]), format, maxFrames)) {
+            assertEquals(maxFrames * Float.BYTES, StagePcmDecoder.decode(accepted).data().length);
+        }
+        try (var declared = new AudioInputStream(new ByteArrayInputStream(new byte[0]), format, maxFrames + 1L);
+             var streamed = new AudioInputStream(new ByteArrayInputStream(new byte[maxFrames + 1]), format, -1)) {
+            assertThrows(java.io.IOException.class, () -> StagePcmDecoder.decode(declared));
+            assertThrows(java.io.IOException.class, () -> StagePcmDecoder.decode(streamed));
+        }
+    }
+
     private static float[] decode(byte[] raw, AudioFormat.Encoding encoding, int bits, boolean big) throws Exception {
         AudioFormat format = new AudioFormat(encoding,44100,bits,1,bits/8,44100,big);
         try (AudioInputStream input = new AudioInputStream(new ByteArrayInputStream(raw),format,raw.length / (bits/8))) {

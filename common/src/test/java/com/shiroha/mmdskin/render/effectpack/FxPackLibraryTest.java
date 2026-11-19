@@ -110,6 +110,16 @@ class FxPackLibraryTest {
         assertThrows(IOException.class, () -> FxPackLibrary.importPack(archive, temporary.resolve("library")));
     }
 
+    @Test void rejectsDirectoryEntryWithFileContent() throws Exception {
+        Path archive = temporary.resolve("directory.zip"), library = temporary.resolve("library");
+        try (var zip = new ZipOutputStream(Files.newOutputStream(archive))) {
+            zip.putNextEntry(new ZipEntry("assets/"));
+            zip.write(1);
+        }
+        assertThrows(IOException.class, () -> FxPackLibrary.importPack(archive, library));
+        try (var files = Files.list(library)) { assertEquals(0, files.count()); }
+    }
+
     @Test void importedFxHasAReportAndDoesNotCopyUnrelatedNeighbors() throws Exception {
         Path input = temporary.resolve("input");
         Files.createDirectories(input);

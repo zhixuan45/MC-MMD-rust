@@ -35,6 +35,18 @@ class FxWorldGraphTest {
         for (String input : List.of("result", "missing"))
             assertThrows(java.io.IOException.class, () -> FxWorldGraph.parse(temporary, temporary.resolve("a.fxgraph.json"), graph(input, "result"), "a"));
     }
+    @Test void checksTheTargetAndCopyBudgetBeforeAllocating() {
+        var stages = new java.util.ArrayList<FxWorldGraph.Stage>();
+        String input = "scene";
+        for (int i = 0; i < 16; i++) {
+            String output = "color" + i;
+            stages.add(new FxWorldGraph.Stage("pass" + i, input, output, null));
+            input = output;
+        }
+        var graph = new FxWorldGraph(stages, input);
+        assertDoesNotThrow(() -> graph.compile(1280, 720));
+        assertThrows(IllegalArgumentException.class, () -> graph.compile(3840, 2160));
+    }
     @Test void graphFailureReleasesAllAllocatedTargetsAndDoesNotPresent() {
         var graph = FxRenderGraph.compile(List.of(new FxRenderGraph.Resource("a", 1, 1, "RGBA16F"), new FxRenderGraph.Resource("b", 1, 1, "RGBA16F")),
                 List.of(new FxRenderGraph.Pass("a", List.of("scene"), "a", "a"), new FxRenderGraph.Pass("b", List.of("a"), "b", "b")), Set.of("scene"), "b");

@@ -23,6 +23,8 @@ import java.util.Map;
 /** 文件职责：零 GC 探测实体周边地面、方块碰撞箱与双足台阶支撑面并同步至原生运行时。 */
 public final class EntityEnvironmentCollisionHelper {
     private static final int MAX_BLOCKS = 16;
+    private static final int MAX_SCAN_HEIGHT = 16;
+    private static final float WORLD_COORDINATE_LIMIT = 30_000_000.0f;
     private static final int FLOATS_PER_BLOCK = 6;
     private static final int BUFFER_BYTES = MAX_BLOCKS * FLOATS_PER_BLOCK * Float.BYTES;
     private static final float LOD_DISTANCE_SQ = 16.0f * 16.0f;
@@ -62,7 +64,8 @@ public final class EntityEnvironmentCollisionHelper {
         boolean groundEnabled = ConfigManager.isPhysicsGroundCollisionEnabled();
         boolean blockEnabled = ConfigManager.isPhysicsBlockCollisionEnabled();
         boolean footIkConfigEnabled = ConfigManager.isPhysicsFootIkEnabled();
-        if (!groundEnabled && !blockEnabled && !footIkConfigEnabled) {
+        if ((!groundEnabled && !blockEnabled && !footIkConfigEnabled)
+                || !validProbeCoordinate(posX) || !validProbeCoordinate(posY) || !validProbeCoordinate(posZ)) {
             scenePort.setModelEnvironmentColliders(
                     modelHandle, Float.NaN, totalScale, false, Float.NaN, Float.NaN, null, 0);
             return;
@@ -225,12 +228,13 @@ public final class EntityEnvironmentCollisionHelper {
                                              float minY,
                                              float maxY,
                                              Scratch scratch) {
+        if (!validProbeCoordinate(centerX) || !validProbeCoordinate(centerZ)) return Float.NaN;
         int minBx = Mth.floor(centerX - halfExtent);
         int maxBx = Mth.floor(centerX + halfExtent);
         int minBz = Mth.floor(centerZ - halfExtent);
         int maxBz = Mth.floor(centerZ + halfExtent);
-        int topBy = Mth.floor(maxY);
-        int bottomBy = Mth.floor(minY);
+        int topBy = Math.min(Mth.floor(maxY), level.getMaxBuildHeight() - 1);
+        int bottomBy = Math.max(Mth.floor(minY), level.getMinBuildHeight());
 
         SurfaceProbeConsumer consumer = scratch.surfaceConsumer;
         consumer.reset(centerX - halfExtent, centerX + halfExtent,
@@ -283,8 +287,9 @@ public final class EntityEnvironmentCollisionHelper {
 
         int minBx = Mth.floor(posX - radius);
         int maxBx = Mth.floor(posX + radius);
-        int minBy = Mth.floor(minQueryY);
-        int maxBy = Mth.floor(maxQueryY);
+        int minBy = Math.max(Mth.floor(minQueryY), level.getMinBuildHeight());
+        int maxBy = Math.min(Math.min(Mth.floor(maxQueryY), level.getMaxBuildHeight() - 1),
+                minBy + MAX_SCAN_HEIGHT - 1);
         int minBz = Mth.floor(posZ - radius);
         int maxBz = Mth.floor(posZ + radius);
 
@@ -310,6 +315,10 @@ public final class EntityEnvironmentCollisionHelper {
                 }
             }
         }
+    }
+
+    private static boolean validProbeCoordinate(float value) {
+        return Math.abs(value) <= WORLD_COORDINATE_LIMIT;
     }
 
     private static void pruneCacheIfNeeded(Map<Long, CachedEnvironment> cache, long currentTick) {

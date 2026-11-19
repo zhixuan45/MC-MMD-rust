@@ -10,6 +10,8 @@ import com.shiroha.mmdskin.player.sync.PlayerModelSyncService;
 import com.shiroha.mmdskin.player.sync.ServerModelRegistry;
 import com.shiroha.mmdskin.stage.client.StageClientPacketHandler;
 import com.shiroha.mmdskin.ui.network.NetworkOpCode;
+import com.shiroha.mmdskin.player.runtime.RemoteVpdActions;
+import com.shiroha.mmdskin.player.sync.VpdActionLimits;
 import net.fabricmc.fabric.api.networking.v1.PlayerLookup;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.client.Minecraft;
@@ -29,6 +31,7 @@ import java.util.UUID;
  * Fabric 1.21.1 网络包序列化与分发处理，实现 CustomPacketPayload。
  */
 public class MmdSkinNetworkPack implements CustomPacketPayload {
+    private static final VpdActionLimits VPD_LIMITS = new VpdActionLimits();
     private static final Logger logger = LogManager.getLogger();
 
     public static final Type<MmdSkinNetworkPack> TYPE = new Type<>(
@@ -139,6 +142,8 @@ public class MmdSkinNetworkPack implements CustomPacketPayload {
             return;
         }
 
+        if (opCode == NetworkOpCode.CUSTOM_ANIM && !VPD_LIMITS.allow(playerUUID, animId)) return;
+
         if (opCode == NetworkOpCode.MODEL_SELECT) {
             ServerModelRegistry.updateModel(playerUUID, animId);
         }
@@ -181,7 +186,7 @@ public class MmdSkinNetworkPack implements CustomPacketPayload {
 
         switch (opCode) {
             case NetworkOpCode.CUSTOM_ANIM -> {
-                if (target != null) MmdSkinRendererPlayerHelper.CustomAnim(target, animId);
+                if (target != null) RemoteVpdActions.receive(target, animId);
             }
             case NetworkOpCode.RESET_PHYSICS -> {
                 if (target != null) {
@@ -191,6 +196,7 @@ public class MmdSkinNetworkPack implements CustomPacketPayload {
                 }
             }
             case NetworkOpCode.MODEL_SELECT -> {
+                RemoteVpdActions.cancel(playerUUID);
                 PlayerModelSyncService.onRemotePlayerModelReceived(playerUUID, animId);
             }
             case NetworkOpCode.MAID_MODEL -> {

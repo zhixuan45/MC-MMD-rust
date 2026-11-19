@@ -489,10 +489,16 @@ jobs:
 
   # ==================== 统一发布 ====================
   release:
-    needs: [package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-linux-loongarch64, package-linux-riscv64, package-macos-x64, package-macos-arm64, package-android-arm64, package-android-amd64]
+    needs: [validation, package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-linux-loongarch64, package-linux-riscv64, package-macos-x64, package-macos-arm64, package-android-arm64, package-android-amd64]
     runs-on: ubuntu-latest
     # 发布已成功的平台包；失败的平台不会阻塞其他平台。
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && contains(needs.*.result, 'success') }}
+    if: >-
+      ${{ always() && !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.validation.result == 'success'
+          && (needs.package-windows-x64.result == 'success' || needs.package-windows-arm64.result == 'success'
+              || needs.package-linux-x64.result == 'success' || needs.package-linux-arm64.result == 'success'
+              || needs.package-linux-loongarch64.result == 'success' || needs.package-linux-riscv64.result == 'success'
+              || needs.package-macos-x64.result == 'success' || needs.package-macos-arm64.result == 'success'
+              || needs.package-android-arm64.result == 'success' || needs.package-android-amd64.result == 'success') }}
     permissions:
       contents: write
     steps:

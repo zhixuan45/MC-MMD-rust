@@ -620,6 +620,19 @@ public final class NativeRuntimeBridge implements
         return nativeFunc().ApplyVpdMorph(modelHandle, filePath);
     }
 
+    @Override public long prepareVpdPose(String filePath) {
+        return nativeFunc().PrepareVpdPose(filePath);
+    }
+
+    @Override public int applyPreparedVpdPose(long modelHandle, long poseHandle) {
+        NativePoseInputs.changed(modelHandle);
+        return nativeFunc().ApplyPreparedVpdPose(modelHandle, poseHandle);
+    }
+
+    @Override public void deletePreparedVpdPose(long poseHandle) {
+        nativeFunc().DeletePreparedVpdPose(poseHandle);
+    }
+
     @Override
     public void clearVpdPose(long modelHandle) {
         NativePoseInputs.changed(modelHandle);
