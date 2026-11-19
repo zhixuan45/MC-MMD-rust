@@ -45,7 +45,7 @@ final class HeldItemPmxRenderer {
         if (prop == null || prop.modelInstance().getModelHandle() == 0L) return false;
 
         if (assignment != null) {
-            var result=propAnimations.bindResult(player.getUUID(), prop.modelInstance(),
+            var result=propAnimations.bindAsync(player.getUUID(), prop.modelInstance(),
                 java.nio.file.Path.of(prop.modelInstance().getModelDir()), pmx,
                 motion -> {
                     var stageConfig=config.normalizedCopy();

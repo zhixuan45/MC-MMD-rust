@@ -15,7 +15,7 @@ use super::tacz_arm_target::{
 use crate::animation::fbx_loader;
 use crate::animation::{VmdAnimation, VmdFile, VpdFile};
 use crate::model::{load_pmx, load_vrm};
-use crate::texture::load_texture;
+use crate::texture::{load_texture, load_texture_limited};
 
 use super::{
     register_animation, register_model, register_texture, ANIMATIONS, FBX_CACHE, MODELS, TEXTURES,
@@ -2063,6 +2063,24 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_LoadTexture(
             Ok(texture) => register_texture(texture),
             Err(e) => {
                 log::error!("Failed to load texture: {}", e);
+                0
+            }
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_LoadTextureLimited(
+    env: JNIEnv, _class: JClass, filename: JString, pixel_limit: jint,
+) -> jlong {
+    jni_guard!(env, {
+        if !(1..=4096 * 4096).contains(&pixel_limit) { return 0; }
+        let Ok(filename) = env.get_string(&filename) else { return 0 };
+        let filename: String = filename.into();
+        match load_texture_limited(std::path::Path::new(&filename), pixel_limit as u32) {
+            Ok(texture) => register_texture(texture),
+            Err(error) => {
+                log::warn!("[FX] {}", error);
                 0
             }
         }

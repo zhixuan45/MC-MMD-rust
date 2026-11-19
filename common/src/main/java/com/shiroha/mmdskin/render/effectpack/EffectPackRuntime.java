@@ -19,6 +19,8 @@ import java.util.function.Consumer;
 /** 仅在客户端渲染线程访问；磁盘扫描和纹理加载不进入逐材质的热路径。 */
 public final class EffectPackRuntime {
     private static final IrisBackend IRIS = IrisBackend.current();
+    private static final int MAX_TEXTURE_PIXELS = 128 * 1024 * 1024 / 4;
+    private static final int MAX_TEXTURE_ENTRIES = 256;
     private static final Executor SCAN_WORKER = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "mmd-effect-pack-scanner");
         thread.setDaemon(true);
@@ -33,6 +35,7 @@ public final class EffectPackRuntime {
     private FxPackLibrary.Scan scan = new FxPackLibrary.Scan(List.of(), List.of());
     private Map<String, FxEffect> effects = Map.of();
     private final Map<String, Integer> textures = new LinkedHashMap<>();
+    private int texturePixels;
     private final Map<String, String> problems = new LinkedHashMap<>();
     private FxEffect current;
     private List<MaterialEffectRule> materialRules = List.of();
@@ -188,10 +191,19 @@ public final class EffectPackRuntime {
         String path = effect.root().resolve(channel.file()).toString();
         Integer existing = textures.get(path);
         if (existing != null) return existing;
-        var texture = TextureRepository.GetTexture(path, "fx-material", effect.id());
+        if (textures.size() >= MAX_TEXTURE_ENTRIES) {
+            problem("texture-budget", "FX 贴图数量超过 256 张");
+            return 0;
+        }
+        var texture = TextureRepository.getEffectTexture(path, effect.id(),
+                Math.min(4096 * 4096, MAX_TEXTURE_PIXELS - texturePixels));
         int id = texture == null ? 0 : texture.tex;
-        if (id > 0) TextureRepository.addRef(path);
-        else problem("texture:" + path, "FX 贴图加载失败: " + channel.file());
+        if (id > 0) {
+            TextureRepository.addRef(path);
+            texturePixels += texture.width * texture.height;
+        } else {
+            problem("texture:" + path, "FX 贴图加载失败或超出预算: " + channel.file());
+        }
         textures.put(path, id);
         return id;
     }
@@ -203,6 +215,7 @@ public final class EffectPackRuntime {
     private void releaseTextures() {
         textures.forEach((path, id) -> { if (id > 0) TextureRepository.release(path); });
         textures.clear();
+        texturePixels = 0;
     }
 
     public static void release() { if (instance != null) instance.releaseTextures(); FxSceneColor.release(); }

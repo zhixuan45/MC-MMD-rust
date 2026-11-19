@@ -429,9 +429,13 @@ public final class Probe {
         private final Map<Long, Pixels> images = new HashMap<>();
         private long next;
         @Override public long loadTexture(String filename) {
+            return loadTextureLimited(filename, Integer.MAX_VALUE);
+        }
+        @Override public long loadTextureLimited(String filename, int pixelLimit) {
             try {
                 byte[] bytes = Files.readAllBytes(Path.of(filename));
                 int w = (bytes[12] & 255) | (bytes[13] & 255) << 8, h = (bytes[14] & 255) | (bytes[15] & 255) << 8;
+                if ((long) w * h > pixelLimit) return 0;
                 int stride = (bytes[16] & 255) / 8, offset = 18 + (bytes[0] & 255);
                 ByteBuffer data = MemoryUtil.memAlloc(w * h * 4);
                 for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {

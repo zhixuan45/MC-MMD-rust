@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 public interface NativeTexturePort {
 
     long loadTexture(String filename);
+    default long loadTextureLimited(String filename, int pixelLimit) { return 0L; }
 
     int textureWidth(long textureHandle);
 

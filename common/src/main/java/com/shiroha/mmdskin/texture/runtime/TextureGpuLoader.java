@@ -45,7 +45,12 @@ final class TextureGpuLoader {
 
     static TextureRepository.Texture loadToGpu(String filename, NativeTexturePort port,
                                                String kind, String context) {
-        long handle = port.loadTexture(filename);
+        return loadToGpu(filename, port, kind, context, 0);
+    }
+
+    static TextureRepository.Texture loadToGpu(String filename, NativeTexturePort port,
+                                               String kind, String context, int pixelLimit) {
+        long handle = pixelLimit == 0 ? port.loadTexture(filename) : port.loadTextureLimited(filename, pixelLimit);
         if (handle == 0) {
             logDecodeFailure(kind, filename, context);
             return null;
@@ -56,9 +61,10 @@ final class TextureGpuLoader {
         try {
             int width = port.textureWidth(handle);
             int height = port.textureHeight(handle);
+            if (pixelLimit != 0 && !fitsEffectBudget(width, height, pixelLimit)) return null;
             long dataAddr = port.textureData(handle);
             boolean hasAlpha = port.textureHasAlpha(handle);
-            int size = width * height * (hasAlpha ? 4 : 3);
+            int size = Math.multiplyExact(Math.multiplyExact(width, height), hasAlpha ? 4 : 3);
             ByteBuffer buf = NATIVE_BUFFER_ALLOCATOR.allocate(size);
             try {
                 int texId = 0;
@@ -115,6 +121,10 @@ final class TextureGpuLoader {
             }
         }
         return uploaded;
+    }
+
+    static boolean fitsEffectBudget(int width, int height, int pixelLimit) {
+        return width > 0 && height > 0 && width <= 4096 && height <= 4096 && (long) width * height <= pixelLimit;
     }
 
     static TextureRepository.PredecodedTexture decode(String filename, NativeTexturePort port) {
@@ -348,6 +358,8 @@ final class TextureGpuLoader {
     private static TextureRepository.Texture buildTexture(int texId, int w, int h, boolean hasAlpha) {
         TextureRepository.Texture t = new TextureRepository.Texture();
         t.tex = texId;
+        t.width = w;
+        t.height = h;
         t.hasAlpha = hasAlpha;
         t.vramSize = (long) w * h * (hasAlpha ? 4 : 3);
         return t;

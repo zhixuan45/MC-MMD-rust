@@ -14,6 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class PropTimelineApplicationServiceTest {
     @TempDir Path directory;
@@ -144,6 +145,17 @@ class PropTimelineApplicationServiceTest {
         assertEquals(source.visibility(),loaded.timeline().visibility());
         assertEquals(source.attachments(),loaded.timeline().attachments());
         assertEquals("hash failed; prop VMD remains active",loaded.warning());
+    }
+
+    @Test
+    void playbackWithNoSavedCalibrationSkipsAssetCapture() throws Exception {
+        Path motion = Files.writeString(directory.resolve("uncalibrated.vmd"), "vmd");
+        PropTimeline source = playbackTimeline();
+        PropTimelineFiles.save(PropTimelineFiles.open(motion, "fan.pmx"), source);
+        var loaded = PropTimelineApplicationService.loadForPlayback(motion, "fan.pmx",
+                path -> fail("Uncalibrated timeline must not hash assets"), List.of());
+        assertTrue(loaded.timeline().boneKeys().isEmpty());
+        assertEquals(source.visibility(), loaded.timeline().visibility());
     }
 
     private static PropTimeline timeline() {

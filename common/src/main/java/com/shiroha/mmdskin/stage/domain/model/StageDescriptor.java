@@ -96,10 +96,12 @@ public final class StageDescriptor {
         return name == null || name.isEmpty() || isSafeName(name);
     }
 
-    private static boolean isSafeName(String name) {
-        return name != null && !name.isEmpty()
+    public static boolean isSafeName(String name) {
+        return name != null && !name.isBlank() && name.length() <= 255 && name.equals(name.strip())
                 && !name.contains("..")
-                && !name.contains("/")
-                && !name.contains("\\");
+                && !name.endsWith(".")
+                && name.codePoints().noneMatch(c -> Character.isISOControl(c)
+                        || (c >= Character.MIN_SURROGATE && c <= Character.MAX_SURROGATE)
+                        || "/\\<>:\"|?*".indexOf(c) >= 0);
     }
 }

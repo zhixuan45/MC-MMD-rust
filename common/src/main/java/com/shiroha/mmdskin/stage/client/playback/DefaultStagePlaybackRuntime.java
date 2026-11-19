@@ -188,15 +188,17 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
         long cameraAnim = 0;
 
         try {
+            List<java.nio.file.Path> actorMotions = new ArrayList<>();
             for (String motionFile : effectiveDescriptor.getMotionFiles()) {
-                String filePath = new File(motionStageDir, motionFile).getAbsolutePath();
-                long tempAnim = animationPort.loadAnimation(0, filePath);
+                var path = motionStageDir.toPath().resolve(motionFile).toAbsolutePath();
+                long tempAnim = animationPort.loadAnimation(0, path.toString());
                 if (tempAnim == 0) {
                     continue;
                 }
 
                 boolean hasMotion = animationPort.hasBoneData(tempAnim) || animationPort.hasMorphData(tempAnim);
                 if (hasMotion) {
+                    actorMotions.add(path);
                     if (mergedAnim == 0) {
                         mergedAnim = tempAnim;
                     } else {
@@ -244,8 +246,7 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                 }
                 cameraController.setWatchMotion(mergedAnim, localModelBinding.modelHandle(), localModelBinding.modelName());
                 cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
-                cameraController.setLocalPropAssignment(localModelBinding.propAssignment(),
-                        effectiveDescriptor.getMotionFiles().stream().map(name -> new File(motionStageDir,name).toPath()).toList());
+                cameraController.setLocalPropAssignment(localModelBinding.propAssignment(), actorMotions);
                 if (audioPath != null && !audioPath.isEmpty()) {
                     cameraController.loadWatchAudio(audioPath);
                 }
@@ -270,8 +271,7 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
                 return GuestStartResult.failed();
             }
             cameraController.setHostEndFrame(effectiveDescriptor.getEndFrame());
-            cameraController.setLocalPropAssignment(localModelBinding.propAssignment(),
-                    effectiveDescriptor.getMotionFiles().stream().map(name -> new File(motionStageDir,name).toPath()).toList());
+            cameraController.setLocalPropAssignment(localModelBinding.propAssignment(), actorMotions);
             return GuestStartResult.success(
                     effectiveDescriptor,
                     buildRemoteStageDescriptor(effectiveDescriptor, motionPackName, localModelBinding.propAssignment())
@@ -318,6 +318,7 @@ public final class DefaultStagePlaybackRuntime implements StagePlaybackRuntimePo
         if (motionPackName == null || motionPackName.equals(hostStageDir.getName())) {
             return hostStageDir;
         }
+        if (!StageDescriptor.isSafeName(motionPackName)) return null;
         File motionStageDir = new File(PathConstants.getStageAnimDir(), motionPackName);
         if (!motionStageDir.exists() || !motionStageDir.isDirectory()) {
             LOGGER.warn("[多人舞台] 本地缺少自选动作包: {}", motionPackName);

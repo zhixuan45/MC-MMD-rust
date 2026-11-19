@@ -175,9 +175,10 @@ public final class PropTimelineApplicationService {
             PropTimelineFiles.Document document = readDocument(motion, pmxFile);
             timeline = document.timeline();
             if (!timeline.boneKeys().isEmpty()) {
+                PropTimelineCalibration.Signature saved = PropTimelineCalibration.read(document);
                 PropTimelineCalibration.Signature current =
-                        currentSignature == null ? null : currentSignature.capture(motion);
-                String mismatch = calibrationConflict(document, timeline, current, motions);
+                        saved == null || currentSignature == null ? null : currentSignature.capture(motion);
+                String mismatch = PropTimelineCalibration.mismatch(saved, current, motions, timeline);
                 if (mismatch != null) {
                     return new PlaybackResult(withoutBoneParents(timeline),
                             mismatch + "; recalculate bone parenting in the timeline editor. "

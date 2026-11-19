@@ -85,6 +85,6 @@ Java 报告按领域上传，同一批测试只运行一次，不再由十个平
 
 [Build & Release #100](https://github.com/zhixuan45/MC-MMD-rust/actions/runs/40804209178) 中，十个平台 native 构建及五个 Java 批次均成功；Rust 验证在编译前因 `--locked` 拒绝创建未跟踪的 `Cargo.lock` 而退出 101。此前本地已有忽略的锁文件，未暴露这个干净检出问题。
 
-Rust 分批脚本现在与既有 native 构建一致，允许在新检出中生成锁文件；未引入依赖版本调整。所有平台打包解除对公共 `validation` 作业的依赖，只等待自身 native 作业，避免公共验证错误连带跳过所有成功平台的模组包。其他平台仍各自运行，Java 批次保留 `fail-fast: false`。
+当时的修复允许 Rust 分批脚本在新检出中生成锁文件。现在仓库跟踪 `rust_engine/Cargo.lock`，三个环节共用同一份依赖图：Rust 分批测试与 native 构建使用 `--locked`，RustSec 直接审计该锁文件。各平台打包只等待各自的 native 作业，正式 Release 要求公共验证和 RustSec 通过，并且至少有一个平台包成功。
 
 本轮在独立干净 worktree 中先复现旧脚本的退出 101，再用修复后的脚本生成新锁文件，完成六批 Rust 验证，共 138 项通过。测试选择器 7 项和工作流 actionlint 检查通过。依赖图模拟覆盖公共测试失败和逐一 native 失败：前者十个平台打包均可继续，后者仅阻止对应平台，其余九个仍可继续。

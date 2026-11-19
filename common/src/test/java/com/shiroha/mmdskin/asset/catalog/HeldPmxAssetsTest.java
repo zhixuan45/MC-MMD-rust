@@ -42,6 +42,18 @@ class HeldPmxAssetsTest {
         assertNull(HeldPmxAssets.resolve(root, "../B", "model.pmx"));
     }
 
+    @Test void propFolderCannotResolveThroughALink() throws Exception {
+        Path library = Files.createDirectory(root.resolve("library"));
+        Path outside = Files.createDirectory(root.resolve("outside"));
+        Files.writeString(outside.resolve("fan.pmx"), "local fixture");
+        try {
+            Files.createSymbolicLink(library.resolve("linked"), outside);
+        } catch (java.io.IOException | UnsupportedOperationException unavailable) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "Directory links unavailable: " + unavailable);
+        }
+        assertNull(HeldPmxAssets.resolve(library, "actor", "linked/fan.pmx"));
+    }
+
     @Test void crossFolderSelectionSurvivesCopyAndPersistenceWhileCharacterNamesStayBasenames() {
         var config = new ModelConfigData();
         config.mainPmxFile = "actor.pmx";

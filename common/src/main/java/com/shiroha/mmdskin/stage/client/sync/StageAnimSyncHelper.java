@@ -205,7 +205,7 @@ public final class StageAnimSyncHelper {
     }
 
     private void applyStageAnim(UUID playerUUID, PlayerModelResolver.Result resolved, StageDescriptor descriptor) {
-        cleanupRemoteStageAnim(playerUUID);
+        if (!descriptor.isValid()) return;
 
         File stageDir = new File(PathConstants.getStageAnimDir(), descriptor.getPackName());
         if (!stageDir.exists() || !stageDir.isDirectory()) {
@@ -213,11 +213,15 @@ public final class StageAnimSyncHelper {
             return;
         }
 
-        long mergedAnim = loadAndMergeAnimations(stageDir, descriptor.getMotionFiles());
+        List<java.nio.file.Path> motionPaths = descriptor.getMotionFiles().stream()
+                .map(name -> stageDir.toPath().resolve(name)).toList();
+        List<java.nio.file.Path> loadedPaths = new ArrayList<>();
+        long mergedAnim = loadAndMergeAnimations(motionPaths, loadedPaths);
         if (mergedAnim == 0L) {
             return;
         }
 
+        cleanupRemoteStageAnim(playerUUID);
         ManagedModel modelData = resolved.model();
         long modelHandle = modelData.modelInstance().getModelHandle();
         MmdSkinRendererPlayerHelper.startStageAnimation(modelData, mergedAnim);
@@ -226,8 +230,7 @@ public final class StageAnimSyncHelper {
         tracked.add(mergedAnim);
         remoteStageAnims.put(playerUUID, tracked);
         remoteStageModels.put(playerUUID, modelHandle);
-        propAnimations.begin(playerUUID, descriptor.getPropAssignment(),
-                descriptor.getMotionFiles().stream().map(name -> new File(stageDir,name).toPath()).toList());
+        propAnimations.begin(playerUUID, descriptor.getPropAssignment(), loadedPaths);
 
         if (frameQueryPort.isStagePresentationActive()) {
             animationPort.seekLayer(modelHandle, 0, frameQueryPort.getCurrentFrame());
@@ -235,31 +238,30 @@ public final class StageAnimSyncHelper {
         }
     }
 
-    private long loadAndMergeAnimations(File stageDir, List<String> motionFiles) {
-        if (motionFiles == null || motionFiles.isEmpty()) {
-            return 0L;
-        }
-
-        List<Long> loadedAnimations = new ArrayList<>();
-        String firstFile = new File(stageDir, motionFiles.get(0)).getAbsolutePath();
+    private long loadAndMergeAnimations(List<java.nio.file.Path> motionFiles, List<java.nio.file.Path> loadedPaths) {
+        String firstFile = motionFiles.getFirst().toAbsolutePath().toString();
         long mergedAnimation = animationPort.loadAnimation(0, firstFile);
         if (mergedAnimation == 0L) {
             LOGGER.warn("[StageSync] Failed to load motion {}", firstFile);
             return 0L;
         }
-        loadedAnimations.add(mergedAnimation);
+        loadedPaths.add(motionFiles.getFirst());
 
-        for (int i = 1; i < motionFiles.size(); i++) {
-            String filePath = new File(stageDir, motionFiles.get(i)).getAbsolutePath();
-            long tempAnimation = animationPort.loadAnimation(0, filePath);
-            if (tempAnimation != 0L) {
-                animationPort.mergeAnimation(mergedAnimation, tempAnimation);
-                loadedAnimations.add(tempAnimation);
+        try {
+            for (int i = 1; i < motionFiles.size(); i++) {
+                var path = motionFiles.get(i);
+                long tempAnimation = animationPort.loadAnimation(0, path.toAbsolutePath().toString());
+                if (tempAnimation == 0L) continue;
+                try {
+                    animationPort.mergeAnimation(mergedAnimation, tempAnimation);
+                    loadedPaths.add(path);
+                } finally {
+                    animationPort.deleteAnimation(tempAnimation);
+                }
             }
-        }
-
-        for (int i = 1; i < loadedAnimations.size(); i++) {
-            animationPort.deleteAnimation(loadedAnimations.get(i));
+        } catch (RuntimeException failure) {
+            animationPort.deleteAnimation(mergedAnimation);
+            throw failure;
         }
 
         return mergedAnimation;

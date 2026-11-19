@@ -162,6 +162,7 @@ public class NativeFunc {
     public native boolean GetLastTaczArmDiagnostics(long model, float[] output);
 
     public native long LoadTexture(String filename);
+    public native long LoadTextureLimited(String filename, int pixelLimit);
 
     public native void DeleteTexture(long tex);
 
