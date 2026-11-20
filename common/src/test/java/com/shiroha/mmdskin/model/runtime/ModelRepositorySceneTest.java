@@ -3,6 +3,8 @@ package com.shiroha.mmdskin.model.runtime;
 import com.shiroha.mmdskin.asset.catalog.ModelCatalogEntry;
 import com.shiroha.mmdskin.model.port.ModelRuntimeAccessPort;
 import com.shiroha.mmdskin.scene.client.SceneModelCatalog;
+import com.shiroha.mmdskin.testutil.MinecraftTestBootstrap;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -18,6 +20,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ModelRepositorySceneTest {
+    @BeforeAll
+    static void bootstrapMinecraft() {
+        MinecraftTestBootstrap.initialize();
+    }
+
     @Test
     void sceneLoadsFromItsOwnCatalogWithoutCharacterAnimationOrSettings(@TempDir Path root) throws Exception {
         // Seed the scanned catalog and animation paths so the test needs no Minecraft client or GPU.

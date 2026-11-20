@@ -2,6 +2,8 @@ package com.shiroha.mmdskin.ui.selector.timeline;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeAnimationPort;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
+import com.shiroha.mmdskin.testutil.MinecraftTestBootstrap;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
@@ -13,6 +15,11 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PreviewMotionBindingTest {
+    @BeforeAll
+    static void bootstrapMinecraft() {
+        MinecraftTestBootstrap.initialize();
+    }
+
     @Test void actorAndPropUseSeparateHandlesAndReceiveAbsoluteFrames() {
         var port = new Port();
         var actor = new Model(11); var prop = new Model(22);

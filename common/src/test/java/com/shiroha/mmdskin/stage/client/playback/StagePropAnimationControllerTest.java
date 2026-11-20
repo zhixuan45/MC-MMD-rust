@@ -3,6 +3,8 @@ package com.shiroha.mmdskin.stage.client.playback;
 import com.shiroha.mmdskin.bridge.runtime.NativeAnimationPort;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.stage.domain.model.StagePropAssignment;
+import com.shiroha.mmdskin.testutil.MinecraftTestBootstrap;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.lang.reflect.Proxy;
@@ -18,6 +20,11 @@ import java.io.IOException;
 import static org.junit.jupiter.api.Assertions.*;
 
 class StagePropAnimationControllerTest {
+    @BeforeAll
+    static void bootstrapMinecraft() {
+        MinecraftTestBootstrap.initialize();
+    }
+
     @TempDir Path dir;
 
     @Test void bindResultDistinguishesPendingMissingModelFromFailedVmdAndCachesFailures() throws Exception {

@@ -2,6 +2,8 @@ package com.shiroha.mmdskin.stage.client.sync;
 
 import com.shiroha.mmdskin.bridge.runtime.NativeAnimationPort;
 import com.shiroha.mmdskin.stage.client.camera.port.StageFrameQueryPort;
+import com.shiroha.mmdskin.testutil.MinecraftTestBootstrap;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
@@ -21,6 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** 验证舞台外部帧驱动退出时恢复默认播放速度。 */
 class StageAnimSyncHelperLifecycleTest {
+    @BeforeAll
+    static void bootstrapMinecraft() {
+        MinecraftTestBootstrap.initialize();
+    }
+
     @Test void ordinaryMotionHandoffStopsOldFrameSeeksAndPropPlayback(@TempDir Path dir) throws Exception {
         Files.write(dir.resolve("prop.vmd"),new byte[]{1});
         RecordingAnimationPort port=new RecordingAnimationPort(); port.loadProps=true;

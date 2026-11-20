@@ -3,7 +3,9 @@ package com.shiroha.mmdskin.player.runtime;
 import com.shiroha.mmdskin.bridge.runtime.NativeMorphPort;
 import com.shiroha.mmdskin.expression.ExpressionApplicationService;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
+import com.shiroha.mmdskin.testutil.MinecraftTestBootstrap;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.lang.reflect.Proxy;
@@ -14,6 +16,11 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class VpdPosePlaybackTest {
+    @BeforeAll
+    static void bootstrapMinecraft() {
+        MinecraftTestBootstrap.initialize();
+    }
+
     @TempDir Path dir;
     @AfterEach void cleanup() { ExpressionApplicationService.configureRuntimeCollaborators(null); }
 

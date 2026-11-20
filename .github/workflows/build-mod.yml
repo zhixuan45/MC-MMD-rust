@@ -223,6 +223,8 @@ jobs:
           CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Clink-arg=-B/usr/lib/llvm-20/bin/ -Clink-arg=-fuse-ld=lld
           CC_loongarch64_unknown_linux_gnu: loongarch64-linux-gnu-gcc
           CXX_loongarch64_unknown_linux_gnu: loongarch64-linux-gnu-g++
+          # GCC relaxation relocations in Bullet objects can reference discarded sections in LLD 20.
+          CXXFLAGS_loongarch64_unknown_linux_gnu: -mno-relax
           AR_loongarch64_unknown_linux_gnu: loongarch64-linux-gnu-ar
 
       - name: Verify and stage native artifact
