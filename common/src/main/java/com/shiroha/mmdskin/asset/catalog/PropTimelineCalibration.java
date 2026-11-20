@@ -8,14 +8,21 @@ import com.shiroha.mmdskin.stage.domain.timeline.PropTimeline;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.LinkOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.LinkedHashMap;
 
 /** The inputs which give baked bone-parent compensation its meaning. No native handles or absolute paths are saved. */
 public final class PropTimelineCalibration {
     private static final int OUTSIDE_PARENT_VERSION=2;
+    private static final long MAX_HASH_BYTES = 128L * 1024 * 1024;
+    private static final int MAX_CACHED_HASHES = 128;
+    private static final LinkedHashMap<Path, CachedHash> HASHES = new LinkedHashMap<>(16, .75f, true);
+    private record CachedHash(BasicFileAttributes attributes, String hash) { }
     private PropTimelineCalibration() { }
 
     public record Signature(String actor, String prop, String motion, String reference,
@@ -55,14 +62,42 @@ public final class PropTimelineCalibration {
     }
 
     public static String hash(Path path) throws IOException {
+        Path realPath = path.toRealPath();
+        var attributes = Files.readAttributes(realPath, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isRegularFile() || attributes.size() > MAX_HASH_BYTES)
+            throw new IOException("Calibration asset must be a regular file of at most 128 MiB");
+        synchronized (HASHES) {
+            CachedHash cached = HASHES.get(realPath);
+            if (cached != null && sameFileVersion(cached.attributes(), attributes)) return cached.hash();
+        }
         try {
             var digest=MessageDigest.getInstance("SHA-256");
-            try(var stream=Files.newInputStream(path)) {
+            try(var stream=Files.newInputStream(realPath, LinkOption.NOFOLLOW_LINKS)) {
                 byte[] buffer=new byte[65536];
-                for(int count;(count=stream.read(buffer))!=-1;) digest.update(buffer,0,count);
+                long bytes = 0;
+                for(int count;(count=stream.read(buffer))!=-1;) {
+                    bytes += count;
+                    if (bytes > MAX_HASH_BYTES || Thread.currentThread().isInterrupted())
+                        throw new IOException("Calibration hash interrupted or size budget exceeded");
+                    digest.update(buffer,0,count);
+                }
             }
-            return HexFormat.of().formatHex(digest.digest());
+            var after = Files.readAttributes(realPath, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!sameFileVersion(attributes, after)) throw new IOException("Calibration asset changed while being read");
+            String hash = HexFormat.of().formatHex(digest.digest());
+            synchronized (HASHES) {
+                HASHES.put(realPath, new CachedHash(after, hash));
+                if (HASHES.size() > MAX_CACHED_HASHES) HASHES.remove(HASHES.keySet().iterator().next());
+            }
+            return hash;
         } catch(NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+
+    private static boolean sameFileVersion(BasicFileAttributes a, BasicFileAttributes b) {
+        return b.isRegularFile() && a.size() == b.size()
+                && a.lastModifiedTime().equals(b.lastModifiedTime())
+                && a.creationTime().equals(b.creationTime())
+                && java.util.Objects.equals(a.fileKey(), b.fileKey());
     }
 
     public static Signature read(PropTimelineFiles.Document document) {

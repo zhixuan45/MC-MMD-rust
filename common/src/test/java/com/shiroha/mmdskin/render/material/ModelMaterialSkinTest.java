@@ -7,9 +7,10 @@ class ModelMaterialSkinTest {
     @Test
     void recognizesCommonSkinFaceAndBodyMaterials() {
         for (String name : new String[]{
-                "肌", "素肌", "皮膚", "皮肤", "肌肤", "顔", "脸", "体", "身体", "素体",
+                "肌", "素肌", "皮膚", "皮肤", "肌肤", "顔", "顏", "顏+", "颜", "脸", "体", "身体", "素体",
                 "Skin", "Face", "Body", "FaceSkin", "Body_Skin", "F00_000_00_Face_00_SKIN",
-                "F00_000_00_Body_00_SKIN", "腕", "手", "足", "脚", "Neck", "Arms", "Legs"
+                "F00_000_00_Body_00_SKIN", "Head", "腕", "臂指", "手足", "足", "脚", "Neck", "Arms", "Legs",
+                "mtl_chr1003_00_face"
         }) {
             assertTrue(material(name, "data/cloth.png").isSkin(), name);
         }
@@ -22,7 +23,7 @@ class ModelMaterialSkinTest {
                 "eyebrow", "眉", "mouth", "teeth", "舌", "服装", "体服", "体操服", "body_cloth",
                 "bodysuit", "手袋", "手甲", "首輪", "首飾り", "choker", "足袋", "shoe", "socks",
                 "blush", "チーク", "頬染", "顔影", "face_shadow", "outline", "描边",
-                "headphone", "イヤホン", "", "mat_01"
+                "headphone", "イヤホン", "顏赤+", "顏赤+肉", "軀體金屬", "眉睫", "目光", "Head Ornament", "", "mat_01"
         }) {
             assertFalse(material(name, "skin.png").isSkin(), name);
         }

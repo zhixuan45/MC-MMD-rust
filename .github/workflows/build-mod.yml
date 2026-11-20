@@ -19,6 +19,10 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  rustsec:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/rustsec-audit.yml
+
   validation:
     uses: ./.github/workflows/tests.yml
     with:
@@ -46,7 +50,7 @@ jobs:
           arch: amd64
 
       - name: Build Windows x64 DLL
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml
 
       - name: Verify and stage native artifact
         run: python tools/ci/native_ci.py artifact --arch windows-x64 --binary rust_engine/target/release/mmd_engine.dll
@@ -96,7 +100,7 @@ jobs:
           "AR_aarch64_pc_windows_msvc=$arm64Tools\lib.exe" >> $env:GITHUB_ENV
 
       - name: Build Windows ARM64 DLL
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-pc-windows-msvc
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-pc-windows-msvc
 
       - name: Verify and stage native artifact
         run: python tools/ci/native_ci.py artifact --arch windows-arm64 --binary rust_engine/target/aarch64-pc-windows-msvc/release/mmd_engine.dll
@@ -129,7 +133,7 @@ jobs:
           workspaces: rust_engine -> target
 
       - name: Build Linux x64 SO
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml
 
       - name: Verify and stage native artifact
         run: python tools/ci/native_ci.py artifact --arch linux-x64 --binary rust_engine/target/release/libmmd_engine.so
@@ -164,7 +168,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Build Linux ARM64 SO
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-unknown-linux-gnu
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-unknown-linux-gnu
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
@@ -200,7 +204,7 @@ jobs:
       - name: Install LoongArch64 cross-compilation tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-14-loongarch64-linux-gnu g++-14-loongarch64-linux-gnu libc6-dev-loong64-cross libstdc++-14-dev-loong64-cross
+          sudo apt-get install -y gcc-14-loongarch64-linux-gnu g++-14-loongarch64-linux-gnu libc6-dev-loong64-cross libstdc++-14-dev-loong64-cross lld-20
           sudo update-alternatives \
             --install /usr/bin/loongarch64-linux-gnu-gcc loongarch64-linux-gnu-gcc /usr/bin/loongarch64-linux-gnu-gcc-14 100 \
             --slave /usr/bin/loongarch64-linux-gnu-g++ loongarch64-linux-gnu-g++ /usr/bin/loongarch64-linux-gnu-g++-14 \
@@ -212,9 +216,11 @@ jobs:
             --install /usr/bin/loongarch64-linux-gnu-cpp loongarch64-linux-gnu-cpp /usr/bin/loongarch64-linux-gnu-cpp-14 100
 
       - name: Build Linux LoongArch64 SO
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target loongarch64-unknown-linux-gnu
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target loongarch64-unknown-linux-gnu
         env:
           CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_LINKER: loongarch64-linux-gnu-gcc
+          # Ubuntu 24.04's cross GNU ld does not recognize rustc's --no-rosegment.
+          CARGO_TARGET_LOONGARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS: -Clink-arg=-B/usr/lib/llvm-20/bin/ -Clink-arg=-fuse-ld=lld
           CC_loongarch64_unknown_linux_gnu: loongarch64-linux-gnu-gcc
           CXX_loongarch64_unknown_linux_gnu: loongarch64-linux-gnu-g++
           AR_loongarch64_unknown_linux_gnu: loongarch64-linux-gnu-ar
@@ -252,7 +258,7 @@ jobs:
           sudo apt-get install -y gcc-riscv64-linux-gnu g++-riscv64-linux-gnu
 
       - name: Build Linux RISC-V 64 SO
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target riscv64gc-unknown-linux-gnu
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target riscv64gc-unknown-linux-gnu
         env:
           CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
           CC_riscv64gc_unknown_linux_gnu: riscv64-linux-gnu-gcc
@@ -287,7 +293,7 @@ jobs:
           targets: x86_64-apple-darwin
 
       - name: Build macOS x64 dylib
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target x86_64-apple-darwin
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target x86_64-apple-darwin
 
       - name: Verify and stage native artifact
         run: python tools/ci/native_ci.py artifact --arch macos-x64 --binary rust_engine/target/x86_64-apple-darwin/release/libmmd_engine.dylib
@@ -300,7 +306,8 @@ jobs:
           if-no-files-found: error
 
   build-rust-macos-arm64:
-    runs-on: macos-15
+    # Cross-compile with the macOS SDK to avoid the constrained hosted ARM64 queue.
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -317,7 +324,7 @@ jobs:
           targets: aarch64-apple-darwin
 
       - name: Build macOS ARM64 dylib
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-apple-darwin
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-apple-darwin
 
       - name: Verify and stage native artifact
         run: python tools/ci/native_ci.py artifact --arch macos-arm64 --binary rust_engine/target/aarch64-apple-darwin/release/libmmd_engine.dylib
@@ -353,7 +360,7 @@ jobs:
           ndk-version: r27c
 
       - name: Build Android ARM64 SO
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-linux-android
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target aarch64-linux-android
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
@@ -400,7 +407,7 @@ jobs:
           ndk-version: r27c
 
       - name: Build Android AMD64 SO
-        run: cargo build --release --lib --manifest-path rust_engine/Cargo.toml --target x86_64-linux-android
+        run: cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml --target x86_64-linux-android
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang
@@ -486,10 +493,17 @@ jobs:
 
   # ==================== 统一发布 ====================
   release:
-    needs: [package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-linux-loongarch64, package-linux-riscv64, package-macos-x64, package-macos-arm64, package-android-arm64, package-android-amd64]
+    needs: [validation, rustsec, package-windows-x64, package-windows-arm64, package-linux-x64, package-linux-arm64, package-linux-loongarch64, package-linux-riscv64, package-macos-x64, package-macos-arm64, package-android-arm64, package-android-amd64]
     runs-on: ubuntu-latest
     # 发布已成功的平台包；失败的平台不会阻塞其他平台。
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && contains(needs.*.result, 'success') }}
+    if: >-
+      ${{ always() && !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.validation.result == 'success'
+          && needs.rustsec.result == 'success'
+          && (needs.package-windows-x64.result == 'success' || needs.package-windows-arm64.result == 'success'
+              || needs.package-linux-x64.result == 'success' || needs.package-linux-arm64.result == 'success'
+              || needs.package-linux-loongarch64.result == 'success' || needs.package-linux-riscv64.result == 'success'
+              || needs.package-macos-x64.result == 'success' || needs.package-macos-arm64.result == 'success'
+              || needs.package-android-arm64.result == 'success' || needs.package-android-amd64.result == 'success') }}
     permissions:
       contents: write
     steps:

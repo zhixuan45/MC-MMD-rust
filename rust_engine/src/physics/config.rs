@@ -36,6 +36,12 @@ pub struct PhysicsConfig {
     pub kinematic_filter: bool,
     /// 身体/跟骨碰撞体厚度缩小倍率（默认 0.8，范围 0.1~1.5）
     pub static_collider_scale: f32,
+    /// 是否启用地面平面碰撞
+    pub ground_collision_enabled: bool,
+    /// 是否启用周围方块碰撞
+    pub block_collision_enabled: bool,
+    /// 是否启用台阶双足自适应 IK
+    pub foot_ik_enabled: bool,
     /// 调试日志
     pub debug_log: bool,
 }
@@ -57,6 +63,9 @@ impl Default for PhysicsConfig {
             collision_stability_mode: CollisionStabilityMode::Stable,
             kinematic_filter: false,
             static_collider_scale: super::mmd_rigid_body::STATIC_COLLISION_SHAPE_SCALE,
+            ground_collision_enabled: true,
+            block_collision_enabled: true,
+            foot_ik_enabled: true,
             debug_log: false,
         }
     }

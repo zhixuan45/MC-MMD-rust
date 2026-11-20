@@ -79,6 +79,7 @@ public class ConfigData {
     /** 描边使用材质与贴图自适应颜色。 */
     public boolean outlineMaterialColor = false;
     public float toonOutlineWidth = 0.0022f;
+    public int toonInnerOutlinePercent = 0;
     public float toonOutlineR = 0.06f;
     public float toonOutlineG = 0.08f;
     public float toonOutlineB = 0.12f;
@@ -106,6 +107,12 @@ public class ConfigData {
             PhysicsCollisionStabilityMode.STABLE;
     /** 跟随骨骼的人体/下半身碰撞体厚度缩放倍率（默认 0.8f，范围 0.1f~1.0f） */
     public float physicsStaticColliderScale = 0.8f;
+    /** 启用地面高度探测与地面刚体碰撞。 */
+    public boolean physicsGroundCollisionEnabled = true;
+    /** 启用实体周边方块碰撞采集与刚体碰撞。 */
+    public boolean physicsBlockCollisionEnabled = true;
+    /** 启用台阶双足地形自适应 IK。 */
+    public boolean physicsFootIkEnabled = true;
     public boolean physicsDebugLog = false;
     public int maxPhysicsModelsPerFrame = 10;
     public float physicsLodMaxDistance = 24.0f;
@@ -248,6 +255,7 @@ public class ConfigData {
         toonSpecularPower = clamp(toonSpecularPower, 1.0f, 128.0f);
         toonSpecularIntensity = clamp(toonSpecularIntensity, 0.0f, 1.0f);
         toonOutlineWidth = clamp(toonOutlineWidth, 0.001f, 0.02f);
+        toonInnerOutlinePercent = Math.max(0, Math.min(100, toonInnerOutlinePercent));
         toonOutlineR = clamp(toonOutlineR, 0.0f, 1.0f);
         toonOutlineG = clamp(toonOutlineG, 0.0f, 1.0f);
         toonOutlineB = clamp(toonOutlineB, 0.0f, 1.0f);

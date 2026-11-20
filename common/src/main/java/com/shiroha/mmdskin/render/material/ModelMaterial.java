@@ -8,7 +8,7 @@ public class ModelMaterial {
     private static final String[] FACIAL_TOKENS = {
             "eye", "eyes", "eyeline", "eyelash", "eyelid", "iris", "pupil", "brow", "eyebrow",
             "mouth", "lip", "teeth", "tooth", "tongue", "gum", "lash", "highlight", "eyeshadow",
-            "瞳", "目", "眉", "睫", "口", "唇", "牙", "舌", "ハイライト", "まつげ", "くち",
+            "瞳", "目", "眉", "睫", "口", "唇", "牙", "齿", "齒", "歯", "舌", "ハイライト", "まつげ", "くち",
             "くちびる", "アイ", "アイライン", "アイラッシュ"
     };
 

@@ -22,6 +22,7 @@ public final class WorldColorEffect {
 
     public static void render() {
         FxEffect effect = EffectPackRuntime.get().world();
+        if (effect == null || effect.graph() == null) FxGraphGlBackend.release();
         if (effect == null) return;
         var target = Minecraft.getInstance().getMainRenderTarget();
         if (target.width <= 0 || target.height <= 0) return;

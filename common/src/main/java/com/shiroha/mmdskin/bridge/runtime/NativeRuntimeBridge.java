@@ -22,7 +22,10 @@ public final class NativeRuntimeBridge implements
         NativeScenePort,
         PlatformCapabilityPort {
     private static final Logger logger = LogManager.getLogger();
+    private static final int MAX_ENVIRONMENT_BLOCK_COUNT = 16;
+    private static final int ENVIRONMENT_BLOCK_STRIDE_BYTES = 6 * Float.BYTES;
     private static volatile boolean evaluationProfilingAvailable = true;
+    private static volatile boolean environmentCollisionAvailable = true;
     private static final NativeParallelEvaluation parallelEvaluation = NativeParallelEvaluation.create();
 
     @Override
@@ -73,6 +76,7 @@ public final class NativeRuntimeBridge implements
                     physicsConfig.debugLog());
             nativeFunc().SetBodyColliderFillConfig(
                     physicsConfig.autoUpperBodyColliders(), physicsConfig.autoLowerBodyColliders());
+            applyEnvironmentCollisionConfig(physicsConfig);
             if (PhysicsSolverNative.apply(physicsConfig.solverIterations())) {
                 logger.info("物理 solver 迭代次数已应用: {}", physicsConfig.solverIterations());
             }
@@ -616,6 +620,19 @@ public final class NativeRuntimeBridge implements
         return nativeFunc().ApplyVpdMorph(modelHandle, filePath);
     }
 
+    @Override public long prepareVpdPose(String filePath) {
+        return nativeFunc().PrepareVpdPose(filePath);
+    }
+
+    @Override public int applyPreparedVpdPose(long modelHandle, long poseHandle) {
+        NativePoseInputs.changed(modelHandle);
+        return nativeFunc().ApplyPreparedVpdPose(modelHandle, poseHandle);
+    }
+
+    @Override public void deletePreparedVpdPose(long poseHandle) {
+        nativeFunc().DeletePreparedVpdPose(poseHandle);
+    }
+
     @Override
     public void clearVpdPose(long modelHandle) {
         NativePoseInputs.changed(modelHandle);
@@ -707,5 +724,63 @@ public final class NativeRuntimeBridge implements
     public void setEyeAngle(long modelHandle, float eyeX, float eyeY) {
         NativePoseInputs.assign(modelHandle, "eye", NativePoseInputs.bits(eyeX), NativePoseInputs.bits(eyeY));
         nativeFunc().SetEyeAngle(modelHandle, eyeX, eyeY);
+    }
+
+    @Override
+    public void setModelEnvironmentColliders(long modelHandle,
+                                             float groundY,
+                                             float modelScale,
+                                             boolean allowFootIk,
+                                             float leftFootSurfaceY,
+                                             float rightFootSurfaceY,
+                                             ByteBuffer blockAabbs,
+                                             int blockCount) {
+        if (!environmentCollisionAvailable || modelHandle == 0L
+                || !Float.isFinite(modelScale) || modelScale <= 0.0f) {
+            return;
+        }
+        float safeGroundY = Float.isInfinite(groundY) ? Float.NaN : groundY;
+        float safeLeftFootY = Float.isInfinite(leftFootSurfaceY) ? Float.NaN : leftFootSurfaceY;
+        float safeRightFootY = Float.isInfinite(rightFootSurfaceY) ? Float.NaN : rightFootSurfaceY;
+
+        ByteBuffer safeBuffer = null;
+        int safeCount = 0;
+        if (blockAabbs != null && blockAabbs.isDirect() && blockCount > 0) {
+            int maxFitCount = blockAabbs.capacity() / ENVIRONMENT_BLOCK_STRIDE_BYTES;
+            safeCount = Math.min(Math.min(blockCount, MAX_ENVIRONMENT_BLOCK_COUNT), maxFitCount);
+            if (safeCount > 0) {
+                safeBuffer = blockAabbs;
+            }
+        }
+
+        try {
+            nativeFunc().SetModelEnvironmentColliders(
+                    modelHandle,
+                    safeGroundY,
+                    modelScale,
+                    allowFootIk,
+                    safeLeftFootY,
+                    safeRightFootY,
+                    safeBuffer,
+                    safeCount);
+        } catch (UnsatisfiedLinkError missing) {
+            environmentCollisionAvailable = false;
+            logger.warn("环境碰撞 JNI 方法未找到，请重新编译 Rust 库");
+        }
+    }
+
+    private void applyEnvironmentCollisionConfig(PhysicsConfigSnapshot physicsConfig) {
+        if (!environmentCollisionAvailable) {
+            return;
+        }
+        try {
+            nativeFunc().SetEnvironmentCollisionConfig(
+                    physicsConfig.groundCollisionEnabled(),
+                    physicsConfig.blockCollisionEnabled(),
+                    physicsConfig.footIkEnabled());
+        } catch (UnsatisfiedLinkError missing) {
+            environmentCollisionAvailable = false;
+            logger.warn("环境碰撞配置 JNI 方法未找到，请重新编译 Rust 库");
+        }
     }
 }

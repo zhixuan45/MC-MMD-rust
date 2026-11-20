@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -78,7 +79,7 @@ class StagePacketCodecTest {
         assertNotNull(restored);
         assertEquals(900f,restored.descriptor.getEndFrame());
         restored.descriptor.setEndFrame(Float.POSITIVE_INFINITY);
-        org.junit.jupiter.api.Assertions.assertFalse(restored.descriptor.isValid());
+        assertFalse(restored.descriptor.isValid());
     }
     @Test
     void propAssignmentSurvivesTheWireAndUnsafeAssetsAreRejected() {
@@ -90,8 +91,12 @@ class StagePacketCodecTest {
         assertNotNull(restored); assertEquals(prop,restored.descriptor.copy().getPropAssignment());
         assertTrue(restored.descriptor.isValid());
         restored.descriptor.setPropAssignment(new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("../fan.pmx","fan.vmd"));
-        org.junit.jupiter.api.Assertions.assertFalse(restored.descriptor.isValid());
+        assertFalse(restored.descriptor.isValid());
         restored.descriptor.setPropAssignment(new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("fan.pmx","../bad.vmd"));
+        assertFalse(restored.descriptor.isValid());
+        restored.descriptor.setPropAssignment(new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("扇子?/fan.pmx","fan.vmd"));
+        assertFalse(restored.descriptor.isValid());
+        restored.descriptor.setPropAssignment(new com.shiroha.mmdskin.stage.domain.model.StagePropAssignment("fan.pmx","fan?.vmd"));
         org.junit.jupiter.api.Assertions.assertFalse(restored.descriptor.isValid());
     }
 }

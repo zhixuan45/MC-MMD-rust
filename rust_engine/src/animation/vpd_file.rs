@@ -1,11 +1,16 @@
 //! VPD 文件加载器
 
 
-use std::path::Path;
+use std::{fs::File, io::Read, path::Path};
 
 use glam::{Quat, Vec3};
 
 use crate::{MmdError, Result};
+
+const MAX_BYTES: usize = 4 * 1024 * 1024;
+const MAX_BONES: usize = 4096;
+const MAX_MORPHS: usize = 4096;
+const MAX_NAME_BYTES: usize = 4096;
 
 /// VPD 骨骼数据
 #[derive(Debug, Clone)]
@@ -43,10 +48,16 @@ pub struct VpdFile {
 
 impl VpdFile {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Self::load_from_bytes(&std::fs::read(path).map_err(MmdError::Io)?)
+        let mut bytes = Vec::new();
+        File::open(path).map_err(MmdError::Io)?
+            .take((MAX_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(MmdError::Io)?;
+        Self::load_from_bytes(&bytes)
     }
 
     pub fn load_from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() > MAX_BYTES {
+            return Err(MmdError::VpdParse("VPD exceeds 4 MiB".into()));
+        }
         // MMD exports can mix CP932 standard bones with GBK custom names in one file.
         // Parse ASCII structure and discard comments before decoding individual name fields.
         let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
@@ -63,6 +74,7 @@ impl VpdFile {
         let expected_bones: usize = std::str::from_utf8(lines.next().ok_or_else(|| error("Missing bone count"))?)
             .map_err(|_| error("Invalid bone count"))?
             .trim_end_matches(';').trim().parse().map_err(|_| error("Invalid bone count"))?;
+        if expected_bones > MAX_BONES { return Err(error("Too many VPD bones")); }
         let mut bones = Vec::new();
         let mut morphs = Vec::new();
         let mut block: Option<(bool, String, Option<String>)> = None;
@@ -73,6 +85,9 @@ impl VpdFile {
                 let prefix = &line[..open];
                 let bone = prefix.starts_with(b"Bone");
                 if !bone && !prefix.starts_with(b"Morph") { return Err(error("Unknown VPD block")); }
+                if (bone && bones.len() >= expected_bones) || (!bone && morphs.len() >= MAX_MORPHS) {
+                    return Err(error("Too many VPD blocks"));
+                }
                 let name = line[open + 1..].trim_ascii();
                 if name.is_empty() { return Err(error("Missing bone or morph name")); }
                 let (name, alternate_name) = decode_name(name)?;
@@ -84,7 +99,10 @@ impl VpdFile {
                 if bone {
                     if values.len() != 7 { return Err(error("Expected 7 bone values")); }
                     let rotation = Quat::from_xyzw(values[3], values[4], -values[5], -values[6]);
-                    if rotation.length_squared() < 1e-12 { return Err(error("Invalid bone rotation")); }
+                    let length_squared = rotation.length_squared();
+                    if !length_squared.is_finite() || length_squared < 1e-12 {
+                        return Err(error("Invalid bone rotation"));
+                    }
                     bones.push(VpdBone { name, alternate_name,
                         translation: Vec3::new(values[0], values[1], -values[2]),
                         rotation: rotation.normalize() });
@@ -92,9 +110,11 @@ impl VpdFile {
                     if values.len() != 1 { return Err(error("Expected one morph weight")); }
                     morphs.push(VpdMorph { name, alternate_name, weight: values[0] });
                 }
-            } else if block.is_some() {
+            } else if let Some((bone, _, _)) = &block {
+                let limit = if *bone { 7 } else { 1 };
                 let line = std::str::from_utf8(line).map_err(|_| error("Invalid numeric VPD value"))?;
                 for value in line.trim_end_matches(';').split(',').map(str::trim).filter(|s| !s.is_empty()) {
+                    if values.len() == limit { return Err(error("Too many VPD block values")); }
                     values.push(value.parse().map_err(|_| error("Invalid numeric VPD value"))?);
                 }
             } else {
@@ -107,6 +127,9 @@ impl VpdFile {
 }
 
 fn decode_name(bytes: &[u8]) -> Result<(String, Option<String>)> {
+    if bytes.len() > MAX_NAME_BYTES {
+        return Err(MmdError::VpdParse("VPD name too long".into()));
+    }
     if let Ok(name) = std::str::from_utf8(bytes) {
         return Ok((name.to_string(), None));
     }
@@ -164,5 +187,14 @@ mod tests {
         assert_eq!(pose.bones[1].name, "腰部系绳指定");
         assert_eq!(pose.morphs[0].alternate_name.as_deref(), Some("鞋 坠饰"));
         assert!(decode_name(b"\x81").is_err(), "Do not silently replace invalid name bytes");
+    }
+
+    #[test]
+    fn rejects_input_outside_the_vpd_budget() {
+        let mut at_limit = vec![b' '; MAX_BYTES];
+        at_limit[..POSE.len()].copy_from_slice(POSE.as_bytes());
+        assert!(VpdFile::load_from_bytes(&at_limit).is_ok());
+        at_limit.push(b' ');
+        assert!(VpdFile::load_from_bytes(&at_limit).is_err());
     }
 }

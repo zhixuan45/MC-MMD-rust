@@ -55,6 +55,7 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isToonOutlineFollowLighting() { return data.toonOutlineFollowLighting; }
     @Override public boolean isToonOutlineMaterialColor() { return data.outlineMaterialColor; }
     @Override public float getToonOutlineWidth() { return data.toonOutlineWidth; }
+    @Override public int getToonInnerOutlinePercent() { return data.toonInnerOutlinePercent; }
     @Override public float getToonOutlineR() { return data.toonOutlineR; }
     @Override public float getToonOutlineG() { return data.toonOutlineG; }
     @Override public float getToonOutlineB() { return data.toonOutlineB; }
@@ -76,6 +77,9 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public PhysicsCollisionStabilityMode getPhysicsCollisionStabilityMode() {
         return data.physicsCollisionStabilityMode;
     }
+    @Override public boolean isPhysicsGroundCollisionEnabled() { return data.physicsGroundCollisionEnabled; }
+    @Override public boolean isPhysicsBlockCollisionEnabled() { return data.physicsBlockCollisionEnabled; }
+    @Override public boolean isPhysicsFootIkEnabled() { return data.physicsFootIkEnabled; }
     @Override public boolean isPhysicsDebugLog() { return data.physicsDebugLog; }
     @Override public int getMaxPhysicsModelsPerFrame() { return data.maxPhysicsModelsPerFrame; }
     @Override public float getPhysicsLodMaxDistance() { return data.physicsLodMaxDistance; }

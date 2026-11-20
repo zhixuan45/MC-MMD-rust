@@ -18,6 +18,34 @@ public final class SubMeshDrawHelper {
     private SubMeshDrawHelper() {
     }
 
+    public static void drawSkinGlow(ByteBuffer data, int count, int indexElementSize, int indexType,
+                                    TextureResolver textures, AlphaResolver alphaResolver,
+                                    ModelMaterial[] materials, ByteBuffer morphs, boolean depthOnly) {
+        DrawMaterialCache cache = new DrawMaterialCache(materials, morphs, alphaResolver, textures);
+        try (MaterialShaderBinding binding = new MaterialShaderBinding();
+             var effects = new com.shiroha.mmdskin.render.effectpack.FxMaterialBinding(false)) {
+            for (int submesh = 0; submesh < count; submesh++) {
+                int base = submesh * SUB_MESH_STRIDE;
+                int materialId = data.getInt(base);
+                if (data.get(base + 16) == 0 || data.getInt(base + 8) <= 0
+                        || materialId < 0 || materialId >= materials.length
+                        || (!depthOnly && !materials[materialId].isSkin())) continue;
+                MaterialRenderState material = cache.resolve(materialId, data.getFloat(base + 12));
+                if (material.alpha < 0.001f) continue;
+                binding.apply(material, 0);
+                effects.apply(cache.effect(materialId));
+                GL46C.glBindTexture(GL46C.GL_TEXTURE_2D, cache.texture(materialId));
+                if (data.get(base + 17) != 0) GL46C.glDisable(GL46C.GL_CULL_FACE);
+                else {
+                    GL46C.glEnable(GL46C.GL_CULL_FACE);
+                    GL46C.glCullFace(GL46C.GL_BACK);
+                }
+                GL46C.glDrawElements(GL46C.GL_TRIANGLES, data.getInt(base + 8), indexType,
+                        (long) data.getInt(base + 4) * indexElementSize);
+            }
+        }
+    }
+
     @FunctionalInterface
     public interface TextureResolver {
         int resolve(int materialId);

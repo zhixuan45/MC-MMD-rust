@@ -130,6 +130,10 @@ public class ConfigManager {
         return provider != null ? provider.getToonOutlineWidth() : 0.0022f;
     }
 
+    public static int getToonInnerOutlinePercent() {
+        return provider != null ? provider.getToonInnerOutlinePercent() : 0;
+    }
+
     public static float getToonTransitionSoftness() {
         return provider != null ? provider.getToonTransitionSoftness() : 1.2f;
     }
@@ -279,6 +283,18 @@ public class ConfigManager {
 
     public static float getPhysicsStaticColliderScale() {
         return provider != null ? provider.getPhysicsStaticColliderScale() : 0.8f;
+    }
+
+    public static boolean isPhysicsGroundCollisionEnabled() {
+        return provider != null ? provider.isPhysicsGroundCollisionEnabled() : true;
+    }
+
+    public static boolean isPhysicsBlockCollisionEnabled() {
+        return provider != null ? provider.isPhysicsBlockCollisionEnabled() : true;
+    }
+
+    public static boolean isPhysicsFootIkEnabled() {
+        return provider != null ? provider.isPhysicsFootIkEnabled() : true;
     }
 
     public static boolean isPhysicsDebugLog() {

@@ -1,6 +1,6 @@
 //! 纹理加载
 
-use image::{DynamicImage, GenericImageView, ImageReader};
+use image::{DynamicImage, GenericImageView, ImageDecoder, ImageReader};
 use std::path::Path;
 
 use super::Texture;
@@ -17,6 +17,34 @@ pub fn load_texture<P: AsRef<Path>>(path: P) -> Result<Texture> {
         .map_err(|error| texture_error(path, error))?;
 
     Ok(texture_from_image(img))
+}
+
+pub(crate) fn load_texture_limited(path: &Path, pixel_limit: u32) -> Result<Texture> {
+    const MAX_INPUT: u64 = 64 * 1024 * 1024;
+    const MAX_DECODE: u64 = 96 * 1024 * 1024;
+    let meta = std::fs::metadata(path).map_err(|error| texture_error(path, error))?;
+    if !meta.is_file() || meta.len() > MAX_INPUT {
+        return Err(texture_error(path, "effect texture must be a regular file of at most 64 MiB"));
+    }
+    let mut reader = ImageReader::open(path)
+        .and_then(|reader| reader.with_guessed_format())
+        .map_err(|error| texture_error(path, error))?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(4096);
+    limits.max_image_height = Some(4096);
+    limits.max_alloc = Some(MAX_DECODE);
+    reader.limits(limits);
+    let decoder = reader.into_decoder().map_err(|error| texture_error(path, error))?;
+    let (width, height) = decoder.dimensions();
+    if width == 0 || height == 0 || width > 4096 || height > 4096
+        || u64::from(width) * u64::from(height) > u64::from(pixel_limit)
+        || decoder.total_bytes() > MAX_DECODE
+    {
+        return Err(texture_error(path, "effect texture exceeds the decoded image budget"));
+    }
+    DynamicImage::from_decoder(decoder)
+        .map(texture_from_image)
+        .map_err(|error| texture_error(path, error))
 }
 
 fn texture_error(path: &Path, error: impl std::fmt::Display) -> MmdError {
@@ -55,14 +83,14 @@ fn texture_from_image(img: DynamicImage) -> Texture {
     // 与C++一致：垂直翻转图像，然后根据是否有alpha通道选择格式
     let data = if has_alpha {
         // RGBA格式（4字节/像素）
-        let rgba = img.to_rgba8();
-        let flipped = image::imageops::flip_vertical(&rgba);
-        flipped.into_raw()
+        let mut rgba = img.into_rgba8();
+        image::imageops::flip_vertical_in_place(&mut rgba);
+        rgba.into_raw()
     } else {
         // RGB格式（3字节/像素）- 与C++的STBI_rgb一致
-        let rgb = img.to_rgb8();
-        let flipped = image::imageops::flip_vertical(&rgb);
-        flipped.into_raw()
+        let mut rgb = img.into_rgb8();
+        image::imageops::flip_vertical_in_place(&mut rgb);
+        rgb.into_raw()
     };
 
     Texture::new(width, height, data, has_alpha)
@@ -92,7 +120,7 @@ pub fn load_texture_from_memory(data: &[u8]) -> Result<Texture> {
 
 #[cfg(test)]
 mod tests {
-    use super::load_texture;
+    use super::{load_texture, load_texture_limited};
     use image::{DynamicImage, ImageFormat, Rgb, Rgba};
     use std::fs;
     use std::io::Cursor;
@@ -112,6 +140,19 @@ mod tests {
         assert!(!texture.has_alpha);
         assert_eq!(texture.byte_count(), 4 * 4 * 3);
         assert!(texture.data.chunks_exact(3).all(|px| px == [255, 0, 0]));
+    }
+
+    #[test]
+    fn effect_texture_respects_the_remaining_pixel_budget() {
+        let mut encoded = Cursor::new(Vec::new());
+        DynamicImage::ImageRgb8(image::RgbImage::from_pixel(2, 2, Rgb([1, 2, 3])))
+            .write_to(&mut encoded, ImageFormat::Png).unwrap();
+        let path = write_temp_with_extension("png", encoded.get_ref());
+        let limited = load_texture_limited(&path, 3);
+        let accepted = load_texture_limited(&path, 4);
+        let _ = fs::remove_file(&path);
+        assert!(limited.is_err());
+        assert_eq!(accepted.unwrap().byte_count(), 12);
     }
 
     #[test]

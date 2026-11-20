@@ -11,12 +11,15 @@ import java.util.Map;
 final class RayMaterialImporter {
     private static final String COMMON_HASH = "a0383fe1fc8079ed41f5865a61f6d5a69bdcf74e74d85b8dcf88905fe4fc6304";
     static FxEffect parse(Path root, Path file, String source, String id) throws IOException {
+        return parse(root, file, source, id, new FxSource.Budget());
+    }
+
+    static FxEffect parse(Path root, Path file, String source, String id, FxSource.Budget budget) throws IOException {
         var parameters = RayMaterialParameters.parse(source);
         if (parameters.includes().isEmpty()) throw new IOException("缺少 Ray 2.0 公共实现");
         if (parameters.includes().size() != 1) throw new IOException("额外 include 尚未适配");
         Path common = FxPaths.resolve(root, file.getParent(), parameters.includes().get(0));
-        if (Files.size(common) > 1024 * 1024) throw new IOException("Ray 公共源码超过 1 MiB");
-        String commonSource = Files.readString(common).replace("\r", "");
+        String commonSource = budget.read(common).replace("\r", "");
         if (!FxSource.sha256(commonSource).equals(COMMON_HASH))
             throw new IOException("Ray 公共实现版本或自定义代码未适配: " + common.getFileName());
         return convert(root, file, parameters, id);

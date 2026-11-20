@@ -472,6 +472,15 @@ public class ModConfigScreen {
 
         toonCategory.addEntry(entryBuilder
             .startIntSlider(
+                Component.translatable("gui.mmdskin.mod_settings.toon_inner_outline_percent"),
+                data.toonInnerOutlinePercent, 0, 100)
+            .setDefaultValue(0)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.toon_inner_outline_percent.tooltip"))
+            .setSaveConsumer(value -> data.toonInnerOutlinePercent = value)
+            .build());
+
+        toonCategory.addEntry(entryBuilder
+            .startIntSlider(
                 Component.translatable("gui.mmdskin.mod_settings.toon_outline_r"),
                 (int) (data.toonOutlineR * 100), 0, 100)
             .setDefaultValue(6)
@@ -741,6 +750,33 @@ public class ModConfigScreen {
             .setTextGetter(value -> Component.literal(String.format(java.util.Locale.ROOT, "%.2fx", value / 100.0f)))
             .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_static_collider_scale.tooltip"))
             .setSaveConsumer(value -> data.physicsStaticColliderScale = value / 100.0f)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_ground_collision_enabled"),
+                data.physicsGroundCollisionEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_ground_collision_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsGroundCollisionEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_block_collision_enabled"),
+                data.physicsBlockCollisionEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_block_collision_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsBlockCollisionEnabled = value)
+            .build());
+
+        physicsCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.physics_foot_ik_enabled"),
+                data.physicsFootIkEnabled)
+            .setDefaultValue(true)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.physics_foot_ik_enabled.tooltip"))
+            .setSaveConsumer(value -> data.physicsFootIkEnabled = value)
             .build());
 
         physicsCategory.addEntry(entryBuilder

@@ -149,7 +149,7 @@ public class ModelConfigData {
         if (fileName == null || fileName.isBlank()) return "";
         if (!fileName.equals(fileName.trim()) || fileName.indexOf('/') >= 0
                 || fileName.indexOf('\\') >= 0 || fileName.equals(".") || fileName.equals("..")
-                || fileName.indexOf(':') >= 0 || fileName.chars().anyMatch(Character::isISOControl)
+                || hasInvalidAssetPathCharacters(fileName)
                 || !fileName.toLowerCase(java.util.Locale.ROOT).endsWith(".pmx")) return "";
         return fileName;
     }
@@ -161,9 +161,8 @@ public class ModelConfigData {
         if (separator < 0) return normalizePmxFileName(value);
         String folder = value.substring(0, separator);
         String file = value.substring(separator + 1);
-        if (folder.isBlank() || !folder.equals(folder.trim()) || folder.equals(".") || folder.equals("..")
-                || folder.contains("\\") || folder.contains(":")
-                || folder.chars().anyMatch(Character::isISOControl)
+        if (folder.isBlank() || !folder.equals(folder.trim()) || folder.endsWith(".")
+                || folder.contains("\\") || hasInvalidAssetPathCharacters(folder)
                 || normalizePmxFileName(file).isEmpty()) return "";
         return value;
     }
@@ -181,9 +180,15 @@ public class ModelConfigData {
 
     public static String normalizeVmdFileName(String value) {
         if (value == null || value.isBlank() || !value.equals(value.trim()) || value.contains("/")
-                || value.contains("\\") || value.contains(":") || value.chars().anyMatch(Character::isISOControl)
+                || value.contains("\\") || hasInvalidAssetPathCharacters(value)
                 || !value.toLowerCase(java.util.Locale.ROOT).endsWith(".vmd")) return "";
         return value;
+    }
+
+    private static boolean hasInvalidAssetPathCharacters(String value) {
+        return value.codePoints().anyMatch(c -> Character.isISOControl(c)
+                || (c >= Character.MIN_SURROGATE && c <= Character.MAX_SURROGATE)
+                || "<>:\"|?*".indexOf(c) >= 0);
     }
 
     private static Set<Integer> normalizeHiddenMaterials(Set<Integer> source) {

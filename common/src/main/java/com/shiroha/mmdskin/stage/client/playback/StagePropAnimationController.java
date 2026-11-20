@@ -17,13 +17,26 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /** Owns prop VMD handles for the lifetime of a stage, independently of character animation layers. */
 public final class StagePropAnimationController {
     private static final Logger LOGGER=LogManager.getLogger();
+    private static final ThreadPoolExecutor CALIBRATION_WORKER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(8), task -> {
+                Thread thread = new Thread(task, "mmd-stage-calibration");
+                thread.setDaemon(true);
+                return thread;
+            });
     private final NativeAnimationPort animations;
     private final Map<UUID,Session> sessions=new HashMap<>();
     private final java.util.function.Consumer<ModelRequestKey> releaseModel;
+    private record PreparedPlayback(Path motion, PropTimelineApplicationService.PlaybackResult playback) { }
 
     private static final class Session {
         final StagePropAssignment assignment;
@@ -34,6 +47,7 @@ public final class StagePropAnimationController {
         ModelInstance attempted, model;
         Path attemptedDir;
         long attemptedHandle, modelHandle;
+        Future<PreparedPlayback> preparation;
         PropMotionHandle motion;
         float maxFrame;
         PropTimeline timeline=PropTimeline.EMPTY;
@@ -162,37 +176,65 @@ public final class StagePropAnimationController {
 
     public PropBoneBindingAdapter.ApplyResult bindResult(UUID owner,ModelInstance model,Path modelDir,
                                                           String pmxFile,CalibrationSource calibration) {
+        return bindResult(owner, model, modelDir, pmxFile, calibration, false);
+    }
+
+    public PropBoneBindingAdapter.ApplyResult bindAsync(UUID owner, ModelInstance model, Path modelDir,
+                                                       String pmxFile, CalibrationSource calibration) {
+        return bindResult(owner, model, modelDir, pmxFile, calibration, true);
+    }
+
+    private PropBoneBindingAdapter.ApplyResult bindResult(UUID owner, ModelInstance model, Path modelDir,
+                                                         String pmxFile, CalibrationSource calibration, boolean async) {
         final Session session;
         final long handle;
-        final java.util.List<Path> actorMotions;
+        final Future<PreparedPlayback> task;
         synchronized(this) {
             session=sessions.get(owner);
             if(session==null) return pending("Stage prop session is not ready");
             if(model==null || model.getModelHandle()==0) return pending("Prop model is not ready");
             if(!session.assignment.pmxFile().equals(pmxFile)) return failed(-6,"Prop model does not match the stage assignment");
             handle=model.getModelHandle();
-            if(session.attempted==model && session.attemptedHandle==handle && Objects.equals(modelDir,session.attemptedDir))
-                return session.bindResult;
-            closeBinding(session);
-            session.warning=null;
-            session.attempted=model; session.attemptedHandle=handle; session.attemptedDir=modelDir;
-            session.bindResult=pending("Prop motion is loading");
-            actorMotions=session.actorMotions;
+            if (session.attempted == model && session.attemptedHandle == handle && Objects.equals(modelDir, session.attemptedDir)) {
+                task = session.preparation;
+                if (task == null || !task.isDone()) return session.bindResult;
+                session.preparation = null;
+            } else {
+                closeBinding(session);
+                session.warning = null;
+                session.attempted = model; session.attemptedHandle = handle; session.attemptedDir = modelDir;
+                session.bindResult = pending("Prop motion is loading");
+                if (async) {
+                    try {
+                        session.preparation = CALIBRATION_WORKER.submit(() -> preparePlayback(session, modelDir, pmxFile, calibration));
+                    } catch (RejectedExecutionException busy) {
+                        return failAttemptLocked(session, "Stage calibration loader is busy", -7);
+                    }
+                    return session.bindResult;
+                }
+                task = null;
+            }
         }
 
-        Path motionFile=HeldPmxMotionFiles.resolve(modelDir,session.assignment.motionFile());
-        if(motionFile==null) return failAttempt(owner,session,model,handle,
+        PreparedPlayback prepared;
+        try {
+            prepared = task == null ? preparePlayback(session, modelDir, pmxFile, calibration) : task.get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return failAttempt(owner, session, model, handle, "Stage calibration interrupted", -7);
+        } catch (ExecutionException | RuntimeException failure) {
+            return failAttempt(owner, session, model, handle, "Stage calibration failed: " + failure.getMessage(), -7);
+        }
+        if(prepared==null) return failAttempt(owner,session,model,handle,
                 "Missing local prop motion: "+session.assignment.motionFile(),-7);
-        PropTimelineApplicationService.PlaybackResult playback=PropTimelineApplicationService.loadForPlayback(
-                motionFile,com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile),
-                calibration==null?null:calibration::capture,actorMotions);
+        var playback = prepared.playback();
 
         synchronized(this) {
             if(sessions.get(owner)!=session || session.attempted!=model || session.attemptedHandle!=handle
                     || model.getModelHandle()!=handle) return pending("Prop binding attempt was superseded");
             PropMotionHandle candidate;
             try {
-                candidate=PropMotionHandle.open(animations,model,motionFile);
+                candidate=PropMotionHandle.open(animations,model,prepared.motion());
             } catch(RuntimeException failure) {
                 return failAttemptLocked(session,"Failed to validate or load prop VMD: "+failure.getMessage(),-7);
             }
@@ -211,6 +253,15 @@ public final class StagePropAnimationController {
                 return failAttemptLocked(session,"Failed to apply prop VMD: "+failure.getMessage(),-7);
             }
         }
+    }
+
+    private static PreparedPlayback preparePlayback(Session session, Path modelDir, String pmxFile,
+                                                    CalibrationSource calibration) {
+        Path motion = HeldPmxMotionFiles.resolve(modelDir, session.assignment.motionFile());
+        if (motion == null) return null;
+        return new PreparedPlayback(motion, PropTimelineApplicationService.loadForPlayback(
+                motion, com.shiroha.mmdskin.asset.catalog.HeldPmxAssets.fileName(pmxFile),
+                calibration == null ? null : calibration::capture, session.actorMotions));
     }
 
     private PropBoneBindingAdapter.ApplyResult failAttempt(UUID owner,Session session,ModelInstance model,
@@ -274,6 +325,11 @@ public final class StagePropAnimationController {
     }
 
     private void closeBinding(Session session) {
+        if (session.preparation != null) {
+            session.preparation.cancel(true);
+            if (session.preparation instanceof Runnable task) CALIBRATION_WORKER.remove(task);
+            session.preparation = null;
+        }
         ModelInstance model=session.model;
         long handle=session.modelHandle;
         PropMotionHandle motion=session.motion; session.motion=null; session.model=null; session.modelHandle=0;

@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.forge.network;
 import com.shiroha.mmdskin.compat.maid.runtime.MaidMMDModelManager;
 import com.shiroha.mmdskin.player.animation.PendingAnimSignalCache;
 import com.shiroha.mmdskin.player.runtime.MmdSkinRendererPlayerHelper;
+import com.shiroha.mmdskin.player.runtime.RemoteVpdActions;
 import com.shiroha.mmdskin.player.sync.MorphSyncHelper;
 import com.shiroha.mmdskin.player.sync.PlayerModelSyncService;
 import com.shiroha.mmdskin.stage.client.StageClientPacketHandler;
@@ -41,7 +42,7 @@ final class MmdSkinNetworkPackClientHandler {
         switch (pack.opCode) {
             case NetworkOpCode.CUSTOM_ANIM -> {
                 if (target != null) {
-                    MmdSkinRendererPlayerHelper.CustomAnim(target, pack.animId);
+                    RemoteVpdActions.receive(target, pack.animId);
                 }
             }
             case NetworkOpCode.RESET_PHYSICS -> {
@@ -51,8 +52,10 @@ final class MmdSkinNetworkPackClientHandler {
                     PendingAnimSignalCache.put(pack.playerUUID, PendingAnimSignalCache.SignalType.RESET);
                 }
             }
-            case NetworkOpCode.MODEL_SELECT ->
-                    PlayerModelSyncService.onRemotePlayerModelReceived(pack.playerUUID, pack.animId);
+            case NetworkOpCode.MODEL_SELECT -> {
+                RemoteVpdActions.cancel(pack.playerUUID);
+                PlayerModelSyncService.onRemotePlayerModelReceived(pack.playerUUID, pack.animId);
+            }
             case NetworkOpCode.MAID_MODEL -> {
                 Entity maidEntity = minecraft.level.getEntity(pack.arg0);
                 if (maidEntity != null) {

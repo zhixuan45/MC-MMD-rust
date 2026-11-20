@@ -4,36 +4,57 @@ import com.shiroha.mmdskin.config.PathConstants;
 import com.shiroha.mmdskin.render.port.IrisBackend;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.texture.runtime.TextureRepository;
+import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /** 仅在客户端渲染线程访问；磁盘扫描和纹理加载不进入逐材质的热路径。 */
 public final class EffectPackRuntime {
     private static final IrisBackend IRIS = IrisBackend.current();
+    private static final int MAX_TEXTURE_PIXELS = 128 * 1024 * 1024 / 4;
+    private static final int MAX_TEXTURE_ENTRIES = 256;
+    private static final Executor SCAN_WORKER = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "mmd-effect-pack-scanner");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static EffectPackRuntime instance;
     private final Path library;
     private final Path config;
+    private final Executor scanWorker;
+    private final Executor publishExecutor;
     private EffectPackSettings settings;
     private FxPackLibrary.Scan scan = new FxPackLibrary.Scan(List.of(), List.of());
     private Map<String, FxEffect> effects = Map.of();
     private final Map<String, Integer> textures = new LinkedHashMap<>();
+    private int texturePixels;
     private final Map<String, String> problems = new LinkedHashMap<>();
     private FxEffect current;
     private List<MaterialEffectRule> materialRules = List.of();
     private FxProgram program = FxProgram.EMPTY;
     private boolean worldScene;
+    private boolean scanning;
+    private Consumer<Boolean> pendingReload;
 
     private EffectPackRuntime() {
-        this(PathConstants.getSkinRootDir().toPath().resolve("effectpacks"), PathConstants.getConfigRootPath().resolve("effectpacks.json"));
+        this(PathConstants.getSkinRootDir().toPath().resolve("effectpacks"),
+                PathConstants.getConfigRootPath().resolve("effectpacks.json"),
+                SCAN_WORKER, Minecraft.getInstance()::execute);
     }
 
-    EffectPackRuntime(Path library, Path config) {
+    EffectPackRuntime(Path library, Path config, Executor scanWorker, Executor publishExecutor) {
         this.library = library;
         this.config = config;
+        this.scanWorker = scanWorker;
+        this.publishExecutor = publishExecutor;
         try { settings = EffectPackSettings.load(config); }
         catch (Exception e) { settings = new EffectPackSettings(); problem("config", "配置读取失败: " + e.getMessage()); }
         reload();
@@ -75,23 +96,51 @@ public final class EffectPackRuntime {
     }
 
     public void reload() {
+        reload(success -> { });
+    }
+
+    public void reload(Consumer<Boolean> completion) {
+        if (scanning) {
+            pendingReload = completion;
+            return;
+        }
+        scanning = true;
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return FxPackLibrary.scan(library);
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        }, scanWorker).whenCompleteAsync((result, error) -> {
+            scanning = false;
+            if (pendingReload != null) {
+                var pending = pendingReload;
+                pendingReload = null;
+                reload(pending);
+                return;
+            }
+            if (error == null) publish(result);
+            else problem("scan", "效果库扫描失败: " + error.getCause());
+            completion.accept(error == null);
+        }, publishExecutor);
+    }
+
+    private void publish(FxPackLibrary.Scan result) {
         releaseTextures();
         FxSceneColor.release();
+        WorldColorEffect.release();
         problems.keySet().removeIf(key -> !key.equals("config") && !key.equals("save"));
-        try {
-            scan = FxPackLibrary.scan(library);
-            var next = new LinkedHashMap<String, FxEffect>();
-            for (FxEffect effect : scan.effects()) next.put(effect.id(), effect);
-            effects = Map.copyOf(next);
-            problems.remove("scan");
-            for (String id : new String[]{settings.characters, settings.scenes, settings.world})
-                if (!id.isEmpty() && !effects.containsKey(id)) problem("missing:" + id, "所选效果未加载: " + id);
-            java.util.stream.Stream.concat(settings.characterMaterials.values().stream(), settings.sceneMaterials.values().stream())
-                    .flatMap(List::stream).map(MaterialEffectRule::effect).filter(id -> !id.isEmpty() && !effects.containsKey(id))
-                    .forEach(id -> problem("missing:" + id, "材质绑定的效果未加载: " + id));
-            FxEffect worldEffect = effect(settings.world);
-            if (worldEffect != null && !worldEffect.supportsWorld()) problem("world-kind", "所选效果只有模型材质通道，无法作用于世界: " + worldEffect.name());
-        } catch (IOException e) { problem("scan", "效果库扫描失败: " + e.getMessage()); }
+        scan = result;
+        var next = new LinkedHashMap<String, FxEffect>();
+        for (FxEffect effect : scan.effects()) next.put(effect.id(), effect);
+        effects = Map.copyOf(next);
+        for (String id : new String[]{settings.characters, settings.scenes, settings.world})
+            if (!id.isEmpty() && !effects.containsKey(id)) problem("missing:" + id, "所选效果未加载: " + id);
+        java.util.stream.Stream.concat(settings.characterMaterials.values().stream(), settings.sceneMaterials.values().stream())
+                .flatMap(List::stream).map(MaterialEffectRule::effect).filter(id -> !id.isEmpty() && !effects.containsKey(id))
+                .forEach(id -> problem("missing:" + id, "材质绑定的效果未加载: " + id));
+        FxEffect worldEffect = effect(settings.world);
+        if (worldEffect != null && !worldEffect.supportsWorld()) problem("world-kind", "所选效果只有模型材质通道，无法作用于世界: " + worldEffect.name());
     }
 
     public Scope enter(RenderScene scene, String model) {
@@ -142,10 +191,19 @@ public final class EffectPackRuntime {
         String path = effect.root().resolve(channel.file()).toString();
         Integer existing = textures.get(path);
         if (existing != null) return existing;
-        var texture = TextureRepository.GetTexture(path, "fx-material", effect.id());
+        if (textures.size() >= MAX_TEXTURE_ENTRIES) {
+            problem("texture-budget", "FX 贴图数量超过 256 张");
+            return 0;
+        }
+        var texture = TextureRepository.getEffectTexture(path, effect.id(),
+                Math.min(4096 * 4096, MAX_TEXTURE_PIXELS - texturePixels));
         int id = texture == null ? 0 : texture.tex;
-        if (id > 0) TextureRepository.addRef(path);
-        else problem("texture:" + path, "FX 贴图加载失败: " + channel.file());
+        if (id > 0) {
+            TextureRepository.addRef(path);
+            texturePixels += texture.width * texture.height;
+        } else {
+            problem("texture:" + path, "FX 贴图加载失败或超出预算: " + channel.file());
+        }
         textures.put(path, id);
         return id;
     }
@@ -157,6 +215,7 @@ public final class EffectPackRuntime {
     private void releaseTextures() {
         textures.forEach((path, id) -> { if (id > 0) TextureRepository.release(path); });
         textures.clear();
+        texturePixels = 0;
     }
 
     public static void release() { if (instance != null) instance.releaseTextures(); FxSceneColor.release(); }

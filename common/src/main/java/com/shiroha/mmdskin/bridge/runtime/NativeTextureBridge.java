@@ -15,6 +15,10 @@ public final class NativeTextureBridge implements NativeTexturePort {
         return nativeFunc().LoadTexture(filename);
     }
 
+    @Override public long loadTextureLimited(String filename, int pixelLimit) {
+        return nativeFunc().LoadTextureLimited(filename, pixelLimit);
+    }
+
     @Override
     public int textureWidth(long textureHandle) {
         return nativeFunc().GetTextureX(textureHandle);

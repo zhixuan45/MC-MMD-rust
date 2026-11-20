@@ -1,0 +1,41 @@
+name: 新功能申请 / Feature request
+description: 建议新功能或模组适配 / Suggest a feature or mod integration
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索 [已有 Issues](https://github.com/zhixuan45/MC-MMD-rust/issues)。可以使用中文或英文。
+        Please [search existing issues](https://github.com/zhixuan45/MC-MMD-rust/issues) first. Chinese and English are both welcome.
+  - type: textarea
+    id: use-case
+    attributes:
+      label: 使用场景 / Use case
+      description: 你在游戏里想做什么，目前遇到了什么限制？ / What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: requested-behavior
+    attributes:
+      label: 期望行为 / Requested behavior
+      description: 描述你希望功能在游戏中如何工作。 / Describe how the feature should work in game.
+    validations:
+      required: true
+  - type: input
+    id: minecraft-loader
+    attributes:
+      label: Minecraft 版本与加载器 / Minecraft version and loader
+      placeholder: 1.21.1 NeoForge
+    validations:
+      required: true
+  - type: textarea
+    id: references
+    attributes:
+      label: 相关模组与参考 / Related mods and references
+      description: 如涉及其他模组，请附上项目链接、版本和需要互通的功能。 / For integrations, include the other mod's link, version, and the features that should work together.
+  - type: checkboxes
+    id: sponsorship
+    attributes:
+      label: 赞助意向 / Sponsorship interest
+      description: 可选，具体范围和排期由维护者与申请人沟通。 / Optional. Discuss the scope and schedule with a maintainer.
+      options:
+        - label: 我愿意讨论赞助此功能，以便优先开发或加快进度。 / I'd like to discuss sponsoring this feature to prioritize or speed up development.

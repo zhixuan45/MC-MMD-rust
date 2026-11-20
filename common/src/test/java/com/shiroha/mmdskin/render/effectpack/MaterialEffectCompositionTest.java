@@ -16,7 +16,7 @@ class MaterialEffectCompositionTest {
         Files.createDirectories(library.resolve("packA")); Files.createDirectories(library.resolve("packB"));
         Files.writeString(library.resolve("packA/gray.fx"), FxPackLibraryTest.colorFx("float4 c = tex2D(ScreenSampler, uv); c.rgb = float3(0.3,0.3,0.3); return c;"));
         Files.writeString(library.resolve("packB/warm.fx"), FxPackLibraryTest.colorFx("float4 c = tex2D(ScreenSampler, uv); c.rgb = saturate(c.rgb * float3(1.1,1.0,0.9)); return c;"));
-        return new EffectPackRuntime(library, temporary.resolve("config.json"));
+        return new EffectPackRuntime(library, temporary.resolve("config.json"), Runnable::run, Runnable::run);
     }
 
     @Test void bindsAcrossPacksAndSeparatesInheritedOffAndOverride() throws Exception {

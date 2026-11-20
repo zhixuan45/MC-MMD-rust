@@ -4,6 +4,7 @@ import com.shiroha.mmdskin.forge.register.MmdSkinRegisterCommon;
 import com.shiroha.mmdskin.forge.stage.ForgeStageSessionRegistry;
 import com.shiroha.mmdskin.player.sync.ClientNetworkBindings;
 import com.shiroha.mmdskin.player.sync.ServerModelRegistry;
+import com.shiroha.mmdskin.player.sync.VpdActionLimits;
 import com.shiroha.mmdskin.ui.network.NetworkOpCode;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
@@ -22,6 +23,7 @@ import java.util.function.Supplier;
  * Forge 1.20.1 网络包序列化与分发处理。
  */
 public class MmdSkinNetworkPack {
+    private static final VpdActionLimits VPD_LIMITS = new VpdActionLimits();
     private static final Logger logger = LogManager.getLogger();
 
     public int opCode;
@@ -140,6 +142,8 @@ public class MmdSkinNetworkPack {
             logger.warn("UUID 不匹配，丢弃数据包: claimed={}, real={}", playerUUID, sender.getUUID());
             return;
         }
+
+        if (opCode == NetworkOpCode.CUSTOM_ANIM && !VPD_LIMITS.allow(playerUUID, animId)) return;
 
         if (opCode == NetworkOpCode.MODEL_SELECT) {
             ServerModelRegistry.updateModel(playerUUID, animId);

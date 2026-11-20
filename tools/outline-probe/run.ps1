@@ -1,12 +1,13 @@
-param([string]$Jdk = 'C:\Program Files\Zulu\zulu-21')
+param([string]$Jdk = 'C:\Program Files\Zulu\zulu-17')
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $taskOutput = Join-Path $taskRoot 'build/outline-probe'
 New-Item -ItemType Directory -Force -Path $taskOutput | Out-Null
 $taskCache = Join-Path $env:USERPROFILE '.gradle/caches/modules-2/files-2.1/org.lwjgl'
+$taskLwjglVersion = '3.3.1'
 $taskJars = foreach ($module in @('lwjgl','lwjgl-glfw','lwjgl-opengl')) {
-    Get-ChildItem -LiteralPath (Join-Path $taskCache "$module/3.3.3") -Recurse -Filter '*.jar' |
-        Where-Object { $_.Name -eq "$module-3.3.3.jar" -or $_.Name -eq "$module-3.3.3-natives-windows.jar" } |
+    Get-ChildItem -LiteralPath (Join-Path $taskCache "$module/$taskLwjglVersion") -Recurse -Filter '*.jar' |
+        Where-Object { $_.Name -eq "$module-$taskLwjglVersion.jar" -or $_.Name -eq "$module-$taskLwjglVersion-natives-windows.jar" } |
         ForEach-Object { $_.FullName }
 }
 $taskLog4j = Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE '.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-api') -Recurse -Filter '*.jar' |
@@ -32,6 +33,7 @@ public final class ToonConfig {
     private static final ToonConfig INSTANCE = new ToonConfig();
     public static ToonConfig getInstance() { return INSTANCE; }
     public float getOutlineWidth() { return 0.0022f; }
+    public int getInnerOutlinePercent() { return 0; }
     public float getOutlineColorR() { return 0; }
     public float getOutlineColorG() { return 0; }
     public float getOutlineColorB() { return 0; }
@@ -61,6 +63,11 @@ public class ToonShaderBase {
     public void setOutlineAlpha(float value) {}
     public void setOutlineAutoMaterialColor(boolean value) {}
     public void setOutlineMaterialDiffuse(float r, float g, float b) {}
+    public void setOutlineSkinMaterial(boolean value) {}
+    public void setOutlineRegion(int value) {}
+    public int getOutlineProgram() { return 0; }
+    public int getOutlineBodyMaskLocation() { return -1; }
+    public void setOutlineBodyMask(int unit, int x, int y) {}
 }
 '@
     'com/shiroha/mmdskin/render/material/ToonTransparencySettings.java' = @'
@@ -126,7 +133,14 @@ try {
     $taskStateSources = @($taskStubFiles) + @(
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineRenderPass.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineCoverage.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineBodyMask.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/outline/OutlineGlState.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/ProgramSamplerLayout.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/ModelMaterial.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/EyeMaterialMask.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/HairMaterialClassifier.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/material/SkinMaterialClassifier.java'),
+        (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/texture/runtime/TextureAlphaCoverage.java'),
         (Join-Path $taskRoot 'common/src/main/java/com/shiroha/mmdskin/render/shader/ShaderCompiler.java'),
         (Join-Path $PSScriptRoot 'PassStateProbe.java')
     )

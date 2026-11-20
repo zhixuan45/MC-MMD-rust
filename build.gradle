@@ -92,7 +92,7 @@ tasks.register("buildRustNative", Exec) {
 	description = "编译当前主机的 Release 版本 Rust 原生库"
 	dependsOn tasks.named("prepareBullet3Sources")
 	workingDir projectDir
-	commandLine cargoExecutable(), "build", "--release", "--lib", "--manifest-path", "rust_engine/Cargo.toml"
+	commandLine cargoExecutable(), "build", "--locked", "--release", "--lib", "--manifest-path", "rust_engine/Cargo.toml"
 }
 
 tasks.register("validateNativeResources") {

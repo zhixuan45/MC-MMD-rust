@@ -52,7 +52,7 @@ public final class Probe {
             FxPackLibrary.importPack(Path.of(args[0]), library);
             Path colors = library.resolve("colors"); Files.createDirectories(colors);
             Files.writeString(colors.resolve("gray.fx"), colorFx());
-            runtime = new EffectPackRuntime(library, run.resolve("settings.json"));
+            runtime = new EffectPackRuntime(library, run.resolve("settings.json"), Runnable::run, Runnable::run);
             check(runtime.scan().failures().isEmpty(), "导入诊断: " + runtime.scan().failures());
             var singleton = EffectPackRuntime.class.getDeclaredField("instance");
             singleton.setAccessible(true); singleton.set(null, runtime);
@@ -429,9 +429,13 @@ public final class Probe {
         private final Map<Long, Pixels> images = new HashMap<>();
         private long next;
         @Override public long loadTexture(String filename) {
+            return loadTextureLimited(filename, Integer.MAX_VALUE);
+        }
+        @Override public long loadTextureLimited(String filename, int pixelLimit) {
             try {
                 byte[] bytes = Files.readAllBytes(Path.of(filename));
                 int w = (bytes[12] & 255) | (bytes[13] & 255) << 8, h = (bytes[14] & 255) | (bytes[15] & 255) << 8;
+                if ((long) w * h > pixelLimit) return 0;
                 int stride = (bytes[16] & 255) / 8, offset = 18 + (bytes[0] & 255);
                 ByteBuffer data = MemoryUtil.memAlloc(w * h * 4);
                 for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {

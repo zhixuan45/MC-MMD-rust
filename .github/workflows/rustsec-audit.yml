@@ -12,6 +12,7 @@ on:
       - '**/Cargo.lock'
       - '.github/workflows/rustsec-audit.yml'
   workflow_dispatch:
+  workflow_call:
   schedule:
     - cron: '37 5 * * *'
 
@@ -28,11 +29,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Generate audit lockfile if absent
-        run: |
-          if [ ! -f Cargo.lock ]; then
-            cargo generate-lockfile
-          fi
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Fail on RustSec vulnerabilities

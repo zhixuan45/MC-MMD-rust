@@ -14,7 +14,17 @@ public final class VpdPosePlayback {
 
     static ExpressionApplicationService.VpdResult apply(com.shiroha.mmdskin.model.runtime.ModelInstance model,
                                                          EntityAnimState state, String path, String playerName) {
-        var result = ExpressionApplicationService.applyVpdWithResult(model.getModelHandle(), path, playerName);
+        return updatePlayback(model, state, ExpressionApplicationService.applyVpdWithResult(model.getModelHandle(), path, playerName));
+    }
+
+    static void applyPrepared(ManagedModel model, ExpressionApplicationService.PreparedVpd pose, String playerName) {
+        var instance = model.modelInstance();
+        updatePlayback(instance, model.entityState(), pose.apply(instance.getModelHandle(), playerName));
+    }
+
+    private static ExpressionApplicationService.VpdResult updatePlayback(
+            com.shiroha.mmdskin.model.runtime.ModelInstance model, EntityAnimState state,
+            ExpressionApplicationService.VpdResult result) {
         if (result.applied() && result.bones() > 0 && !state.playStageAnim) {
             // Keep ticking physics/skinning, but remove idle, held-item and damage VMD layers.
             for (int layer = 0; layer < state.stateLayers.length; layer++) {

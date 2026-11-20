@@ -25,6 +25,7 @@ final class FxGraphGlBackend implements FxRenderGraph.Backend<Integer> {
             GL33C.glColorMaski(0, true, true, true, true);
             effect.graph().compile(w, h).execute(Map.of("scene", framebuffer), new FxGraphGlBackend(framebuffer, effect.graph()));
         } catch (RuntimeException e) {
+            release();
             EffectPackRuntime.get().problem("graph:" + effect.id(), "世界 FX 图执行失败: " + e.getMessage());
         }
     }

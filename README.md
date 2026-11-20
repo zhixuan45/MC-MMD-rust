@@ -1,10 +1,27 @@
 # MC-MMD-rust
 
-在 Minecraft 1.20.1 中实现 MMD（MikuMikuDance）模型渲染和物理模拟的 Mod。
+简体中文 · [English](README.en.md)
+
+在 Minecraft 中加载 MMD（MikuMikuDance）模型和动作，支持实时物理模拟。
 
 当前 `codex/port-1.20.1` 分支以 **Forge 1.20.1** 为构建目标，基线为 Forge `47.3.0`、Java 17、Cloth Config `11.1.136`。1.21.1 版本继续保留在 `feat/1.21.1-neoforge` 分支；当前分支只保留 Forge 1.20.1 平台实现，已移除不参与构建的 1.21.1 Fabric/NeoForge 生产源码与配置。迁移范围与本机验证记录见 [迁移验证](plans/minecraft-1.20.1-migration/verification.md)。
 
 [许可：基于 CC BY-NC-SA 4.0 的非商业许可（禁止 R18G）](LICENSE)
+
+## 版本与下载
+
+| Minecraft | 加载器 | Java |
+| --- | --- | --- |
+| 1.21.1 | Fabric / NeoForge | 21 |
+| 1.20.1 | Forge | 17 |
+
+公开发布包见 [GitHub Releases](https://github.com/zhixuan45/MC-MMD-rust/releases)。维护分支、Actions 构建入口和 JAR 选择方法见[版本与下载说明](doc/VERSIONS.md)。
+
+## 新功能申请
+
+想增加功能或适配其他模组，可以先看[功能申请指南](doc/FEATURE_REQUESTS.md)，再[提交功能申请](https://github.com/zhixuan45/MC-MMD-rust/issues/new?template=feature-request.yml)。
+
+可以在表单中注明赞助意向，和维护者讨论优先排期或加快开发。
 
 ## 功能特性
 
@@ -27,7 +44,7 @@
 2. **Minecraft Mod**（当前分支：Forge 1.20.1）: 基于 Java 的渲染和集成
    - OpenGL 模型渲染
    - Compute Shader 蒙皮
-   - Oculus/Iris 光影兼容（[光影适配文档](SHADERPACK_COMPATIBILITY.md) 中的 1.21.1 画面验收结论需在 1.20.1 上重新验证）
+   - Oculus/Iris 光影兼容（[光影适配说明](doc/render/SHADERPACK_COMPATIBILITY.md) 记录了 1.21.1 的适配版本与验证范围）
 
 ## 使用教程
 
@@ -269,7 +286,7 @@ EntityPlayer/
 
 ```bash
 python tools/ci/prepare_bullet.py
-cargo build --release --lib --manifest-path rust_engine/Cargo.toml
+cargo build --locked --release --lib --manifest-path rust_engine/Cargo.toml
 ```
 
 ### 构建 Minecraft Mod
@@ -282,7 +299,7 @@ Windows 使用 `.\gradlew.bat`。发布包位于 `forge/build/libs/mmdskin-forge
 
 ### GitHub Actions
 
-- 本分支的 `Build & Release` 在推送到 `codex/port-1.20.1`、提交 PR 或手动运行时按改动选择 Java/Rust 测试批次，并为十个平台分别构建 Forge 包。各平台只等待自己的原生库；公共测试和其他平台失败不会阻塞可构建平台打包及上传。测试失败仍令整次工作流显示失败。标签、手动完整构建和每周测试执行完整回归。日常检查与领域入口见 [测试分层与分批](doc/TESTING.md)。推送 `v*` 标签时发布已成功的产物。
+- 本分支的 `Build & Release` 在推送到 `codex/port-1.20.1`、提交 PR 或手动运行时按改动选择 Java/Rust 测试批次，并为十个平台分别构建 Forge 包。各平台只等待自己的原生库；公共测试和其他平台失败不会阻塞可构建平台打包及上传。测试失败仍令整次工作流显示失败。标签、手动完整构建和每周测试执行完整回归。日常检查与领域入口见 [测试分层与分批](doc/TESTING.md)。推送 `v*` 标签时，公共验证和 RustSec 审计均通过且至少一个平台包构建成功，才发布已成功的平台产物。
 - CI 每个模组 JAR 仅包含文件名标注平台的原生库，例如 `mmdskin-forge-<版本>-windows-x64.jar`。保留 Windows x64 / ARM64、Linux x64 / ARM64 / LoongArch64 / RISC-V 64、macOS x64 / ARM64、Android ARM64 / x64（文件名使用 `android-amd64`）构建矩阵；本轮仅本机 Windows x64 完成实际验证。Android 包含所需的 `libc++_shared.so`。CI 不输出通用包；下载时选择与操作系统和 CPU 架构匹配的 Forge 包。原生库的架构、完整性及 JAR 内文件一致性仍会校验；Java 测试报告按领域上传一次。
 
 ## 许可证
@@ -322,7 +339,7 @@ Windows 使用 `.\gradlew.bat`。发布包位于 `forge/build/libs/mmdskin-forge
 | [nphysics](https://github.com/dimforge/nphysics) | Apache-2.0 | 骨骼层次设计 |
 | [mdanceio](https://github.com/ReaNAiveD/mdanceio) | MIT | 动画系统 |
 
-完整的第三方许可证信息请参阅 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
+第三方许可与归属信息见 [NOTICE](NOTICE) 和各依赖附带的许可证。Ray-MMD 的许可正文见 [LICENSE-Ray-MMD](LICENSE-Ray-MMD)。
 
 ## 相关项目
 

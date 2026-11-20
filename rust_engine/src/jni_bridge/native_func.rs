@@ -3,17 +3,19 @@
 use jni::objects::{JByteBuffer, JClass, JFloatArray, JIntArray, JString};
 use jni::sys::{jboolean, jbyte, jfloat, jint, jlong, jstring};
 use jni::JNIEnv;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::ptr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::tacz_arm_target::{
     clear_tacz_arm_diagnostics, clear_tacz_arm_targets, record_tacz_arm_apply_result,
     take_tacz_arm_targets,
 };
 use crate::animation::fbx_loader;
-use crate::animation::{VmdAnimation, VmdFile};
+use crate::animation::{VmdAnimation, VmdFile, VpdFile};
 use crate::model::{load_pmx, load_vrm};
-use crate::texture::load_texture;
+use crate::texture::{load_texture, load_texture_limited};
 
 use super::{
     register_animation, register_model, register_texture, ANIMATIONS, FBX_CACHE, MODELS, TEXTURES,
@@ -22,6 +24,8 @@ use super::{
 // JNI 原生引擎版本号
 const VERSION: &str = "v1.10alpha";
 const BONE_OVERRIDE_TRANSFORM_STRIDE: usize = 7;
+const MAX_PREPARED_VPD: usize = 16;
+static PREPARED_VPD: Lazy<Mutex<HashMap<i64, VpdFile>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 fn make_override_rotation(qx: f32, qy: f32, qz: f32, qw: f32) -> Option<glam::Quat> {
     if !qx.is_finite() || !qy.is_finite() || !qz.is_finite() || !qw.is_finite() {
@@ -2065,6 +2069,24 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_LoadTexture(
     })
 }
 
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_LoadTextureLimited(
+    env: JNIEnv, _class: JClass, filename: JString, pixel_limit: jint,
+) -> jlong {
+    jni_guard!(env, {
+        if !(1..=4096 * 4096).contains(&pixel_limit) { return 0; }
+        let Ok(filename) = env.get_string(&filename) else { return 0 };
+        let filename: String = filename.into();
+        match load_texture_limited(std::path::Path::new(&filename), pixel_limit as u32) {
+            Ok(texture) => register_texture(texture),
+            Err(error) => {
+                log::warn!("[FX] {}", error);
+                0
+            }
+        }
+    })
+}
+
 /// 删除纹理
 #[no_mangle]
 pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_DeleteTexture(
@@ -2141,9 +2163,6 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_TextureHasAlpha(
 // ============================================================================
 // 矩阵相关函数
 // ============================================================================
-
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
 
 /// 矩阵存储（使用 HashMap + ID，避免 Vec 扩容导致指针失效）
 static MATRICES: Lazy<Mutex<std::collections::HashMap<i64, glam::Mat4>>> =
@@ -3254,40 +3273,63 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ApplyVpdMorph(
     model: jlong,
     filename: JString,
 ) -> jint {
-    jni_guard!(env, {
-        use crate::animation::VpdFile;
-
+    jni_guard!(env, -1, {
         let filename_str: String = match env.get_string(&filename) {
             Ok(s) => s.into(),
             Err(_) => return -1,
         };
+        if !MODELS.read().unwrap().contains_key(&model) {
+            return -2;
+        }
 
-        let models = MODELS.read().unwrap();
-        if let Some(model_arc) = models.get(&model) {
-            let mut model = model_arc.lock().unwrap();
-
-            match VpdFile::load(&filename_str) {
-                Ok(vpd) => {
-                    let (bone_count, morph_count) = model.apply_vpd_pose(&vpd);
-                    log::info!(
-                        "[VPD] {}: matched bones={}/{}, morphs={}/{}",
-                        filename_str,
-                        bone_count,
-                        vpd.bones.len(),
-                        morph_count,
-                        vpd.morphs.len()
-                    );
-                    // 返回编码值: 高16位骨骼数，低16位 Morph 数
-                    return (((bone_count & 0xFFFF) << 16) | (morph_count & 0xFFFF)) as jint;
-                }
-                Err(error) => {
-                    log::warn!("[VPD] Failed to load {}: {}", filename_str, error);
-                    return -1;
-                }
+        match VpdFile::load(&filename_str) {
+            Ok(pose) => apply_parsed_vpd(model, &pose),
+            Err(error) => {
+                log::warn!("[VPD] Failed to load {}: {}", filename_str, error);
+                -1
             }
         }
-        -2
     })
+}
+
+fn apply_parsed_vpd(model: jlong, pose: &VpdFile) -> jint {
+    let model = MODELS.read().unwrap().get(&model).cloned();
+    let Some(model) = model else { return -2 };
+    let (bones, morphs) = model.lock().unwrap().apply_vpd_pose(pose);
+    ((bones << 16) | morphs) as jint
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_PrepareVpdPose(
+    env: JNIEnv, _class: JClass, filename: JString,
+) -> jlong {
+    jni_guard!(env, {
+        let Ok(filename) = env.get_string(&filename) else { return 0 };
+        let filename: String = filename.into();
+        let Ok(pose) = VpdFile::load(filename) else { return 0 };
+        let mut poses = PREPARED_VPD.lock().unwrap();
+        if poses.len() >= MAX_PREPARED_VPD { return 0; }
+        let handle = super::next_handle_id();
+        poses.insert(handle, pose);
+        handle
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_ApplyPreparedVpdPose(
+    _env: JNIEnv, _class: JClass, model: jlong, pose: jlong,
+) -> jint {
+    jni_guard!(_env, -1, {
+        let pose = PREPARED_VPD.lock().unwrap().remove(&pose);
+        pose.map_or(-1, |pose| apply_parsed_vpd(model, &pose))
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_DeletePreparedVpdPose(
+    _env: JNIEnv, _class: JClass, pose: jlong,
+) {
+    jni_guard!(_env, { PREPARED_VPD.lock().unwrap().remove(&pose); })
 }
 
 #[no_mangle]
@@ -3897,6 +3939,9 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetPhysicsConfig(
             static_collider_scale: clamped_scale,
             auto_upper_body_colliders: previous.auto_upper_body_colliders,
             auto_lower_body_colliders: previous.auto_lower_body_colliders,
+            ground_collision_enabled: previous.ground_collision_enabled,
+            block_collision_enabled: previous.block_collision_enabled,
+            foot_ik_enabled: previous.foot_ik_enabled,
             debug_log: debug_log != 0,
         };
 
@@ -3961,6 +4006,90 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetBodyColliderFillCo
                 .lock()
                 .unwrap_or_else(super::boundary::reject_poison)
                 .request_physics_rebuild();
+        }
+    })
+}
+
+/// 设置环境碰撞与台阶双足自适应 IK 开关（不触发物理世界重建）
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetEnvironmentCollisionConfig(
+    _env: JNIEnv,
+    _class: JClass,
+    ground_enabled: jboolean,
+    block_enabled: jboolean,
+    foot_ik_enabled: jboolean,
+) {
+    jni_guard!(_env, {
+        let mut config = crate::physics::config::get_config();
+        config.ground_collision_enabled = ground_enabled != 0;
+        config.block_collision_enabled = block_enabled != 0;
+        config.foot_ik_enabled = foot_ik_enabled != 0;
+        crate::physics::config::set_config(config);
+    })
+}
+
+/// 设置单模型的环境地面、方块 AABB（DirectByteBuffer，最多 16 块）与双足支撑面高度
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetModelEnvironmentColliders(
+    env: JNIEnv,
+    _class: JClass,
+    model: jlong,
+    ground_y: jfloat,
+    model_scale: jfloat,
+    allow_foot_ik: jboolean,
+    left_foot_y: jfloat,
+    right_foot_y: jfloat,
+    block_aabbs: JByteBuffer,
+    block_count: jint,
+) {
+    jni_guard!(env, {
+        let mut aabbs = [[0.0f32; 6]; 16];
+        let requested = (block_count.max(0) as usize).min(16);
+        let mut count = 0usize;
+
+        if requested > 0 && !block_aabbs.is_null() {
+            if let (Ok(addr), Ok(cap)) = (
+                env.get_direct_buffer_address(&block_aabbs),
+                env.get_direct_buffer_capacity(&block_aabbs),
+            ) {
+                const STRIDE_BYTES: usize = 24;
+                count = requested.min(cap / STRIDE_BYTES);
+                if count > 0 {
+                    let bytes =
+                        unsafe { std::slice::from_raw_parts(addr as *const u8, count * STRIDE_BYTES) };
+                    for (i, dst) in aabbs[..count].iter_mut().enumerate() {
+                        let base = i * STRIDE_BYTES;
+                        for j in 0..6 {
+                            let off = base + j * 4;
+                            dst[j] = f32::from_le_bytes([
+                                bytes[off],
+                                bytes[off + 1],
+                                bytes[off + 2],
+                                bytes[off + 3],
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+
+        let ground_y = ground_y.is_finite().then_some(ground_y);
+        let left_foot_y = left_foot_y.is_finite().then_some(left_foot_y);
+        let right_foot_y = right_foot_y.is_finite().then_some(right_foot_y);
+
+        let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
+        if let Some(model_arc) = models.get(&model) {
+            let mut m = model_arc
+                .lock()
+                .unwrap_or_else(super::boundary::reject_poison);
+            m.set_environment_colliders(
+                ground_y,
+                model_scale,
+                allow_foot_ik != 0,
+                left_foot_y,
+                right_foot_y,
+                &aabbs[..count],
+            );
         }
     })
 }

@@ -14,7 +14,7 @@ public final class HeldPmxMotionFiles {
     private HeldPmxMotionFiles() { }
 
     public static List<String> list(Path modelDir) {
-        if (Files.isSymbolicLink(modelDir)) return List.of();
+        if (modelDir == null || Files.isSymbolicLink(modelDir)) return List.of();
         var names = new TreeSet<String>();
         for (Path dir : List.of(modelDir.resolve("anims"), modelDir)) {
             if (Files.isSymbolicLink(dir) || !Files.isDirectory(dir)) continue;
@@ -30,7 +30,7 @@ public final class HeldPmxMotionFiles {
     }
 
     public static Path resolve(Path modelDir, String name) {
-        if (ModelConfigData.normalizeVmdFileName(name).isEmpty() || Files.isSymbolicLink(modelDir)) return null;
+        if (modelDir == null || ModelConfigData.normalizeVmdFileName(name).isEmpty() || Files.isSymbolicLink(modelDir)) return null;
         for (Path dir : List.of(modelDir.resolve("anims"), modelDir)) {
             Path path = dir.resolve(name);
             if (!Files.isSymbolicLink(dir) && Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return path;

@@ -3,6 +3,7 @@
 mod loader;
 
 pub use loader::load_texture;
+pub(crate) use loader::load_texture_limited;
 
 /// 纹理数据
 #[derive(Clone)]

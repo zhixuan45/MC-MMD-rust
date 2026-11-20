@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.stage.client.camera;
 
+import com.google.common.io.ByteStreams;
 import javazoom.jl.decoder.*;
 import org.lwjgl.stb.STBVorbis;
 import org.lwjgl.stb.STBVorbisInfo;
@@ -15,7 +16,8 @@ import java.util.function.DoubleConsumer;
 
 /** Background decoding only. OpenAL allocation/upload always stays on the client thread. */
 public final class StageAudioLoadTask {
-    private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(r -> {
+    private static final ThreadPoolExecutor WORKER = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(2), r -> {
         Thread thread = new Thread(r, "mmd-stage-audio-loader");
         thread.setDaemon(true);
         return thread;
@@ -27,11 +29,19 @@ public final class StageAudioLoadTask {
 
     private StageAudioLoadTask(String path) {
         this.path = path;
-        future = WORKER.submit(() -> {
+        FutureTask<StagePcmDecoder.Pcm> task = new FutureTask<>(() -> {
             StagePcmDecoder.Pcm result = decode(new File(path), value -> progress = (float) Math.min(.95, value * .95));
             progress = .95f;
             return result;
         });
+        Future<StagePcmDecoder.Pcm> scheduled;
+        try {
+            WORKER.execute(task);
+            scheduled = task;
+        } catch (RejectedExecutionException e) {
+            scheduled = CompletableFuture.failedFuture(new IOException("Stage audio loader is busy", e));
+        }
+        future = scheduled;
     }
 
     public static StageAudioLoadTask start(String path) { return new StageAudioLoadTask(path); }
@@ -59,12 +69,16 @@ public final class StageAudioLoadTask {
     public void cancel() {
         PREPARED.compareAndSet(this, null);
         future.cancel(true);
+        if (future instanceof Runnable task) WORKER.remove(task);
     }
 
     StagePcmDecoder.Pcm result() throws Exception { return future.get(); }
     void uploaded() { progress = 1; }
 
     private static StagePcmDecoder.Pcm decode(File file, DoubleConsumer progress) throws Exception {
+        if (!Files.isRegularFile(file.toPath()) || Files.size(file.toPath()) > StagePcmDecoder.MAX_SOURCE_BYTES) {
+            throw new IOException("Stage audio must be a regular file of at most 128 MiB");
+        }
         String name = file.getName().toLowerCase(Locale.ROOT);
         if (name.endsWith(".wav")) return StagePcmDecoder.decodeWav(file, progress);
         if (name.endsWith(".mp3")) return decodeMp3(file, progress);
@@ -80,24 +94,34 @@ public final class StageAudioLoadTask {
         ByteArrayOutputStream pcm = new ByteArrayOutputStream();
         int rate = 0, channels = 0;
         try (FileInputStream input = new FileInputStream(file)) {
-            Bitstream stream = new Bitstream(input);
+            Bitstream stream = new Bitstream(ByteStreams.limit(input, StagePcmDecoder.MAX_SOURCE_BYTES + 1L));
             Decoder decoder = new Decoder();
             try {
                 Header header;
+                int budget = 0;
                 ByteBuffer frame = ByteBuffer.allocate(1152 * 2 * 4).order(ByteOrder.nativeOrder());
                 while ((header = stream.readFrame()) != null) {
                     checkCancelled();
                     SampleBuffer output = (SampleBuffer) decoder.decodeFrame(header, stream);
-                    if (rate == 0) { rate = output.getSampleFrequency(); channels = output.getChannelCount(); }
+                    if (rate == 0) {
+                        rate = output.getSampleFrequency();
+                        channels = output.getChannelCount();
+                        budget = StagePcmDecoder.pcmBudget(rate, channels);
+                    }
                     if (rate != output.getSampleFrequency() || channels != output.getChannelCount()) {
                         throw new IOException("MP3 format changes mid-stream");
                     }
                     frame.clear();
+                    if (output.getBufferLength() > (budget - pcm.size()) / Float.BYTES) {
+                        throw new IOException("Stage MP3 exceeds the decoded audio budget");
+                    }
                     for (int i = 0; i < output.getBufferLength(); i++) frame.putFloat(output.getBuffer()[i] / 32768.0f);
                     pcm.write(frame.array(), 0, frame.position());
                     stream.closeFrame();
                     progress.accept(Math.min(1, input.getChannel().position() / (double) Math.max(1, file.length())));
                 }
+                if (input.getChannel().position() > StagePcmDecoder.MAX_SOURCE_BYTES)
+                    throw new IOException("Stage MP3 exceeds the source budget");
             } finally { stream.close(); }
         }
         if (pcm.size() == 0 || rate <= 0 || (channels != 1 && channels != 2)) throw new IOException("Empty MP3");
@@ -105,7 +129,11 @@ public final class StageAudioLoadTask {
     }
 
     private static StagePcmDecoder.Pcm decodeOgg(File file, DoubleConsumer progress) throws Exception {
-        byte[] bytes = Files.readAllBytes(file.toPath());
+        byte[] bytes;
+        try (InputStream source = Files.newInputStream(file.toPath())) {
+            bytes = source.readNBytes(StagePcmDecoder.MAX_SOURCE_BYTES + 1);
+        }
+        if (bytes.length > StagePcmDecoder.MAX_SOURCE_BYTES) throw new IOException("Stage OGG exceeds the source budget");
         checkCancelled();
         progress.accept(.2);
         ByteBuffer encoded = MemoryUtil.memAlloc(bytes.length);
@@ -118,17 +146,22 @@ public final class StageAudioLoadTask {
             STBVorbisInfo info = STBVorbis.stb_vorbis_get_info(handle, STBVorbisInfo.malloc(stack));
             int channels = info.channels(), rate = info.sample_rate();
             int frames = STBVorbis.stb_vorbis_stream_length_in_samples(handle);
-            if ((channels != 1 && channels != 2) || rate <= 0 || frames <= 0) throw new IOException("Invalid OGG format");
-            ByteBuffer pcm = ByteBuffer.allocate(Math.multiplyExact(frames, channels * 4)).order(ByteOrder.nativeOrder());
+            int budget = StagePcmDecoder.pcmBudget(rate, channels);
+            if (frames <= 0 || frames > budget / (channels * Float.BYTES)) {
+                throw new IOException("Invalid OGG frame count or decoded audio budget exceeded");
+            }
+            ByteBuffer pcm = ByteBuffer.allocate(frames * channels * Float.BYTES).order(ByteOrder.nativeOrder());
             float[] chunk = new float[4096 * channels];
             int count;
             while ((count = STBVorbis.stb_vorbis_get_samples_float_interleaved(handle, channels, chunk)) > 0) {
                 checkCancelled();
+                if (count > pcm.remaining() / (channels * Float.BYTES)) throw new IOException("OGG exceeds its declared frame count");
                 for (int i = 0; i < count * channels; i++) pcm.putFloat(Float.isFinite(chunk[i]) ? chunk[i] : 0);
                 progress.accept(.2 + .8 * pcm.position() / pcm.capacity());
             }
             if (pcm.position() == 0) throw new IOException("Empty OGG");
-            return new StagePcmDecoder.Pcm(java.util.Arrays.copyOf(pcm.array(), pcm.position()), rate, channels);
+            byte[] samples = pcm.hasRemaining() ? java.util.Arrays.copyOf(pcm.array(), pcm.position()) : pcm.array();
+            return new StagePcmDecoder.Pcm(samples, rate, channels);
         } finally {
             if (handle != 0) STBVorbis.stb_vorbis_close(handle);
             MemoryUtil.memFree(encoded);

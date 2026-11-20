@@ -19,13 +19,20 @@ public final class FxPackLibrary {
     public record Failure(String file, String reason) { }
     public record Scan(List<FxEffect> effects, List<Failure> failures) { }
 
-    public static Scan scan(Path library) throws IOException {
+    public static synchronized Scan scan(Path library) throws IOException {
         library = library.toAbsolutePath().normalize();
+        return scan(library, library);
+    }
+
+    private static Scan scan(Path library, Path searchRoot) throws IOException {
         var effects = new ArrayList<FxEffect>();
         var failures = new ArrayList<Failure>();
         if (!Files.isDirectory(library)) return new Scan(List.of(), List.of());
-        try (var paths = Files.walk(library)) {
-            List<Path> files = paths.filter(p -> p.toString().toLowerCase(Locale.ROOT).endsWith(".fx")
+        var budget = new FxSource.Budget();
+        try (var paths = Files.walk(searchRoot, 32)) {
+            List<Path> entries = paths.limit(MAX_FILES * 4L + 1).toList();
+            if (entries.size() > MAX_FILES * 4) throw new IOException("效果库目录条目过多");
+            List<Path> files = entries.stream().filter(p -> p.toString().toLowerCase(Locale.ROOT).endsWith(".fx")
                             || p.toString().toLowerCase(Locale.ROOT).endsWith(".fxgraph.json"))
                     .sorted().limit(MAX_FILES + 1).toList();
             if (files.size() > MAX_FILES) throw new IOException("FX 文件数量超限");
@@ -33,15 +40,14 @@ public final class FxPackLibrary {
                 String id = library.relativize(file).toString().replace('\\', '/');
                 try {
                     FxPaths.resolve(library, file.getParent(), file.getFileName().toString());
-                    if (Files.size(file) > 1024 * 1024) throw new IOException("FX 源码超过 1 MiB");
                     Path packRoot = library.resolve(library.relativize(file).getName(0));
                     // 库中的每个顶层目录为独立包，不允许跨包 include/贴图。
                     if (!Files.isDirectory(packRoot)) throw new IOException("FX 必须放在效果包子目录内");
-                    String source = Files.readString(file, StandardCharsets.UTF_8);
+                    String source = budget.read(file);
                     FxEffect effect = file.toString().toLowerCase(Locale.ROOT).endsWith(".fxgraph.json")
-                            ? FxWorldGraph.parse(packRoot, file, source, id)
+                            ? FxWorldGraph.parse(packRoot, file, source, id, budget)
                             : source.contains("material_common_2.0.fxsub")
-                            ? RayMaterialImporter.parse(packRoot, file, source, id)
+                            ? RayMaterialImporter.parse(packRoot, file, source, id, budget)
                             : MmeColorImporter.parse(packRoot, file, source, id);
                     effects.add(effect);
                 } catch (IOException | IllegalArgumentException e) { failures.add(new Failure(id, e.getMessage())); }
@@ -50,7 +56,7 @@ public final class FxPackLibrary {
         return new Scan(List.copyOf(effects), List.copyOf(failures));
     }
 
-    public static Path importPack(Path source, Path library) throws IOException {
+    public static synchronized Path importPack(Path source, Path library) throws IOException {
         source = source.toAbsolutePath().normalize();
         library = library.toAbsolutePath().normalize();
         if (!Files.exists(source) || source.startsWith(library) || library.startsWith(source))
@@ -78,13 +84,19 @@ public final class FxPackLibrary {
                     java.util.zip.ZipEntry entry;
                     while ((entry = zip.getNextEntry()) != null) {
                         Path target = FxPaths.resolve(destination, destination, entry.getName());
-                        if (!entry.isDirectory()) copy(zip, target, size, count);
+                        if (entry.isDirectory()) {
+                            countEntry(count);
+                            if (zip.read() != -1) throw new IOException("ZIP 目录条目必须为空");
+                        } else {
+                            copy(zip, target, size, count);
+                        }
                     }
                 }
             } else if (source.toString().toLowerCase(Locale.ROOT).endsWith(".fx")) {
                 // 单文件导入只复制该 FX 的显式相邻依赖，不能把整个 Downloads 目录复制进游戏。
                 var queue = new ArrayList<Path>();
                 var seen = new java.util.HashSet<Path>();
+                var budget = new FxSource.Budget();
                 queue.add(source);
                 for (int i = 0; i < queue.size(); i++) {
                     Path path = queue.get(i);
@@ -92,8 +104,7 @@ public final class FxPackLibrary {
                     Path target = FxPaths.resolve(destination, destination, source.getParent().relativize(path).toString());
                     try (InputStream in = Files.newInputStream(path)) { copy(in, target, size, count); }
                     if (!path.toString().matches("(?i).*\\.(fx|fxsub)$")) continue;
-                    if (Files.size(path) > 1024 * 1024) throw new IOException("FX 源码超过 1 MiB");
-                    String code = FxSource.withoutComments(Files.readString(path));
+                    String code = FxSource.withoutComments(budget.read(path));
                     var refs = java.util.regex.Pattern.compile("#include\\s+\"([^\"]+)\"|#define\\s+\\w+_FILE\\s+\"([^\"]+)\"").matcher(code);
                     while (refs.find()) {
                         String name = refs.group(1) != null ? refs.group(1) : refs.group(2);
@@ -103,7 +114,7 @@ public final class FxPackLibrary {
                     }
                 }
             } else throw new IOException("请选择 ZIP、FX 或资源目录");
-            Scan result = scan(library);
+            Scan result = scan(library, destination);
             String prefix = destination.getFileName() + "/";
             var report = new java.util.LinkedHashMap<String, Object>();
             report.put("format", 1);
@@ -134,8 +145,12 @@ public final class FxPackLibrary {
     }
     private record MapEntry(String source, String kind, String converted) { }
 
+    private static void countEntry(int[] count) throws IOException {
+        if (++count[0] > MAX_FILES) throw new IOException("效果包条目数量超过 " + MAX_FILES);
+    }
+
     private static void copy(InputStream in, Path destination, long[] size, int[] count) throws IOException {
-        if (++count[0] > MAX_FILES) throw new IOException("效果包文件数量超过 " + MAX_FILES);
+        countEntry(count);
         if (Files.exists(destination)) throw new IOException("重复资源路径: " + destination.getFileName());
         Files.createDirectories(destination.getParent());
         byte[] buffer = new byte[16384];

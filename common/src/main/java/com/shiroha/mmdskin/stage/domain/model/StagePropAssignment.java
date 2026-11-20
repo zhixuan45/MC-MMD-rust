@@ -5,12 +5,7 @@ public record StagePropAssignment(String pmxFile, String motionFile) {
     public boolean isValid() {
         return pmxFile != null && !pmxFile.isEmpty()
                 && pmxFile.equals(com.shiroha.mmdskin.config.ModelConfigData.normalizeHeldPmxReference(pmxFile))
-                && safe(motionFile,".vmd");
-    }
-    private static boolean safe(String name,String extension) {
-        return name != null && !name.isBlank() && name.equals(name.trim()) && name.length()<=255
-                && !name.contains("/") && !name.contains("\\") && !name.contains(":")
-                && name.chars().noneMatch(Character::isISOControl)
-                && name.toLowerCase(java.util.Locale.ROOT).endsWith(extension);
+                && motionFile != null && motionFile.length() <= 255
+                && !com.shiroha.mmdskin.config.ModelConfigData.normalizeVmdFileName(motionFile).isEmpty();
     }
 }

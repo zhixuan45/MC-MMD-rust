@@ -45,7 +45,18 @@ public class AnimationInfo extends AbstractAssetInfo<AnimationInfo.AnimSource> {
     public String getActionId() { return isPose() ? VPD_ACTION_PREFIX + getCatalogKey() : getAnimName(); }
 
     public static AnimationInfo findPoseAction(String actionId, String modelName) {
-        return resolvePoseAction(actionId, scanAnimationsForModel(modelName));
+        return resolvePoseAction(actionId, scanPoseActions(modelName));
+    }
+
+    public static List<AnimationInfo> scanPoseActions(String modelName) {
+        List<AnimationInfo> poses = new ArrayList<>();
+        if (modelName != null && !modelName.isEmpty()) {
+            poses.addAll(scanDirectory(PathConstants.getModelAnimsDir(modelName), ".vpd", AnimSource.MODEL, modelName, FACTORY));
+            poses.addAll(scanDirectory(PathConstants.getModelDir(modelName), ".vpd", AnimSource.MODEL, modelName, FACTORY));
+        }
+        poses.addAll(scanDirectory(PathConstants.getCustomAnimDir(), ".vpd", AnimSource.CUSTOM, null, FACTORY));
+        poses.addAll(scanDirectory(PathConstants.getDefaultAnimDir(), ".vpd", AnimSource.DEFAULT, null, FACTORY));
+        return poses;
     }
 
     static AnimationInfo resolvePoseAction(String actionId, List<AnimationInfo> files) {

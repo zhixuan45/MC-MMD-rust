@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$FxZip,
-    [string]$Jdk = 'C:\Program Files\Zulu\zulu-21'
+    [string]$Jdk = 'C:\Program Files\Zulu\zulu-17'
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -10,7 +10,7 @@ if (!(Test-Path -LiteralPath $taskCpFile)) { throw '先运行 gradlew :common:wr
 $taskCp = (Get-Content -LiteralPath $taskCpFile -Raw).Trim()
 $taskCache = Join-Path $env:USERPROFILE '.gradle/caches/modules-2/files-2.1'
 foreach ($taskModule in @('lwjgl', 'lwjgl-glfw', 'lwjgl-opengl')) {
-    $taskNative = Get-ChildItem -LiteralPath (Join-Path $taskCache "org.lwjgl/$taskModule/3.3.3") -Recurse -Filter '*-natives-windows.jar' | Select-Object -First 1
+    $taskNative = Get-ChildItem -LiteralPath (Join-Path $taskCache "org.lwjgl/$taskModule/3.3.1") -Recurse -Filter '*-natives-windows.jar' | Select-Object -First 1
     if (!$taskNative) { throw "Missing Windows native: $taskModule" }
     $taskCp += ';' + $taskNative.FullName
 }

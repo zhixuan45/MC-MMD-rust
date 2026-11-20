@@ -97,6 +97,14 @@ public class TextureRepository {
     }
 
     public static Texture GetTexture(String filename, String kind, String context) {
+        return getTexture(filename, kind, context, 0);
+    }
+
+    public static Texture getEffectTexture(String filename, String context, int pixelLimit) {
+        return pixelLimit > 0 ? getTexture(filename, "fx-material", context, pixelLimit) : null;
+    }
+
+    private static Texture getTexture(String filename, String kind, String context, int pixelLimit) {
         Map<String, TextureSlot> localSlots = textureSlots;
         if (localSlots == null) return null;
 
@@ -109,6 +117,7 @@ public class TextureRepository {
                     removeRetired = true;
                     retry = true;
                 } else if (slot.texture != null) {
+                    if (pixelLimit != 0 && !TextureGpuLoader.fitsEffectBudget(slot.texture.width, slot.texture.height, pixelLimit)) return null;
                     if (slot.pending) {
                         budgetManager.activatePendingTexture(slot, slot.texture, activeTextureCount);
                     }
@@ -117,6 +126,7 @@ public class TextureRepository {
 
                 PredecodedTexture predecoded = slot.predecoded;
                 if (predecoded != null) {
+                    if (pixelLimit != 0 && !TextureGpuLoader.fitsEffectBudget(predecoded.width, predecoded.height, pixelLimit)) return null;
                     slot.predecoded = null;
                     Texture uploaded = TextureGpuLoader.uploadPredecoded(predecoded);
                     slot.texture = uploaded;
@@ -125,7 +135,7 @@ public class TextureRepository {
                     return uploaded;
                 }
 
-                Texture loaded = TextureGpuLoader.loadToGpu(filename, texturePort, kind, context);
+                Texture loaded = TextureGpuLoader.loadToGpu(filename, texturePort, kind, context, pixelLimit);
                 if (loaded != null) {
                     slot.texture = loaded;
                     slot.retired = false;
@@ -267,6 +277,7 @@ public class TextureRepository {
 
     public static class Texture {
         public int tex;
+        public int width, height;
         public boolean hasAlpha;
         public boolean hasTranslucentPixels;
         public TextureAlphaCoverage alphaCoverage;
