@@ -450,6 +450,7 @@
   "gui.mmdskin.model_anim.slot.idle": "待机",
   "gui.mmdskin.model_anim.slot.walk": "行走",
   "gui.mmdskin.model_anim.slot.sprint": "疾跑",
+  "gui.mmdskin.model_anim.slot.sprintStop": "疾跑急停",
   "gui.mmdskin.model_anim.slot.air": "空中",
   "gui.mmdskin.model_anim.slot.onClimbable": "攀爬",
   "gui.mmdskin.model_anim.slot.onClimbableUp": "向上攀爬",

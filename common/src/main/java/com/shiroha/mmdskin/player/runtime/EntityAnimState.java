@@ -27,7 +27,7 @@ public class EntityAnimState {
     };
 
     public enum State {
-        Idle("idle"), Walk("walk"), Sprint("sprint"), Air("air"),
+        Idle("idle"), Walk("walk"), Sprint("sprint"), SprintStop("sprintStop"), Air("air"),
         OnClimbable("onClimbable"), OnClimbableUp("onClimbableUp"), OnClimbableDown("onClimbableDown"),
         Swim("swim"), Ride("ride"), Ridden("ridden"), Driven("driven"),
         Sleep("sleep"), ElytraFly("elytraFly"), Die("die"),
@@ -58,6 +58,9 @@ public class EntityAnimState {
     public String[] layerExitStacks;
     public String[] layerLoopStacks;
     public boolean layer1BoneMaskSet;
+    public long sprintStartTimeMs;
+    public long lastSprintActiveMs;
+    public long sprintStopStartTimeMs;
     private final NativeMatrixPort matrixPort;
 
     public EntityAnimState(int layerCount, NativeMatrixPort matrixPort) {
@@ -86,6 +89,9 @@ public class EntityAnimState {
             layerExitStacks[i] = null;
             layerLoopStacks[i] = null;
         }
+        sprintStartTimeMs = 0L;
+        lastSprintActiveMs = 0L;
+        sprintStopStartTimeMs = 0L;
     }
 
     public void dispose() {

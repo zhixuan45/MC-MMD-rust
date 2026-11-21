@@ -403,6 +403,7 @@
   "gui.mmdskin.model_anim.slot.idle": "待機",
   "gui.mmdskin.model_anim.slot.walk": "歩行",
   "gui.mmdskin.model_anim.slot.sprint": "ダッシュ",
+  "gui.mmdskin.model_anim.slot.sprintStop": "ダッシュ急停止",
   "gui.mmdskin.model_anim.slot.air": "空中",
   "gui.mmdskin.model_anim.slot.onClimbable": "登り",
   "gui.mmdskin.model_anim.slot.onClimbableUp": "上昇中",

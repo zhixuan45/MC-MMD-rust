@@ -125,7 +125,8 @@ public final class LivingEntityModelStateHelper {
             if (entity instanceof Player) {
                 if (playerMotion == EntityAnimState.State.Walk) mode = EntityLocomotionInput.WALK;
                 else if (playerMotion == EntityAnimState.State.Sprint) mode = EntityLocomotionInput.SPRINT;
-                else if (playerMotion == EntityAnimState.State.Idle) mode = EntityLocomotionInput.IDLE;
+                else if (playerMotion == EntityAnimState.State.Idle
+                        || playerMotion == EntityAnimState.State.SprintStop) mode = EntityLocomotionInput.IDLE;
             } else {
                 mode = EntityLocomotionInput.IDLE;
             }

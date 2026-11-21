@@ -39,14 +39,21 @@ final class MmdClientResourceBootstrap {
             "sprint.vmd", Set.of(
                     "626f33919cba977069d8e9454e1d0649cd3e1a01c0b100690a28321098a1bf76",
                     "24c5f4bcbfe129f8268b3f4b3580cafcb6ad5ac3a4c63d9c7f7aa9edc7f82a2b",
-                    "2d1aa8ae25441a66270f3b59810b7e2dfe82ef4342faaac237a2cfc1118611ca"));
+                    "2d1aa8ae25441a66270f3b59810b7e2dfe82ef4342faaac237a2cfc1118611ca",
+                    "78edcb6e6c083103b1676458beb20f5fe92d1a4cd35b865417a55684c7bf8076",
+                    "f04a45f86f6e9e413da378827a25eaf6493fd7ce5cd7d4173b23bcc9f36d9e5a",
+                    "25b9bb99f7f8ae7b35b398bd7e6d8889121a2bbe6048255de1dc0f466f197386",
+                    "c119737ca21f32e483e19dedbaeece9a9e06a7f369f7b92cf2b8ea7c3610a265"),
+            "sprintStop.vmd", Set.of(
+                    "c93a22e1709f7fbffb84d0a97ae3ec004ed7482e951cf73ca0f0dfe2e2d07fea",
+                    "27a59410037078a0429d098a119f12f2a8a7589640a3ee5282da91788e28a629"));
     private static final String[] DEFAULT_ANIM_FILES = {
             "Drink.vmd", "crawl.vmd", "die.vmd", "elytraFly.vmd", "idle.vmd",
             "itemActive_minecraft.bow_Left_using.vmd", "itemActive_minecraft.iron_sword_Right_swinging.vmd",
             "itemActive_minecraft.shield_Left_using.vmd", "itemActive_minecraft.shield_Right_using.vmd",
             "lieDown.vmd", "onClimbable.vmd", "onClimbableDown.vmd", "onClimbableUp.vmd",
             "onHorse.vmd", "ride.vmd", "sleep.vmd", "sneak.vmd",
-            "sprint.vmd", "swim.vmd", "swingLeft.vmd", "swingRight.vmd", "walk.vmd",
+            "sprint.vmd", "sprintStop.vmd", "swim.vmd", "swingLeft.vmd", "swingRight.vmd", "walk.vmd",
             // v5 使用重新录制的挂点动作，并由运行时兼容不同模型的 Dummy 名称。
             "tacz_hold_rifle_ads_v5.vmd"
     };

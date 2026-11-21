@@ -21,6 +21,12 @@ import java.util.Objects;
 public class AnimationStateManager {
 
     private static final float TRANSITION_TIME = 0.25f;
+    private static final float SPRINT_STOP_ENTER_TRANSITION_TIME = 0.10f;
+    private static final float SPRINT_STOP_EXIT_TRANSITION_TIME = 0.16f;
+    private static final long SPRINT_STOP_DURATION_MS = 733L;
+    private static final long SPRINT_MIN_HOLD_MS = 180L;
+    private static final long SPRINT_DECEL_GRACE_MS = 450L;
+    private static final double SPRINT_STOP_MAX_SPEED_SQ = 0.16 * 0.16;
     static final String DRINK_ANIMATION = "Drink";
     // 使用版本化名称，确保已提取 v4 的游戏目录仍会获得重新录制的动作。
     static final String TACZ_RIFLE_ADS_ANIMATION = "tacz_hold_rifle_ads_v5";
@@ -49,8 +55,66 @@ public class AnimationStateManager {
     }
 
     private static void updateLayer0Animation(AbstractClientPlayer player, ManagedModel model) {
-        EntityAnimState.State target = resolveLayer0State(player);
-        changeAnimationOnce(model, target, 0);
+        EntityAnimState.State resolved = resolveLayer0State(player);
+        EntityAnimState.State target = resolveWithSprintStop(player, model, resolved, System.currentTimeMillis());
+        EntityAnimState.State previous = model.entityState().stateLayers[0];
+        if (target == EntityAnimState.State.SprintStop) {
+            changeLayer0Animation(model, target, false, SPRINT_STOP_ENTER_TRANSITION_TIME);
+        } else {
+            float transition = previous == EntityAnimState.State.SprintStop
+                    ? SPRINT_STOP_EXIT_TRANSITION_TIME : TRANSITION_TIME;
+            changeLayer0Animation(model, target, true, transition);
+        }
+    }
+
+    static EntityAnimState.State resolveWithSprintStop(AbstractClientPlayer player,
+                                                       ManagedModel model,
+                                                       EntityAnimState.State resolved,
+                                                       long nowMs) {
+        EntityAnimState state = model.entityState();
+        if (resolved == EntityAnimState.State.Sprint) {
+            if (state.sprintStartTimeMs == 0L) {
+                state.sprintStartTimeMs = nowMs;
+            }
+            state.lastSprintActiveMs = nowMs;
+            state.sprintStopStartTimeMs = 0L;
+            return resolved;
+        }
+
+        double dx = player.getX() - player.xo;
+        double dz = player.getZ() - player.zo;
+        double speedSq = dx * dx + dz * dz;
+        boolean canBrake = player.onGround() && !player.isShiftKeyDown();
+        boolean deceleratingOrStopped = resolved == EntityAnimState.State.Idle
+                || (resolved == EntityAnimState.State.Walk && speedSq < SPRINT_STOP_MAX_SPEED_SQ);
+
+        if (state.sprintStopStartTimeMs > 0L) {
+            if (canBrake && deceleratingOrStopped
+                    && nowMs - state.sprintStopStartTimeMs < SPRINT_STOP_DURATION_MS) {
+                return EntityAnimState.State.SprintStop;
+            }
+            state.sprintStopStartTimeMs = 0L;
+            return resolved;
+        }
+
+        if (canBrake && deceleratingOrStopped
+                && state.lastSprintActiveMs > 0L
+                && nowMs - state.lastSprintActiveMs <= SPRINT_DECEL_GRACE_MS
+                && state.lastSprintActiveMs - state.sprintStartTimeMs >= SPRINT_MIN_HOLD_MS
+                && model.animationLibrary().animation(EntityAnimState.State.SprintStop.propertyName) != 0L) {
+            state.sprintStopStartTimeMs = nowMs;
+            state.sprintStartTimeMs = 0L;
+            state.lastSprintActiveMs = 0L;
+            return EntityAnimState.State.SprintStop;
+        }
+
+        // 冲刺松键后惯性减速的最初 1~2 tick 仍略高于刹车阈值，保留短窗口等待进入急停。
+        if (resolved != EntityAnimState.State.Walk
+                || (state.lastSprintActiveMs > 0L && nowMs - state.lastSprintActiveMs > SPRINT_DECEL_GRACE_MS)) {
+            state.sprintStartTimeMs = 0L;
+            state.lastSprintActiveMs = 0L;
+        }
+        return resolved;
     }
 
     private static EntityAnimState.State resolveLayer0State(AbstractClientPlayer player) {
@@ -229,6 +293,7 @@ public class AnimationStateManager {
         com.shiroha.mmdskin.player.runtime.VpdPosePlayback.leave(model);
         model.entityState().playCustomAnim = false;
         com.shiroha.mmdskin.player.runtime.PlayerMotionHandoff.leaveStage(model.modelInstance(),model.entityState());
+        model.modelInstance().setLayerLoop(0, true);
         model.modelInstance().changeAnim(model.animationLibrary().animation("idle"), 0);
         model.modelInstance().setLayerLoop(1, true);
         model.modelInstance().changeAnim(0, 1);
@@ -258,6 +323,20 @@ public class AnimationStateManager {
         return type == EntityType.HORSE || type == EntityType.DONKEY
                 || type == EntityType.MULE || type == EntityType.SKELETON_HORSE
                 || type == EntityType.ZOMBIE_HORSE;
+    }
+
+    private static void changeLayer0Animation(ManagedModel model,
+                                              EntityAnimState.State targetState,
+                                              boolean shouldLoop,
+                                              float transitionTime) {
+        String animationKey = targetState.propertyName;
+        if (model.entityState().stateLayers[0] != targetState
+                || !Objects.equals(model.entityState().layerAnimationKeys[0], animationKey)) {
+            model.entityState().stateLayers[0] = targetState;
+            model.entityState().layerAnimationKeys[0] = animationKey;
+            model.modelInstance().setLayerLoop(0, shouldLoop);
+            model.modelInstance().transitionAnim(model.animationLibrary().animation(animationKey), 0, transitionTime);
+        }
     }
 
     private static void changeAnimationOnce(ManagedModel model, EntityAnimState.State targetState, int layer) {

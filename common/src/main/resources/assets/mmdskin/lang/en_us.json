@@ -450,6 +450,7 @@
   "gui.mmdskin.model_anim.slot.idle": "Idle",
   "gui.mmdskin.model_anim.slot.walk": "Walk",
   "gui.mmdskin.model_anim.slot.sprint": "Sprint",
+  "gui.mmdskin.model_anim.slot.sprintStop": "Sprint Stop",
   "gui.mmdskin.model_anim.slot.air": "Air",
   "gui.mmdskin.model_anim.slot.onClimbable": "Climbing",
   "gui.mmdskin.model_anim.slot.onClimbableUp": "Climbing Up",

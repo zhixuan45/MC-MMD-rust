@@ -223,6 +223,19 @@ fn walk_adapts_within_natural_band_and_sprint_adjusts_only_the_base_layer() {
         )))
         .unwrap(),
     );
+    let sprint_stop = VmdAnimation::load_from_bytes(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../common/src/main/resources/assets/mmdskin/default_anim/sprintStop.vmd"
+    )))
+    .unwrap();
+    assert_eq!(sprint_stop.max_frame(), 22);
+    for name in ["センター", "左足ＩＫ", "右足ＩＫ"] {
+        let end = sprint_stop.get_bone_transform(name, sprint_stop.max_frame(), 0.0);
+        assert!(
+            end.translation.length() < 1e-4,
+            "sprintStop should settle to neutral translation on {name}"
+        );
+    }
     let walk_speed = Gait::analyze(&walk).speed.unwrap();
     let sprint_speed = Gait::analyze(&sprint).speed.unwrap();
     assert!(
@@ -232,11 +245,11 @@ fn walk_adapts_within_natural_band_and_sprint_adjusts_only_the_base_layer() {
     );
     assert_eq!(walk.max_frame(), 20);
     assert!(
-        (sprint_speed * 0.09 - 5.54).abs() < 0.25,
+        (sprint_speed * 0.09 - 5.59).abs() < 0.25,
         "unexpected authored sprint speed: {}",
         sprint_speed * 0.09
     );
-    assert_eq!(sprint.max_frame(), 18);
+    assert_eq!(sprint.max_frame(), 16);
     for (clip_name, clip) in [("walk", &walk), ("sprint", &sprint)] {
         for name in [
             "左足ＩＫ",
@@ -368,6 +381,8 @@ fn flat_ground_walk_and_sprint_track_ground_without_early_release_or_crouch() {
             let mut max_pelvis_dip = 0.0_f32;
             let mut max_planted_slip = 0.0_f64;
             let mut prev_planted = [None::<DVec3>; 2];
+            let mut sprint_lean_sum = 0.0_f32;
+            let mut sprint_lean_count = 0usize;
 
             for step in 0..120 {
                 world_z += f64::from(speed_mps * dt);
@@ -416,7 +431,23 @@ fn flat_ground_walk_and_sprint_track_ground_without_early_release_or_crouch() {
                         }
                     }
                     max_pelvis_dip = max_pelvis_dip.max(model.locomotion.pelvis.abs());
+                    if label == "sprint" {
+                        let waist_idx = model.bone_manager.find_bone_by_name("グルーブ").unwrap();
+                        let neck_idx = model.bone_manager.find_bone_by_name("首").unwrap();
+                        let waist = model.bone_manager.get_global_transform(waist_idx).w_axis.truncate();
+                        let neck = model.bone_manager.get_global_transform(neck_idx).w_axis.truncate();
+                        let lean_deg = (neck.z - waist.z).atan2(neck.y - waist.y).to_degrees();
+                        sprint_lean_sum += lean_deg;
+                        sprint_lean_count += 1;
+                    }
                 }
+            }
+            if label == "sprint" {
+                let avg_lean = sprint_lean_sum / sprint_lean_count as f32;
+                assert!(
+                    (41.0..=48.0).contains(&avg_lean),
+                    "{label} on {rel_path}: expected 41..48 deg actual 3D torso lean, got {avg_lean:.1} deg"
+                );
             }
 
             assert_eq!(
