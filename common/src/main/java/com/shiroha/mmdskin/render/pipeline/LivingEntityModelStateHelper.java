@@ -3,6 +3,7 @@ package com.shiroha.mmdskin.render.pipeline;
 import com.shiroha.mmdskin.bridge.runtime.NativeScenePort;
 import com.shiroha.mmdskin.config.ModelConfigManager;
 import com.shiroha.mmdskin.player.runtime.FirstPersonManager;
+import com.shiroha.mmdskin.player.runtime.EntityAnimState;
 import com.shiroha.mmdskin.player.render.InventoryRenderScope;
 import com.shiroha.mmdskin.player.render.PaperDollRenderScope;
 import com.shiroha.mmdskin.render.scene.RenderScene;
@@ -60,13 +61,22 @@ public final class LivingEntityModelStateHelper {
                                       RenderScene context,
                                       String modelName,
                                       boolean stagePlaying,
-        boolean vrActive) {
-        syncModelState(scenePort, modelHandle, entity, entityYaw, tickDelta, context, modelName, stagePlaying, vrActive);
+                                      boolean vrActive,
+                                      EntityAnimState.State playerMotion) {
+        syncModelState(scenePort, modelHandle, entity, entityYaw, tickDelta, context, modelName,
+                stagePlaying, vrActive, playerMotion);
     }
 
     public static void syncModelState(NativeScenePort scenePort, long modelHandle, LivingEntity entity,
                                       float entityYaw, float tickDelta, RenderScene context,
                                       String modelName, boolean stagePlaying, boolean vrActive) {
+        syncModelState(scenePort, modelHandle, entity, entityYaw, tickDelta, context, modelName,
+                stagePlaying, vrActive, null);
+    }
+
+    private static void syncModelState(NativeScenePort scenePort, long modelHandle, LivingEntity entity,
+                                        float entityYaw, float tickDelta, RenderScene context, String modelName,
+                                        boolean stagePlaying, boolean vrActive, EntityAnimState.State playerMotion) {
         // The player only supplies the scene's render context; its physics root stays at placement.
         if (context != null && context.isPlacedScene()) {
             return;
@@ -102,13 +112,25 @@ public final class LivingEntityModelStateHelper {
         scenePort.setTailPhysicsScale(modelHandle, totalScale);
         scenePort.setModelPositionAndYaw(modelHandle, posX, posY, posZ, bodyYaw);
 
-        if (!InventoryRenderScope.isActive() && !PaperDollRenderScope.isActive()) {
-            boolean allowFootIk = !stagePlaying && !vrActive
-                    && !entity.isPassenger() && !entity.isSwimming() && !entity.isFallFlying();
+        boolean gui = InventoryRenderScope.isActive() || PaperDollRenderScope.isActive();
+        if (!gui) {
             EntityEnvironmentCollisionHelper.syncEnvironmentColliders(
-                    scenePort, modelHandle, entity, posX, posY, posZ, bodyYaw,
-                    entityScale, totalScale, allowFootIk);
+                    scenePort, modelHandle, entity, posX, posY, posZ, bodyYaw, entityScale, totalScale);
         }
+        int mode = EntityLocomotionInput.DISABLED;
+        if (!gui && context != null && context.isWorldScene() && !stagePlaying && !vrActive
+                && entity.isAlive() && !entity.isSleeping() && !entity.isPassenger()
+                && !entity.isSwimming() && !entity.isVisuallySwimming() && !entity.isFallFlying()
+                && !entity.onClimbable() && !entity.isInWater()) {
+            if (entity instanceof Player) {
+                if (playerMotion == EntityAnimState.State.Walk) mode = EntityLocomotionInput.WALK;
+                else if (playerMotion == EntityAnimState.State.Sprint) mode = EntityLocomotionInput.SPRINT;
+                else if (playerMotion == EntityAnimState.State.Idle) mode = EntityLocomotionInput.IDLE;
+            } else {
+                mode = EntityLocomotionInput.IDLE;
+            }
+        }
+        EntityLocomotionInput.sync(scenePort, modelHandle, entity, renderOrigin, entityYaw, totalScale, mode);
     }
 
     private static Vec3 resolveRenderOrigin(Player player, float tickDelta) {

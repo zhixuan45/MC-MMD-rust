@@ -23,10 +23,14 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_GetIssueDebugDiagnost
                 .get(&handle)
                 .cloned();
             match model {
-                Some(model) => model
-                    .lock()
-                    .unwrap_or_else(super::boundary::reject_poison)
-                    .issue_debug_diagnostic(flags.max(0) as u32),
+                Some(model) => {
+                    let mut model = model.lock().unwrap_or_else(super::boundary::reject_poison);
+                    if flags == 0x10 {
+                        model.locomotion_diagnostic()
+                    } else {
+                        model.issue_debug_diagnostic(flags.max(0) as u32)
+                    }
+                }
                 None => "[MMD诊断] invalid handle or model registry unavailable".to_owned(),
             }
         };

@@ -11,8 +11,16 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -20,6 +28,18 @@ final class MmdClientResourceBootstrap {
     private static final int BUFFER = 512;
     private static final long TOO_BIG = 0x6400000;
     private static final int TOO_MANY = 1024;
+    private static final long MAX_STOCK_ANIM_BYTES = 256 * 1024;
+    private static final Map<String, Set<String>> PREVIOUS_STOCK_ANIMS = Map.of(
+            "walk.vmd", Set.of(
+                    "85c2f2dda216609291772b06c2c2949b27306ecc8169dc46e70176c2586e51d1",
+                    "36d4ca6307610e9edfff6e49433bced443effad0003bdb7913b8de4e16a9a648",
+                    "c27c4f581a873f64171052d2526402585ef313ba272bc4d3745d898f3bcdb2e3",
+                    "8a460f0264ca4f933907289f82ea82db99fbe2d8923468a32c314775701501f5",
+                    "e3556d6c9d38a553f7b4fb237ff6c431096eca2a854c7fe163d1312e33d91bc3"),
+            "sprint.vmd", Set.of(
+                    "626f33919cba977069d8e9454e1d0649cd3e1a01c0b100690a28321098a1bf76",
+                    "24c5f4bcbfe129f8268b3f4b3580cafcb6ad5ac3a4c63d9c7f7aa9edc7f82a2b",
+                    "2d1aa8ae25441a66270f3b59810b7e2dfe82ef4342faaac237a2cfc1118611ca"));
     private static final String[] DEFAULT_ANIM_FILES = {
             "Drink.vmd", "crawl.vmd", "die.vmd", "elytraFly.vmd", "idle.vmd",
             "itemActive_minecraft.bow_Left_using.vmd", "itemActive_minecraft.iron_sword_Right_swinging.vmd",
@@ -54,18 +74,60 @@ final class MmdClientResourceBootstrap {
 
         for (String fileName : DEFAULT_ANIM_FILES) {
             File targetFile = new File(defaultAnimDir, fileName);
-            if (targetFile.exists()) {
-                continue;
-            }
-
-            try (InputStream is = MmdSkinClient.class.getResourceAsStream("/assets/mmdskin/default_anim/" + fileName)) {
-                if (is != null) {
-                    Files.copy(is, targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    MmdSkinClient.logger.info("提取默认动画: {}", fileName);
+            Path target = targetFile.toPath();
+            try {
+                boolean exists = targetFile.exists();
+                if (exists && !isPreviousStockAnim(fileName, target)) {
+                    continue;
+                }
+                try (InputStream is = MmdSkinClient.class.getResourceAsStream("/assets/mmdskin/default_anim/" + fileName)) {
+                    if (is == null) {
+                        continue;
+                    }
+                    if (exists) {
+                        if (replaceStockAnim(fileName, is, target)) {
+                            MmdSkinClient.logger.info("更新内置默认动画: {}", fileName);
+                        }
+                    } else {
+                        Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
+                        MmdSkinClient.logger.info("提取默认动画: {}", fileName);
+                    }
                 }
             } catch (IOException e) {
                 MmdSkinClient.logger.warn("提取动画文件失败: " + fileName, e);
             }
+        }
+    }
+
+    private static boolean isPreviousStockAnim(String fileName, Path target) throws IOException {
+        Set<String> hashes = PREVIOUS_STOCK_ANIMS.get(fileName);
+        if (hashes == null || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
+                || Files.size(target) > MAX_STOCK_ANIM_BYTES) {
+            return false;
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(target));
+            return hashes.contains(HexFormat.of().formatHex(digest));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
+    }
+
+    private static boolean replaceStockAnim(String fileName, InputStream source, Path target) throws IOException {
+        Path staged = Files.createTempFile(target.getParent(), "anim-", ".tmp");
+        try {
+            Files.copy(source, staged, StandardCopyOption.REPLACE_EXISTING);
+            if (!isPreviousStockAnim(fileName, target)) {
+                return false;
+            }
+            try {
+                Files.move(staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return true;
+        } finally {
+            Files.deleteIfExists(staged);
         }
     }
 

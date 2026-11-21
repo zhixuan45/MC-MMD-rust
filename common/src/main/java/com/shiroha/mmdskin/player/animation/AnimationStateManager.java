@@ -6,6 +6,7 @@ import com.shiroha.mmdskin.config.ModelConfigManager;
 import com.shiroha.mmdskin.player.runtime.EntityAnimState;
 import com.shiroha.mmdskin.model.runtime.ManagedModel;
 import com.shiroha.mmdskin.player.sync.PlayerActionSyncService;
+import com.shiroha.mmdskin.render.backend.BaseModelInstance;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.world.InteractionHand;
@@ -40,6 +41,11 @@ public class AnimationStateManager {
             updateLayer1Animation(player, model);
             updateLayer2Animation(player, model);
         }
+        if (model.modelInstance() instanceof BaseModelInstance instance) {
+            EntityAnimState state = model.entityState();
+            instance.setLocomotionMotion(state.playCustomAnim || state.playVpdPose || state.playStageAnim
+                    ? null : state.stateLayers[0]);
+        }
     }
 
     private static void updateLayer0Animation(AbstractClientPlayer player, ManagedModel model) {
@@ -54,9 +60,11 @@ public class AnimationStateManager {
         if (player.isPassenger()) return resolveRidingState(player);
         if (player.isSwimming()) return EntityAnimState.State.Swim;
         if (player.onClimbable()) return resolveClimbingState(player);
-        if (player.isSprinting() && !player.isShiftKeyDown()) return EntityAnimState.State.Sprint;
         if (player.isVisuallyCrawling()) return resolveCrawlState(player);
-        if (hasMovement(player)) return EntityAnimState.State.Walk;
+        if (hasMovement(player)) {
+            return player.isSprinting() && !player.isShiftKeyDown()
+                    ? EntityAnimState.State.Sprint : EntityAnimState.State.Walk;
+        }
         return EntityAnimState.State.Idle;
     }
 

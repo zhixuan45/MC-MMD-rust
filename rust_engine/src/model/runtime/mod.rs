@@ -27,10 +27,11 @@ use crate::model::first_person_mesh::{
 };
 use crate::model::VrmExtensions;
 use crate::model::{MmdMaterial, RuntimeVertex, SubMesh, VertexWeight};
-use foot_ik::FootTerrainIkState;
+pub(crate) use locomotion::{LocomotionInput, MAX_SURFACES as MAX_LOCOMOTION_SURFACES};
+use locomotion::LocomotionState;
 
 mod animation;
-mod foot_ik;
+mod locomotion;
 mod head_eye;
 mod issue_diagnostics;
 mod material_visibility;
@@ -155,10 +156,8 @@ pub struct MmdModel {
     env_ground_y: Option<f32>,
     env_model_scale: f32,
     env_block_aabbs: Vec<[f32; 6]>,
-    env_allow_foot_ik: bool,
-    env_left_foot_y: Option<f32>,
-    env_right_foot_y: Option<f32>,
-    foot_ik_state: FootTerrainIkState,
+    locomotion_input: LocomotionInput,
+    locomotion: LocomotionState,
 
     // 物理系统
     physics: Option<MMDPhysics>,
@@ -331,10 +330,8 @@ impl MmdModel {
             env_ground_y: None,
             env_model_scale: 1.0,
             env_block_aabbs: Vec::new(),
-            env_allow_foot_ik: false,
-            env_left_foot_y: None,
-            env_right_foot_y: None,
-            foot_ik_state: FootTerrainIkState::default(),
+            locomotion_input: LocomotionInput::default(),
+            locomotion: LocomotionState::default(),
             physics: None,
             physics_enabled: false,
             tail_idle_lift: true,

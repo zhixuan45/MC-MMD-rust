@@ -137,6 +137,7 @@ pub struct BoneLink {
     // ========================================
     /// 动画平移
     pub animation_translate: Vec3,
+    pub(crate) terrain_translate: Vec3,
 
     /// 动画旋转
     pub animation_rotate: Quat,
@@ -186,6 +187,7 @@ impl BoneLink {
             rest_rotation: Quat::IDENTITY,
             parent_rest_rotation: Quat::IDENTITY,
             animation_translate: Vec3::ZERO,
+            terrain_translate: Vec3::ZERO,
             animation_rotate: Quat::IDENTITY,
             ik_rotate: Quat::IDENTITY,
             append_translate: Vec3::ZERO,
@@ -343,6 +345,7 @@ impl BoneLink {
     #[inline]
     pub fn reset_animation(&mut self) {
         self.animation_translate = Vec3::ZERO;
+        self.terrain_translate = Vec3::ZERO;
         self.animation_rotate = Quat::IDENTITY;
         self.ik_rotate = Quat::IDENTITY;
         self.append_translate = Vec3::ZERO;
@@ -351,7 +354,7 @@ impl BoneLink {
 
     /// 计算本地变换 (local_to_parent)
     pub fn compute_local_transform(&mut self) {
-        let mut translate = self.body_shift + self.animation_translate;
+        let mut translate = self.body_shift + self.animation_translate + self.terrain_translate;
         if self.flags.contains(BoneFlags::APPEND_TRANSLATE) {
             translate += self.append_translate;
         }

@@ -394,6 +394,11 @@ public class NativeFunc {
     );
 
     /** 下发实体周边地面高度、双足支撑面高度与方块 AABB（DirectByteBuffer，最多 16 块）。 */
+    public native void SetModelLocomotion(long handle, int mode, boolean grounded, boolean terrain,
+                                long tick, long frame, int world, int blockX, int blockY, int blockZ, float yaw,
+                                float x, float y, float z, float entityX, float entityY, float entityZ, float dx, float dy, float dz,
+                                float scale, ByteBuffer surfaces, int count);
+
     public native void SetModelEnvironmentColliders(
         long modelHandle,
         float groundY,

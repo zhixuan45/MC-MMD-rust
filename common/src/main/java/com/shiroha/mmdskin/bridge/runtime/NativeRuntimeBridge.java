@@ -26,6 +26,7 @@ public final class NativeRuntimeBridge implements
     private static final int ENVIRONMENT_BLOCK_STRIDE_BYTES = 6 * Float.BYTES;
     private static volatile boolean evaluationProfilingAvailable = true;
     private static volatile boolean environmentCollisionAvailable = true;
+    private static volatile boolean locomotionAvailable = true;
     private static final NativeParallelEvaluation parallelEvaluation = NativeParallelEvaluation.create();
 
     @Override
@@ -724,6 +725,21 @@ public final class NativeRuntimeBridge implements
     public void setEyeAngle(long modelHandle, float eyeX, float eyeY) {
         NativePoseInputs.assign(modelHandle, "eye", NativePoseInputs.bits(eyeX), NativePoseInputs.bits(eyeY));
         nativeFunc().SetEyeAngle(modelHandle, eyeX, eyeY);
+    }
+
+    @Override
+    public void setModelLocomotion(long handle, int mode, boolean grounded, boolean terrain,
+                                long tick, long frame, int world, int blockX, int blockY, int blockZ, float yaw,
+                                float x, float y, float z, float entityX, float entityY, float entityZ, float dx, float dy, float dz,
+                                float scale, ByteBuffer surfaces, int count) {
+        if (!locomotionAvailable || handle == 0L) return;
+        try {
+            nativeFunc().SetModelLocomotion(handle, mode, grounded, terrain, tick, frame, world,
+                    blockX, blockY, blockZ, yaw, x, y, z, entityX, entityY, entityZ, dx, dy, dz, scale, surfaces, count);
+        } catch (UnsatisfiedLinkError missing) {
+            locomotionAvailable = false;
+            logger.warn("移动姿态 JNI 方法未找到，请重新编译 Rust 库");
+        }
     }
 
     @Override

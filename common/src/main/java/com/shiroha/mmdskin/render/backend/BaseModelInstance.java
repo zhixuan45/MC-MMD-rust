@@ -1,5 +1,6 @@
 package com.shiroha.mmdskin.render.backend;
 
+import com.shiroha.mmdskin.player.runtime.EntityAnimState;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.debug.client.ModelIssueDiagnostics;
@@ -38,6 +39,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public abstract class BaseModelInstance implements ModelInstance {
     protected static final Logger logger = LogManager.getLogger();
+    private static final boolean TRACE_LOCOMOTION = Boolean.getBoolean("mmdskin.traceLocomotion");
     private static final IrisBackend IRIS = IrisBackend.current();
 
     protected static final float MAX_DELTA_TIME = 0.25f;
@@ -103,6 +105,12 @@ public abstract class BaseModelInstance implements ModelInstance {
         return globalAlpha;
     }
 
+    private EntityAnimState.State locomotionMotion;
+
+    public void setLocomotionMotion(EntityAnimState.State motion) {
+        locomotionMotion = motion;
+    }
+
     public void setVrActive(boolean active) { this.vrActive = active; }
 
     public boolean isVrActive() { return vrActive; }
@@ -134,7 +142,8 @@ public abstract class BaseModelInstance implements ModelInstance {
                 scene,
                 getModelName(),
                 stagePlaying,
-                vrActive);
+                vrActive,
+                locomotionMotion);
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
 
         // 即使是模型第一帧，也执行一次零步长求值来生成当前骨骼矩阵。
@@ -340,7 +349,8 @@ public abstract class BaseModelInstance implements ModelInstance {
                     context,
                     getModelName(),
                     stagePlaying,
-                    vrActive);
+                    vrActive,
+                    locomotionMotion);
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
 
             update();
@@ -398,6 +408,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         evaluationCache.capture(frame, backendPort().poseInputRevision(model), evaluationScene);
         logRustDiagnostics();
         logPhysicsDiagnostic();
+        logLocomotion(frame);
         issueDiagnostics.sample(backendPort(), model, getModelName(), getClass().getSimpleName());
         nativeUpdateRevision.incrementAndGet();
         return true;
@@ -435,7 +446,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         var profiler = RenderPerformanceProfiler.get();
         long syncTimer = profiler.startTimer();
         LivingEntityModelStateHelper.syncModelState(model, entity, yaw, tickDelta,
-                RenderScene.WORLD, getModelName(), false, false);
+                RenderScene.WORLD, getModelName(), false, false, locomotionMotion);
         profiler.endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
         float delta = updateClock.sampleDeltaSeconds(System.nanoTime());
         if (delta <= 0) return null;
@@ -491,6 +502,7 @@ public abstract class BaseModelInstance implements ModelInstance {
             owner.evaluationCache.capture(frame, port.poseInputRevision(handle), scene);
             owner.logRustDiagnostics();
             owner.logPhysicsDiagnostic();
+            owner.logLocomotion(frame);
             owner.issueDiagnostics.sample(port, handle, owner.getModelName(), owner.getClass().getSimpleName());
             owner.nativeUpdateRevision.incrementAndGet();
         }
@@ -536,6 +548,15 @@ public abstract class BaseModelInstance implements ModelInstance {
                     .filter(line -> !line.isBlank())
                     .forEach(line -> logger.info("{}", line));
         }
+    }
+
+    private long lastLocomotionTrace = Long.MIN_VALUE;
+
+    private void logLocomotion(long frame) {
+        if (!TRACE_LOCOMOTION || lastLocomotionTrace == frame) return;
+        lastLocomotionTrace = frame;
+        String trace = backendPort().getIssueDebugDiagnostic(model, 0x10);
+        if (trace != null && !trace.isBlank()) logger.info("{}", trace);
     }
 
     protected long getNativeUpdateRevision() {

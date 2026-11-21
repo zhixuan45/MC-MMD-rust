@@ -526,7 +526,7 @@ impl MmdModel {
         Some((left_pos + right_pos) * 0.5)
     }
 
-    fn rendered_bone_position(&self, index: usize) -> Option<Vec3> {
+    pub(super) fn rendered_bone_position(&self, index: usize) -> Option<Vec3> {
         let bone = self.bone_manager.get_bone(index)?;
         let skinning_matrix = self.bone_manager.get_skinning_matrices().get(index)?;
         Some(skinning_matrix.transform_point3(bone.initial_position))

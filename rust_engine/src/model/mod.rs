@@ -20,6 +20,7 @@ mod vrm_skeleton;
 pub use loader::load_pmx;
 pub use material::MmdMaterial;
 pub use runtime::{MmdModel, ModelVrDebugSnapshot};
+pub(crate) use runtime::{LocomotionInput, MAX_LOCOMOTION_SURFACES};
 pub use submesh::SubMesh;
 pub use vrm_extensions::{
     ColliderShape, ConstraintAxis, ExpressionOverride, FirstPersonConfig,
