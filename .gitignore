@@ -118,8 +118,8 @@ common/src/main/resources/assets/mmdskin/shader/*
 !common/src/main/resources/assets/mmdskin/shader/translucent_prepare.comp.glsl
 !common/src/main/resources/assets/mmdskin/shader/world_transparency_capture.glsl
 !common/src/main/resources/assets/mmdskin/shader/world_transparency_resolve.frag.glsl
-!common/src/main/resources/assets/mmdskin/shader/swimming_veil.vert.glsl
-!common/src/main/resources/assets/mmdskin/shader/swimming_veil.frag.glsl
+!common/src/main/resources/assets/mmdskin/shader/pelvis_veil.vert.glsl
+!common/src/main/resources/assets/mmdskin/shader/pelvis_veil.frag.glsl
 !common/src/main/resources/assets/mmdskin/shader/skin_glow_blur.frag.glsl
 !common/src/main/resources/assets/mmdskin/shader/skin_glow_composite.frag.glsl
 !common/src/main/java/com/shiroha/mmdskin/render/shader/

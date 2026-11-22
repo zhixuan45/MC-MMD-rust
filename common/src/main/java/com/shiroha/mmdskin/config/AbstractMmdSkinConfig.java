@@ -90,6 +90,8 @@ public abstract class AbstractMmdSkinConfig implements ConfigManager.IConfigProv
     @Override public boolean isAntiPeekModeEnabled() { return data.antiPeekModeEnabled; }
     @Override public float getAntiPeekThresholdAngle() { return data.antiPeekThresholdAngle; }
     @Override public float getAntiPeekHideAngle() { return data.antiPeekHideAngle; }
+    @Override public boolean isSwimmingPelvisVeilEnabled() { return data.swimmingPelvisVeilEnabled; }
+    @Override public boolean isElytraPelvisVeilEnabled() { return data.elytraPelvisVeilEnabled; }
     @Override public boolean isPaperDollEnabled() { return data.paperDollEnabled; }
     @Override public PaperDollPosition getPaperDollPosition() { return data.paperDollPosition; }
     @Override public int getPaperDollOffsetX() { return data.paperDollOffsetX; }

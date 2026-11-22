@@ -261,30 +261,35 @@ impl AnimationLayer {
 
     /// 更新层状态
     pub fn update(&mut self, delta_time: f32) -> bool {
+        self.update_with_cadence(delta_time, None)
+    }
+
+    fn update_with_cadence(&mut self, delta_time: f32, cadence: Option<(f32, f32)>) -> bool {
         if !self.enabled || self.animation.is_none() {
             return false;
         }
 
         let dt = delta_time * self.config.speed;
+        let frame_dt = cadence.map_or(dt, |(elapsed, factor)| elapsed * factor * self.config.speed);
 
         match self.state {
             AnimationLayerState::Playing => {
-                self.update_frame(dt);
+                self.update_frame(frame_dt);
                 true
             }
             AnimationLayerState::FadingIn => {
                 self.update_fade_in(dt);
-                self.update_frame(dt);
+                self.update_frame(frame_dt);
                 true
             }
             AnimationLayerState::FadingOut => {
                 self.update_fade_out(dt);
-                self.update_frame(dt);
+                self.update_frame(frame_dt);
                 true
             }
             AnimationLayerState::Transitioning => {
                 self.update_transition(delta_time); // 使用原始 delta_time，不受速度影响
-                self.update_frame(dt);
+                self.update_frame(frame_dt);
                 true
             }
             AnimationLayerState::Paused => true,
@@ -498,6 +503,10 @@ impl AnimationLayer {
         self.state.clone()
     }
 
+    pub(crate) fn clip(&self) -> Option<&Arc<VmdAnimation>> {
+        self.animation.as_ref()
+    }
+
     /// 获取当前帧
     pub fn current_frame(&self) -> f32 {
         self.current_frame
@@ -664,6 +673,19 @@ impl AnimationLayerManager {
     pub fn update(&mut self, delta_time: f32) {
         for layer in &mut self.layers {
             layer.update(delta_time);
+        }
+    }
+
+    pub(crate) fn update_with_locomotion(&mut self, delta_time: f32, cadence: Option<(f32, f32)>) {
+        let Some(cadence) = cadence else {
+            self.update(delta_time);
+            return;
+        };
+        if let Some((base, overlays)) = self.layers.split_first_mut() {
+            base.update_with_cadence(delta_time, Some(cadence));
+            for layer in overlays {
+                layer.update(delta_time);
+            }
         }
     }
 

@@ -433,6 +433,12 @@ public final class ToonOutputProfile {
         return -1;
     }
 
+    /** 与 SkinGlowPass / ToonShaderBase 共用的 colortex0 颜色空间编码：0=gamma, 1=sqrt-linear, 2=linear。 */
+    public int colorOutputEncoding() {
+        if (!supported || id.equals(VANILLA_ID) || id.contains(":gamma:")) return 0;
+        return id.contains(":sqrt-linear:") ? 1 : 2;
+    }
+
     public String outlineWriter() {
         String encoded = id.equals(VANILLA_ID) || id.contains(":gamma:") ? "color"
                 : id.contains(":sqrt-linear:") ? "pow(max(color, vec3(0.0)), vec3(1.1))"

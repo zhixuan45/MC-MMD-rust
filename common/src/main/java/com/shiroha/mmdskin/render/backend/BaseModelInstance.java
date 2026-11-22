@@ -1,12 +1,15 @@
 package com.shiroha.mmdskin.render.backend;
 
+import com.shiroha.mmdskin.player.runtime.EntityAnimState;
 import com.shiroha.mmdskin.bridge.runtime.NativeRenderBackendPort;
 import com.shiroha.mmdskin.config.ConfigManager;
 import com.shiroha.mmdskin.debug.client.ModelIssueDiagnostics;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.render.scene.RenderScene;
-import com.shiroha.mmdskin.render.effect.SwimmingVeilRenderer;
+import com.shiroha.mmdskin.render.effect.PelvisVeilMode;
+import com.shiroha.mmdskin.render.effect.PelvisVeilRenderer;
+import com.shiroha.mmdskin.render.effect.PelvisVeilState;
 import com.shiroha.mmdskin.render.pipeline.LivingEntityModelStateHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.policy.WorldRenderPolicy;
@@ -38,6 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public abstract class BaseModelInstance implements ModelInstance {
     protected static final Logger logger = LogManager.getLogger();
+    private static final boolean TRACE_LOCOMOTION = Boolean.getBoolean("mmdskin.traceLocomotion");
     private static final IrisBackend IRIS = IrisBackend.current();
 
     protected static final float MAX_DELTA_TIME = 0.25f;
@@ -73,26 +77,31 @@ public abstract class BaseModelInstance implements ModelInstance {
     private ByteBuffer nativeProfile;
     /** 全局 Alpha 调制因子（例如直播防走光虚化透明度，默认 1.0） */
     protected float globalAlpha = 1.0f;
-    private SwimmingVeilRenderer swimmingVeilRenderer;
-    private boolean swimmingVeil;
-    private float swimmingVeilSeconds;
+    private PelvisVeilRenderer pelvisVeilRenderer;
+    private final PelvisVeilState pelvisVeilState = new PelvisVeilState();
     public final void setupToonTerrainShadow(ToonShaderBase shader, RenderScene scene) {
         shader.setTerrainShadowReceiver(ConfigManager.isReceiveTerrainShadowEnabled()
                 && scene != null && scene.isWorldScene() && !IRIS.isShadowPass()
                 && IRIS.isShaderPackActive());
     }
 
-    public final void setSwimmingVeil(boolean enabled, float seconds) {
-        swimmingVeil = enabled;
-        swimmingVeilSeconds = seconds;
+    public final void setPelvisVeil(PelvisVeilMode mode, float seconds, float tintR, float tintG, float tintB) {
+        pelvisVeilState.updateTarget(mode, seconds, tintR, tintG, tintB);
     }
 
-    /** 在模型根变换已应用、世界透明作用域仍有效时调用。 */
-    public final void renderSwimmingVeil(PoseStack stack, RenderScene scene) {
-        if (!swimmingVeil || scene == null || !scene.isWorldScene() || scene.isFirstPerson()
-                || IRIS.isShadowPass()) return;
-        if (swimmingVeilRenderer == null) swimmingVeilRenderer = new SwimmingVeilRenderer(backendPort(), model);
-        swimmingVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack, scene), swimmingVeilSeconds);
+    /** 零开销前置门控：未激活时短路返回 false，避免热路径触发光影元数据查询。 */
+    public final boolean shouldRenderPelvisVeil(RenderScene scene) {
+        return pelvisVeilState.shouldEvaluate() && scene != null && scene.isWorldScene()
+                && !scene.isFirstPerson() && !IRIS.isShadowPass();
+    }
+
+    /** 在模型根变换与宿主光影 FBO 仍处于绑定态、世界透明作用域有效时调用。 */
+    public final void renderPelvisVeil(PoseStack stack, RenderScene scene, float lightIntensity,
+                                       int colorOutputSlot, int outputEncoding) {
+        if (!shouldRenderPelvisVeil(scene)) return;
+        if (pelvisVeilRenderer == null) pelvisVeilRenderer = new PelvisVeilRenderer(backendPort(), model);
+        pelvisVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack, scene),
+                pelvisVeilState, lightIntensity, colorOutputSlot, outputEncoding, IRIS.isShaderPackActive());
     }
 
     public void setGlobalAlpha(float alpha) {
@@ -101,6 +110,12 @@ public abstract class BaseModelInstance implements ModelInstance {
 
     public float getGlobalAlpha() {
         return globalAlpha;
+    }
+
+    private EntityAnimState.State locomotionMotion;
+
+    public void setLocomotionMotion(EntityAnimState.State motion) {
+        locomotionMotion = motion;
     }
 
     public void setVrActive(boolean active) { this.vrActive = active; }
@@ -134,7 +149,8 @@ public abstract class BaseModelInstance implements ModelInstance {
                 scene,
                 getModelName(),
                 stagePlaying,
-                vrActive);
+                vrActive,
+                locomotionMotion);
         RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
 
         // 即使是模型第一帧，也执行一次零步长求值来生成当前骨骼矩阵。
@@ -340,7 +356,8 @@ public abstract class BaseModelInstance implements ModelInstance {
                     context,
                     getModelName(),
                     stagePlaying,
-                    vrActive);
+                    vrActive,
+                    locomotionMotion);
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
 
             update();
@@ -398,6 +415,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         evaluationCache.capture(frame, backendPort().poseInputRevision(model), evaluationScene);
         logRustDiagnostics();
         logPhysicsDiagnostic();
+        logLocomotion(frame);
         issueDiagnostics.sample(backendPort(), model, getModelName(), getClass().getSimpleName());
         nativeUpdateRevision.incrementAndGet();
         return true;
@@ -435,7 +453,7 @@ public abstract class BaseModelInstance implements ModelInstance {
         var profiler = RenderPerformanceProfiler.get();
         long syncTimer = profiler.startTimer();
         LivingEntityModelStateHelper.syncModelState(model, entity, yaw, tickDelta,
-                RenderScene.WORLD, getModelName(), false, false);
+                RenderScene.WORLD, getModelName(), false, false, locomotionMotion);
         profiler.endTimer(RenderPerformanceProfiler.SECTION_LIVING_STATE_SYNC, syncTimer);
         float delta = updateClock.sampleDeltaSeconds(System.nanoTime());
         if (delta <= 0) return null;
@@ -491,6 +509,7 @@ public abstract class BaseModelInstance implements ModelInstance {
             owner.evaluationCache.capture(frame, port.poseInputRevision(handle), scene);
             owner.logRustDiagnostics();
             owner.logPhysicsDiagnostic();
+            owner.logLocomotion(frame);
             owner.issueDiagnostics.sample(port, handle, owner.getModelName(), owner.getClass().getSimpleName());
             owner.nativeUpdateRevision.incrementAndGet();
         }
@@ -538,6 +557,15 @@ public abstract class BaseModelInstance implements ModelInstance {
         }
     }
 
+    private long lastLocomotionTrace = Long.MIN_VALUE;
+
+    private void logLocomotion(long frame) {
+        if (!TRACE_LOCOMOTION || lastLocomotionTrace == frame) return;
+        lastLocomotionTrace = frame;
+        String trace = backendPort().getIssueDebugDiagnostic(model, 0x10);
+        if (trace != null && !trace.isBlank()) logger.info("{}", trace);
+    }
+
     protected long getNativeUpdateRevision() {
         return nativeUpdateRevision.get();
     }
@@ -573,9 +601,10 @@ public abstract class BaseModelInstance implements ModelInstance {
     }
 
     protected void disposeModelHandle() {
-        if (swimmingVeilRenderer != null) {
-            swimmingVeilRenderer.close();
-            swimmingVeilRenderer = null;
+        pelvisVeilState.reset();
+        if (pelvisVeilRenderer != null) {
+            pelvisVeilRenderer.close();
+            pelvisVeilRenderer = null;
         }
         EyeEmissionBuffer buffer = eyeEmissionBuffer;
         eyeEmissionBuffer = null;

@@ -135,6 +135,24 @@ public class ModConfigScreen {
             .setSaveConsumer(value -> data.antiPeekHideAngle = value.floatValue())
             .build());
 
+        renderCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.swimming_pelvis_veil"),
+                data.swimmingPelvisVeilEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.swimming_pelvis_veil.tooltip"))
+            .setSaveConsumer(value -> data.swimmingPelvisVeilEnabled = value)
+            .build());
+
+        renderCategory.addEntry(entryBuilder
+            .startBooleanToggle(
+                Component.translatable("gui.mmdskin.mod_settings.elytra_pelvis_veil"),
+                data.elytraPelvisVeilEnabled)
+            .setDefaultValue(false)
+            .setTooltip(Component.translatable("gui.mmdskin.mod_settings.elytra_pelvis_veil.tooltip"))
+            .setSaveConsumer(value -> data.elytraPelvisVeilEnabled = value)
+            .build());
+
         ConfigCategory performanceCategory = builder.getOrCreateCategory(
             Component.translatable("gui.mmdskin.mod_settings.category.performance"));
 

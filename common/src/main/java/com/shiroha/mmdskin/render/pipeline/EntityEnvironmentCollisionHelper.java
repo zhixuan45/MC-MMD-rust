@@ -20,7 +20,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-/** 文件职责：零 GC 探测实体周边地面、方块碰撞箱与双足台阶支撑面并同步至原生运行时。 */
+/** 文件职责：零 GC 探测实体周边地面与方块碰撞箱并同步至原生运行时。 */
 public final class EntityEnvironmentCollisionHelper {
     private static final int MAX_BLOCKS = 16;
     private static final int MAX_SCAN_HEIGHT = 16;
@@ -32,9 +32,6 @@ public final class EntityEnvironmentCollisionHelper {
     private static final float YAW_EPSILON_RAD = (float) Math.toRadians(3.0);
     private static final float GROUND_PROBE_DEPTH = 8.0f;
     private static final float GROUND_PROBE_HALF_EXTENT = 0.25f;
-    private static final float FOOT_OFFSET_SCALE = 0.11f;
-    private static final float FOOT_PROBE_HALF_EXTENT = 0.22f;
-    private static final float FOOT_PROBE_Y_RANGE = 0.65f;
     private static final int MAX_CACHE_ENTRIES = 256;
 
     private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
@@ -51,8 +48,7 @@ public final class EntityEnvironmentCollisionHelper {
                                                 float posZ,
                                                 float bodyYaw,
                                                 float entityScale,
-                                                float totalScale,
-                                                boolean allowFootIk) {
+                                                float totalScale) {
         if (scenePort == null || modelHandle == 0L || entity == null) {
             return;
         }
@@ -63,8 +59,7 @@ public final class EntityEnvironmentCollisionHelper {
 
         boolean groundEnabled = ConfigManager.isPhysicsGroundCollisionEnabled();
         boolean blockEnabled = ConfigManager.isPhysicsBlockCollisionEnabled();
-        boolean footIkConfigEnabled = ConfigManager.isPhysicsFootIkEnabled();
-        if ((!groundEnabled && !blockEnabled && !footIkConfigEnabled)
+        if ((!groundEnabled && !blockEnabled)
                 || !validProbeCoordinate(posX) || !validProbeCoordinate(posY) || !validProbeCoordinate(posZ)) {
             scenePort.setModelEnvironmentColliders(
                     modelHandle, Float.NaN, totalScale, false, Float.NaN, Float.NaN, null, 0);
@@ -73,7 +68,6 @@ public final class EntityEnvironmentCollisionHelper {
 
         float safeEntityScale = Float.isFinite(entityScale) && entityScale > 0.0f ? entityScale : 1.0f;
         boolean withinLod = isWithinLodDistance(posX, posY, posZ);
-        boolean effectiveFootIk = allowFootIk && footIkConfigEnabled && withinLod;
         boolean effectiveBlock = blockEnabled && withinLod;
 
         Scratch scratch = SCRATCH.get();
@@ -81,7 +75,7 @@ public final class EntityEnvironmentCollisionHelper {
         CachedEnvironment cached = scratch.cache.get(modelHandle);
 
         if (cached != null && isCacheValid(cached, gameTime, posX, posY, posZ, bodyYaw,
-                safeEntityScale, groundEnabled, effectiveBlock, effectiveFootIk)) {
+                safeEntityScale, groundEnabled, effectiveBlock)) {
             dispatchCached(scenePort, modelHandle, totalScale, cached, scratch);
             return;
         }
@@ -96,24 +90,13 @@ public final class EntityEnvironmentCollisionHelper {
             blockCount = scratch.candidateCount;
         }
 
-        float leftFootY = Float.NaN;
-        float rightFootY = Float.NaN;
-        if (effectiveFootIk) {
-            float offset = FOOT_OFFSET_SCALE * safeEntityScale;
-            float cosYaw = Mth.cos(bodyYaw);
-            float sinYaw = Mth.sin(bodyYaw);
-            leftFootY = probeFootSurfaceY(level, posX + cosYaw * offset, posY, posZ + sinYaw * offset, scratch);
-            rightFootY = probeFootSurfaceY(level, posX - cosYaw * offset, posY, posZ - sinYaw * offset, scratch);
-        }
-
         if (cached == null) {
             pruneCacheIfNeeded(scratch.cache, gameTime);
             cached = new CachedEnvironment();
             scratch.cache.put(modelHandle, cached);
         }
         cached.update(gameTime, posX, posY, posZ, bodyYaw, safeEntityScale,
-                groundEnabled, effectiveBlock, effectiveFootIk,
-                groundY, leftFootY, rightFootY, scratch.candidateBoxes, blockCount);
+                groundEnabled, effectiveBlock, groundY, scratch.candidateBoxes, blockCount);
 
         dispatchCached(scenePort, modelHandle, totalScale, cached, scratch);
     }
@@ -136,9 +119,9 @@ public final class EntityEnvironmentCollisionHelper {
                 modelHandle,
                 cached.groundY,
                 totalScale,
-                cached.allowFootIk,
-                cached.leftFootY,
-                cached.rightFootY,
+                false,
+                Float.NaN,
+                Float.NaN,
                 buffer,
                 count);
     }
@@ -167,11 +150,9 @@ public final class EntityEnvironmentCollisionHelper {
                                         float bodyYaw,
                                         float entityScale,
                                         boolean groundEnabled,
-                                        boolean blockEnabled,
-                                        boolean allowFootIk) {
+                                        boolean blockEnabled) {
         if (entry.groundEnabled != groundEnabled
                 || entry.blockEnabled != blockEnabled
-                || entry.allowFootIk != allowFootIk
                 || Math.abs(entry.entityScale - entityScale) >= 1e-4f) {
             return false;
         }
@@ -202,21 +183,6 @@ public final class EntityEnvironmentCollisionHelper {
                 GROUND_PROBE_HALF_EXTENT,
                 posY - GROUND_PROBE_DEPTH,
                 posY + 0.05f,
-                scratch);
-    }
-
-    private static float probeFootSurfaceY(Level level,
-                                           float footX,
-                                           float posY,
-                                           float footZ,
-                                           Scratch scratch) {
-        return probeHighestSurface(
-                level,
-                footX,
-                footZ,
-                FOOT_PROBE_HALF_EXTENT,
-                posY - FOOT_PROBE_Y_RANGE,
-                posY + FOOT_PROBE_Y_RANGE,
                 scratch);
     }
 
@@ -357,10 +323,7 @@ public final class EntityEnvironmentCollisionHelper {
         float entityScale;
         boolean groundEnabled;
         boolean blockEnabled;
-        boolean allowFootIk;
         float groundY;
-        float leftFootY;
-        float rightFootY;
         int blockCount;
         final float[] boxes = new float[MAX_BLOCKS * FLOATS_PER_BLOCK];
 
@@ -372,10 +335,7 @@ public final class EntityEnvironmentCollisionHelper {
                     float entityScale,
                     boolean groundEnabled,
                     boolean blockEnabled,
-                    boolean allowFootIk,
                     float groundY,
-                    float leftFootY,
-                    float rightFootY,
                     float[] sourceBoxes,
                     int blockCount) {
             this.gameTime = gameTime;
@@ -386,10 +346,7 @@ public final class EntityEnvironmentCollisionHelper {
             this.entityScale = entityScale;
             this.groundEnabled = groundEnabled;
             this.blockEnabled = blockEnabled;
-            this.allowFootIk = allowFootIk;
             this.groundY = groundY;
-            this.leftFootY = leftFootY;
-            this.rightFootY = rightFootY;
             this.blockCount = blockCount;
             if (blockCount > 0) {
                 System.arraycopy(sourceBoxes, 0, this.boxes, 0, blockCount * FLOATS_PER_BLOCK);

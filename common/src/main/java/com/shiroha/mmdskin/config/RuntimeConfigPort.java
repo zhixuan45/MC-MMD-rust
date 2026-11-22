@@ -49,6 +49,16 @@ public interface RuntimeConfigPort {
         }
 
         @Override
+        public boolean isSwimmingPelvisVeilEnabled() {
+            return false;
+        }
+
+        @Override
+        public boolean isElytraPelvisVeilEnabled() {
+            return false;
+        }
+
+        @Override
         public boolean isVrEnabled() {
             return false;
         }
@@ -111,6 +121,16 @@ public interface RuntimeConfigPort {
             }
 
             @Override
+            public boolean isSwimmingPelvisVeilEnabled() {
+                return ConfigManager.isSwimmingPelvisVeilEnabled();
+            }
+
+            @Override
+            public boolean isElytraPelvisVeilEnabled() {
+                return ConfigManager.isElytraPelvisVeilEnabled();
+            }
+
+            @Override
             public boolean isVrEnabled() {
                 return ConfigManager.isVREnabled();
             }
@@ -139,6 +159,14 @@ public interface RuntimeConfigPort {
     float getAntiPeekThresholdAngle();
 
     float getAntiPeekHideAngle();
+
+    default boolean isSwimmingPelvisVeilEnabled() {
+        return false;
+    }
+
+    default boolean isElytraPelvisVeilEnabled() {
+        return false;
+    }
 
     boolean isVrEnabled();
 

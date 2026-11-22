@@ -58,7 +58,6 @@ final class GpuSkinningModelRenderer {
              var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName());
              var effects = com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enter(context, target.getModelName())) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, context);
-            target.renderSwimmingVeil(deliverStack, context);
         }
     }
 
@@ -370,6 +369,10 @@ final class GpuSkinningModelRenderer {
             bindVertexAttributes(target, !guiScene);
             IRIS.recordEntityDiagnostics(shader, light);
             drawAllSubMeshes(target, minecraft);
+            if (target.shouldRenderPelvisVeil(context)) {
+                target.renderPelvisVeil(deliverStack, context, light.intensity(),
+                        IRIS.entityColorOutputSlot(shader), IRIS.entityColorOutputEncoding(shader));
+            }
         } finally {
             try {
                 clearRenderState(target);
@@ -563,6 +566,11 @@ final class GpuSkinningModelRenderer {
 
             if (GpuSkinningModelInstance.toonConfig.isOutlineEnabled() && (context == null || context.allowsOutline())) {
                 renderOutlinePass(target);
+            }
+            if (target.shouldRenderPelvisVeil(context)) {
+                target.renderPelvisVeil(target.currentDeliverStack, context, light.intensity(),
+                        GpuSkinningModelInstance.toonShaderCpu.getOutlineColorSlot(),
+                        GpuSkinningModelInstance.toonShaderCpu.getColorOutputEncoding());
             }
 
         } finally {

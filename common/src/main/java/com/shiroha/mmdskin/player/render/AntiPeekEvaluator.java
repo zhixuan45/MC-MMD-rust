@@ -2,13 +2,14 @@ package com.shiroha.mmdskin.player.render;
 
 import com.shiroha.mmdskin.config.RuntimeConfigPort;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
+import com.shiroha.mmdskin.render.effect.PelvisVeilMode;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * 直播防走光与特殊状态下的可见性、局部水纹遮挡评估器。
+ * 直播防走光与特殊状态（游泳/鞘翅滑翔）下的可见性、骨盆局部遮罩评估器。
  */
 public final class AntiPeekEvaluator {
 
@@ -19,12 +20,13 @@ public final class AntiPeekEvaluator {
      *
      * @param fullyHidden 是否完全隐藏（不进行任何渲染）
      * @param alpha       当前透明度调制因子（0.0 ~ 1.0）
-     * @param swimmingVeil 是否用髋部水纹遮挡替代游泳时的整身隐藏
+     * @param veilMode    骨盆半透明遮罩模式（NONE / SWIMMING_WATER / ELYTRA_WIND）
      */
-    public record Result(boolean fullyHidden, float alpha, boolean swimmingVeil) {
-        public static final Result NORMAL = new Result(false, 1.0f, false);
-        public static final Result HIDDEN = new Result(true, 0.0f, false);
-        public static final Result SWIMMING_VEIL = new Result(false, 1.0f, true);
+    public record Result(boolean fullyHidden, float alpha, PelvisVeilMode veilMode) {
+        public static final Result NORMAL = new Result(false, 1.0f, PelvisVeilMode.NONE);
+        public static final Result HIDDEN = new Result(true, 0.0f, PelvisVeilMode.NONE);
+        public static final Result SWIMMING_VEIL = new Result(false, 1.0f, PelvisVeilMode.SWIMMING_WATER);
+        public static final Result ELYTRA_VEIL = new Result(false, 1.0f, PelvisVeilMode.ELYTRA_WIND);
     }
 
     /**
@@ -47,10 +49,18 @@ public final class AntiPeekEvaluator {
         }
 
         boolean swimming = player.isSwimming() || player.isVisuallySwimming();
+        boolean fallFlying = player.isFallFlying();
         boolean passenger = player.isPassenger();
 
         RuntimeConfigPort config = RuntimeConfigPortHolder.get();
-        Result special = specialState(firstPersonView, swimming, passenger, config.isAntiPeekModeEnabled());
+        Result special = specialState(
+                firstPersonView,
+                swimming,
+                fallFlying,
+                passenger,
+                config.isAntiPeekModeEnabled(),
+                config.isSwimmingPelvisVeilEnabled(),
+                config.isElytraPelvisVeilEnabled());
         if (special != Result.NORMAL) return special;
 
         // 规则 3：防走光模式下的第三人称低机位仰角判定
@@ -116,12 +126,21 @@ public final class AntiPeekEvaluator {
             return Result.HIDDEN;
         }
 
-        return new Result(false, smoothAlpha, false);
+        return new Result(false, smoothAlpha, PelvisVeilMode.NONE);
     }
 
-    static Result specialState(boolean firstPerson, boolean swimming, boolean passenger, boolean enabled) {
+    static Result specialState(boolean firstPerson,
+                               boolean swimming,
+                               boolean fallFlying,
+                               boolean passenger,
+                               boolean antiPeekEnabled,
+                               boolean swimmingVeilEnabled,
+                               boolean elytraVeilEnabled) {
         if (firstPerson && (swimming || passenger)) return Result.HIDDEN;
-        // 游泳时保留整身可见性，用跟随髋部的水纹代替低机位整身淡出。
-        return enabled && swimming ? Result.SWIMMING_VEIL : Result.NORMAL;
+        if (firstPerson) return Result.NORMAL;
+        // 鞘翅滑翔与游泳保留整身可见性，改由骨盆局部气流/水波纹遮罩按视角动态覆盖。
+        if (fallFlying && (elytraVeilEnabled || antiPeekEnabled)) return Result.ELYTRA_VEIL;
+        if (swimming && (swimmingVeilEnabled || antiPeekEnabled)) return Result.SWIMMING_VEIL;
+        return Result.NORMAL;
     }
 }

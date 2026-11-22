@@ -11,8 +11,16 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -20,13 +28,47 @@ final class MmdClientResourceBootstrap {
     private static final int BUFFER = 512;
     private static final long TOO_BIG = 0x6400000;
     private static final int TOO_MANY = 1024;
+    private static final long MAX_STOCK_ANIM_BYTES = 256 * 1024;
+    private static final Map<String, Set<String>> PREVIOUS_STOCK_ANIMS = Map.of(
+            "walk.vmd", Set.of(
+                    "85c2f2dda216609291772b06c2c2949b27306ecc8169dc46e70176c2586e51d1",
+                    "36d4ca6307610e9edfff6e49433bced443effad0003bdb7913b8de4e16a9a648",
+                    "c27c4f581a873f64171052d2526402585ef313ba272bc4d3745d898f3bcdb2e3",
+                    "8a460f0264ca4f933907289f82ea82db99fbe2d8923468a32c314775701501f5",
+                    "e3556d6c9d38a553f7b4fb237ff6c431096eca2a854c7fe163d1312e33d91bc3"),
+            "sprint.vmd", Set.of(
+                    "626f33919cba977069d8e9454e1d0649cd3e1a01c0b100690a28321098a1bf76",
+                    "24c5f4bcbfe129f8268b3f4b3580cafcb6ad5ac3a4c63d9c7f7aa9edc7f82a2b",
+                    "2d1aa8ae25441a66270f3b59810b7e2dfe82ef4342faaac237a2cfc1118611ca",
+                    "78edcb6e6c083103b1676458beb20f5fe92d1a4cd35b865417a55684c7bf8076",
+                    "f04a45f86f6e9e413da378827a25eaf6493fd7ce5cd7d4173b23bcc9f36d9e5a",
+                    "25b9bb99f7f8ae7b35b398bd7e6d8889121a2bbe6048255de1dc0f466f197386",
+                    "c119737ca21f32e483e19dedbaeece9a9e06a7f369f7b92cf2b8ea7c3610a265",
+                    "aa058c5f9a6b04267eca25e7431a2f1010c13644f3a8e1fc841b7a3b82850763",
+                    "038078a951be0abc8d9e3442efa31930dc02efc7d6f5130777bb99364dc1a3d9",
+                    "b61b1516e836925aad8d062ad267d23eba55ac7615c83bcb069f8c989fc0c4b4",
+                    "2ab32a8950a07610f830831cb5855364985b971e9a806cbc9c809d54d65a1de2",
+                    "fe1cc84479ff55c0af65faccbe81196a71bd22e4782e2705419cb14c08d1c073",
+                    "e8ecbdc3da34648b325fad0fe29c1f69c81aa16774c69fe4cac6f868012134d8",
+                    "3d685213e3a241fb11b226f46e1e9d10dd7db69212a03c068739893455b8c1be",
+                    "e8504c6f4cb43c9c9ef1792c8278a07893f3008b4fa2742afce7a26e4b9c570b",
+                    "8bf81bfe1210e2d293cacf8bab1f00115d1a8a79f742057d1f0269783f0053a1"),
+            "sprintStop.vmd", Set.of(
+                    "c93a22e1709f7fbffb84d0a97ae3ec004ed7482e951cf73ca0f0dfe2e2d07fea",
+                    "27a59410037078a0429d098a119f12f2a8a7589640a3ee5282da91788e28a629",
+                    "d1a8c2c6db1254d6115dca285903df911ec5c9d791353222d479f8960f5cac4f",
+                    "ccdcb8802d2d26c0e040a1e47c6e07024a49e3f6b074def4caddd6567af9492b",
+                    "4f7a1ce7e446a3a41bba0bdca969142b337e4193c7c2c73ba7114a56dec0be7d",
+                    "a0083c38900dc39f1e3a66e9dd2513121036e054713dfddaa91def9833cbf759",
+                    "a7e9e804e390b1abb24e7e6f8a29c69ff5dcd7c98847ed401896cd54e0924c36",
+                    "f9a264ff0a42d817a2d11ad3ebe513028146f3150694d80417b6e093ad410b32"));
     private static final String[] DEFAULT_ANIM_FILES = {
             "Drink.vmd", "crawl.vmd", "die.vmd", "elytraFly.vmd", "idle.vmd",
             "itemActive_minecraft.bow_Left_using.vmd", "itemActive_minecraft.iron_sword_Right_swinging.vmd",
             "itemActive_minecraft.shield_Left_using.vmd", "itemActive_minecraft.shield_Right_using.vmd",
             "lieDown.vmd", "onClimbable.vmd", "onClimbableDown.vmd", "onClimbableUp.vmd",
             "onHorse.vmd", "ride.vmd", "sleep.vmd", "sneak.vmd",
-            "sprint.vmd", "swim.vmd", "swingLeft.vmd", "swingRight.vmd", "walk.vmd",
+            "sprint.vmd", "sprintStop.vmd", "swim.vmd", "swingLeft.vmd", "swingRight.vmd", "walk.vmd",
             // v5 使用重新录制的挂点动作，并由运行时兼容不同模型的 Dummy 名称。
             "tacz_hold_rifle_ads_v5.vmd"
     };
@@ -54,18 +96,60 @@ final class MmdClientResourceBootstrap {
 
         for (String fileName : DEFAULT_ANIM_FILES) {
             File targetFile = new File(defaultAnimDir, fileName);
-            if (targetFile.exists()) {
-                continue;
-            }
-
-            try (InputStream is = MmdSkinClient.class.getResourceAsStream("/assets/mmdskin/default_anim/" + fileName)) {
-                if (is != null) {
-                    Files.copy(is, targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    MmdSkinClient.logger.info("提取默认动画: {}", fileName);
+            Path target = targetFile.toPath();
+            try {
+                boolean exists = targetFile.exists();
+                if (exists && !isPreviousStockAnim(fileName, target)) {
+                    continue;
+                }
+                try (InputStream is = MmdSkinClient.class.getResourceAsStream("/assets/mmdskin/default_anim/" + fileName)) {
+                    if (is == null) {
+                        continue;
+                    }
+                    if (exists) {
+                        if (replaceStockAnim(fileName, is, target)) {
+                            MmdSkinClient.logger.info("更新内置默认动画: {}", fileName);
+                        }
+                    } else {
+                        Files.copy(is, target, StandardCopyOption.REPLACE_EXISTING);
+                        MmdSkinClient.logger.info("提取默认动画: {}", fileName);
+                    }
                 }
             } catch (IOException e) {
                 MmdSkinClient.logger.warn("提取动画文件失败: " + fileName, e);
             }
+        }
+    }
+
+    private static boolean isPreviousStockAnim(String fileName, Path target) throws IOException {
+        Set<String> hashes = PREVIOUS_STOCK_ANIMS.get(fileName);
+        if (hashes == null || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
+                || Files.size(target) > MAX_STOCK_ANIM_BYTES) {
+            return false;
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(target));
+            return hashes.contains(HexFormat.of().formatHex(digest));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
+        }
+    }
+
+    private static boolean replaceStockAnim(String fileName, InputStream source, Path target) throws IOException {
+        Path staged = Files.createTempFile(target.getParent(), "anim-", ".tmp");
+        try {
+            Files.copy(source, staged, StandardCopyOption.REPLACE_EXISTING);
+            if (!isPreviousStockAnim(fileName, target)) {
+                return false;
+            }
+            try {
+                Files.move(staged, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(staged, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return true;
+        } finally {
+            Files.deleteIfExists(staged);
         }
     }
 

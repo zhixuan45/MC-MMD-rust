@@ -346,27 +346,17 @@ impl BoneSet {
     ///
     /// 参考 nphysics Multibody::update_kinematics
     pub fn update_transforms(&mut self, after_physics: bool) {
-        // 1. 更新本地变换（跳过物理骨骼）
-        for order in 0..self.sorted_indices.len() {
-            let idx = self.sorted_indices[order];
-            if self.links[idx].deform_after_physics() != after_physics {
-                continue;
-            }
-            if self.physics_bone_indices.contains(&idx) {
-                continue;
-            }
-            self.links[idx].compute_local_transform();
-        }
+        self.update_transforms_with_pose(after_physics, |_| false);
+    }
 
-        // 2. 从根骨骼递归更新全局变换
-        for order in 0..self.sorted_indices.len() {
-            let idx = self.sorted_indices[order];
-            if self.links[idx].deform_after_physics() != after_physics {
-                continue;
-            }
-            if self.links[idx].is_root() {
-                self.update_global_transform_recursive(idx);
-            }
+    pub(crate) fn update_transforms_with_pose(
+        &mut self,
+        after_physics: bool,
+        pose: impl FnOnce(&mut Self) -> bool,
+    ) {
+        self.compute_animated_transforms(after_physics);
+        if pose(self) {
+            self.compute_animated_transforms(after_physics);
         }
 
         // 3. 处理附加变换和 IK
@@ -400,6 +390,35 @@ impl BoneSet {
                 self.update_global_transform_recursive(idx);
             }
         }
+    }
+
+    pub(crate) fn compute_animated_transforms(&mut self, after_physics: bool) {
+        // 1. 更新本地变换（跳过物理骨骼）
+        for order in 0..self.sorted_indices.len() {
+            let idx = self.sorted_indices[order];
+            if self.links[idx].deform_after_physics() != after_physics {
+                continue;
+            }
+            if self.physics_bone_indices.contains(&idx) {
+                continue;
+            }
+            self.links[idx].compute_local_transform();
+        }
+
+        // 2. 从根骨骼递归更新全局变换
+        for order in 0..self.sorted_indices.len() {
+            let idx = self.sorted_indices[order];
+            if self.links[idx].deform_after_physics() != after_physics {
+                continue;
+            }
+            if self.links[idx].is_root() {
+                self.update_global_transform_recursive(idx);
+            }
+        }
+    }
+
+    pub(crate) fn ik_is_enabled(&self, index: usize) -> bool {
+        self.ik_solvers.iter().any(|solver| solver.enabled && solver.bone_index == index)
     }
 
     /// 递归更新全局变换

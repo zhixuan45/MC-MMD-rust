@@ -333,6 +333,14 @@ public class ConfigManager {
         return provider != null ? provider.getAntiPeekHideAngle() : 10.0f;
     }
 
+    public static boolean isSwimmingPelvisVeilEnabled() {
+        return provider != null && provider.isSwimmingPelvisVeilEnabled();
+    }
+
+    public static boolean isElytraPelvisVeilEnabled() {
+        return provider != null && provider.isElytraPelvisVeilEnabled();
+    }
+
     public static int getTextureCacheBudgetMB() {
         return provider != null ? provider.getTextureCacheBudgetMB() : 256;
     }

@@ -22,6 +22,12 @@ public interface NativeScenePort {
 
     void setEyeAngle(long modelHandle, float eyeX, float eyeY);
 
+    default void setModelLocomotion(long handle, int mode, boolean grounded, boolean terrain,
+                                long tick, long frame, int world, int blockX, int blockY, int blockZ, float yaw,
+                                float x, float y, float z, float entityX, float entityY, float entityZ, float dx, float dy, float dz,
+                                float scale, ByteBuffer surfaces, int count) {
+    }
+
     /** 下发实体环境地面、方块 AABB 与双足支撑面高度。 */
     default void setModelEnvironmentColliders(long modelHandle,
                                               float groundY,

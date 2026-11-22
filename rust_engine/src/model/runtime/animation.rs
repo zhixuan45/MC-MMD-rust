@@ -470,21 +470,6 @@ impl MmdModel {
         }
     }
 
-    fn apply_foot_terrain_ik(&mut self, dt: f32) {
-        let foot_ik_enabled = crate::physics::config::get_config().foot_ik_enabled;
-        let model_pos_y = self.model_transform.w_axis.y;
-        self.foot_ik_state.update_and_apply(
-            &mut self.bone_manager,
-            dt,
-            foot_ik_enabled,
-            self.env_allow_foot_ik,
-            model_pos_y,
-            self.env_model_scale,
-            self.env_left_foot_y,
-            self.env_right_foot_y,
-        );
-    }
-
     /// 仅更新动画（不执行 CPU 蒙皮，用于 GPU 蒙皮模式）
     pub fn tick_animation_no_skinning(&mut self, elapsed: f32) {
         self.tick_animation_internal(elapsed, false, None);
@@ -527,7 +512,13 @@ impl MmdModel {
             runtime_state.apply_inputs(model);
         });
 
-        self.animation_layer_manager.update(elapsed);
+        let terrain_enabled = !self.is_vrm && !self.vr_enabled
+            && crate::physics::config::get_config().foot_ik_enabled;
+        let locomotion_dt = self.locomotion.begin_frame(&self.locomotion_input, elapsed);
+        let cadence = self.locomotion.cadence(
+            &self.locomotion_input, &self.animation_layer_manager, locomotion_dt);
+        self.animation_layer_manager.update_with_locomotion(elapsed, cadence);
+        self.locomotion.set_sample_frame(&self.animation_layer_manager);
         self.begin_animation();
         self.bone_manager.reset_all_ik_enabled();
 
@@ -558,8 +549,14 @@ impl MmdModel {
 
         crate::evaluation_profile::stage(animation_timer, 0);
         let ik_timer = crate::evaluation_profile::timer();
-        self.apply_foot_terrain_ik(elapsed);
-        self.update_node_animation(false);
+        if terrain_enabled && self.locomotion_input.has_terrain() {
+            self.bone_manager.update_transforms_with_pose(false, |bones| {
+                self.locomotion.apply(&self.locomotion_input, bones, locomotion_dt)
+            });
+        } else {
+            self.locomotion.clear_terrain();
+            self.update_node_animation(false);
+        }
 
         if self.vr_enabled {
             let strength = self.vr_ik_strength;

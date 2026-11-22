@@ -24,8 +24,16 @@ final class IrisToonMetadata {
     private IrisToonMetadata() {}
 
     static Result read(ShaderInstance shader) {
-        if (!IrisCompat.isIrisShaderActive() || IrisCompat.isRenderingShadows()) {
+        return read(shader, IrisCompat.isIrisShaderActive(), IrisCompat.isRenderingShadows());
+    }
+
+    static Result read(ShaderInstance shader, boolean shaderPackActive, boolean shadowPass) {
+        if (!shaderPackActive) {
             resetCache();
+            return vanilla();
+        }
+        // 阴影通道不写主 G-buffer，但不能清空主通道缓存，否则每帧都会重解析光影源码。
+        if (shadowPass) {
             return vanilla();
         }
         // 背包和纸娃娃的原版 shader 不写光影 G-buffer。

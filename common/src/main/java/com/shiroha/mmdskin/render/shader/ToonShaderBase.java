@@ -166,8 +166,7 @@ public abstract class ToonShaderBase {
             activeProfile = key;
             if (LIGHTING_DEBUG_MODE > 0) logger.info("Toon lighting debug={} ToonOutputProfile={}", LIGHTING_DEBUG_MODE, key);
             outlineColorSlot = profile.colorOutputSlot();
-            colorOutputEncoding = profile.id().contains(":sqrt-linear:") ? 1
-                    : profile.id().contains(":gamma:") || profile.id().equals("vanilla") ? 0 : 2;
+            colorOutputEncoding = profile.colorOutputEncoding();
             lightingBridge = profile.lightingSource().isEmpty() ? null : new ToonUniformBridge(profile.lightingSource());
             lightingSyncWarned = false;
             // 每个变体的 uniform 位置独立，切换后重新绑定。

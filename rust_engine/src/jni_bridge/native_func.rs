@@ -4036,9 +4036,9 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetModelEnvironmentCo
     model: jlong,
     ground_y: jfloat,
     model_scale: jfloat,
-    allow_foot_ik: jboolean,
-    left_foot_y: jfloat,
-    right_foot_y: jfloat,
+    _allow_foot_ik: jboolean,
+    _left_foot_y: jfloat,
+    _right_foot_y: jfloat,
     block_aabbs: JByteBuffer,
     block_count: jint,
 ) {
@@ -4074,8 +4074,6 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetModelEnvironmentCo
         }
 
         let ground_y = ground_y.is_finite().then_some(ground_y);
-        let left_foot_y = left_foot_y.is_finite().then_some(left_foot_y);
-        let right_foot_y = right_foot_y.is_finite().then_some(right_foot_y);
 
         let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
         if let Some(model_arc) = models.get(&model) {
@@ -4085,12 +4083,87 @@ pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetModelEnvironmentCo
             m.set_environment_colliders(
                 ground_y,
                 model_scale,
-                allow_foot_ik != 0,
-                left_foot_y,
-                right_foot_y,
                 &aabbs[..count],
             );
         }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_shiroha_mmdskin_NativeFunc_SetModelLocomotion(
+    env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    mode: jint,
+    grounded: jboolean,
+    terrain: jboolean,
+    tick: jlong,
+    frame: jlong,
+    world: jint,
+    block_x: jint,
+    block_y: jint,
+    block_z: jint,
+    yaw: jfloat,
+    x: jfloat,
+    y: jfloat,
+    z: jfloat,
+    entity_x: jfloat,
+    entity_y: jfloat,
+    entity_z: jfloat,
+    dx: jfloat,
+    dy: jfloat,
+    dz: jfloat,
+    scale: jfloat,
+    surfaces: JByteBuffer,
+    surface_count: jint,
+) {
+    jni_guard!(env, {
+        use crate::model::{LocomotionInput, MAX_LOCOMOTION_SURFACES};
+        use glam::IVec3;
+
+        let models = MODELS.read().unwrap_or_else(super::boundary::reject_poison);
+        let Some(model) = models.get(&handle) else { return };
+        let mut model = model.lock().unwrap_or_else(super::boundary::reject_poison);
+        let input = model.locomotion_input_mut();
+        let mut boxes = std::mem::take(&mut input.surfaces);
+        boxes.clear();
+        if terrain != 0 && surface_count > 0 && !surfaces.is_null() {
+            if let (Ok(addr), Ok(cap)) = (
+                env.get_direct_buffer_address(&surfaces),
+                env.get_direct_buffer_capacity(&surfaces),
+            ) {
+                const STRIDE: usize = 6 * std::mem::size_of::<f32>();
+                let count = (surface_count as usize).min(cap / STRIDE).min(MAX_LOCOMOTION_SURFACES);
+                // The render thread owns the direct buffer and keeps it unchanged for this call.
+                let bytes = unsafe { std::slice::from_raw_parts(addr.cast_const(), count * STRIDE) };
+                for chunk in bytes.chunks_exact(STRIDE) {
+                    let bounds = std::array::from_fn(|i| {
+                        let offset = i * 4;
+                        f32::from_le_bytes(chunk[offset..offset + 4].try_into().unwrap())
+                    });
+                    if bounds.iter().all(|value| f32::is_finite(*value))
+                        && bounds[0] < bounds[3] && bounds[1] < bounds[4] && bounds[2] < bounds[5]
+                    {
+                        boxes.push(bounds);
+                    }
+                }
+            }
+        }
+        *input = LocomotionInput {
+            mode: if (0..=3).contains(&mode) { mode } else { 0 },
+            grounded: grounded != 0,
+            terrain: terrain != 0,
+            tick,
+            frame,
+            world,
+            block: IVec3::new(block_x, block_y, block_z),
+            origin: glam::Vec3::new(x, y, z),
+            entity: glam::Vec3::new(entity_x, entity_y, entity_z),
+            movement: glam::Vec3::new(dx, dy, dz),
+            yaw,
+            scale,
+            surfaces: boxes,
+        };
     })
 }
 

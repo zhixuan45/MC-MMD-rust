@@ -19,7 +19,9 @@ import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.render.scene.RenderScene;
 import com.shiroha.mmdskin.render.scene.MutableRenderPose;
 import com.shiroha.mmdskin.render.backend.BaseModelInstance;
+import com.shiroha.mmdskin.render.effect.PelvisVeilMode;
 import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.BiomeColors;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 
@@ -96,7 +98,12 @@ final class PlayerModelRenderCoordinator {
 
         if (model instanceof BaseModelInstance baseModel) {
             baseModel.setGlobalAlpha(antiPeek.alpha());
-            baseModel.setSwimmingVeil(antiPeek.swimmingVeil(), (player.tickCount + tickDelta) / 20.0f);
+            // 阴影与背包/纸娃娃 pass 不改写世界通道的骨盆遮罩平滑状态。
+            if (!shadowPass && !inventoryRender) {
+                PelvisVeilMode veilMode = selection.isLocalPlayer() ? antiPeek.veilMode() : PelvisVeilMode.NONE;
+                float seconds = (player.tickCount + tickDelta) / 20.0f;
+                applyPelvisVeilTarget(baseModel, player, veilMode, seconds);
+            }
         }
 
         matrixStack.pushPose();
@@ -141,6 +148,32 @@ final class PlayerModelRenderCoordinator {
                 matrixStack.popPose();
             }
         }
+    }
+
+    private static void applyPelvisVeilTarget(BaseModelInstance baseModel,
+                                              AbstractClientPlayer player,
+                                              PelvisVeilMode mode,
+                                              float seconds) {
+        if (mode == PelvisVeilMode.ELYTRA_WIND) {
+            baseModel.setPelvisVeil(mode, seconds, 0.74f, 0.92f, 0.99f);
+            return;
+        }
+        if (mode == PelvisVeilMode.SWIMMING_WATER) {
+            float r = 0.26f, g = 0.72f, b = 0.88f;
+            if (player != null && player.level() != null) {
+                int waterColor = BiomeColors.getAverageWaterColor(player.level(), player.blockPosition());
+                float biomeR = ((waterColor >> 16) & 0xFF) / 255.0f;
+                float biomeG = ((waterColor >> 8) & 0xFF) / 255.0f;
+                float biomeB = (waterColor & 0xFF) / 255.0f;
+                // 40% 融合当前生物群系水色，60% 保留清透水蓝，防止暗色沼泽群系显得浑浊。
+                r = r * 0.60f + biomeR * 0.40f;
+                g = g * 0.60f + biomeG * 0.40f;
+                b = b * 0.60f + biomeB * 0.40f;
+            }
+            baseModel.setPelvisVeil(mode, seconds, r, g, b);
+            return;
+        }
+        baseModel.setPelvisVeil(PelvisVeilMode.NONE, seconds, 0.26f, 0.72f, 0.88f);
     }
 
     private static void syncVrState(ManagedModel modelData,
