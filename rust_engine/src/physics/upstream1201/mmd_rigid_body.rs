@@ -124,8 +124,12 @@ impl MmdRigidBodyData {
 
         let info = RigidBodyInfo {
             mass: pmx_rb.mass,
-            linear_damping: pmx_rb.move_attenuation,
-            angular_damping: pmx_rb.rotation_attenuation,
+            linear_damping: crate::physics::mmd_rigid_body::sanitize_rigid_body_damping(
+                pmx_rb.move_attenuation,
+            ),
+            angular_damping: crate::physics::mmd_rigid_body::sanitize_rigid_body_damping(
+                pmx_rb.rotation_attenuation,
+            ),
             friction: pmx_rb.friction,
             restitution: pmx_rb.repulsion,
             additional_damping: true,
@@ -155,5 +159,51 @@ impl MmdRigidBodyData {
         result.w_axis.y = bone_position.y;
         result.w_axis.z = bone_position.z;
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mmd::pmx::rigid_body::RigidBody as PmxRigidBody;
+
+    #[test]
+    fn unity_damping_rigid_body_still_falls_under_gravity() {
+        let pmx_rb = PmxRigidBody {
+            local_name: "左袖2-6".to_owned(),
+            universal_name: String::new(),
+            bone_index: -1,
+            group: 11,
+            un_collision_group_flag: 0xE3FF,
+            shape: RigidBodyShape::Sphere,
+            size: [0.3, 0.0, 0.0],
+            position: [0.0, 0.0, 0.0],
+            rotation: [0.0, 0.0, 0.0],
+            mass: 0.10,
+            move_attenuation: 1.0,
+            rotation_attenuation: 1.0,
+            repulsion: 0.0,
+            friction: 0.5,
+            mode: RigidBodyMode::Dynamic,
+        };
+
+        let rb_data = MmdRigidBodyData::from_pmx(&pmx_rb, None);
+        let shape = MmdRigidBodyData::create_shape(&pmx_rb).expect("create shape");
+        let body = rb_data
+            .create_rigid_body(&pmx_rb, &shape)
+            .expect("create rigid body");
+
+        let world = super::super::bullet_ffi::BulletWorld::new(0.0, -98.0, 0.0)
+            .expect("create bullet world");
+        world.add_rigid_body(&body, 1, 0xFFFF);
+        for _ in 0..30 {
+            world.step(1.0 / 60.0, 1, 1.0 / 60.0);
+        }
+        let y = body.get_transform().w_axis.y;
+        world.remove_rigid_body(&body);
+        assert!(
+            y < -1.0,
+            "dynamic rigid body with PMX damping=1.0 should fall under gravity instead of freezing, got y={y:.4}"
+        );
     }
 }

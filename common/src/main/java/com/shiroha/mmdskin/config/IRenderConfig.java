@@ -52,6 +52,10 @@ public interface IRenderConfig {
 
     default float getAntiPeekHideAngle() { return 10.0f; }
 
+    default boolean isSwimmingPelvisVeilEnabled() { return false; }
+
+    default boolean isElytraPelvisVeilEnabled() { return false; }
+
     default boolean isPaperDollEnabled() { return true; }
 
     default PaperDollPosition getPaperDollPosition() { return PaperDollPosition.TOP_LEFT; }

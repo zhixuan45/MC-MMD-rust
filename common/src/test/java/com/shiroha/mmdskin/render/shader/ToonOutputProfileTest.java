@@ -33,6 +33,8 @@ class ToonOutputProfileTest {
 
         assertTrue(profile.isSupported(), profile.reason());
         assertTrue(profile.id().contains("entities:linear:073"));
+        org.junit.jupiter.api.Assertions.assertEquals(2, profile.colorOutputEncoding());
+        org.junit.jupiter.api.Assertions.assertEquals(0, ToonOutputProfile.vanilla().colorOutputEncoding());
         assertTrue(profile.fragmentDeclarations().contains("location = 2"));
         assertTrue(profile.fragmentWriter().contains("toonOutput1 = vec4(1.0)"));
         assertTrue(profile.fragmentWriter().contains("toonOutput2 = vec4(0.0, 0.0, 0.0, 1.0)"));
@@ -89,6 +91,7 @@ class ToonOutputProfileTest {
 
         assertTrue(profile.isSupported(), profile.reason());
         assertTrue(profile.id().contains("sqrt-linear:0367"));
+        org.junit.jupiter.api.Assertions.assertEquals(1, profile.colorOutputEncoding());
         assertTrue(profile.fragmentWriter().contains("sqrt(pow(max(color"));
         assertTrue(profile.fragmentWriter().contains("vec4(0.0, 0.0, 0.25, 1.0)"));
         assertTrue(profile.fragmentWriter().contains("float(gl_FragCoord.z < 1.0)"));

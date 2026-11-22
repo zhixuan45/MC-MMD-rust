@@ -121,12 +121,16 @@ public class ConfigData {
     public float firstPersonCameraForwardOffset = 0.0f;
     public float firstPersonCameraVerticalOffset = 0.0f;
 
-    /** 直播防走光模式：低机位仰视时虚化隐藏，游泳时用髋部水纹局部遮挡 */
+    /** 直播防走光模式：低机位仰视时虚化隐藏，游泳/鞘翅滑翔时自动联动骨盆局部遮罩 */
     public boolean antiPeekModeEnabled = false;
     /** 防走光起始虚化角度阈值（度）：当相机视线与竖直向上夹角小于等于该值时开始虚化 */
     public float antiPeekThresholdAngle = 25.0f;
     /** 防走光完全隐藏角度阈值（度）：当夹角小于等于该值时彻底隐藏 */
     public float antiPeekHideAngle = 10.0f;
+    /** 游泳时启用骨盆半透明水波纹遮罩（开启直播防走光模式时也会自动联动） */
+    public boolean swimmingPelvisVeilEnabled = false;
+    /** 鞘翅滑翔时启用骨盆半透明气流风纹遮罩（开启直播防走光模式时也会自动联动） */
+    public boolean elytraPelvisVeilEnabled = false;
 
     public int textureCacheBudgetMB = 256;
 

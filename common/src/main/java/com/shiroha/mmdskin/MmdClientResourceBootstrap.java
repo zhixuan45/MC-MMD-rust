@@ -43,10 +43,25 @@ final class MmdClientResourceBootstrap {
                     "78edcb6e6c083103b1676458beb20f5fe92d1a4cd35b865417a55684c7bf8076",
                     "f04a45f86f6e9e413da378827a25eaf6493fd7ce5cd7d4173b23bcc9f36d9e5a",
                     "25b9bb99f7f8ae7b35b398bd7e6d8889121a2bbe6048255de1dc0f466f197386",
-                    "c119737ca21f32e483e19dedbaeece9a9e06a7f369f7b92cf2b8ea7c3610a265"),
+                    "c119737ca21f32e483e19dedbaeece9a9e06a7f369f7b92cf2b8ea7c3610a265",
+                    "aa058c5f9a6b04267eca25e7431a2f1010c13644f3a8e1fc841b7a3b82850763",
+                    "038078a951be0abc8d9e3442efa31930dc02efc7d6f5130777bb99364dc1a3d9",
+                    "b61b1516e836925aad8d062ad267d23eba55ac7615c83bcb069f8c989fc0c4b4",
+                    "2ab32a8950a07610f830831cb5855364985b971e9a806cbc9c809d54d65a1de2",
+                    "fe1cc84479ff55c0af65faccbe81196a71bd22e4782e2705419cb14c08d1c073",
+                    "e8ecbdc3da34648b325fad0fe29c1f69c81aa16774c69fe4cac6f868012134d8",
+                    "3d685213e3a241fb11b226f46e1e9d10dd7db69212a03c068739893455b8c1be",
+                    "e8504c6f4cb43c9c9ef1792c8278a07893f3008b4fa2742afce7a26e4b9c570b",
+                    "8bf81bfe1210e2d293cacf8bab1f00115d1a8a79f742057d1f0269783f0053a1"),
             "sprintStop.vmd", Set.of(
                     "c93a22e1709f7fbffb84d0a97ae3ec004ed7482e951cf73ca0f0dfe2e2d07fea",
-                    "27a59410037078a0429d098a119f12f2a8a7589640a3ee5282da91788e28a629"));
+                    "27a59410037078a0429d098a119f12f2a8a7589640a3ee5282da91788e28a629",
+                    "d1a8c2c6db1254d6115dca285903df911ec5c9d791353222d479f8960f5cac4f",
+                    "ccdcb8802d2d26c0e040a1e47c6e07024a49e3f6b074def4caddd6567af9492b",
+                    "4f7a1ce7e446a3a41bba0bdca969142b337e4193c7c2c73ba7114a56dec0be7d",
+                    "a0083c38900dc39f1e3a66e9dd2513121036e054713dfddaa91def9833cbf759",
+                    "a7e9e804e390b1abb24e7e6f8a29c69ff5dcd7c98847ed401896cd54e0924c36",
+                    "f9a264ff0a42d817a2d11ad3ebe513028146f3150694d80417b6e093ad410b32"));
     private static final String[] DEFAULT_ANIM_FILES = {
             "Drink.vmd", "crawl.vmd", "die.vmd", "elytraFly.vmd", "idle.vmd",
             "itemActive_minecraft.bow_Left_using.vmd", "itemActive_minecraft.iron_sword_Right_swinging.vmd",

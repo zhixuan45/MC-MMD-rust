@@ -33,6 +33,13 @@ public class IrisCompat {
         return profile.isSupported() ? profile.colorOutputSlot() : -1;
     }
 
+    /** 返回当前光影实体程序的 colortex0 颜色空间编码：0=gamma, 1=sqrt-linear, 2=linear。 */
+    public static int entityColorOutputEncoding(net.minecraft.client.renderer.ShaderInstance shader) {
+        if (!isIrisProgram(shader)) return 0;
+        var profile = IrisToonMetadata.read(shader).profile();
+        return profile.isSupported() ? profile.colorOutputEncoding() : 0;
+    }
+
     /** clear 同时重置原版程序缓存；Iris 阴影通道还须恢复原目标。 */
     public static void clearProgram(net.minecraft.client.renderer.ShaderInstance shader,
                                     int shadowDraw, int shadowRead) {

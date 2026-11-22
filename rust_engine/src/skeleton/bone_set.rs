@@ -392,7 +392,7 @@ impl BoneSet {
         }
     }
 
-    fn compute_animated_transforms(&mut self, after_physics: bool) {
+    pub(crate) fn compute_animated_transforms(&mut self, after_physics: bool) {
         // 1. 更新本地变换（跳过物理骨骼）
         for order in 0..self.sorted_indices.len() {
             let idx = self.sorted_indices[order];

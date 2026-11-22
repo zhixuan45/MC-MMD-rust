@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use glam::{DVec3, IVec3, Vec3, Vec3Swizzles};
+use glam::{DVec3, IVec3, Quat, Vec3, Vec3Swizzles};
 
 use crate::animation::{AnimationLayerManager, VmdAnimation};
 use crate::skeleton::BoneManager;
@@ -14,6 +14,12 @@ const FEET: [[&str; 3]; 2] = [
 ];
 const STEP_TIME: f32 = 0.125;
 const MAX_BODY_OFFSET: f32 = 0.30;
+/// Canonical reference rig dimensions (Grass Wonder baseline) used for proportional retargeting.
+const REF_LEG_REACH: f32 = 8.92;
+const REF_BODY_HEIGHT: f32 = 16.16;
+const REF_REST_ANKLE_Z_OFFSET: f32 = -0.33;
+/// Maximum single-foot horizontal extent from model origin in world blocks (2.0 blocks total span).
+const MAX_FOOT_EXTENT_BLOCKS: f32 = 1.0;
 
 #[derive(Default)]
 pub(crate) struct LocomotionInput {
@@ -108,6 +114,8 @@ pub(super) struct LocomotionState {
     terrain_tick: Option<i64>,
     step: Option<Step>,
     pelvis: f32,
+    stride_scale: f32,
+    lean_delta: f32,
     feet: [FootContact; 2],
 }
 
@@ -148,6 +156,7 @@ impl LocomotionState {
         }
         if input.mode < 2 {
             self.gait = Gait::default();
+            self.stride_scale = 1.0;
             return None;
         }
         let layer = layers.get_layer(0)?;
@@ -167,18 +176,23 @@ impl LocomotionState {
             return Some((elapsed, 1.0));
         }
         let speed = input.movement.x.hypot(input.movement.z) * 20.0;
+        let stride_scale = if self.stride_scale > 0.1 {
+            self.stride_scale
+        } else {
+            1.0
+        };
         let nominal = self
             .gait
             .speed
             .map_or(if input.mode == 2 { 4.3 } else { 5.6 }, |speed| {
-                (speed * input.scale).max(0.5)
+                (speed * stride_scale * input.scale).max(0.5)
             });
         // Adapt cadence to movement speed while capping extremes so neither speed
         // potions nor slower custom clips turn into frantic churning.
         let target = if input.mode == 2 {
             (speed / nominal).clamp(0.35, 1.12)
         } else {
-            (speed / nominal).clamp(0.45, 1.45)
+            (speed / nominal).clamp(0.45, 1.60)
         };
         let rate = self
             .rate
@@ -199,6 +213,7 @@ impl LocomotionState {
         self.terrain_tick = None;
         self.step = None;
         self.pelvis = 0.0;
+        self.lean_delta = 0.0;
         self.feet = [FootContact::default(); 2];
     }
 
@@ -332,6 +347,61 @@ impl LocomotionState {
         let Some(body) = self.body_offset(input, dt) else {
             return false;
         };
+        let mut retargeted = false;
+        if input.mode >= 2 {
+            if let (Some(left), Some(right)) = (&rigs[0], &rigs[1]) {
+                let avg_reach = 0.5 * (left.reach + right.reach);
+                let scale = stride_scale_for(
+                    avg_reach,
+                    input.scale,
+                    self.gait.max_extent_z,
+                    input.mode,
+                );
+                if (self.stride_scale - scale).abs() > 0.02 {
+                    self.rate = None;
+                }
+                self.stride_scale = scale;
+                let max_model_extent = MAX_FOOT_EXTENT_BLOCKS / input.scale.max(1e-4);
+                // Half-compensate rig-specific rest ankle-to-hip Z offset so both touchdown and
+                // toe-off stay balanced inside leg reach across different PMX proportions.
+                let z_bias = (0.5 * (left.rest_z_offset + right.rest_z_offset)
+                    - REF_REST_ANKLE_Z_OFFSET)
+                    .clamp(-0.8, 0.8)
+                    * 0.5;
+                if (scale - 1.0).abs() > 0.01
+                    || z_bias.abs() > 0.08
+                    || self.gait.max_extent_z > max_model_extent
+                {
+                    for rig in [left, right] {
+                        if let Some(bone) = bones.get_bone_mut(rig.control) {
+                            let mut t = bone.animation_translate * scale;
+                            t.z -= z_bias;
+                            t.y = t.y.max(0.0);
+                            t.x = t.x.clamp(-max_model_extent, max_model_extent);
+                            t.z = t.z.clamp(-max_model_extent, max_model_extent);
+                            bone.animation_translate = t;
+                            retargeted = true;
+                        }
+                    }
+                    if let Some(bone) = bones.get_bone_mut(center) {
+                        bone.animation_translate *= scale;
+                        retargeted = true;
+                    }
+                }
+                if retargeted {
+                    bones.compute_animated_transforms(false);
+                }
+                if input.grounded {
+                    if self.adapt_body_lean(input, bones, left, right, avg_reach, dt) {
+                        bones.compute_animated_transforms(false);
+                        retargeted = true;
+                    }
+                }
+            }
+        } else {
+            self.stride_scale = 1.0;
+            self.lean_delta = smooth(self.lean_delta, 0.0, 10.0, dt);
+        }
         let mut goals = [None; 2];
         for (side, rig) in rigs.iter().enumerate() {
             let Some(rig) = rig else {
@@ -358,6 +428,9 @@ impl LocomotionState {
             let movable_stance = input.mode >= 2
                 && authored_stance
                 && input.movement.x.hypot(input.movement.z) > 0.008;
+            let surface_drop = surface
+                .map(|surface| (surface - input.to_world(Vec3::ZERO).y) as f32)
+                .unwrap_or(0.0);
             goals[side] = Some((
                 foot,
                 hip,
@@ -377,7 +450,7 @@ impl LocomotionState {
                     },
                 ),
                 authored_stance,
-                terrain_y,
+                surface_drop,
             ));
         }
 
@@ -428,7 +501,7 @@ impl LocomotionState {
                 changed |= add_offset(input, bones, toe, toe_offset);
             }
         }
-        changed
+        changed || retargeted
     }
 }
 
@@ -474,6 +547,7 @@ struct Gait {
     clip: Option<Arc<VmdAnimation>>,
     feet: [Option<FootTrack>; 2],
     speed: Option<f32>,
+    max_extent_z: f32,
     frame: f32,
 }
 
@@ -485,6 +559,7 @@ struct FootTrack {
 impl Gait {
     fn analyze(clip: &Arc<VmdAnimation>) -> Self {
         let mut speeds = Vec::new();
+        let mut max_extent_z = 0.0_f32;
         let feet = FEET.map(|names| {
             let name = names[..2]
                 .iter()
@@ -502,6 +577,9 @@ impl Gait {
             if samples.iter().any(|position| !position.is_finite()) {
                 return None;
             }
+            for p in &samples {
+                max_extent_z = max_extent_z.max(p.z.abs());
+            }
             let low = samples.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
             let high = samples
                 .iter()
@@ -510,7 +588,7 @@ impl Gait {
             if high - low < 0.01 {
                 return None;
             }
-            let contact_height = low + ((high - low) * 0.08).max(0.04);
+            let contact_height = low + ((high - low) * 0.03).clamp(0.04, 0.12);
             for pair in samples.windows(2) {
                 if pair[0].y.max(pair[1].y) <= contact_height {
                     let delta = pair[1] - pair[0];
@@ -534,6 +612,7 @@ impl Gait {
             clip: Some(Arc::clone(clip)),
             feet,
             speed,
+            max_extent_z,
             frame: 0.0,
         }
     }
@@ -626,6 +705,7 @@ struct FootRig {
     toe: Option<usize>,
     reach: f32,
     rest_y: f32,
+    rest_z_offset: f32,
     control_inherits_center: bool,
 }
 
@@ -653,14 +733,13 @@ impl FootRig {
                 .iter()
                 .any(|link| link.bone_index == knee as i32)
             || bones.is_physics_bone(knee)
-            || !stable_frame(bones, hip)
+            || !stable_hip_frame(bones, hip)
         {
             return None;
         }
+        let hip_bone = bones.get_bone(hip)?;
         let reach = ankle.initial_position.distance(knee_bone.initial_position)
-            + knee_bone
-                .initial_position
-                .distance(bones.get_bone(hip)?.initial_position);
+            + knee_bone.initial_position.distance(hip_bone.initial_position);
         if !reach.is_finite() || reach <= 0.0001 {
             return None;
         }
@@ -673,6 +752,7 @@ impl FootRig {
             toe,
             reach,
             rest_y: bone.initial_position.y,
+            rest_z_offset: bone.initial_position.z - hip_bone.initial_position.z,
             control_inherits_center: ancestor(bones, center, control),
         })
     }
@@ -699,6 +779,28 @@ fn stable_frame(bones: &BoneManager, mut index: usize) -> bool {
     false
 }
 
+/// Like `stable_frame`, but permits pre-physics append-rotate ancestors such as
+/// standard MMD waist-cancel bones (`腰キャンセル左/右`) above the hip joint.
+fn stable_hip_frame(bones: &BoneManager, mut index: usize) -> bool {
+    for _ in 0..bones.bone_count() {
+        let Some(bone) = bones.get_bone(index) else {
+            return false;
+        };
+        if bones.is_physics_bone(index)
+            || bones.external_parents().contains_key(&index)
+            || bone.deform_after_physics()
+            || bone.is_append_translate()
+        {
+            return false;
+        }
+        let Ok(parent) = usize::try_from(bone.parent_index) else {
+            return true;
+        };
+        index = parent;
+    }
+    false
+}
+
 fn ancestor(bones: &BoneManager, ancestor: usize, mut index: usize) -> bool {
     for _ in 0..bones.bone_count() {
         if ancestor == index {
@@ -713,6 +815,130 @@ fn ancestor(bones: &BoneManager, ancestor: usize, mut index: usize) -> bool {
         index = parent;
     }
     false
+}
+
+fn stride_scale_for(reach: f32, world_scale: f32, max_extent_z: f32, mode: i32) -> f32 {
+    if mode < 2
+        || !reach.is_finite()
+        || reach <= 0.1
+        || !world_scale.is_finite()
+        || world_scale <= 1e-4
+    {
+        return 1.0;
+    }
+    let leg_ratio = (reach / REF_LEG_REACH).clamp(0.55, 1.50);
+    // Cap each foot to at most 1.0 block forward/backward from origin (2.0 blocks total span).
+    let world_cap = if max_extent_z > 0.1 {
+        (MAX_FOOT_EXTENT_BLOCKS / (max_extent_z * world_scale)).clamp(0.40, 1.50)
+    } else {
+        1.50
+    };
+    leg_ratio.min(world_cap)
+}
+
+/// Adapt torso forward lean to the model's body height, leg-to-height proportion, and rig layout
+/// (also compensating older models that lack a `腰` bone) while keeping the head level.
+impl LocomotionState {
+    fn adapt_body_lean(
+        &mut self,
+        input: &LocomotionInput,
+        bones: &mut BoneManager,
+        left: &FootRig,
+        right: &FootRig,
+        avg_reach: f32,
+        dt: f32,
+    ) -> bool {
+        // Pivot on `上半身` when available so hip/leg roots and waist-cancel bones (`腰キャンセル`)
+        // remain completely undisturbed and cannot introduce planted-foot slip.
+        let Some(pivot) = bones
+            .find_bone_by_name("上半身")
+            .or_else(|| bones.find_bone_by_name("腰"))
+            .filter(|&idx| stable_frame(bones, idx))
+        else {
+            return false;
+        };
+        let Some(neck) = bones
+            .find_bone_by_name("首")
+            .filter(|&idx| stable_frame(bones, idx))
+        else {
+            return false;
+        };
+        let head_height = bones
+            .find_bone_by_name("頭")
+            .and_then(|idx| bones.get_bone(idx))
+            .map(|bone| bone.initial_position.y)
+            .or_else(|| bones.get_bone(neck).map(|bone| bone.initial_position.y + 0.8))
+            .unwrap_or(REF_BODY_HEIGHT)
+            .max(4.0);
+
+        // For sprint (`mode == 3`), measure actual world-space whole-torso silhouette from
+        // hip midpoint to neck so every rig achieves a bold, consistent ~30-32 deg sprint diagonal.
+        // For walk (`mode == 2`), measure `pivot -> neck` relative to rest pose to keep walk intact.
+        let base_rest = bones
+            .get_bone(pivot)
+            .map(|b| b.initial_position)
+            .unwrap_or(Vec3::ZERO);
+        let neck_rest = bones
+            .get_bone(neck)
+            .map(|b| b.initial_position)
+            .unwrap_or(Vec3::ZERO);
+        let hip_mid = 0.5
+            * (bones.get_global_transform(left.hip).w_axis.truncate()
+                + bones.get_global_transform(right.hip).w_axis.truncate());
+        let pivot_pos = bones.get_global_transform(pivot).w_axis.truncate();
+        let neck_pos = bones.get_global_transform(neck).w_axis.truncate();
+        let dy_upper = neck_pos.y - pivot_pos.y;
+        let dy_full = neck_pos.y - hip_mid.y;
+        let rest_dy = neck_rest.y - base_rest.y;
+        if !dy_upper.is_finite()
+            || dy_upper <= 0.25
+            || !dy_full.is_finite()
+            || dy_full <= 0.25
+            || rest_dy <= 0.25
+        {
+            return false;
+        }
+        let current_lean_deg = if input.mode == 3 {
+            (neck_pos.z - hip_mid.z).atan2(dy_full).to_degrees()
+        } else {
+            let world_upper = (neck_pos.z - pivot_pos.z).atan2(dy_upper).to_degrees();
+            let rest_upper = (neck_rest.z - base_rest.z).atan2(rest_dy).to_degrees();
+            world_upper - rest_upper
+        };
+
+        let speed = input.movement.x.hypot(input.movement.z) * 20.0;
+        let leg_prop = (avg_reach / head_height) / (REF_LEG_REACH / REF_BODY_HEIGHT);
+        let height_factor = (REF_BODY_HEIGHT / head_height).powf(0.18).clamp(0.88, 1.12);
+        let prop_factor = (1.0 / leg_prop.clamp(0.82, 1.22)).powf(0.35).clamp(0.90, 1.10);
+        let target_lean_deg = if input.mode == 3 {
+            // Calibrated to 45 deg clockwise forward from the vertical height axis on tall HSR rigs
+            // (e.g. Zhenzhu: 46.5 * 0.960 ~= 44.7 deg), scaling smoothly by height and leg ratio.
+            let body_factor = (height_factor * prop_factor).clamp(0.88, 1.05);
+            46.5 * body_factor * (speed / 5.612).clamp(0.55, 1.06)
+        } else {
+            // Keep walk posture close to the authored clip; only apply subtle body-proportion tuning.
+            let walk_target = 8.0 * height_factor * prop_factor * (speed / 4.317).clamp(0.45, 1.08);
+            current_lean_deg + (walk_target - current_lean_deg).clamp(-3.0, 3.0) * 0.4
+        };
+        let lever_gain = if input.mode == 3 {
+            ((neck_pos - hip_mid).length() / (neck_pos - pivot_pos).length()).clamp(1.0, 1.45)
+        } else {
+            1.0
+        };
+        let desired_delta = ((target_lean_deg - current_lean_deg) * lever_gain).clamp(-20.0, 20.0);
+        self.lean_delta = smooth(self.lean_delta, desired_delta, 10.0, dt);
+        if self.lean_delta.abs() < 0.05 {
+            return false;
+        }
+        let delta_rad = self.lean_delta.to_radians();
+        if let Some(bone) = bones.get_bone_mut(pivot) {
+            bone.animation_rotate = Quat::from_rotation_x(delta_rad) * bone.animation_rotate;
+        }
+        if let Some(bone) = bones.get_bone_mut(neck) {
+            bone.animation_rotate = Quat::from_rotation_x(-0.85 * delta_rad) * bone.animation_rotate;
+        }
+        true
+    }
 }
 
 fn add_offset(

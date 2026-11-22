@@ -553,6 +553,39 @@ class ConfigDataTest {
         }
     }
 
+    @Test
+    void pelvisVeilOptionsDefaultPersistAndBridgeToRuntimePort(@TempDir Path configDir) throws Exception {
+        Files.writeString(configDir.resolve("config.json"), "{}");
+        ConfigData data = ConfigData.load(configDir);
+        assertFalse(data.swimmingPelvisVeilEnabled);
+        assertFalse(data.elytraPelvisVeilEnabled);
+
+        data.swimmingPelvisVeilEnabled = true;
+        data.elytraPelvisVeilEnabled = true;
+        data.save(configDir);
+
+        ConfigData loaded = ConfigData.load(configDir);
+        assertTrue(loaded.swimmingPelvisVeilEnabled);
+        assertTrue(loaded.elytraPelvisVeilEnabled);
+
+        ConfigManager.init(new TestConfig(loaded));
+        try {
+            RuntimeConfigPort port = RuntimeConfigPort.fromConfigManager();
+            assertTrue(ConfigManager.isSwimmingPelvisVeilEnabled());
+            assertTrue(ConfigManager.isElytraPelvisVeilEnabled());
+            assertTrue(port.isSwimmingPelvisVeilEnabled());
+            assertTrue(port.isElytraPelvisVeilEnabled());
+
+            loaded.swimmingPelvisVeilEnabled = false;
+            assertFalse(port.isSwimmingPelvisVeilEnabled());
+            assertTrue(port.isElytraPelvisVeilEnabled());
+        } finally {
+            ConfigManager.init(null);
+        }
+        assertFalse(ConfigManager.isSwimmingPelvisVeilEnabled());
+        assertFalse(ConfigManager.isElytraPelvisVeilEnabled());
+    }
+
     private static final class TestConfig extends AbstractMmdSkinConfig {
         private TestConfig(ConfigData data) { super(data); }
 

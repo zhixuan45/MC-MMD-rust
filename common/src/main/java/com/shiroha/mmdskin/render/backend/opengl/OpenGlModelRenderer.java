@@ -51,7 +51,6 @@ final class OpenGlModelRenderer {
              var worldTransparency = WorldTransparencyPipeline.modelScene(context, target.getModelName());
              var effects = com.shiroha.mmdskin.render.effectpack.EffectPackRuntime.get().enter(context, target.getModelName())) {
             renderInternal(target, entityIn, entityYaw, entityPitch, entityTrans, deliverStack, packedLight, context);
-            target.renderSwimmingVeil(deliverStack, context);
         }
     }
 
@@ -146,7 +145,7 @@ final class OpenGlModelRenderer {
 
         long drawTimer = RenderPerformanceProfiler.get().startTimer();
         try {
-            renderStandard(target, minecraft, light, deliverStack, isGuiScene);
+            renderStandard(target, minecraft, light, deliverStack, isGuiScene, context);
         } finally {
             if (drawQueryStarted) GpuTimerQueryPool.draw().end();
             RenderPerformanceProfiler.get().endTimer(RenderPerformanceProfiler.SECTION_DRAW, drawTimer);
@@ -254,7 +253,7 @@ final class OpenGlModelRenderer {
 
     private static void renderStandard(OpenGlModelInstance target, Minecraft minecraft,
                                        LightingHelper.LightData light, PoseStack deliverStack,
-                                       boolean guiScene) {
+                                       boolean guiScene, RenderScene context) {
         boolean irisActive = IRIS.isShaderPackActive();
         float colorFactor = irisActive ? 1.0f : light.intensity();
         float alphaFactor = target.getGlobalAlpha();
@@ -294,6 +293,10 @@ final class OpenGlModelRenderer {
             if (!guiScene && IRIS.isIrisProgram(activeShader)) bindIrisAttributes(target);
             IRIS.recordEntityDiagnostics(activeShader, light);
             drawSubMeshes(target, minecraft);
+            if (target.shouldRenderPelvisVeil(context)) {
+                target.renderPelvisVeil(deliverStack, context, light.intensity(),
+                        IRIS.entityColorOutputSlot(activeShader), IRIS.entityColorOutputEncoding(activeShader));
+            }
         } finally {
             try {
                 clearStandardRenderState(target);
@@ -701,6 +704,11 @@ final class OpenGlModelRenderer {
 
             if (OpenGlModelInstance.toonConfig.isOutlineEnabled() && (context == null || context.allowsOutline())) {
                 renderOutlinePass(target);
+            }
+            if (target.shouldRenderPelvisVeil(context)) {
+                target.renderPelvisVeil(deliverStack, context, light.intensity(),
+                        OpenGlModelInstance.toonShaderCpu.getOutlineColorSlot(),
+                        OpenGlModelInstance.toonShaderCpu.getColorOutputEncoding());
             }
         } finally {
             try {

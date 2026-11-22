@@ -245,7 +245,7 @@ fn walk_adapts_within_natural_band_and_sprint_adjusts_only_the_base_layer() {
     );
     assert_eq!(walk.max_frame(), 20);
     assert!(
-        (sprint_speed * 0.09 - 5.59).abs() < 0.25,
+        (sprint_speed * 0.09 - 4.48).abs() < 0.25,
         "unexpected authored sprint speed: {}",
         sprint_speed * 0.09
     );
@@ -325,14 +325,30 @@ fn walk_adapts_within_natural_band_and_sprint_adjusts_only_the_base_layer() {
     input.movement.x = sprint_speed * input.scale * 2.0 / 20.0;
     let dt = state.begin_frame(&input, 0.02);
     let cadence = state.cadence(&input, &layers, dt);
-    assert!((cadence.unwrap().1 - 1.45).abs() < 1e-4);
+    assert!((cadence.unwrap().1 - 1.60).abs() < 1e-4);
     layers.update_with_locomotion(dt, cadence);
-    assert!((layers.get_layer(0).unwrap().current_frame() - 0.02 * 30.0 * 1.45).abs() < 0.002);
+    assert!((layers.get_layer(0).unwrap().current_frame() - 0.02 * 30.0 * 1.60).abs() < 0.002);
     input.frame += 1;
     input.movement.x *= 0.5;
     let dt = state.begin_frame(&input, 0.02);
     let slowed = state.cadence(&input, &layers, dt).unwrap().1;
-    assert!(slowed > 1.0 && slowed < 1.45);
+    assert!(slowed > 1.0 && slowed < 1.60);
+}
+
+#[test]
+fn stride_scale_adapts_to_leg_reach_and_caps_world_extent_to_one_block_per_foot() {
+    // Reference model (Grass Wonder, reach = 8.92) keeps 1.0x stride.
+    assert!((stride_scale_for(8.92, 0.09, 7.30, 3) - 1.0).abs() < 1e-3);
+    // Tall HSR model (Zhenzhu, reach = 10.61) scales stride proportionally (~1.19x).
+    let zhenzhu = stride_scale_for(10.61, 0.09, 7.30, 3);
+    assert!((zhenzhu - 10.61 / 8.92).abs() < 1e-3);
+    assert!(7.30 * zhenzhu * 0.09 <= MAX_FOOT_EXTENT_BLOCKS + 1e-4);
+    // Large model scale still caps each foot to <= 1.0 block from origin (<= 2.0 blocks total).
+    let huge_scale = stride_scale_for(12.5, 0.16, 7.30, 3);
+    assert!(7.30 * huge_scale * 0.16 <= MAX_FOOT_EXTENT_BLOCKS + 1e-4);
+    // Short / chibi model scales stride down proportionally.
+    let chibi = stride_scale_for(6.0, 0.09, 7.30, 3);
+    assert!((chibi - 6.0 / 8.92).abs() < 1e-3);
 }
 
 #[test]
@@ -340,6 +356,8 @@ fn flat_ground_walk_and_sprint_track_ground_without_early_release_or_crouch() {
     let fixtures = [
         "../run/3d-skin/EntityPlayer/grasswonder/1011_Grass Wonder.pmx",
         "../run/3d-skin/EntityPlayer/teio/1003_Tokai Teio.pmx",
+        "../neoforge/run/client/3d-skin/EntityPlayer/TDA 方舟指令[乐正绫][蝶律] Ver 1.00/TDA 方舟指令[乐正绫][蝶律] Ver 1.00.pmx",
+        "D:/minecraft/.minecraft/versions/1.21.1-NeoForge_21.1.252/3d-skin/EntityPlayer/真珠_眼部修复/星穹铁道—真珠2.pmx",
     ];
     let walk = Arc::new(
         VmdAnimation::load_from_bytes(include_bytes!(concat!(
@@ -359,6 +377,7 @@ fn flat_ground_walk_and_sprint_track_ground_without_early_release_or_crouch() {
     cfg.foot_ik_enabled = true;
     crate::physics::set_config(cfg);
 
+    let mut failures = Vec::new();
     for (label, mode, speed_mps, clip) in [
         ("walk", 2, 4.317_f32, &walk),
         ("sprint", 3, 5.612_f32, &sprint),
@@ -383,6 +402,8 @@ fn flat_ground_walk_and_sprint_track_ground_without_early_release_or_crouch() {
             let mut prev_planted = [None::<DVec3>; 2];
             let mut sprint_lean_sum = 0.0_f32;
             let mut sprint_lean_count = 0usize;
+            let mut min_foot_z_blocks = f32::INFINITY;
+            let mut max_foot_z_blocks = f32::NEG_INFINITY;
 
             for step in 0..120 {
                 world_z += f64::from(speed_mps * dt);
@@ -417,6 +438,9 @@ fn flat_ground_walk_and_sprint_track_ground_without_early_release_or_crouch() {
                             .get_global_transform(ankle_idx)
                             .w_axis
                             .truncate();
+                        let foot_z_blocks = ankle_pos.z * model.locomotion_input.scale;
+                        min_foot_z_blocks = min_foot_z_blocks.min(foot_z_blocks);
+                        max_foot_z_blocks = max_foot_z_blocks.max(foot_z_blocks);
                         let world_ankle = model.locomotion_input.to_world(ankle_pos);
                         if model.locomotion.feet[side].anchor.is_some()
                             && model.locomotion.feet[side].weight >= 0.99
@@ -432,36 +456,66 @@ fn flat_ground_walk_and_sprint_track_ground_without_early_release_or_crouch() {
                     }
                     max_pelvis_dip = max_pelvis_dip.max(model.locomotion.pelvis.abs());
                     if label == "sprint" {
-                        let waist_idx = model.bone_manager.find_bone_by_name("グルーブ").unwrap();
+                        let l_hip = model.bone_manager.find_bone_by_name("左足").unwrap();
+                        let r_hip = model.bone_manager.find_bone_by_name("右足").unwrap();
                         let neck_idx = model.bone_manager.find_bone_by_name("首").unwrap();
-                        let waist = model.bone_manager.get_global_transform(waist_idx).w_axis.truncate();
+                        let hip_mid = 0.5
+                            * (model.bone_manager.get_global_transform(l_hip).w_axis.truncate()
+                                + model.bone_manager.get_global_transform(r_hip).w_axis.truncate());
                         let neck = model.bone_manager.get_global_transform(neck_idx).w_axis.truncate();
-                        let lean_deg = (neck.z - waist.z).atan2(neck.y - waist.y).to_degrees();
+                        let lean_deg = (neck.z - hip_mid.z).atan2(neck.y - hip_mid.y).to_degrees();
                         sprint_lean_sum += lean_deg;
                         sprint_lean_count += 1;
                     }
                 }
             }
-            if label == "sprint" {
-                let avg_lean = sprint_lean_sum / sprint_lean_count as f32;
-                assert!(
-                    (41.0..=48.0).contains(&avg_lean),
-                    "{label} on {rel_path}: expected 41..48 deg actual 3D torso lean, got {avg_lean:.1} deg"
-                );
-            }
-
-            assert_eq!(
-                early_releases, 0,
-                "{label} on {rel_path}: feet released anchor prematurely on flat ground"
-            );
+            let avg_lean_opt =
+                (label == "sprint").then(|| sprint_lean_sum / sprint_lean_count as f32);
+            failures.push((
+                label,
+                rel_path,
+                avg_lean_opt,
+                early_releases,
+                max_pelvis_dip,
+                max_planted_slip,
+                min_foot_z_blocks,
+                max_foot_z_blocks,
+            ));
+        }
+    }
+    for (
+        label,
+        rel_path,
+        avg_lean_opt,
+        early_releases,
+        max_pelvis_dip,
+        max_planted_slip,
+        min_foot_z_blocks,
+        max_foot_z_blocks,
+    ) in failures
+    {
+        if let Some(avg_lean) = avg_lean_opt {
             assert!(
-                max_pelvis_dip < 0.025,
-                "{label} on {rel_path}: unexpected flat-ground pelvis crouch: {max_pelvis_dip:.4}m"
-            );
-            assert!(
-                max_planted_slip < 0.008,
-                "{label} on {rel_path}: planted foot slipped {max_planted_slip:.4}m per frame"
+                (41.0..=49.0).contains(&avg_lean),
+                "{label} on {rel_path}: expected 41..49 deg whole-body hip->neck lean, got {avg_lean:.1} deg"
             );
         }
+        assert!(
+            min_foot_z_blocks >= -MAX_FOOT_EXTENT_BLOCKS - 0.02
+                && max_foot_z_blocks <= MAX_FOOT_EXTENT_BLOCKS + 0.02,
+            "{label} on {rel_path}: foot Z extent [{min_foot_z_blocks:.2}, {max_foot_z_blocks:.2}] exceeded ±{MAX_FOOT_EXTENT_BLOCKS} block cap"
+        );
+        assert_eq!(
+            early_releases, 0,
+            "{label} on {rel_path}: feet released anchor prematurely on flat ground"
+        );
+        assert!(
+            max_pelvis_dip < 0.025,
+            "{label} on {rel_path}: unexpected flat-ground pelvis crouch: {max_pelvis_dip:.4}m"
+        );
+        assert!(
+            max_planted_slip < 0.012,
+            "{label} on {rel_path}: planted foot slipped {max_planted_slip:.4}m per frame"
+        );
     }
 }

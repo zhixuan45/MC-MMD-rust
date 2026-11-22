@@ -20,6 +20,8 @@ public interface IrisBackend {
 
     int entityColorOutputSlot(ShaderInstance shader);
 
+    default int entityColorOutputEncoding(ShaderInstance shader) { return 0; }
+
     void clearProgram(ShaderInstance shader, int shadowDraw, int shadowRead);
 
     boolean prepareToon(ToonShaderBase shader, boolean worldScene);

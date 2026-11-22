@@ -467,6 +467,20 @@ impl From<RigidBodyMode> for PhysicsMode {
 
 /// MMD 刚体数据（移植自 babylon-mmd MmdRigidBodyData）
 ///
+/// Bullet3 `applyDamping` computes `v *= pow(1 - damping, dt)`.
+/// When a PMX rigid body authors `damping >= 1.0`, `pow(0, dt) == 0` wipes gravity every substep
+/// and freezes the body in midair. Clamp strictly below 1.0 to preserve silky heavy damping.
+const MAX_RIGID_BODY_DAMPING: f32 = 0.995;
+
+#[inline]
+pub(crate) fn sanitize_rigid_body_damping(damping: f32) -> f32 {
+    if damping.is_finite() {
+        damping.clamp(0.0, MAX_RIGID_BODY_DAMPING)
+    } else {
+        0.0
+    }
+}
+
 /// # Drop 顺序安全
 /// `bullet_body` 必须声明在 `bullet_shape` 之前，Rust 按字段声明顺序 drop，
 /// 确保刚体先于碰撞形状释放（刚体内部引用了形状指针）。
@@ -602,8 +616,8 @@ impl MmdRigidBodyData {
 
         let info = RigidBodyInfo {
             mass: pmx_rb.mass,
-            linear_damping: pmx_rb.move_attenuation,
-            angular_damping: pmx_rb.rotation_attenuation,
+            linear_damping: sanitize_rigid_body_damping(pmx_rb.move_attenuation),
+            angular_damping: sanitize_rigid_body_damping(pmx_rb.rotation_attenuation),
             friction: pmx_rb.friction,
             restitution: pmx_rb.repulsion,
             additional_damping: true,
@@ -847,5 +861,38 @@ mod tests {
             body.universal_name = std::mem::take(&mut body.local_name);
             assert!(super::is_skirt_or_lower_garment(&body), "{name} alias");
         }
+    }
+
+    #[test]
+    fn unity_damping_rigid_body_still_falls_under_gravity() {
+        assert_eq!(super::sanitize_rigid_body_damping(1.0), super::MAX_RIGID_BODY_DAMPING);
+        assert_eq!(super::sanitize_rigid_body_damping(1.5), super::MAX_RIGID_BODY_DAMPING);
+        assert_eq!(super::sanitize_rigid_body_damping(-0.2), 0.0);
+        assert_eq!(super::sanitize_rigid_body_damping(f32::NAN), 0.0);
+        assert_eq!(super::sanitize_rigid_body_damping(0.92), 0.92);
+
+        let mut pmx_rb = test_rigid_body(RigidBodyShape::Sphere, [0.3, 0.0, 0.0]);
+        pmx_rb.local_name = "左袖2-6".to_owned();
+        pmx_rb.mode = RigidBodyMode::Dynamic;
+        pmx_rb.mass = 0.10;
+        pmx_rb.move_attenuation = 1.0;
+        pmx_rb.rotation_attenuation = 1.0;
+
+        let rb_data = super::MmdRigidBodyData::from_pmx(&pmx_rb, None);
+        let shape = super::MmdRigidBodyData::create_shape(&pmx_rb, rb_data.shape_size).unwrap();
+        let body = rb_data.create_rigid_body(&pmx_rb, &shape).unwrap();
+
+        let world = crate::physics::bullet_ffi::BulletWorld::new(0.0, -98.0, 0.0)
+            .expect("create bullet world");
+        world.add_rigid_body(&body, 1, 0xFFFF);
+        for _ in 0..30 {
+            world.step(1.0 / 60.0, 1, 1.0 / 60.0);
+        }
+        let y = body.get_transform().w_axis.y;
+        world.remove_rigid_body(&body);
+        assert!(
+            y < -1.0,
+            "dynamic rigid body with PMX damping=1.0 should fall under gravity instead of freezing, got y={y:.4}"
+        );
     }
 }

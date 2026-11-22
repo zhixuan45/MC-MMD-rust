@@ -32,6 +32,7 @@ public final class IrisBackendAdapter implements IrisBackend {
     @Override public boolean isShadowPass() { return IrisCompat.isRenderingShadows(); }
     @Override public boolean isIrisProgram(ShaderInstance shader) { return IrisCompat.isIrisProgram(shader); }
     @Override public int entityColorOutputSlot(ShaderInstance shader) { return IrisCompat.entityColorOutputSlot(shader); }
+    @Override public int entityColorOutputEncoding(ShaderInstance shader) { return IrisCompat.entityColorOutputEncoding(shader); }
 
     @Override
     public void clearProgram(ShaderInstance shader, int shadowDraw, int shadowRead) {

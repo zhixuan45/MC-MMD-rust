@@ -7,7 +7,9 @@ import com.shiroha.mmdskin.debug.client.ModelIssueDiagnostics;
 import com.shiroha.mmdskin.config.RuntimeConfigPortHolder;
 import com.shiroha.mmdskin.model.runtime.ModelInstance;
 import com.shiroha.mmdskin.render.scene.RenderScene;
-import com.shiroha.mmdskin.render.effect.SwimmingVeilRenderer;
+import com.shiroha.mmdskin.render.effect.PelvisVeilMode;
+import com.shiroha.mmdskin.render.effect.PelvisVeilRenderer;
+import com.shiroha.mmdskin.render.effect.PelvisVeilState;
 import com.shiroha.mmdskin.render.pipeline.LivingEntityModelStateHelper;
 import com.shiroha.mmdskin.render.pipeline.RenderPerformanceProfiler;
 import com.shiroha.mmdskin.render.policy.WorldRenderPolicy;
@@ -75,26 +77,31 @@ public abstract class BaseModelInstance implements ModelInstance {
     private ByteBuffer nativeProfile;
     /** 全局 Alpha 调制因子（例如直播防走光虚化透明度，默认 1.0） */
     protected float globalAlpha = 1.0f;
-    private SwimmingVeilRenderer swimmingVeilRenderer;
-    private boolean swimmingVeil;
-    private float swimmingVeilSeconds;
+    private PelvisVeilRenderer pelvisVeilRenderer;
+    private final PelvisVeilState pelvisVeilState = new PelvisVeilState();
     public final void setupToonTerrainShadow(ToonShaderBase shader, RenderScene scene) {
         shader.setTerrainShadowReceiver(ConfigManager.isReceiveTerrainShadowEnabled()
                 && scene != null && scene.isWorldScene() && !IRIS.isShadowPass()
                 && IRIS.isShaderPackActive());
     }
 
-    public final void setSwimmingVeil(boolean enabled, float seconds) {
-        swimmingVeil = enabled;
-        swimmingVeilSeconds = seconds;
+    public final void setPelvisVeil(PelvisVeilMode mode, float seconds, float tintR, float tintG, float tintB) {
+        pelvisVeilState.updateTarget(mode, seconds, tintR, tintG, tintB);
     }
 
-    /** 在模型根变换已应用、世界透明作用域仍有效时调用。 */
-    public final void renderSwimmingVeil(PoseStack stack, RenderScene scene) {
-        if (!swimmingVeil || scene == null || !scene.isWorldScene() || scene.isFirstPerson()
-                || IRIS.isShadowPass()) return;
-        if (swimmingVeilRenderer == null) swimmingVeilRenderer = new SwimmingVeilRenderer(backendPort(), model);
-        swimmingVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack), swimmingVeilSeconds);
+    /** 零开销前置门控：未激活时短路返回 false，避免热路径触发光影元数据查询。 */
+    public final boolean shouldRenderPelvisVeil(RenderScene scene) {
+        return pelvisVeilState.shouldEvaluate() && scene != null && scene.isWorldScene()
+                && !scene.isFirstPerson() && !IRIS.isShadowPass();
+    }
+
+    /** 在模型根变换与宿主光影 FBO 仍处于绑定态、世界透明作用域有效时调用。 */
+    public final void renderPelvisVeil(PoseStack stack, RenderScene scene, float lightIntensity,
+                                       int colorOutputSlot, int outputEncoding) {
+        if (!shouldRenderPelvisVeil(scene)) return;
+        if (pelvisVeilRenderer == null) pelvisVeilRenderer = new PelvisVeilRenderer(backendPort(), model);
+        pelvisVeilRenderer.render(backendPort(), model, composeModelViewMatrix(stack),
+                pelvisVeilState, lightIntensity, colorOutputSlot, outputEncoding, IRIS.isShaderPackActive());
     }
 
     public void setGlobalAlpha(float alpha) {
@@ -594,9 +601,10 @@ public abstract class BaseModelInstance implements ModelInstance {
     }
 
     protected void disposeModelHandle() {
-        if (swimmingVeilRenderer != null) {
-            swimmingVeilRenderer.close();
-            swimmingVeilRenderer = null;
+        pelvisVeilState.reset();
+        if (pelvisVeilRenderer != null) {
+            pelvisVeilRenderer.close();
+            pelvisVeilRenderer = null;
         }
         EyeEmissionBuffer buffer = eyeEmissionBuffer;
         eyeEmissionBuffer = null;
